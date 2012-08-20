@@ -20,9 +20,21 @@ along with GCC; see the file COPYING3.  If not see
 /* Support generation of DWARF2 debugging info.  */
 #define DWARF2_DEBUGGING_INFO 1
 
+/* Use DWARF2 debugging info by default: comment out following  */
+/* 2 lines to default to COFF debugging info  */
+#undef PREFERRED_DEBUGGING_TYPE
+#define PREFERRED_DEBUGGING_TYPE DWARF2_DEBUG
+
 /* Don't assume anything about the header files.  */
 #define NO_IMPLICIT_EXTERN_C
 
+/* If defined, a C expression whose value is a string containing the
+   assembler operation to identify the following data as
+   uninitialized global data.  If not defined, and neither
+   `ASM_OUTPUT_BSS' nor `ASM_OUTPUT_ALIGNED_BSS' are defined,
+   uninitialized global data will be output in the data section if
+   `-fno-common' is passed, otherwise `ASM_OUTPUT_COMMON' will be
+   used.  */
 #undef BSS_SECTION_ASM_OP
 #define BSS_SECTION_ASM_OP "\t.section\t.bss"
 
@@ -39,55 +51,27 @@ along with GCC; see the file COPYING3.  If not see
 #undef TEXT_SECTION_ASM_OP
 #define TEXT_SECTION_ASM_OP "\t.section .text"
 
-/* Define standard DJGPP installation paths.  */
-/* We override default /usr or /usr/local part with /dev/env/DJDIR which */
-/* points to actual DJGPP installation directory.  */
-
-/* Search for as.exe and ld.exe in DJGPP's binary directory.  */ 
-#undef MD_EXEC_PREFIX
-#define MD_EXEC_PREFIX "/dev/env/DJDIR/bin/"
-
-/* Standard DJGPP library and startup files */
-#undef MD_STARTFILE_PREFIX
-#define MD_STARTFILE_PREFIX "/dev/env/DJDIR/lib/"
-
-/* Correctly handle absolute filename detection in cp/xref.c */
-#define FILE_NAME_ABSOLUTE_P(NAME) \
-        (((NAME)[0] == '/') || ((NAME)[0] == '\\') || \
-        (((NAME)[0] >= 'A') && ((NAME)[0] <= 'z') && ((NAME)[1] == ':')))
-
 #define TARGET_OS_CPP_BUILTINS()		\
   do						\
     {						\
+        if (!flag_iso)                          \
+	   builtin_define_with_int_value ("DJGPP",2);  \
+	builtin_define_with_int_value ("__DJGPP",2);   \
+	builtin_define_with_int_value ("__DJGPP__",2); \
 	builtin_define_std ("MSDOS");		\
 	builtin_define_std ("GO32");		\
+	builtin_define_std ("unix");		\
 	builtin_assert ("system=msdos");	\
     }						\
   while (0)
 
 /* Include <sys/version.h> so __DJGPP__ and __DJGPP_MINOR__ are defined.  */
 #undef CPP_SPEC
-#define CPP_SPEC "-remap %{posix:-D_POSIX_SOURCE} \
-  -imacros %s../include/sys/version.h"
+#define CPP_SPEC "-remap %{posix:-D_POSIX_SOURCE}"
+  
 
-/* We need to override link_command_spec in gcc.c so support -Tdjgpp.djl.
-   This cannot be done in LINK_SPECS as that LINK_SPECS is processed
-   before library search directories are known by the linker.
-   This avoids problems when specs file is not available. An alternate way,
-   suggested by Robert Hoehne, is to use SUBTARGET_EXTRA_SPECS instead.
-*/ 
-
-#undef LINK_COMMAND_SPEC
-#define LINK_COMMAND_SPEC \
-"%{!fsyntax-only: \
-%{!c:%{!M:%{!MM:%{!E:%{!S:%(linker) %l %X %{o*} %{e*} %{N} %{n} \
-\t%{r} %{s} %{t} %{u*} %{z} %{Z}\
-\t%{!nostdlib:%{!nostartfiles:%S}}\
-\t%{static:} %{L*} %D %o\
-\t%{!nostdlib:%{!nodefaultlibs:%G %L %G}}\
-\t%{!nostdlib:%{!nostartfiles:%E}}\
-\t-Tdjgpp.djl %{T*}}}}}}}\n\
-%{!c:%{!M:%{!MM:%{!E:%{!S:stubify %{v} %{o*:%*} %{!o*:a.out} }}}}}"
+#undef POST_LINK_SPEC
+#define POST_LINK_SPEC "stubify %{v} %{o*:%*} %{!o*:a.out}"
 
 /* Always just link in 'libc.a'.  */
 #undef LIB_SPEC
@@ -96,10 +80,6 @@ along with GCC; see the file COPYING3.  If not see
 /* Pick the right startup code depending on the -pg flag.  */
 #undef STARTFILE_SPEC
 #define STARTFILE_SPEC "%{pg:gcrt0.o%s}%{!pg:crt0.o%s}"
-
-/* Make sure that gcc will not look for .h files in /usr/local/include 
-   unless user explicitly requests it.  */
-#undef LOCAL_INCLUDE_DIR
 
 /* Switch into a generic section.  */
 #define TARGET_ASM_NAMED_SECTION  default_coff_asm_named_section
@@ -144,21 +124,18 @@ along with GCC; see the file COPYING3.  If not see
 #undef PTRDIFF_TYPE
 #define PTRDIFF_TYPE "int"
 
-/* Used to be defined in xm-djgpp.h, but moved here for cross-compilers.  */
-#define LIBSTDCXX "stdcxx"
-
-/* Warn that -mbnu210 is now obsolete.  */
-#undef  SUBTARGET_OVERRIDE_OPTIONS
-#define SUBTARGET_OVERRIDE_OPTIONS \
-do \
-  { \
-    if (TARGET_BNU210) \
-      {	\
-        warning (0, "-mbnu210 is ignored (option is obsolete)"); \
-      }	\
-  } \
-while (0)
-
 /* Support for C++ templates.  */
 #undef MAKE_DECL_ONE_ONLY
 #define MAKE_DECL_ONE_ONLY(DECL) (DECL_WEAK (DECL) = 1)
+
+#undef DBX_REGISTER_NUMBER
+#define DBX_REGISTER_NUMBER(n) svr4_dbx_register_map[n]
+
+/* Default to pcc-struct-return.  */
+#define DEFAULT_PCC_STRUCT_RETURN 1
+
+/* Put all *tf routines in libgcc.  */
+#undef LIBGCC2_HAS_TF_MODE
+#define LIBGCC2_HAS_TF_MODE 1
+#define LIBGCC2_TF_CEXT q
+#define TF_SIZE 113

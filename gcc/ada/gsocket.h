@@ -29,7 +29,7 @@
  *                                                                          *
  ****************************************************************************/
 
-#if defined(__nucleus__) || defined(VTHREADS) || defined(__ANDROID__)
+#if defined(__nucleus__) || defined(VTHREADS) || defined(__DJGPP__) || defined(__ANDROID__)
 
 #warning Sockets not supported on these platforms
 #undef HAVE_SOCKETS

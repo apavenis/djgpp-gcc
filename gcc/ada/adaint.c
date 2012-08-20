@@ -107,7 +107,18 @@
 extern "C" {
 #endif
 
-#if defined (__MINGW32__)
+#if defined (__DJGPP__)
+
+/* For isalpha-like tests in the compiler, we're expected to resort to
+   safe-ctype.h/ISALPHA.  This isn't available for the runtime library
+   build, so we fallback on ctype.h/isalpha there.  */
+
+#ifdef IN_RTS
+#include <ctype.h>
+#define ISALPHA isalpha
+#endif
+
+#elif defined (__MINGW32__)
 
 #if defined (RTX)
 #include <windows.h>
@@ -218,7 +229,7 @@ extern int LIB$GETSYI (int *, unsigned int *);
 #include <utime.h>
 #endif
 
-#if defined (_WIN32)
+#if defined(MSDOS) || defined (_WIN32)
 #include <process.h>
 #endif
 
@@ -501,7 +512,10 @@ __gnat_readlink (char *path ATTRIBUTE_UNUSED,
 		 char *buf ATTRIBUTE_UNUSED,
 		 size_t bufsiz ATTRIBUTE_UNUSED)
 {
-#if defined (_WIN32) || defined (VMS) \
+#if defined (__DJGPP__) && (__DJGPP__>2 || (__DJGPP__==2 && __DJGPP_MINOR__>=4))
+  /* Symbolic links are supported for DJGPP beginning with version 2.04pre */
+  return readlink (path, buf, bufsiz);
+#elif defined(MSDOS) || defined (_WIN32) || defined (VMS)     \
     || defined(__vxworks) || defined (__nucleus__)
   return -1;
 #else
@@ -517,7 +531,10 @@ int
 __gnat_symlink (char *oldpath ATTRIBUTE_UNUSED,
 		char *newpath ATTRIBUTE_UNUSED)
 {
-#if defined (_WIN32) || defined (VMS) \
+#if defined (__DJGPP__) && (__DJGPP__>2 || (__DJGPP__==2 && __DJGPP_MINOR__>=4))
+  /* Symbolic links are supported for DJGPP beginning with version 2.04pre */
+  return symlink (oldpath, newpath);
+#elif defined(MSDOS) || defined (_WIN32) || defined (VMS)   \
     || defined(__vxworks) || defined (__nucleus__)
   return -1;
 #else
@@ -600,7 +617,13 @@ __gnat_try_lock (char *dir, char *file)
 int
 __gnat_get_maximum_file_name_length (void)
 {
-#if defined (VMS)
+#if defined (MSDOS)
+#ifdef __DJGPP__
+  return (_use_lfn(".")) ? -1 : 8;
+#else
+  return 8;
+#endif
+#elif defined (VMS)
   if (getenv ("GNAT$EXTENDED_FILE_SPECIFICATIONS"))
     return -1;
   else
@@ -626,7 +649,7 @@ __gnat_get_file_names_case_sensitive (void)
           && sensitive[1] == '\0')
         file_names_case_sensitive_cache = sensitive[0] - '0';
       else
-#if defined (VMS) || defined (WINNT) || defined (__APPLE__)
+#if defined (VMS) || defined(MSDOS) || defined (WINNT) || defined (__APPLE__)
         file_names_case_sensitive_cache = 0;
 #else
         file_names_case_sensitive_cache = 1;
@@ -640,7 +663,7 @@ __gnat_get_file_names_case_sensitive (void)
 int
 __gnat_get_env_vars_case_sensitive (void)
 {
-#if defined (VMS) || defined (WINNT)
+#if defined (VMS) || defined (MSDOS) || defined (WINNT)
  return 0;
 #else
  return 1;
@@ -650,7 +673,11 @@ __gnat_get_env_vars_case_sensitive (void)
 char
 __gnat_get_default_identifier_character_set (void)
 {
+#if defined (MSDOS)
+  return 'p';
+#else
   return '1';
+#endif
 }
 
 /* Return the current working directory.  */
@@ -1859,7 +1886,7 @@ __gnat_is_absolute_path (char *name, int length)
 #else
   return (length != 0) &&
      (*name == '/' || *name == DIR_SEPARATOR
-#if defined (WINNT)
+#if defined(MSDOS) || defined (WINNT)
       || (length > 1 && ISALPHA (name[0]) && name[1] == ':')
 #endif
 	  );
@@ -2338,6 +2365,8 @@ __gnat_is_symbolic_link_attr (char* name ATTRIBUTE_UNUSED,
 #if defined (__vxworks) || defined (__nucleus__)
       attr->symbolic_link = 0;
 
+#elif defined (__DJGPP__) && (__DJGPP__ < 2 || (__DJGPP__==2) && (__DJGPP_MINOR__<4))
+      return 0;
 #elif defined (_AIX) || defined (__APPLE__) || defined (__unix__)
       int ret;
       GNAT_STRUCT_STAT statbuf;
@@ -2376,7 +2405,7 @@ __gnat_portable_spawn (char *args[])
 #if defined (__vxworks) || defined(__nucleus__) || defined(RTX)
   return -1;
 
-#elif defined (_WIN32)
+#elif defined (MSDOS) || defined (_WIN32)
   /* args[0] must be quotes as it could contain a full pathname with spaces */
   char *args_0 = args[0];
   args[0] = (char *)xmalloc (strlen (args_0) + 3);
@@ -2494,6 +2523,7 @@ __gnat_number_of_cpus (void)
 
   cores = vxCpuConfiguredGet ();
 
+#elif defined (MSDOS)
 #endif
 
   return cores;
@@ -2705,6 +2735,20 @@ __gnat_portable_no_block_spawn (char *args[])
 #if defined (__vxworks) || defined (__nucleus__) || defined (RTX)
   return -1;
 
+#elif defined(MSDOS)
+  /* ??? For PC machines I (Franco) don't know the system calls to implement
+     this routine. So I'll fake it as follows. This routine will behave
+     exactly like the blocking portable_spawn and will systematically return
+     a pid of 0 unless the spawned task did not complete successfully, in
+     which case we return a pid of -1.  To synchronize with this the
+     portable_wait below systematically returns a pid of 0 and reports that
+     the subprocess terminated successfully. */
+
+  if (spawnvp (P_WAIT, args[0], args) != 0)
+    return -1;
+  else
+    return 0;
+
 #elif defined (_WIN32)
 
   HANDLE h = NULL;
@@ -2751,6 +2795,9 @@ __gnat_portable_wait (int *process_status)
 #elif defined (_WIN32)
 
   pid = win32_wait (&status);
+
+#elif defined (MSDOS)
+  /* ??? See corresponding comment in portable_no_block_spawn.  */
 
 #else
 

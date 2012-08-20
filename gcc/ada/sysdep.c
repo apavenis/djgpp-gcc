@@ -124,7 +124,7 @@ extern struct tm *localtime_r(const time_t *, struct tm *);
 
 */
 
-#if defined (WINNT) || defined (__CYGWIN__)
+#if defined (WINNT) || defined (__CYGWIN__) || defined(__DJGPP__)
 
 const char __gnat_text_translation_required = 1;
 
@@ -134,6 +134,11 @@ const char __gnat_text_translation_required = 1;
 #else
 #define WIN_SETMODE _setmode
 #endif
+
+#if defined(__DJGPP__)
+#include <io.h>
+#define _setmode setmode
+#endif /* __DJGPP__ */
 
 void
 __gnat_set_binary_mode (int handle)
@@ -621,7 +626,29 @@ long __gnat_invalid_tzoff = 259273;
 
 /* Definition of __gnat_localtime_r used by a-calend.adb */
 
-#if defined (__MINGW32__)
+#if defined (__DJGPP__)
+
+/* FIXME: this is draft version only. Fix me if that is not correct  */
+/*        or not complete (AP)                                       */
+
+extern void
+__gnat_localtime_tzoff (const time_t *, long *);
+
+void
+__gnat_localtime_tzoff (const time_t *timer, long *off)
+{
+  struct tm *tmp;
+
+  tmp = localtime (timer);
+  *off = (long) -tmp->tm_gmtoff;
+
+  /* Correct the offset if Daylight Saving Time is in effect */
+
+  if (tmp->tm_isdst > 0)
+    *off = *off + 3600;
+}
+
+#elif defined (__MINGW32__)
 
 #ifdef CERT
 

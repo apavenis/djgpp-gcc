@@ -6,7 +6,16 @@
 #  undef __STDC_CONSTANT_MACROS
 #  define __STDC_CONSTANT_MACROS
 # endif
-# include_next <stdint.h>
+# if defined(__DJGPP__)
+#  include <sys/version.h>
+#  if __DJGPP__<2 || (__DJGPP__==2 && __DJGPP_MINOR__<=3)
+#   include "stdint-gcc.h"
+#  else
+#   include_next <stdint.h>
+#  endif   	
+# else
+#  include_next <stdint.h>
+# endif
 #else
 # include "stdint-gcc.h"
 #endif

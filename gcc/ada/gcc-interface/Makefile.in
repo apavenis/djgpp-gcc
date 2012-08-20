@@ -1598,6 +1598,13 @@ ifeq ($(strip $(filter-out avr none powerpc% eabispe leon% erc32% unknown elf,$(
   indepsw.adb<indepsw-gnu.adb
 endif
 
+ifeq ($(strip $(filter-out %djgpp,$(osys))),)
+  GNATRTL_SOCKETS_OBJS =
+  LIBGNAT_TARGET_PAIRS += $(DUMMY_SOCKETS_TARGET_PAIRS) s-taprop.adb<s-taprop-dummy.adb
+
+  LIBGNAT_TARGET_PAIRS += system.ads<system-djgpp.ads
+endif
+
 # Cygwin/Mingw32
 ifeq ($(strip $(filter-out cygwin% mingw32% pe,$(osys))),)
   # Cygwin provides a full Posix environment, and so we use the default

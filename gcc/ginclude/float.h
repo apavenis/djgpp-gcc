@@ -25,6 +25,10 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
  * ISO C Standard:  5.2.4.2.2  Characteristics of floating types <float.h>
  */
 
+#ifdef __DJGPP__
+#include_next <float.h>
+#endif
+
 #ifndef _FLOAT_H___
 #define _FLOAT_H___
 
