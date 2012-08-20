@@ -1,0 +1,41 @@
+#-----------------------------------------------------------------------------
+# The following code is copied from config/mh-djgpp as one may 
+# want to run make in gcc build directory instead of toplevel 
+# one (for example 'make restage2' or similar which are not available
+# from top level makefile and we should have the same substitutions 
+# in this case)           
+#-----------------------------------------------------------------------------
+
+# Shorten the target alias so when it is used to set 'libsubdir'
+# the name will work in both short and long filename environments.
+ifeq ($(findstring -pc-msdosdjgpp,$(target_alias)),-pc-msdosdjgpp)
+target_alias=djgpp
+endif
+
+# The version string must be modified to contain just one dot
+# because DOS filenames can only have one dot when long filenames
+# are not available.
+#
+version := $(shell echo $(version) | sed -e 's:\.::2g')
+
+# on DJGPP the 'ln -s' does not work correctly
+LN = cp -p
+LN_S = cp -p
+
+# Replace DJGPP malloc with nmalloc
+EXTRA_OBJS += malloc.o
+EXTRA_GCC_OBJS += malloc.o
+
+# Use a larger stack for CC1, CC1PLUS, etc.
+# One cannot use EXTRA_OBJS as djgpp-stack.o only contains data definition (_stklen)
+BACKEND += djgpp-stack.o
+
+# Some build tools also require larger stack
+BUILD_RTL += djgpp-stack.o
+
+malloc.o: $(srcdir)/config/i386/nmalloc/nmalloc.c $(srcdir)/config/i386/nmalloc/memalign.c \
+		$(srcdir)/config/i386/nmalloc/sysquery.h
+	$(CC) -c -O2 -W -Wall -DMEMALIGN $< -o $@
+
+djgpp-stack.o: $(srcdir)/config/i386/djgpp-stack.c
+	$(CC) -c -O2 -W -Wall $< -o $@

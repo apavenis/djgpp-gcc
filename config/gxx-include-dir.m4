@@ -8,15 +8,26 @@ dnl If you change the default here, you'll need to change the gcc and
 dnl libstdc++-v3 subdirectories too.
 AC_DEFUN([TL_AC_GXX_INCLUDE_DIR],
 [
+case "$host" in
+  *-msdosdjgpp*)
+    libstdcxx_incdir_base=cxx
+    gcc_version_dir='$(shell echo $(gcc_version) | sed -e "s:\.::2g")'
+    ;;
+  *)
+    libstdcxx_incdir_base=c++
+    gcc_version_dir='$(gcc_version)'
+    ;;
+esac
+
 case "${with_gxx_include_dir}" in
   yes)
     AC_MSG_ERROR([--with-gxx-include-dir=[[dir]] requires a directory])
     ;;
   no | "")
     case "${enable_version_specific_runtime_libs}" in
-      yes) gxx_include_dir='$(libsubdir)/include/c++' ;;
+      yes) gxx_include_dir='$(libsubdir)/include/'${libstdcxx_incdir_base} ;;
       *)
-	libstdcxx_incdir='c++/$(gcc_version)'
+	libstdcxx_incdir=${libstdcxx_incdir_base}/${gcc_version_dir}
 	gxx_include_dir='include/$(libstdcxx_incdir)'
 	if test -n "$with_cross_host" && 
            test x"$with_cross_host" != x"no"; then	

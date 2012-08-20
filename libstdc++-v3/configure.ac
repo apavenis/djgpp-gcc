@@ -84,6 +84,9 @@ AC_PROG_CC
 AC_PROG_CXX
 CXXFLAGS="$save_CXXFLAGS"
 
+# Add test for DJGPP environment
+AM_CONDITIONAL(DJGPP,echo $build | grep msdosdjgpp)
+
 # Runs configure.host, and assorted other critical bits.  Sets
 # up critical shell variables.
 GLIBCXX_CONFIGURE

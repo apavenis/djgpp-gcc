@@ -185,6 +185,7 @@ case "${host}" in
   *-*-freebsd2.2.[[012]])	frag=mh-fbsd21 ;;
   i370-*-opened*)       frag=mh-openedition ;;
   i[[34567]]86-*-windows*)	frag=mh-windows ;;
+  i[[34567]]86-*-msdosdjgpp)	frag=mh-djgpp ;;
 esac
 
 if [[ -n "${frag}" ]]; then

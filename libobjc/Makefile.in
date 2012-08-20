@@ -38,6 +38,8 @@ multi_basedir = @multi_basedir@
 toolexecdir = @toolexecdir@
 # Toolexecdir is used only by toolexeclibdir
 toolexeclibdir = @toolexeclibdir@
+# Editted (if neccessary) GCC version string
+gcc_version_dir = @gcc_version_dir@
 
 includedirname = @includedirname@
 libsuffix = @libsuffix@
@@ -50,7 +52,7 @@ top_builddir = .
 -include ../boehm-gc/threads.mk
 
 libdir = $(exec_prefix)/lib
-libsubdir = $(libdir)/gcc/$(target_noncanonical)/$(gcc_version)
+libsubdir = $(libdir)/gcc/$(target_noncanonical)/$(gcc_version_dir)
 
 # Multilib support variables.
 MULTISRCTOP =
