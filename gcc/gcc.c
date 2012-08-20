@@ -725,6 +725,10 @@ proper position among the other output files.  */
 #define POST_LINK_SPEC ""
 #endif
 
+#ifndef POST_LINK_SPEC
+#define POST_LINK_SPEC ""
+#endif
+
 /* -u* was put back because both BSD and SysV seem to support it.  */
 /* %{static:} simply prevents an error message if the target machine
    doesn't handle -static.  */
