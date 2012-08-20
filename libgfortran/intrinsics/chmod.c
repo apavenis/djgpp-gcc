@@ -464,7 +464,7 @@ clause_done:
 	if ((ugo[2] || honor_umask) && !rwxXstugo[8])
 	  file_mode = (file_mode & ~(S_IROTH | S_IWOTH | S_IXOTH))
 		      | (new_mode & (S_IROTH | S_IWOTH | S_IXOTH));
-#ifndef __VXWORKS__
+#if !defined(__VXWORKS__) && !defined(__DJGPP__)
 	if (is_dir && rwxXstugo[5])
 	  file_mode |= S_ISVTX;
 	else if (!is_dir)
@@ -476,7 +476,7 @@ clause_done:
       {
 	/* Clear '-'.  */
 	file_mode &= ~new_mode;
-#if !defined( __MINGW32__) && !defined (__VXWORKS__)
+#if !defined( __MINGW32__) && !defined (__VXWORKS__) && !defined(__DJGPP__)
 	if (rwxXstugo[5] || !is_dir)
 	  file_mode &= ~S_ISVTX;
 #endif
@@ -484,7 +484,7 @@ clause_done:
     else if (set_mode == 3)
       {
 	file_mode |= new_mode;
-#if !defined (__MINGW32__) && !defined (__VXWORKS__)
+#if !defined (__MINGW32__) && !defined (__VXWORKS__) && !defined(__DJGPP__)
 	if (rwxXstugo[5] && is_dir)
 	  file_mode |= S_ISVTX;
 	else if (!is_dir)

@@ -716,6 +716,10 @@ read_file_guts (cpp_reader *pfile, _cpp_file *file)
     cpp_error (pfile, CPP_DL_WARNING,
 	       "%s is shorter than expected", file->path);
 
+/* For DOS we should handle DOS EOF character (0x1A, ^Z). It is
+   only done if it is really the last character of the file  */
+  if (total>0 && buf[total-1]==0x1A) total--;
+
   file->buffer = _cpp_convert_input (pfile,
 				     CPP_OPTION (pfile, input_charset),
 				     buf, size + 16, total,
