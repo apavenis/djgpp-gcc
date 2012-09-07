@@ -23,15 +23,18 @@ LN = cp -p
 LN_S = cp -p
 
 # Replace DJGPP malloc with nmalloc
-EXTRA_OBJS += malloc.o
+EXTRA_OBJS += malloc.o djgpp-stack.o
 EXTRA_GCC_OBJS += malloc.o
 
 # Use a larger stack for CC1, CC1PLUS, etc.
-# One cannot use EXTRA_OBJS as djgpp-stack.o only contains data definition (_stklen)
+# EXTRA_OBJS is not sufficient as djgpp-stack.o only contains data definition (_stklen)
+# and as result including it into static library does not help
 BACKEND += djgpp-stack.o
 
-# Some build tools also require larger stack
-BUILD_RTL += djgpp-stack.o
+# Some build tools also require larger stack (different object file name
+# used as djgpp-stack.o and djgpp-stack-tools.o may be built with compilers
+# for different targets in case of cross-compiling
+BUILD_RTL += djgpp-stack-tools.o
 
 malloc.o: $(srcdir)/config/i386/nmalloc/nmalloc.c $(srcdir)/config/i386/nmalloc/memalign.c \
 		$(srcdir)/config/i386/nmalloc/sysquery.h
@@ -39,3 +42,7 @@ malloc.o: $(srcdir)/config/i386/nmalloc/nmalloc.c $(srcdir)/config/i386/nmalloc/
 
 djgpp-stack.o: $(srcdir)/config/i386/djgpp-stack.c
 	$(CC) -c -O2 -W -Wall $< -o $@
+
+
+djgpp-stack-tools.o: $(srcdir)/config/i386/djgpp-stack.c
+	$(CC_FOR_BUILD) -c -O2 -W -Wall $< -o $@
