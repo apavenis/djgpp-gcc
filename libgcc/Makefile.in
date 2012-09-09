@@ -179,7 +179,7 @@ STRIP = @STRIP@
 STRIP_FOR_TARGET = $(STRIP)
 
 # Directory in which the compiler finds libraries etc.
-libsubdir = $(libdir)/gcc/$(host_noncanonical)/$(version)
+libsubdir = $(libdir)/gcc/$(host_noncanonical)/@gcc_version_alias@
 # Used to install the shared libgcc.
 slibdir = @slibdir@
 # Maybe used for DLLs on Windows targets.
@@ -207,7 +207,7 @@ export slibdir
 export toolexecdir
 export toolexeclibdir
 
-version := $(shell cat $(srcdir)/../gcc/BASE-VER)
+gcc_version := $(shell cat $(srcdir)/../gcc/BASE-VER)
 
 ifeq ($(decimal_float),yes)
 ifeq ($(enable_decimal_float),bid)
