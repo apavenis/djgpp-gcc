@@ -27,8 +27,8 @@ along with GCC; see the file COPYING3.  If not see
 /* points to actual DJGPP installation directory.  */
 
 /* Standard include directory */
-#undef STANDARD_INCLUDE_DIR
-#define STANDARD_INCLUDE_DIR "/dev/env/DJDIR/include/"
+#undef NATIVE_SYSTEM_HEADER_DIR
+#define NATIVE_SYSTEM_HEADER_DIR "/dev/env/DJDIR/include/"
 
 #undef PREFIX_INCLUDE_DIR
 
