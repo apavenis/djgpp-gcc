@@ -647,6 +647,7 @@ man7ext = .7
 objext = .o
 exeext = @host_exeext@
 build_exeext = @build_exeext@
+libstdcxx_incdir_base=@libstdcxx_incdir_base@
 
 # Directory in which to put man pages.
 mandir = @mandir@
@@ -4177,7 +4178,7 @@ s-fixinc_list : $(GCC_PASSES)
 # Abort if no system headers available, unless building a crosscompiler.
 # FIXME: abort unless building --without-headers would be more accurate and less ugly
 stmp-fixinc: gsyslimits.h macro_list fixinc_list \
-  $(build_objdir)/fixincludes/fixincl \
+  $(build_objdir)/fixincludes/fixincl$(EXEEXT) \
   $(build_objdir)/fixincludes/fixinc.sh
 	rm -rf include-fixed; mkdir include-fixed
 	-chmod a+rx include-fixed
