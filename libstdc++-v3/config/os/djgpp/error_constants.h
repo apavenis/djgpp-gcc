@@ -66,7 +66,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       function_not_supported = 			ENOSYS,
 //    host_unreachable = 			EHOSTUNREACH,
 //    identifier_removed = 			EIDRM,
+#ifdef EILSEQ
       illegal_byte_sequence = 			EILSEQ,
+#endif
       inappropriate_io_control_operation = 	ENOTTY,
       interrupted = 				EINTR,
       invalid_argument = 			EINVAL,

@@ -200,6 +200,9 @@ typedef struct
 }
 unix_stream;
 
+#ifdef __DJGPP__
+#include <io.h>
+#endif
 
 /* fix_fd()-- Given a file descriptor, make sure it is not one of the
  * standard descriptors, returning a non-standard descriptor.  If the
@@ -1079,8 +1082,13 @@ tempfile (st_parameter_open *opp)
   template = get_mem (tempdirlen + 23);
 
 #ifdef HAVE_MKSTEMP
+#ifdef __DJGPP__
+  /* Default filename is too long for DOS */
+  snprintf (template, tempdirlen + 23, "%s/gfXXXXXX", tempdir);
+#else
   snprintf (template, tempdirlen + 23, "%s%sgfortrantmpXXXXXX", 
 	    tempdir, slash);
+#endif
 
   fd = mkstemp (template);
 
@@ -1309,6 +1317,13 @@ open_external (st_parameter_open *opp, unit_flags *flags)
   if (fd < 0)
     return NULL;
   fd = fix_fd (fd);
+
+#ifdef __DJGPP__
+  if (flags->form == FORM_UNFORMATTED)
+    {
+      setmode (fd, O_BINARY);
+    }
+#endif
 
   return fd_to_stream (fd);
 }

@@ -23,6 +23,28 @@ along with GCC; see the file COPYING3.  If not see
 
 #define HOST_EXECUTABLE_SUFFIX ".exe"
 
+/* Define standard DJGPP installation paths.  */
+/* We override default /usr or /usr/local part with /dev/env/DJDIR which */
+/* points to actual DJGPP installation directory.  */
+
+/* Standard include directory */
+#undef STANDARD_INCLUDE_DIR
+#define STANDARD_INCLUDE_DIR "/dev/env/DJDIR/include/"
+
+#undef PREFIX_INCLUDE_DIR
+
+/* Search for as.exe and ld.exe in DJGPP's binary directory.  */ 
+#undef MD_EXEC_PREFIX
+#define MD_EXEC_PREFIX "/dev/env/DJDIR/bin/"
+
+/* Standard DJGPP library and startup files */
+#undef MD_STARTFILE_PREFIX
+#define MD_STARTFILE_PREFIX "/dev/env/DJDIR/lib/"
+
+/* Make sure that gcc will not look for .h files in /usr/local/include 
+   unless user explicitly requests it.  */
+#undef LOCAL_INCLUDE_DIR
+
 /* System dependent initialization for collect2
    to tell system() to act like Unix.  */
 #define COLLECT2_HOST_INITIALIZATION \
@@ -58,12 +80,12 @@ along with GCC; see the file COPYING3.  If not see
            to try and figure out what's wrong.  */ \
         char *djgpp = getenv ("DJGPP"); \
         if (djgpp == NULL) \
-          fatal ("environment variable DJGPP not defined"); \
+          fatal_error ("environment variable DJGPP not defined"); \
         else if (access (djgpp, R_OK) == 0) \
-          fatal ("environment variable DJGPP points to missing file '%s'", \
+          fatal_error ("environment variable DJGPP points to missing file '%s'", \
                  djgpp); \
         else \
-          fatal ("environment variable DJGPP points to corrupt file '%s'", \
+          fatal_error ("environment variable DJGPP points to corrupt file '%s'", \
                   djgpp); \
       } \
   } while (0)
@@ -82,3 +104,15 @@ along with GCC; see the file COPYING3.  If not see
       strcat (fixed_path, "/");			\
       (PATH) = xstrdup (fixed_path);		\
     } 
+
+/* Rename libstdc++ to libstdcxx as the first name is not valid for DOS */
+#define LIBSTDCXX "stdcxx"
+#define LIBSTDCXX_PROFILE "stdcxx"
+#define LIBSTDCXX_STATIC "stdcxx"
+
+/* Definition is missing in DJGPP headers. That broke building
+   GNU Fortran compiler in GCC-4.1 */
+typedef unsigned int uint;
+
+#undef MAX_OFILE_ALIGNMENT
+#define MAX_OFILE_ALIGNMENT 128
