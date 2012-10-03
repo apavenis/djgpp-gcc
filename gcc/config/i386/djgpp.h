@@ -144,3 +144,15 @@ along with GCC; see the file COPYING3.  If not see
 #define LIBGCC2_HAS_TF_MODE 1
 #define LIBGCC2_TF_CEXT q
 #define TF_SIZE 113
+
+/* Ignore (with warning) -fPIC for DJGPP */
+#undef SUBTARGET_OVERRIDE_OPTIONS
+#define SUBTARGET_OVERRIDE_OPTIONS                               \
+    do {                                                         \
+        if (flag_pic)                                            \
+        {                                                        \
+            warning(0, "-f%s ignored (not supported for DJGPP)", \
+                (flag_pic > 1) ? "PIC" : "pic");                 \
+            flag_pic = 0;                                        \
+        }                                                        \
+        while (0)
