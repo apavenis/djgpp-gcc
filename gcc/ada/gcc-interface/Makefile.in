@@ -1585,6 +1585,8 @@ ifeq ($(strip $(filter-out %djgpp,$(osys))),)
   GNATRTL_SOCKETS_OBJS =
   LIBGNAT_TARGET_PAIRS += $(DUMMY_SOCKETS_TARGET_PAIRS) s-taprop.adb<s-taprop-dummy.adb
 
+  LIBGNAT_TARGET_PAIRS += system.ads<system-djgpp.ads
+  LIBGNAT_TARGET_PAIRS += s-os_lib.adb<s-os_lib-djgpp.adb
 endif
 
 ifeq ($(strip $(filter-out cygwin% mingw32% pe,$(osys))),)
