@@ -1603,6 +1603,7 @@ ifeq ($(strip $(filter-out %djgpp,$(osys))),)
   LIBGNAT_TARGET_PAIRS += $(DUMMY_SOCKETS_TARGET_PAIRS) s-taprop.adb<s-taprop-dummy.adb
 
   LIBGNAT_TARGET_PAIRS += system.ads<system-djgpp.ads
+  LIBGNAT_TARGET_PAIRS += s-os_lib.adb<s-os_lib-djgpp.adb
 endif
 
 # Cygwin/Mingw32
