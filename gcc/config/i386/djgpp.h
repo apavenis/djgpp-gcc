@@ -155,4 +155,5 @@ along with GCC; see the file COPYING3.  If not see
                 (flag_pic > 1) ? "PIC" : "pic");                 \
             flag_pic = 0;                                        \
         }                                                        \
-        while (0)
+    }                                                            \
+    while (0)
