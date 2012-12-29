@@ -157,3 +157,23 @@ along with GCC; see the file COPYING3.  If not see
             flag_pic = 0;                                        \
         }                                                        \
         while (0)
+
+/* Write the extra assembler code needed to declare a function properly.
+   Some svr4 assemblers need to also have something extra said about the
+   function's return value.  We allow for that here.  */
+
+#undef ASM_OUTPUT_TYPE_DIRECTIVE
+#define ASM_OUTPUT_TYPE_DIRECTIVE (FILE, NAME, TYPE)
+
+#undef ASM_DECLARE_RESULT
+#define ASM_DECLARE_RESULT(FILE, RESULT)
+
+#undef ASM_DECLARE_FUNCTION_NAME
+#define ASM_DECLARE_FUNCTION_NAME(FILE, NAME, DECL)		\
+  do								\
+    {								\
+      ASM_OUTPUT_TYPE_DIRECTIVE (FILE, NAME, "function");	\
+      ASM_DECLARE_RESULT (FILE, DECL_RESULT (DECL));            \
+      ASM_OUTPUT_FUNCTION_LABEL (FILE, NAME, DECL);		\
+    }								\
+  while (0)
