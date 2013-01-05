@@ -1,6 +1,6 @@
 #! /bin/sh
 
-gcc_src_ext=bz2
+gcc_src_ext=xz
 gmp_version=5.0.5
 mpfr_version=3.1.1
 mpc_version=1.0
@@ -21,7 +21,21 @@ djn_branch=gcc_4_8_djgpp_native
 
 sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 
+case "x$gcc_src_ext" in
+    xgz) archiver=gzip ;;
+    xbz2) archiver=bzip2 ;;
+    xxz) archiver=xz ;;
+    *) echo "Unknown archive extension $gcc_src_ext"; exit 1; ;;
+esac
+
 case "x$devphase" in
+    xprerelease)
+        ver1=${basever}_${datestamp}
+        ver2=${basever}-${datestamp}
+        snapshot_spec="%define snapshot $datestamp"
+        source_name=gcc-${basever}-${datestamp}
+        ;;
+
     x)
         ver1=${basever}
         ver2=${basever}
@@ -120,7 +134,15 @@ sed -e "s/@__GCCVER__@/$ver2/g" \
 chmod +x $dest/unpack-gcc.sh
 
 echo "#"
-echo "# Creating djcross-gcc archive"
+echo "# Creating djcross-gcc-$ver1.tar.bz2"
 echo "#"
 
-tar cjvf ${dest}.tar.bz2 ${dest}
+tar cjf ${dest}.tar.bz2 ${dest}
+
+echo "#"
+echo "# Creating unmodified GCC source archive ${source_name}.tar.${gcc_src_ext}"
+echo "#"
+
+( cd .. && git archive --format=tar --prefix=${source_name}/ ${upstream} ) | $archiver -6vv >${source_name}.tar.${gcc_src_ext}
+
+
