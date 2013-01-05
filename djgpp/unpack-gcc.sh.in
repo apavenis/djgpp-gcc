@@ -1,0 +1,350 @@
+#! /bin/sh
+
+top=`pwd`
+gcc_version=@__GCCVER__@
+contact="Andris Pavenis <andris.pavenis@iki.fi>";
+
+# Configuration params
+create_gccnnns_zip=true
+
+params_done=false
+while ! $params_done ; do
+    case "x$1" in
+        x--*)
+            case $1 in
+                --no-djgpp-source)
+                    create_gccnnns_zip=false
+                    ;;
+                --verbose-shell)
+                    set -x
+                    ;;
+                *)
+                    echo "Unrecognized command line option $1"
+                    exit 1
+                    ;;
+            esac
+            shift
+            ;;
+    *)
+        params_done=true
+        ;;
+    esac
+done
+
+archive=${1-gcc-$gcc_version.tar.bz2}
+
+#
+#  Detect required tar command line parameters for unpacking source archice
+#
+tar_param=xf`case $archive in *.gz|*.tgz) echo 'z';; *.bz2) echo 'j';; *.xz) echo 'J';; esac`
+
+if test "$tar_param" = "xf" ; then
+    echo "Failed to detect how to decompress $archive"
+    exit 1
+fi
+
+rm -rf gnu
+mkdir gnu
+
+rm -f $top/s-sources
+( cd gnu && tar $tar_param $top/$archive && echo $archive >$top/s-sources )
+
+if ! [ -f s-sources ] ; then
+    echo "Cannot unpack GCC sources"
+    exit 1
+fi
+
+orig_dir_name=`(cd gnu && ls -d gcc* | sed 1q; )`
+
+base_ver=$(cat gnu/$orig_dir_name/gcc/BASE-VER)
+datestamp=$(cat gnu/$orig_dir_name/gcc/DATESTAMP)
+devphase=$(cat gnu/$orig_dir_name/gcc/DEV-PHASE)
+version=$base_ver
+version_desc=$version
+
+#  X.Y.Z ==> X.YZ
+short_ver=$(echo $version | sed -e 's:\.::2g')
+
+#  X.Y.Z ==> XYZ
+short_ver_2=$(echo $version | sed -e 's:\.::g')
+
+if ! test -z "$devphase"; then
+    version=${base_ver}-${datestamp}
+    version_desc="$base_ver $datestamp ($devphase)"
+    short_ver=${short_ver}-$datestamp
+    short_ver_2=${short_ver_2}-$datestamp
+fi
+
+dir_name=gcc-$short_ver
+
+if ! test "$dir_name" = "$orig_dir_name" ; then
+    mv -f gnu/$orig_dir_name gnu/$dir_name || exit 1
+fi
+
+arcprefix=gcc$short_ver_2
+
+if [ -d $top/gnu/$dir_name ] ; then
+    gcc_dir=$top/gnu/$dir_name
+else
+    echo "Error: directory $top/gnu/$dir_name is not found"
+    exit 1
+fi
+
+rm -rf manifest
+
+#
+#  Remove parts we don't need for DJGPP
+#
+
+rm -rf $gcc_dir/boehm-gc
+rm -rf $gcc_dir/fastjar
+rm -rf $gcc_dir/libffi
+rm -rf $gcc_dir/libjava
+rm -rf $gcc_dir/libchill
+rm -rf $gcc_dir/zlib
+rm -rf $gcc_dir/libgomp
+rm -rf $gcc_dir/libgo
+rm -rf $gcc_dir/gcc/go
+rm -rf $gcc_dir/gcc/java
+rm -rf $gcc_dir/gcc/testsuite
+rm -rf $gcc_dir/gcc/treelang
+rm -rf $gcc_dir/libmudflap
+
+#
+#  List of directories in which we should run autoconf or/and automake
+#
+
+automake_list=
+aclocal_list=
+
+#
+#  Apply DJGPP related diffs and copy files 
+#
+
+#
+#  File copy instructions required for building cross-compiler
+#
+file_copy_list_1=""
+
+#
+#  Additional file copy instructions required for building native-compiler
+#
+
+file_copy_list_2="";
+
+#
+patching_ok=true
+
+for copy_instr in $file_copy_list_1 $file_copy_list_2 ; do
+    orig_fn=$(echo $copy_instr | sed -e 's/:.*$//')
+    orig_dir=$(dirname $orig_fn)
+    new_base_name=$(basename $(echo $copy_instr | sed -e 's/^[^:]*://'))
+    new_fn=$orig_dir/$new_base_name
+    if [ -f $new_fn ] ; then
+        echo "ERROR: File $new_fn already exists"
+        patching_ok=false
+    fi
+    if ! [ -f $gcc_dir/$orig_fn ] ; then
+        echo "ERROR: File $orig_fn is not found"
+        patching_ok=false
+    fi
+    cp -Pv $gcc_dir/$orig_fn $gcc_dir/$new_fn
+done 
+    
+if ! $patching_ok ; then
+    exit 1
+fi
+
+#
+#  Patch list required for building cross-compiler
+#
+patch_instr_list_1=$(find diffs/source -type f | sed -e 's/\.\///g')
+
+#
+#  Additional patch list required for building native compiler for DJGPP
+#
+if $create_gccnnns_zip; then
+    patch_instr_list_2=$(find diffs2/source -type f | sed -e 's/\.\///g');
+else
+    patch_instr_list_2=;
+fi
+   
+for x in $patch_instr_list_1 $patch_instr_list_2; do
+    patch_src=$x
+    case $x in
+        diffs/*)
+            backup_name=.orig0
+            ;;
+        diffs2/*)
+            backup_name=.orig1
+            ;;
+    esac
+
+    x=$(echo $x | sed -e 's:diffs2*/source/::')
+
+    case $x in 
+       *.diff | *.diff.in)
+           cd $top
+           diff=`pwd`/$x;
+           fname=`echo $x | sed -e 's/\.diff//g'`
+
+           echo "Applying patch to gcc/$fname ..."
+           if [ -f $gcc_dir/$fname ] ; then
+              cp -f $gcc_dir/$fname $gcc_dir/${fname}~1 
+              if ! patch --verbose --suffix=$backup_name $gcc_dir/$fname <$patch_src ; then
+                  echo "Failed to apply patch for $gcc_dir/$fname"
+		  patching_ok=false
+              fi
+              case $fname in 
+                  */acinclude.m4)
+                     dir=`echo $gcc_dir/$fname | sed -e 's/\/acinclude.m4//g'`
+                      aclocal_list="$aclocal_list $dir"
+                      ;;
+                  */Makefile.am)
+                      dir=`echo $gcc_dir/$fname | sed -e 's/\/Makefile.am//g'`
+                      automake_list="$automake_list $dir"
+                      ;;
+              esac
+           else
+              echo "File $gcc_dir/$fname is not found"
+           fi
+           ;;
+       readme.DJGPP)
+           cat diffs/source/$x |\
+           sed -e "s:@GCCVER@:$version_desc:g" \
+	       -e "s:@GCCVER2@:$short_ver:g" \
+	       -e "s:@GCCVER3@:$short_ver_2:g" \
+	       -e "s:@CONTACT@:$contact:g" \
+	    	    >$gcc_dir/$x
+	   ;;
+       *~*)
+           ;;
+       *)
+           echo Copying $x
+           if [ -f $gcc_dir/$x ] ; then
+               echo "ERROR: File gcc_dir/$x already exists"
+               exit 1
+           fi
+	   mkdir -p $(dirname $gcc_dir/$x)		   	
+           if ! cp -fv $patch_src $gcc_dir/$x ; then
+              echo "Failed to copy $patch_src to $gcc_dir/$x"
+   	      patching_ok=false
+           fi
+           ;;
+       esac
+done
+
+$patching_ok || exit 1
+
+if $create_gccnnns_zip; then
+    for dir in build.gcc install.gcc; do
+        for x in `(cd diffs2/$dir && find . -type f | sed -e 's/\.\///g')`; do
+            mkdir -p `dirname gnu/$dir/$x`
+	    echo "Writting $dir/$x"
+	    cat diffs2/$dir/$x |\
+	    sed -e "s:@SRCDIR@:$dir_name:g" -e "s:@GCCVER@:$version:g" >gnu/$dir/$x
+        done
+    done
+fi
+
+#
+#  Run aclocal where needed
+#
+( cd $gcc_dir/libgfortran && aclocal -I .. -I ../config || exit 1)
+( cd $gcc_dir/libstdc++-v3 && aclocal -I . -I .. -I ../config || exit 1)
+( cd $gcc_dir/libssp && aclocal -I . -I .. -I ../config || exit 1)
+
+#
+#  Run automake where needed
+#
+
+for dir in $automake_list; do
+   if cd $dir ; then
+      echo "Directory $dir: must run automake ...";
+      if ! [ -f configure.in ] ; then
+         if ! [ -f configure.ac ] ; then
+            cd ..;
+            if ! [ -f configure.in ] ; then
+               if ! [ -f configure.ac ] ; then
+                  cd ..
+               fi
+            fi
+         fi
+      fi
+      echo "Running automake..."
+      if ! automake; then
+         echo "automake failed in directory `pwd`"
+         cd $top
+         exit 1
+      fi
+   fi
+   cd $top
+done
+
+( cd $gcc_dir/libada && aclocal -I ../config )
+
+#
+#  Run autoconf where needed
+#
+
+set -x
+for c in `find $gcc_dir -name 'configure.ac'`; do
+   d=`dirname $c`
+   n=`basename $c`
+   if cd $d ; then
+      if ! autoconf -I $gcc_dir/config; then 
+          echo "autoconf failed in directory `pwd`"
+          cd $top
+          exit 1
+      fi
+   fi
+   cd $top
+done
+set +x
+
+#
+#  Run autoheader where needed
+#
+
+if cd $gcc_dir/gcc ; then
+   echo Running autoheader in `pwd` ...;
+   if [ -f configure.ac ] ; then
+      if ! autoheader ; then
+         echo "autoheader failed in directory `pwd`"
+         cd $top
+         exit 1
+      fi
+   fi
+   rm -f cstamp-h.in
+   echo timestamp >cstamp-h.in
+fi
+
+if [ -f $gcc_dir/contrib/gcc_update ] ; then
+   echo Running contrib/gcc_update --touch
+   cd $gcc_dir;
+   ./contrib/gcc_update --touch
+   cd $top
+fi
+
+for x in `find . -type d -a -name 'autom4te.cache'`; do
+   rm -rf $x
+done
+
+cd $top
+
+if $create_gccnnns_zip; then
+    mkdir manifest
+    echo ${arcprefix}s.zip - GCC $version source archive for DJGPP >$top/manifest/${arcprefix}s.ver
+    touch $top/manifest/${arcprefix}s.mft
+
+    (
+        find gnu -type f \
+            -and -not -name '.cvsignore' \
+            -and -not -name '*~*' \
+            -and -not -name '*.orig' \
+            -and -not -name '.brik' ;
+        find manifest -type f;
+    ) | grep -v 'autom4te\.cache' | sort >$top/manifest/${arcprefix}s.mft
+
+    cat $top/manifest/${arcprefix}s.mft | zip -9q@ $top/${arcprefix}s.zip
+fi

@@ -1,0 +1,41 @@
+#
+# DSM for gcc @version@
+#
+
+dsm-file-version: 1.1
+dsm-name: gpp@arcv@b@version_status@
+dsm-version: 0.5.0
+
+dsm-author: @porter@
+dsm-author-email: @e_mail@
+
+name: g++
+version: @version@
+manifest: gpp@arcv@b@version_status@
+type: binaries
+sources-dsm: gcc@arcv@s@version_status@
+short-description: GNU Compiler Collection, C++ compiler
+organisation: Free Software Foundation
+license: GNU General Public License
+web-site: http://gcc.gnu.org
+
+porter: @porter@
+porter-email: @e_mail@
+
+simtelnet-path: v2gnu/
+zip: gpp@arcv@b@version_status@.zip
+
+#
+# Dependencies
+#
+
+replaces: g++ < @version@
+
+requires: DPMI
+requires: djdev >= @djreq@
+requires: binutils >= 2.16
+requires: gcc @version@
+conflicts-with: g++ < @version@
+
+# For reading docs
+depends-on: info-reader
