@@ -156,7 +156,8 @@ along with GCC; see the file COPYING3.  If not see
                 (flag_pic > 1) ? "PIC" : "pic");                 \
             flag_pic = 0;                                        \
         }                                                        \
-        while (0)
+    }                                                            \
+    while (0)
 
 /* Write the extra assembler code needed to declare a function properly.
    Some svr4 assemblers need to also have something extra said about the
