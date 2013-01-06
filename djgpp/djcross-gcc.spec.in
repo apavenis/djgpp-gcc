@@ -37,7 +37,7 @@ License: GPL
 Group: Development/Tools
 URL: http://www.iki.fi/andris.pavenis/djgpp/gcc/
 Source0: http://ap1.pp.fi/djgpp/gcc/%{gcc_version}/src/djcross-gcc-%{rpm_version}.tar.bz2
-Source1: ftp://ftp.gnu.org/gnu/gcc/gcc-%{gcc_version}/gcc-%{gcc_source_name}.tar.bz2
+Source1: ftp://ftp.gnu.org/gnu/gcc/gcc-%{gcc_version}/gcc-%{gcc_source_name}.tar.@__GCC_SRC_EXT__@
 Source2: ftp://ftp.gmplib.org/pub/gmp-%{gmp_version}/gmp-%{gmp_version}.tar.bz2
 Source3: http://mpfr.loria.fr/mpfr-%{mpfr_version}/mpfr-%{mpfr_version}.tar.bz2
 Source4: http://www.multiprecision.org/mpc/download/mpc-%{mpc_version}.tar.gz
@@ -147,7 +147,7 @@ echo Build cross-compiler for DJGPP: languages are %{languages}
 
 rm -rf $RPM_BUILD_DIR/%{name}-%{version}
 %setup -q -n djcross-gcc-%{version}
-ln -s $RPM_SOURCE_DIR/gcc-%{gcc_source_name}.tar.bz2 $RPM_BUILD_DIR/%{name}-%{version}/
+ln -s $RPM_SOURCE_DIR/gcc-%{gcc_source_name}.tar.@__GCC_SRC_EXT__@ $RPM_BUILD_DIR/%{name}-%{version}/
 cd $RPM_BUILD_DIR/%{name}-%{version} || exit 1
 
 tar xjf $RPM_SOURCE_DIR/autoconf-%{autoconf_version}.tar.bz2 || exit 1
@@ -170,11 +170,11 @@ tar xzf $RPM_SOURCE_DIR/mpc-%{mpc_version}.tar.gz || exit 1
 %if %{create_djgpp_source_zip}
 cd $RPM_BUILD_DIR/%{name}-%{version}
 PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
-    sh unpack-gcc.sh gcc-%{gcc_source_name}.tar.bz2 || exit 1
+    sh unpack-gcc.sh gcc-%{gcc_source_name}.tar.@__GCC_SRC_EXT__@ || exit 1
 %else
 cd $RPM_BUILD_DIR/%{name}-%{version}
 PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
-    sh unpack-gcc.sh --no-djgpp-sources gcc-%{gcc_source_name}.tar.bz2 || exit 1
+    sh unpack-gcc.sh --no-djgpp-sources gcc-%{gcc_source_name}.tar.@__GCC_SRC_EXT__@ || exit 1
 %endif
 
 for fn in gnu/gcc-%{shortver}/COPYING* gnu/gcc-%{shortver}/NEWS gnu/gcc-%{shortver}/README \
