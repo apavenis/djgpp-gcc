@@ -87,7 +87,7 @@ CreatePatchDir()
                 dir=$patch_dir/$(dirname $file)
                 mkdir -p $dir
                 if git cat-file -e $orig_branch:../$file 2>/dev/null ; then
-                    ( cd ../gcc && git diff origin/$orig_branch origin/$new_branch ../$file ) >$patch_dir/$file.patch
+                    ( cd ../gcc && git diff origin/$orig_branch origin/$new_branch ../$file ) >$patch_dir/$file.diff
                     echo "Existing file : " $file
                 else
                     new_files="$new_files $file"
