@@ -33,20 +33,20 @@ case "x$devphase" in
         ver1=${basever}_${datestamp}
         ver2=${basever}-${datestamp}
         snapshot_spec="%define snapshot $datestamp"
-        source_name=gcc-${basever}-${datestamp}
+        source_name=${basever}-${datestamp}
         ;;
 
     x)
         ver1=${basever}
         ver2=${basever}
         snapshot_spec=""
-        source_name=gcc-$(echo $basever | sed -e 's:\.::2g')
+        source_name=$(echo $basever | sed -e 's:\.::2g')
         ;;
     *)
         ver1=${basever}_${datestamp}
         ver2=${basever}-${datestamp}
         snapshot_spec="%define snapshot $datestamp"
-        source_name=gcc-${sver2}-${datestamp}
+        source_name=${sver2}-${datestamp}
         ;;
 esac
 
@@ -133,16 +133,54 @@ sed -e "s/@__GCCVER__@/$ver2/g" \
 
 chmod +x $dest/unpack-gcc.sh
 
-echo "#"
-echo "# Creating djcross-gcc-$ver1.tar.bz2"
-echo "#"
+mkdir -p ext
 
-tar cjf ${dest}.tar.bz2 ${dest}
+ext_files="
+    gmp-$gmp_version.tar.bz2
+    mpfr-$mpfr_version.tar.bz2
+    mpc-$mpc_version.tar.gz
+    autoconf-$autoconf_version.tar.bz2
+    automake-$automake_version.tar.bz2";
 
-echo "#"
-echo "# Creating unmodified GCC source archive ${source_name}.tar.${gcc_src_ext}"
-echo "#"
+for file in $ext_files ; do
+    case $file in
+        gmp*) url=ftp://ftp.gmplib.org/pub/gmp-${gmp_version}/gmp-${gmp_version}.tar.bz2 ;;
+        mpfr*) url=http://ftp.gnu.org/gnu/mpfr/mpfr-${mpfr_version}.tar.bz2 ;;
+        mpc*) url=http://www.multiprecision.org/mpc/download/mpc-${mpc_version}.tar.gz ;;
+        autoconf*) url=http://ftp.gnu.org/gnu/autoconf/autoconf-${autoconf_version}.tar.bz2 ;;
+        automake*) url=http://ftp.gnu.org/gnu/automake/automake-${automake_version}.tar.bz2 ;;
+        *) exit 1 ;;
+    esac
 
-( cd .. && git archive --format=tar --prefix=${source_name}/ ${upstream} ) | $archiver -6vv >${source_name}.tar.${gcc_src_ext}
+    if [ -f ext/$file ] ; then
+        file_ok=false
+        case $file in
+            *.gz) gzip -t ext/$file >/dev/null 2>&1 && file_ok=true ;;
+            *.bz2) bzip2 -t ext/$file >/dev/null 2>&1 && file_ok=true ;;
+            *.xz) xz -t ext/$file >/dev/null 2>&1 && file_ok=true ;;
+        esac
+
+        if ! $file_ok ; then
+            rm -f ext/$file
+        fi
+    fi
+
+    if ! [ -f ext/$file ] ; then
+        echo "Downloading $url"
+        curl --output ext/$file $url
+    fi
+done
+
+rm -rf rpm
+mkdir -p rpm/SOURCES rpm/BUILD rpm/SPECS rpm/SRPMS rpm/RPMS
+
+tar cjf rpm/SOURCES/${dest}.tar.bz2 ${dest}
+
+( cd .. && git archive --format=tar --prefix=gcc-${source_name}/ ${upstream} ) | $archiver -9vv >rpm/SOURCES/gcc-${source_name}.tar.${gcc_src_ext}
+
+for file in $ext_files ; do cp -v ext/$file rpm/SOURCES; done
+
+rpmbuild --bs --define "_topdir $(pwd)/rpm" --bs $dest/djcross-gcc-$sver2.spec
+mv -v rpm/SRPMS/djcross-gcc-$ver1-1ap.src.rpm ./ && rm -rf rpm
 
 
