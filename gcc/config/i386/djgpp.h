@@ -152,7 +152,7 @@ along with GCC; see the file COPYING3.  If not see
     do {                                                         \
         if (flag_pic)                                            \
         {                                                        \
-            warning(0, "-f%s ignored (not supported for DJGPP)", \
+            fnotice(stdout, "-f%s ignored (not supported for DJGPP)\n", \
                 (flag_pic > 1) ? "PIC" : "pic");                 \
             flag_pic = 0;                                        \
         }                                                        \
