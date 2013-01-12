@@ -87,6 +87,10 @@ my @cpp_rename = (
 "ext/vstring_fwd.h:vstr_fwd.h",
 "ext/vstring_util.h:vstr_util.h",
 
+"parallel/for_each_selectors.h:foreachselector.h",
+"parallel/omp_loop_static.h:omploopstatic.h",
+"parallel/multiway_mergesort.h:multiway_mergesort.h2",
+
 "profile/impl/profiler.h:_profiler.h",
 "profile/impl/profiler_algos.h:_profalgos.h",
 "profile/impl/profiler_container_size.h:_profcts.h1",
@@ -709,7 +713,8 @@ sub mk_manifest
         '/include/header.gcc$',
         '/include-fixed/(?:limits|syslimits|wchar)\.h$',
         '/include-fixed/readme$',
-        '/include/(?:abm|fma4|ia32|lwp|popcnt|xop)intrin.h$',
+        '/include/(?:abm|fma4|ia32|lwp|popcnt|xop|xtest)intrin.h$',
+	'/include/(?:adx|fxsr|prfchw|rdseed|rtm|xsave|xsaveopt)intrin.h$',
         '/include/cross-stdarg.h$',
         '/include/stdint(?:|-gcc).h$',
         '/install-tools/', '/libgcc\.a', '/libgcov\.a', '/libssp*',
