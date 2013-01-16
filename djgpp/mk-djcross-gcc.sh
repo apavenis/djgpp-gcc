@@ -74,7 +74,7 @@ CreatePatchDir()
     echo "# Writting diffs to the directory $patch_dir"
     echo "#"
 
-    files=$( cd ../gcc && git diff --stat origin/$orig_branch origin/$new_branch | grep -v files\ changed | awk '{print $1}')
+    files=$( cd ../gcc && git diff --stat $orig_branch $new_branch | grep -v files\ changed | awk '{print $1}')
 
     new_files=
     for file in $files; do
@@ -87,7 +87,7 @@ CreatePatchDir()
                 dir=$patch_dir/$(dirname $file)
                 mkdir -p $dir
                 if git cat-file -e $orig_branch:../$file 2>/dev/null ; then
-                    ( cd ../gcc && git diff origin/$orig_branch origin/$new_branch ../$file ) >$patch_dir/$file.diff
+                    ( cd ../gcc && git diff $orig_branch $new_branch ../$file ) >$patch_dir/$file.diff
                     echo "Existing file : " $file
                 else
                     new_files="$new_files $file"
