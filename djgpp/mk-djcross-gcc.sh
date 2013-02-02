@@ -74,7 +74,7 @@ CreatePatchDir()
     echo "# Writting diffs to the directory $patch_dir"
     echo "#"
 
-    files=$( cd ../gcc && git diff --stat $orig_branch $new_branch | grep -v files\ changed | awk '{print $1}')
+    files=$( cd .. && git diff --stat $orig_branch $new_branch | grep -v files\ changed | awk '{print $1}')
 
     new_files=
     for file in $files; do
@@ -86,8 +86,8 @@ CreatePatchDir()
             *)
                 dir=$patch_dir/$(dirname $file)
                 mkdir -p $dir
-                if git cat-file -e $orig_branch:../$file 2>/dev/null ; then
-                    ( cd ../gcc && git diff $orig_branch $new_branch ../$file ) >$patch_dir/$file.diff
+                if git cat-file -e $orig_branch:$file 2>/dev/null ; then
+                    ( cd .. && git diff $orig_branch $new_branch -- $file ) >$patch_dir/$file.diff
                     echo "Existing file : " $file
                 else
                     new_files="$new_files $file"
@@ -170,6 +170,8 @@ for file in $ext_files ; do
         curl --output ext/$file $url
     fi
 done
+
+ls -l $(find djcross-gcc-$ver1 -name '*.diff')
 
 rm -rf rpm
 mkdir -p rpm/SOURCES rpm/BUILD rpm/SPECS rpm/SRPMS rpm/RPMS
