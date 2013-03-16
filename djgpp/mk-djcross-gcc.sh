@@ -15,7 +15,7 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=master
+upstream=gcc-4_8-branch
 dj_branch=gcc_4_8_djgpp
 djn_branch=gcc_4_8_djgpp_native
 
