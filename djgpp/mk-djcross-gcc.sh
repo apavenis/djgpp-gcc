@@ -1,6 +1,6 @@
 #! /bin/sh
 
-gcc_src_ext=xz
+gcc_src_ext=bz2
 gmp_version=5.1.1
 mpfr_version=3.1.2
 mpc_version=1.0.1
