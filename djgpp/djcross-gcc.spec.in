@@ -420,7 +420,7 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
-* Fri Mar 22 2012 Andris Pavenis <andris.pavenis@iki.fi> 4.8.0-1ap
+* Fri Mar 22 2013 Andris Pavenis <andris.pavenis@iki.fi> 4.8.0-1ap
 - Update to GCC-4.8.0
 - Use GMP-5.1.1, MPFR-3.1.2, MPC-1.0.1
 
