@@ -40,13 +40,13 @@ case "x$devphase" in
         ver1=${basever}
         ver2=${basever}
         snapshot_spec=""
-        source_name=$(echo $basever | sed -e 's:\.::2g')
+        source_name=${basever}
         ;;
     *)
         ver1=${basever}_${datestamp}
         ver2=${basever}-${datestamp}
         snapshot_spec="%define snapshot $datestamp"
-        source_name=${sver2}-${datestamp}
+        source_name=${basever}-${datestamp}
         ;;
 esac
 
