@@ -7,38 +7,25 @@ and FAQ where needed.
 
 
 Requirements to use this binary release:
-    DJGPP-@DJVER@. 
-    binutils-2.16 or above (Earlier versions will NOT work any more due to
-	incompatible linker scripts as linker script is no more included
-	with DJGPP port of GCC)
+    -  DJGPP-@DJVER@.
+    -  binutils-2.22 or above (Earlier versions may NOT work and are not tested)
 
 Requirements to build gcc-@GCCVER@ from sources:
-    Long filename support. I built it in DOS session under WinXP Pro (SP2).
-        Win95, Win98, WinME or Win2K should be OK. I myself haven't tested
-	whether it can be build under Win98, Win2k or Win2K.
-    perhaps at least 256Mb of RAM for building (Amount of available
-        DPMI memory for DOS session should be set to auto).
-    rebuilt stubify.exe with the default stack size increased (even 1024K was
-    not enough, but with stack size 2048K build succeeded).
-    DOS transfer buffer size increased to 32K for sime executables (I did it
-        for GNU make and LD).
-    at least DJGPP-2.03 patchlevel 2 required
-    other GNU utilities (see below)
-
 
 Source archives
 ===============
 
 
-Archive gcc@GCCVER3@s2.zip contains script which modifies original gcc-@GCCVER@
-and sources for DJGPP. You don't need it unless You want to recreate
-GCC source archive for DJGPP. If You are using this archive and original 
-sources of gcc-@GCCVER@.tar.gz, then You don't need gcc@GCCVER3@s.zip.
+Archive djcross-gcc-@GCCVER@.tar.bz2 contains script which modifies
+original gcc-@GCCVER@ sources for DJGPP. You don't need it unless You
+want to recreate GCC source archive for DJGPP. If You are using this
+archive and original sources of gcc-@GCCVER@.tar.gz, then You don't
+need gcc@GCCVER3@s.zip. Running these scripts under DJGPP has not been
+tested for a long time and is unlikely to succeed.
     
 The source archive gcc@GCCVER3@s.zip contains all the sources to build
 all compilers (C, C++, Objective C, Objective C++, GNU Fortran) and also C++
 and Fortran libraries (libstdcxx.a, libgpp.a and libg2c.a). 
-libg++ is no more supported.
 
 Most users don't need source archives at all.
 
@@ -105,7 +92,7 @@ Following packages are required for binaries:
 Installing binaries of gcc-@GCCVER@
 =================================
 
-Needed archives for different programing languages
+Needed archives for different programming languages
 	C 			: gcc@GCCVER3@b.zip
 
 	C++			: gcc@GCCVER3@b.zip, gpp@GCCVER3@b.zip
@@ -168,37 +155,28 @@ Rebuilding gcc-@GCCVER@ from the sources
 Requirements
 ------------
 
--  Long filename support is required. It means You should build gcc-@GCCVER@
-   under Win95, Win98, WinME, Win2000 or WinXP. I myself built gcc-@GCCVER@
-   under WinXP.
+-  Long filename support. I built it in DOS session under Windows Vista
+   Business SP3. Other 32 bit Windows versions beginning with Win95
+   should be hopefully OK. I have not however tested myself whether
+   it can be build under Win98, Win2k or Win2K.
 
--  Much of free disk space (more than 1Gb)
+-  plenty of physical RAM available. I guess that 1 GB should
+   be enough (I had more on build machine)
 
--  perhaps 128Mb RAM (or more) to build gcc-@GCCVER@ under Win9X. 
-   DPMI memory amount for DOS session should be set to "Auto".
-   Building on machine with only 64 Mb of memory is not tested.
-   (I used machine with 1512Mb of memory, operating system WinXP Pro SP2)
-   
--  One must rebuild stubify.exe to use larger stack size. The default
-   512Kb is not enough and the build not succeed in that case:
-   - download DJGPP runtime sources (djlsr203.zip or djlsr204.zip)
-   - patch src/stub/stub.asm to increase stack size to 1Mb
-   - rebuild stub and stubify.exe
-   See DJGPP FAQ for more information how to build DJGPP from sources.
-   stubify.exe is built very soon and further failures caused by incompatibility
-   with newer GCC version can safely be ignores.
+-  Much of free disk space: the total size of all directories after build
+   was about 3 GB. Perhaps one need more to be safe.
 
--  It is recommended to build and install MPFR-2.2.1 or above (http://www.mpfr.org/).
-   There is buggy version shipped inside GMP, GCC builds also in that case.
+-  Amount of available DPMI memory for DOS session should
+   be set to auto.
 
--  rebuilt stubify.exe with the default stack size increased (I used 1024K).
+-  On windows Vista (and perhaps later versions) a registry hack to
+   allow DPMI clients to use more that 32 MB of memory must be used
 
--  DOS transfer buffer size increased to 32K for sime executables (I did it
-   for GNU make and ld). I do not know whether both are needed. 
-        
-    at least DJGPP-2.03 patchlevel 2 required
--  Many GNU packages.
-	bash-2.0.4 or above
+-  recent CVS version DJGPP v2.04
+
+-  many GNU utilities and libraries (the list may be incomplete)
+
+	last version of DJGPP port of bash-2.0.5b
 	GNU Diffutils 2.8 or above
 	GNU Fileutils-4.1
 	GNU Find 4.1.7 or above
@@ -210,29 +188,20 @@ Requirements
 	GNU Textutils 2.0
 	GNU Texinfo 4.8 or above
 	GNU tar 1.1.2 or above
-	GNU binutils 2.22 (newer than to use GCC packages!!!)
-	GNU GMP 4.3.1 (required to build GNU Fortran compiler) or above
-	MPFR 2.3.0 or above
-	MPC-0.8.1 or above
+	GNU binutils 2.22 (required, older versions cannot be used!!!)
+	recent GNU GMP 5.0.1 version (versions 5.0.X or newer are OK)
+        recent MPFR versions (versions 3.0.0 or newer are OK)
+	recent MPC versions (versions 1.0.0 or newer are OK)
 	Zlib-1.2.5 or above (Warning configure does not check for presence
 	     one only gets build error later)
-	working GNU C compiler (perhaps not earlier than gcc-3.3). 
+	working GNU C compiler (perhaps not earlier than gcc-4.1). 
 
-   If You modify some source files You may also need
-	autoconf-2.64 above
-	automake-1.11 or above
-	(No ports available for DJGPP yet. I did all patching GCC sources
-	and updating autoconf and automake related stuff in Linux)
-	
-   You need autoconf and automake also if You are using gcc@GCCVER3@s2.zip.
-   However it's normally not needed for most users who builds gcc-@GCCVER@ from
-   contents of gcc@GCCVER3@s.zip. In that case You need to edit script unpack-gcc
-   to specify place where old and new versions of autoconf and automake are
-   installed
-
-   Usually newer versions of these packages should also work unless
-   otherwise stated above. Older versions may work in some cases, but that
-   is not tested
+-  one may need to increase DOS transfer buffer size to 24 KB or
+   32 KB for some executables (GNU Make and ld) to optimize lower
+   memory use as having to allocate additional lower memory block
+   for long parameter lists when invoking child process wastes
+   much of memory. I had transfer buffer size increased to 24 KB
+   for GNU Make only 
 
 -  INFO-ZIP binary (compiled with DJGPP v2!!!) is needed for using build.sh 
    to create binary distribution archives. There is no problems to compile 
@@ -240,15 +209,20 @@ Requirements
    about INFO-ZIP. You can find DJGPP compiled binary there. 
 
 -  Working DJGPP installation of course:
-	DJGPP-2.03 patchlevel 2 or above, 
-	working gcc installation (gcc-3.3.0 or above, You need
-                working Ada compiler to build Ada compiler).
-   NOTE: gcc-@GCCVER@ compiled using DJGPP-2.03 Patchelevel 2 must not be
-   used with DJGPP-2.04 and otherwise - gcc-@GCCVER@ compiled using 
-   for example recent DJGPP-2.04 CVS version can be used with DJGPP-2.04
-   Beta 1 but not with DJGPP-2.03 Patchlevel 2. This must be taken into
-   account when compiling gcc-@GCCVER@ for DJGPP from sources
+   -  recent CVS version of DJGPP-2.04 is required
+   -  the beta version from ftp://ftp.delorie.com/pub/djgpp/beta/v2
+      is too old.
 
+Earlier requirement to have rebuilt stubify.exe with default stack size
+increased to 1.5 MB or more is no more required as the stack size
+reserving is now done using _stklen where required. 
+
+If You modify some source files You may also need
+	autoconf-2.64
+	automake-1.11
+	(No ports available for DJGPP yet. I did all patching GCC sources
+	and updating autoconf and automake related stuff in Linux)
+	
    NOTE: Building GCC-@GCCVER@ using DJGPP v2.03 patchlevel 2 requires rebuilding
    several DJGPP packets before building GCC.
 
@@ -312,7 +286,9 @@ Reporting bugs
 ==============
 
 If you found a bug in gcc-@GCCVER@ (gcc, gfortran, libstdc++, etc) please report it to 
-the GCC bug addresses and _NOT_ (or at least not only) in the DJGPP news group. 
+the GCC bug addresses and to the DJGPP mailing list (djgpp@delorie.com). We may not
+notice bug reports sent to GCC bug reporting system only due to large amount of
+other bugs there. 
 
 But if you think you found a bug in the DJGPP related things, then please 
 report it in comp.os.msdos.djgpp (the news group) or mail it to 
