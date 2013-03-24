@@ -17,12 +17,13 @@ CONFIG_SHELL=`/bin/sh -c 'echo $0'`
 case $CONFIG_SHELL in *.exe) ;; *) CONFIG_SHELL=$CONFIG_SHELL.exe ;; esac
 export CONFIG_SHELL
 #
-conf_options="$target --prefix=/dev/env/DJDIR --disable-nls --disable-werror"
+conf_options="$target --prefix=/dev/env/DJDIR"
+#conf_options="$target --disable-nls"
+conf_options="$target --disable-werror"
 conf_options="$conf_options --enable-languages=c,c++,fortran,objc,obj-c++,ada"
 #conf_options="$conf_options --enable-languages=c,c++,fortran,objc,obj-c++"
 conf_options="$conf_options --enable-libquadmath-support"
 conf_options="$conf_options --disable-lto"
-conf_options="$conf_options --disable-build-poststage1-with-cxx"
 #
 srcdir=`(cd $src && pwd) | sed -e 's,^[a-zA-Z]:/,/,' -e 's,^/dev/[a-zA-Z]/,/,'`
 builddir=`pwd | sed -e 's,^[a-zA-Z]:/,/,' -e 's,^/dev/[a-zA-Z]/,/,'`
