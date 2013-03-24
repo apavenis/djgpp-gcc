@@ -120,24 +120,9 @@ my @c_inc_rename = (
 );
 
 my @rename_list = (
-"lib/libsupc++.la:#gcc_lib#/libsupcxx.la",
-"lib/libsupc++.a:#gcc_lib#/libsupcxx.a",
-"lib/libstdcxx.la:#gcc_lib#/libstdcxx.la",
-"lib/libstdcxx.a:#gcc_lib#/libstdcxx.a",
+"lib/libsupc++.la:##/libsupcxx.la",
+"lib/libsupc++.a:##/libsupcxx.a",
 "lib/libstdcxx.a-gdb.py:##/libstdcxx_a-gdb-py",
-"lib/libgf95begin.a:#gcc_lib#/libgf95begin.a",
-"lib/libgfortran.a:#gcc_lib#/libgfortran.a",
-"lib/libgf95begin.la:#gcc_lib#/libgf95begin.la",
-"lib/libgfortran.la:#gcc_lib#/libgfortran.la",
-"lib/libobjc.a:#gcc_lib#/libobjc.a",
-"lib/libobjc.la:#gcc_lib#/libobjc.la",
-"lib/libquadmath.a:#gcc_lib#/libquadmath.a",
-"lib/libquadmath.la:#gcc_lib#/libquadmath.la",
-"lib/libssp.a:#gcc_lib#/libssp.a",
-"lib/libssp.la:#gcc_lib#/libssp.la",
-"lib/libssp_nonshared.a:#gcc_lib#/libssp_nonshared.a",
-"lib/libssp_nonshared.la:#gcc_lib#/libssp_nonshared.la",
-"lib/libgfortran.spec:#gcc_lib#/libgfortran.spec",
 "bin/g++.exe:##/gpp.exe",
 "bin/c++.exe:",
 "bin/djgpp-g++.exe:",
@@ -244,7 +229,7 @@ sub cxx_rename_proc
         if ( -f $n1 )
         {
             #print "Rename: $n1 ==>$n2\n";
-            if (! rename ($n1, $n2)) 
+            if (! rename ($n1, $n2))
             {
                 #print "Rename: $n1 ==>$n2: $!\n";
             }
@@ -291,11 +276,11 @@ sub cxx_rename_proc
         my $contents = $header_gcc{$file};
         #print "\n###### $file\n\n$contents\n\n";
         my $fd;
-        if (open $fd, ">$cxx_inc_dir/$file") 
+        if (open $fd, ">$cxx_inc_dir/$file")
         {
             print $fd $contents;
             close $fd;
-        }   
+        }
         else
         {
             print "Failed to write file $file\n";
@@ -331,7 +316,7 @@ sub objc_rename_proc
         if ( -f $n1 )
         {
             print "Rename: $n1 ==>$n2\n";
-            if (! rename ($n1, $n2)) 
+            if (! rename ($n1, $n2))
             {
                 print "Rename: $n1 ==>$n2: $!\n";
             }
@@ -378,7 +363,7 @@ sub objc_rename_proc
         my $contents = $header_gcc{$file};
         #print "\n###### $file\n\n$contents\n\n";
         my $fd;
-        if (open $fd, ">$cxx_inc_dir/$file") 
+        if (open $fd, ">$cxx_inc_dir/$file")
         {
             print $fd $contents;
             close $fd;
@@ -410,7 +395,7 @@ sub c_inc_rename_proc
         if ( -f $n1 )
         {
             #print "Rename: $n1 ==>$n2\n";
-            if (! rename ($n1, $n2)) 
+            if (! rename ($n1, $n2))
             {
                 #print "Rename: $n1 ==>$n2: $!\n";
             }
@@ -444,7 +429,7 @@ sub c_inc_rename_proc
             {
                 $d1 = $d1 eq "" ? $d2 : "$d1/$d2";
                 $d2 = "";
-            }                                       
+            }
             my $d2a = $d2 ne "" ? "$d2/" : "";
             $header_gcc{"$d1/header.gcc"} = $header_gcc{"$d1/header.gcc"} .
                 "$d2a$orig_name $d2a$new_name\n";
@@ -458,7 +443,7 @@ sub c_inc_rename_proc
         my $contents = $header_gcc{$file};
         #print "\n###### $file\n\n$contents\n\n";
         my $fd;
-        if (open $fd, ">$c_inc_dir/$file") 
+        if (open $fd, ">$c_inc_dir/$file")
         {
             print $fd $contents;
             close $fd;
@@ -965,7 +950,7 @@ sub GuessSourceDir
             $cnt++;
             $dn = $x;
         }
-        
+
     }
 
     if ($cnt == 0)
@@ -988,13 +973,13 @@ sub FindGccVer
     if (!($dev_phase =~ m/^\s*$/))
     {
         my $date_stamp = FileContents("$srcdir/gcc/DATESTAMP");
-        $ver = "${base_ver}_${date_stamp}"; 
+        $ver = "${base_ver}_${date_stamp}";
     }
     else
     {
         $ver = $base_ver;
     }
-    
+
     return ($base_ver, $ver);
 }
 
