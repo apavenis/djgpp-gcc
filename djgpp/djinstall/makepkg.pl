@@ -720,7 +720,7 @@ sub mk_manifest
         'manifest/gcc',
         'readme.djgpp', '/cat1/(?:cpp|gcc|gcov)', '/cat7/',
         '/bugs', '/copying', '/faq', '/news', '/readme', '/gcc/onews',
-        '/share/locale/',
+        'share/locale/',
         '/bugs\.html', 'faq\.html'
     );
 
