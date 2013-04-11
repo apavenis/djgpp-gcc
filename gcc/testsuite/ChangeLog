@@ -1,3 +1,128 @@
+2013-04-11  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/56913
+	* g++.dg/cpp0x/sfinae44.C: New.
+
+2013-04-11  Arnaud Charlet  <charlet@adacore.com>
+
+	* ada/acats/run_all.sh: Remove special handling of -gnat95 switch.
+	* ada/acats/ada95.lst: Remove special handling of -gnat95 switch.
+
+2013-04-11  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/54216
+	* g++.dg/cpp0x/enum26.C: New.
+	* g++.old-deja/g++.pt/mangle1.C: Adjust.
+
+2013-04-11  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	* gcc.target/aarch64/vect-fcm.x: Add check for zero forms of
+	inverse operands.
+	* gcc.target/aarch64/vect-fcm-eq-d.c: Check that new zero form
+	loop is vectorized.
+	* gcc.target/aarch64/vect-fcm-eq-f.c: Likewise.
+	* gcc.target/aarch64/vect-fcm-ge-d.c: Check that new zero form
+	loop is vectorized and that the correct instruction is generated.
+	* gcc.target/aarch64/vect-fcm-ge-f.c: Likewise.
+	* gcc.target/aarch64/vect-fcm-gt-d.c: Likewise.
+	* gcc.target/aarch64/vect-fcm-gt-f.c: Likewise.
+
+2013-04-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/56899
+	* gcc.c-torture/execute/pr56899.c: New test.
+
+2013-04-10  David S. Miller  <davem@davemloft.net>
+
+	* gcc.target/sparc/setcc-4.c: New test.
+	* gcc.target/sparc/setcc-5.c: New test.
+
+2013-04-10  Richard Biener  <rguenther@suse.de>
+
+	* g++.dg/pr55604.C: Use -fdump-rtl-ira.
+
+2013-04-10  Richard Biener  <rguenther@suse.de>
+
+	* gcc.dg/vect/slp-39.c: New testcase.
+
+2013-04-10  Joern Rennecke <joern.rennecke@embecosm.com>
+
+	PR tree-optimization/55524
+	* gcc.target/epiphany/fnma-1.c: New test.
+
+2013-04-10  Zhouyi Zhou <yizhouzhou@ict.ac.cn>
+
+	* gcc.dg/tree-ssa/inline-11.c: New test
+
+2013-04-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/56895
+	* g++.dg/template/arrow3.C: New test.
+
+2013-04-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/arm/minmax_minus.c: New test.
+
+2013-04-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/56883
+	* c-c++-common/gomp/pr56883.c: New test.
+
+2013-04-09  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/vrp87.c: New test.
+
+2013-04-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/56854
+	* g++.dg/torture/pr56854.C: New test.
+
+2013-04-08  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/56782
+	* gfortran.dg/array_constructor_44.f90:  New test.
+
+2013-04-08  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/56871
+	* g++.dg/cpp0x/constexpr-specialization.C: New.
+
+2013-04-08  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.c-torture/execute/pr56837.c: New test.
+
+	PR c++/34949
+	PR c++/50243
+	* g++.dg/opt/vt3.C: New test.
+	* g++.dg/opt/vt4.C: New test.
+
+2013-04-08  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/tree-ssa/forwprop-25.c: New test.
+
+2013-04-08  Richard Biener  <rguenther@suse.de>
+
+	* gfortran.dg/vect/fast-math-mgrid-resid.f: Adjust.
+
+2013-04-08  Richard Biener  <rguenther@suse.de>
+
+	* gfortran.dg/vect/fast-math-pr37021.f90: Adjust.
+
+2013-04-08  Richard Biener  <rguenther@suse.de>
+
+	* g++.dg/vect/slp-pr56812.cc: Adjust.
+
+2013-04-08  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.dg/pr56837.c: New test.
+	* gcc.dg/tree-ssa/ldist-19.c: Don't check for
+	"generated memset minus one".
+
+2013-04-07  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/56849
+	* gfortran.dg/reshape_5.f90: New.
+
 2013-04-05  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
 
 	PR target/56843

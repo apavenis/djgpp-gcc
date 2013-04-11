@@ -582,6 +582,12 @@ package Sem_Util is
    --  Returns the true generic entity in an instantiation. If the name in the
    --  instantiation is a renaming, the function returns the renamed generic.
 
+   function Get_Incomplete_View_Of_Ancestor (E : Entity_Id) return Entity_Id;
+   --  Implements the notion introduced ever-so briefly in RM 7.3.1 (5.2/3):
+   --  in a child unit a derived type is within the derivation class of an
+   --  ancestor declared in a parent unit, even if there is an intermediate
+   --  derivation that does not see the full view of that ancestor.
+
    procedure Get_Index_Bounds (N : Node_Id; L, H : out Node_Id);
    --  This procedure assigns to L and H respectively the values of the low and
    --  high bounds of node N, which must be a range, subtype indication, or the
@@ -847,6 +853,12 @@ package Sem_Util is
    --  True if T is a bounded string type. Used to make sure "=" composes
    --  properly for bounded string types.
 
+   function Is_Constant_Bound (Exp : Node_Id) return Boolean;
+   --  Exp is the expression for an array bound. Determines whether the
+   --  bound is a compile-time known value, or a constant entity, or an
+   --  enumeration literal, or an expression composed of constant-bound
+   --  subexpressions which are evaluated by means of standard operators.
+
    function Is_Controlling_Limited_Procedure
      (Proc_Nam : Entity_Id) return Boolean;
    --  Ada 2005 (AI-345): Determine whether Proc_Nam is a primitive procedure
@@ -1037,6 +1049,12 @@ package Sem_Util is
    --  CIL, will always return false for other targets. A value type is a CIL
    --  object that is accessed directly, as opposed to the other CIL objects
    --  that are accessed through managed pointers.
+
+   function Is_Variable_Size_Array (E : Entity_Id) return Boolean;
+   --  Returns true if E has variable size components
+
+   function Is_Variable_Size_Record (E : Entity_Id) return Boolean;
+   --  Returns true if E has variable size components
 
    function Is_VMS_Operator (Op : Entity_Id) return Boolean;
    --  Determine whether an operator is one of the intrinsics defined

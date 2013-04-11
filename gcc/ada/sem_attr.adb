@@ -2405,6 +2405,11 @@ package body Sem_Attr is
          elsif not Comes_From_Source (N) then
             null;
 
+         elsif Relaxed_RM_Semantics
+           and then Nkind (P) = N_Attribute_Reference
+         then
+            null;
+
          else
             Error_Attr ("invalid prefix for % attribute", P);
          end if;
@@ -5008,6 +5013,13 @@ package body Sem_Attr is
 
          elsif Nkind (P) = N_Type_Conversion
            and then not Comes_From_Source (P)
+         then
+            null;
+
+         --  Some other compilers allow dubious use of X'???'Size
+
+         elsif Relaxed_RM_Semantics
+           and then Nkind (P) = N_Attribute_Reference
          then
             null;
 
@@ -9180,15 +9192,12 @@ package body Sem_Attr is
                   --  when within an instance, because any violations will have
                   --  been caught by the compilation of the generic unit.
 
-                  --  Note that we relax this check in CodePeer mode for
-                  --  compatibility with legacy code, since CodePeer is an
-                  --  Ada source code analyzer, not a strict compiler.
-                  --  ??? Note that a better approach would be to have a
-                  --  separate switch to relax this rule, and enable this
-                  --  switch in CodePeer mode.
+                  --  We relax this check in Relaxed_RM_Semantics mode for
+                  --  compatibility with legacy code for use by Ada source
+                  --  code analyzers (e.g. CodePeer).
 
                   elsif Attr_Id = Attribute_Access
-                    and then not CodePeer_Mode
+                    and then not Relaxed_RM_Semantics
                     and then not In_Instance
                     and then Present (Enclosing_Generic_Unit (Entity (P)))
                     and then Present (Enclosing_Generic_Body (N))
@@ -9287,6 +9296,17 @@ package body Sem_Attr is
 
                Resolve (Prefix (P));
                Generate_Reference (Entity (Selector_Name (P)), P);
+
+            --  Implement check implied by 3.10.2 (18.1/2) : F.all'access is
+            --  statically illegal if F is an anonymous access to subprogram.
+
+            elsif Nkind (P) = N_Explicit_Dereference
+              and then Is_Entity_Name (Prefix (P))
+              and then Ekind (Etype (Entity (Prefix  (P)))) =
+                 E_Anonymous_Access_Subprogram_Type
+            then
+               Error_Msg_N ("anonymous access to subprogram "
+                 &  "has deeper accessibility than any master", P);
 
             elsif Is_Overloaded (P) then
 
@@ -10031,9 +10051,7 @@ package body Sem_Attr is
          --  then this is only legal within a task or protected record.
 
          when others =>
-            if not Is_Entity_Name (P)
-              or else not Is_Type (Entity (P))
-            then
+            if not Is_Entity_Name (P) or else not Is_Type (Entity (P)) then
                Resolve (P);
             end if;
 
@@ -10041,9 +10059,7 @@ package body Sem_Attr is
             --  'Class) then this is only legal within a task or protected
             --  record. What is this all about ???
 
-            if Is_Entity_Name (N)
-              and then Is_Type (Entity (N))
-            then
+            if Is_Entity_Name (N) and then Is_Type (Entity (N)) then
                if Is_Concurrent_Type (Entity (N))
                  and then In_Open_Scopes (Entity (P))
                then

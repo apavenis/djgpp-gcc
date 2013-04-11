@@ -119,14 +119,11 @@ package Opt is
    --  Think twice before using "="; Ada_Version >= Ada_2012 is more likely
    --  what you want, because it will apply to future versions of the language.
 
-   Ada_Version_Default : constant Ada_Version_Type := Ada_2005;
+   Ada_Version_Default : constant Ada_Version_Type := Ada_2012;
    pragma Warnings (Off, Ada_Version_Default);
    --  GNAT
    --  Default Ada version if no switch given. The Warnings off is to kill
    --  constant condition warnings.
-   --
-   --  WARNING: some scripts rely on the format of this line of code. Any
-   --  change must be coordinated with the scripts requirements.
 
    Ada_Version : Ada_Version_Type := Ada_Version_Default;
    --  GNAT
@@ -667,11 +664,6 @@ package Opt is
    --  True when switch -fdebug-instances is used. When True, a table of
    --  instances is included in SCOs.
 
-   Generate_Target_Dependent_Info : Boolean := False;
-   --  GNAT
-   --  When true (-gnatet switch used). True if target dependent info is to be
-   --  generated in the ali file.
-
    Generating_Code : Boolean := False;
    --  GNAT
    --  True if the frontend finished its work and has called the backend to
@@ -986,6 +978,11 @@ package Opt is
    --  in this variable (e.g. 2 = select second unit in file). A value of
    --  zero indicates that we are in normal (one unit per file) mode.
 
+   No_Backup : Boolean := False;
+   --  GNATNAME
+   --  Set by switch --no-backup.
+   --  Do not create backup copies of project files.
+
    No_Deletion : Boolean := False;
    --  GNATPREP
    --  Set by preprocessor switch -a. Do not eliminate any source text. Implies
@@ -1186,6 +1183,16 @@ package Opt is
    --  Set to True to enable compatibility mode with Rational compiler, and
    --  to accept renamings of implicit operations in their own scope.
 
+   Relaxed_RM_Semantics : Boolean := False;
+   --  GNAT
+   --  Set to True to ignore some Ada semantic error to help parse legacy
+   --  Ada code for use in e.g. static analysis (such as CodePeer). This
+   --  deals with cases where other compilers allow illegal constructs. Tools
+   --  such as CodePeer are interested in analyzing code rather than enforcing
+   --  legality rules, so as long as these illegal constructs end up with code
+   --  that can be handled by the tool in question, there is no reason to
+   --  reject the code that is considered correct by the other compiler.
+
    Replace_In_Comments : Boolean := False;
    --  GNATPREP
    --  Set to True if -C switch used
@@ -1323,6 +1330,19 @@ package Opt is
    --  front-end. If False, the original tree is left unexpanded for tagged
    --  types and dispatching calls, assuming the underlying target supports
    --  it (e.g. in the JVM case).
+
+   Target_Dependent_Info_Read : Boolean := False;
+   --  GNAT
+   --  Set True to override the normal processing in Get_Targ and set the
+   --  necessary information by reading the target dependent information
+   --  file (see packages Get_Targ and Set_Targ for full details). Set True
+   --  by use of the -gnateT switch.
+
+   Target_Dependent_Info_Write : Boolean := False;
+   --  GNAT
+   --  Set True to enable a call to Set_Targ.Write_Target_Dependent_Info which
+   --  writes a target independent information file (see packages Get_Targ and
+   --  Set_Targ for full details). Set True by use of the -gnatet switch.
 
    Task_Dispatching_Policy : Character := ' ';
    --  GNAT, GNATBIND
@@ -1970,7 +1990,14 @@ package Opt is
    Alfa_Mode : Boolean := False;
    --  Specific compiling mode targeting formal verification through the
    --  generation of Why code for those parts of the input code that belong to
-   --  the Alfa subset of Ada. Set by debug flag -gnatd.F.
+   --  the Alfa subset of Ada. Set True by the gnat2why executable or by use
+   --  of the -gnatd.F debug switch.
+
+   Frame_Condition_Mode : Boolean := False;
+   --  Specific mode to be used in combination with Alfa_Mode. If set to
+   --  true, ALI files containing the frame conditions (global effects) are
+   --  generated, and Why files are *not* generated. If not true, Why files
+   --  are generated. Set by debug flag -gnatd.G.
 
    Strict_Alfa_Mode : Boolean := False;
    --  Interpret compiler permissions as strictly as possible. E.g. base ranges

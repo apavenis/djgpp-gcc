@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2012, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2013, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -228,12 +228,6 @@ package body Exp_Ch3 is
 
    function Is_User_Defined_Equality (Prim : Node_Id) return Boolean;
    --  Returns true if Prim is a user defined equality function
-
-   function Is_Variable_Size_Array (E : Entity_Id) return Boolean;
-   --  Returns true if E has variable size components
-
-   function Is_Variable_Size_Record (E : Entity_Id) return Boolean;
-   --  Returns true if E has variable size components
 
    function Make_Eq_Body
      (Typ     : Entity_Id;
@@ -4825,9 +4819,144 @@ package body Exp_Ch3 is
       --  which case the init proc call must be inserted only after the bodies
       --  of the shared variable procedures have been seen.
 
+      function Build_Equivalent_Aggregate return Boolean;
+      --  If the object has a constrained discriminated type and no initial
+      --  value, it may be possible to build an equivalent aggregate instead,
+      --  and prevent an actual call to the initialization procedure.
+
       function Rewrite_As_Renaming return Boolean;
       --  Indicate whether to rewrite a declaration with initialization into an
       --  object renaming declaration (see below).
+
+      --------------------------------
+      -- Build_Equivalent_Aggregate --
+      --------------------------------
+
+      function Build_Equivalent_Aggregate return Boolean is
+         Aggr      : Node_Id;
+         Comp      : Entity_Id;
+         Discr     : Elmt_Id;
+         Full_Type : Entity_Id;
+
+      begin
+         Full_Type := Typ;
+
+         if Is_Private_Type (Typ) and then Present (Full_View (Typ)) then
+            Full_Type := Full_View (Typ);
+         end if;
+
+         --  Only perform this transformation if Elaboration_Code is forbidden
+         --  or undesirable, and if this is a global entity of a constrained
+         --  record type.
+
+         --  If Initialize_Scalars might be active this  transformation cannot
+         --  be performed either, because it will lead to different semantics
+         --  or because elaboration code will in fact be created.
+
+         if Ekind (Full_Type) /= E_Record_Subtype
+           or else not Has_Discriminants (Full_Type)
+           or else not Is_Constrained (Full_Type)
+           or else Is_Controlled (Full_Type)
+           or else Is_Limited_Type (Full_Type)
+           or else not Restriction_Active (No_Initialize_Scalars)
+         then
+            return False;
+         end if;
+
+         if Ekind (Current_Scope) = E_Package
+          and then
+            (Restriction_Active (No_Elaboration_Code)
+              or else Is_Preelaborated (Current_Scope))
+         then
+
+            --  Building a static aggregate is possible if the discriminants
+            --  have static values and the other components have static
+            --  defaults or none.
+
+            Discr := First_Elmt (Discriminant_Constraint (Full_Type));
+            while Present (Discr) loop
+               if not Is_OK_Static_Expression (Node (Discr)) then
+                  return False;
+               end if;
+
+               Next_Elmt (Discr);
+            end loop;
+
+            --  Check that initialized components are OK, and that non-
+            --  initialized components do not require a call to their own
+            --  initialization procedure.
+
+            Comp := First_Component (Full_Type);
+            while Present (Comp) loop
+               if Ekind (Comp) = E_Component
+                 and then Present (Expression (Parent (Comp)))
+                 and then
+                   not Is_OK_Static_Expression (Expression (Parent (Comp)))
+               then
+                  return False;
+
+               elsif Has_Non_Null_Base_Init_Proc (Etype (Comp)) then
+                  return False;
+
+               end if;
+
+               Next_Component (Comp);
+            end loop;
+
+            --  Everything is static, assemble the aggregate, discriminant
+            --  values first.
+
+            Aggr :=
+               Make_Aggregate (Loc,
+                Expressions            => New_List,
+                Component_Associations => New_List);
+
+            Discr := First_Elmt (Discriminant_Constraint (Full_Type));
+            while Present (Discr) loop
+               Append_To (Expressions (Aggr), New_Copy (Node (Discr)));
+               Next_Elmt (Discr);
+            end loop;
+
+            --  Now collect values of initialized components.
+
+            Comp := First_Component (Full_Type);
+            while Present (Comp) loop
+               if Ekind (Comp) = E_Component
+                 and then Present (Expression (Parent (Comp)))
+               then
+                  Append_To (Component_Associations (Aggr),
+                    Make_Component_Association (Loc,
+                      Choices    => New_List (New_Occurrence_Of (Comp, Loc)),
+                      Expression => New_Copy_Tree
+                                      (Expression (Parent (Comp)))));
+               end if;
+
+               Next_Component (Comp);
+            end loop;
+
+            --  Finally, box-initialize remaining components.
+
+            Append_To (Component_Associations (Aggr),
+              Make_Component_Association (Loc,
+                Choices => New_List (Make_Others_Choice (Loc)),
+                Expression => Empty));
+            Set_Box_Present (Last (Component_Associations (Aggr)));
+            Set_Expression (N, Aggr);
+
+            if Typ /= Full_Type then
+               Analyze_And_Resolve (Aggr, Full_View (Base_Type (Full_Type)));
+               Rewrite (Aggr, Unchecked_Convert_To (Typ, Aggr));
+               Analyze_And_Resolve (Aggr, Typ);
+            else
+               Analyze_And_Resolve (Aggr, Full_Type);
+            end if;
+
+            return True;
+
+         else
+            return False;
+         end if;
+      end Build_Equivalent_Aggregate;
 
       -------------------------
       -- Rewrite_As_Renaming --
@@ -5031,6 +5160,14 @@ package body Exp_Ch3 is
                if Present (Init_Expr) then
                   Set_Expression
                     (N, New_Copy_Tree (Init_Expr, New_Scope => Current_Scope));
+                  return;
+
+               --  If type has discriminants, try to build equivalent aggregate
+               --  using discriminant values from the declaration. This
+               --  is a useful optimization, in particular if restriction
+               --  No_Elaboration_Code is active.
+
+               elsif Build_Equivalent_Aggregate then
                   return;
 
                else
@@ -7675,7 +7812,7 @@ package body Exp_Ch3 is
 
          if not Has_Invariants (Typ) then
             Set_Has_Invariants (Typ);
-            Set_Has_Invariants (Proc_Id);
+            Set_Is_Invariant_Procedure (Proc_Id);
             Set_Invariant_Procedure (Typ, Proc_Id);
             Insert_After (N, Proc);
             Analyze (Proc);
@@ -8170,69 +8307,6 @@ package body Exp_Ch3 is
                  Etype (Next_Formal (First_Formal (Prim)))
         and then Base_Type (Etype (Prim)) = Standard_Boolean;
    end Is_User_Defined_Equality;
-
-   ----------------------------
-   -- Is_Variable_Size_Array --
-   ----------------------------
-
-   function Is_Variable_Size_Array (E : Entity_Id) return Boolean is
-      Idx : Node_Id;
-
-   begin
-      pragma Assert (Is_Array_Type (E));
-
-      --  Check if some index is initialized with a non-constant value
-
-      Idx := First_Index (E);
-      while Present (Idx) loop
-         if Nkind (Idx) = N_Range then
-            if not Is_Constant_Bound (Low_Bound (Idx))
-              or else not Is_Constant_Bound (High_Bound (Idx))
-            then
-               return True;
-            end if;
-         end if;
-
-         Idx := Next_Index (Idx);
-      end loop;
-
-      return False;
-   end Is_Variable_Size_Array;
-
-   -----------------------------
-   -- Is_Variable_Size_Record --
-   -----------------------------
-
-   function Is_Variable_Size_Record (E : Entity_Id) return Boolean is
-      Comp     : Entity_Id;
-      Comp_Typ : Entity_Id;
-
-   begin
-      pragma Assert (Is_Record_Type (E));
-
-      Comp := First_Entity (E);
-      while Present (Comp) loop
-         Comp_Typ := Etype (Comp);
-
-         --  Recursive call if the record type has discriminants
-
-         if Is_Record_Type (Comp_Typ)
-           and then Has_Discriminants (Comp_Typ)
-           and then Is_Variable_Size_Record (Comp_Typ)
-         then
-            return True;
-
-         elsif Is_Array_Type (Comp_Typ)
-           and then Is_Variable_Size_Array (Comp_Typ)
-         then
-            return True;
-         end if;
-
-         Next_Entity (Comp);
-      end loop;
-
-      return False;
-   end Is_Variable_Size_Record;
 
    ----------------------------------------
    -- Make_Controlling_Function_Wrappers --

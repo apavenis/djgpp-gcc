@@ -1516,6 +1516,9 @@ the current unit, or if it appears at the start of any unit that
 is part of the dependency set of the current unit (e.g., units that
 are mentioned in @code{with} clauses).
 
+Check names introduced by this pragma are subject to control by compiler
+switches (in particular -gnatp) in the usual manner.
+
 @node Pragma Check_Policy
 @unnumberedsec Pragma Check_Policy
 @cindex Controlling assertions
@@ -4029,7 +4032,7 @@ earlier versions of the package body.
 Syntax:
 
 @smallexample @c ada
-pragma No_Inline (NAME [, NAME]);
+pragma No_Inline (NAME @{, NAME@});
 @end smallexample
 
 @noindent
@@ -4857,10 +4860,10 @@ priority-ordered scheduling policy.
 @item Locking_Policy (Ceiling_Locking)
 [RM D.3] While tasks and interrupts execute a protected action, they inherit
 the ceiling priority of the corresponding protected object.
-@c
-@c @item Detect_Blocking
-@c This pragma forces the detection of potentially blocking operations within a
-@c protected operation, and to raise Program_Error if that happens.
+
+@item Detect_Blocking
+This pragma forces the detection of potentially blocking operations within a
+protected operation, and to raise Program_Error if that happens.
 @end table
 @noindent
 

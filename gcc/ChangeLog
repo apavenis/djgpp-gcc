@@ -1,3 +1,440 @@
+2013-04-11  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-loop.c (get_initial_def_for_induction): Properly
+	generate vector constants.
+
+2013-04-11  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56878
+	* tree-flow.h (outermost_invariant_loop_for_expr): Declare.
+	* tree-ssa-loop-ivopts.c (outermost_invariant_loop_for_expr):
+	New function.
+	* tree-vect-data-refs.c (vect_enhance_data_refs_alignment):
+	Prefer to align the DR with the most invariant base address.
+
+2013-04-11  Senthil Kumar Selvaraj  <senthil_kumar.selvaraj@atmel.com>
+
+	* opts.c (common_handle_option): Fix formatting and add FALLTHRU
+	comment.
+
+2013-04-11  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	* config/aarch64/aarch64-simd.md (aarch64_vcond_internal): Fix
+	floating-point vector comparisons against 0.
+
+2013-04-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/56899
+	* fold-const.c (extract_muldiv_1): Apply distributive law
+	only if TYPE_OVERFLOW_WRAPS (ctype).
+
+2013-04-11  Bin Cheng  <bin.cheng@arm.com>
+
+	PR target/56124
+	* ira-costs.c (scan_one_insn): Check whether the source rtx of
+	loading has side effect.
+
+2013-04-10  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* config/sparc/sparc.c: Include tree-pass.h.
+	(TARGET_MACHINE_DEPENDENT_REORG): Do not redefine.
+	(sparc_reorg): Rename to sparc_do_work_around_errata.  Move to
+	head of file.  Change return type.  Split off gate function.
+	(sparc_gate_work_around_errata): New function.
+	(pass_work_around_errata): New pass definition.
+	(insert_pass_work_around_errata) New pass insert definition to
+	insert pass_work_around_errata just after delayed-branch scheduling.
+	(sparc_option_override): Insert the pass.
+	* config/sparc/t-sparc (sparc.o): Add TREE_PASS_H dependence.
+
+2013-04-10  David S. Miller  <davem@davemloft.net>
+
+	* config/sparc/sparc.h (ASM_CPU_SPEC): Pass -Av8 if -mcpu=supersparc
+	or -mcpu=hypersparc.
+
+	* target.def (cstore_mode): New hook.
+	* target.h: Include insn-codes.h
+	* targhooks.c: Likewise.
+	(default_cstore_mode): New function.
+	* targhooks.h: Declare it.
+	* doc/tm.texi.in: New hook slot for TARGET_CSTORE_MODE.
+	* doc/tm.texi: Rebuild.
+	* expmed.c (emit_cstore): Obtain cstore boolean result mode using
+	target hook, rather than inspecting the insn_data.
+	* config/sparc/sparc.c (sparc_cstore_mode): New function.
+	(TARGET_CSTORE_MODE): Redefine.
+	(emit_scc_insn): When TARGET_ARCH64, emit new 64-bit boolean
+	result patterns.
+	* config/sparc/predicates.md (cstore_result_operand): New special
+	predicate.
+	* config/sparc/sparc.md (cstoresi4, cstoredi4, cstore<F:mode>4):
+	Use it for operand 0.
+	(*seqsi_special): Rewrite using 'P' mode iterator on operand 0.
+	(*snesi_special): Likewise.
+	(*snesi_zero): Likewise.
+	(*seqsi_zero): Likewise.
+	(*sltu_insn): Likewise.
+	(*sgeu_insn): Likewise.
+	(*seqdi_special): Make operand 0 and comparison operation be of
+	DImode.
+	(*snedi_special): Likewise.
+	(*snedi_special_vis3): Likewise.
+	(*neg_snesi_zero): Rename to *neg_snesisi_zero.
+	(*neg_snesi_sign_extend): Rename to *neg_snesidi_zero.
+	(*snesi_zero_extend): Delete, covered by 'P' mode iterator.
+	(*neg_seqsi_zero): Rename to *neg_seqsisi_zero.
+	(*neg_seqsi_sign_extend): Rename to *neg_seqsidi_zero.
+	(*seqsi_zero_extend): Delete, covered by 'P' mode iterator.
+	(*sltu_extend_sp64): Likewise.
+	(*neg_sltu_insn): Rename to *neg_sltusi_insn.
+	(*neg_sltu_extend_sp64): Rename to *neg_sltudi_insn.
+	(*sgeu_extend_sp64): Delete, covered by 'P' mode iterator.
+	(*neg_sgeu_insn): Rename to *neg_sgeusi_insn.
+	(*neg_sgeu_extend_sp64): Rename to *neg_sgeudi_insn.
+
+2013-04-10  Yufeng Zhang  <yufeng.zhang@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_print_extension): New function.
+	(aarch64_start_file): Use the new function.
+
+2013-04-10  Senthil Kumar Selvaraj  <senthil_kumar.selvaraj@atmel.com>
+            Jason Merrill  <jason@redhat.com>
+
+	* common.opt: Add -gdwarf.
+	* opts.c (common_handle_option): Handle it.
+	* gcc.c (ASM_DEBUG_SPEC): Don't expect "-2" for DWARF.
+
+2013-04-10  Richard Biener  <rguenther@suse.de>
+
+	* passes.c (execute_todo): Do not call ggc_collect conditional here.
+	(execute_one_ipa_transform_pass): But unconditionally here.
+	(execute_one_pass): And here.
+	(init_optimization_passes): Remove reload pass.
+	* tree-pass.h (TODO_ggc_collect): Remove.
+	(pass_reload): Likewise.
+	* ira.c (do_reload): Merge into ...
+	(ira): ... this.
+	(rest_of_handle_reload): Remove.
+	(pass_reload): Likewise.
+	* config/i386/i386.c (ix86_option_override): Refer to ira instead
+	of reload for vzeroupper pass placement.
+	* <everywhere>: Remove TODO_ggc_collect from todo_flags_start
+	and todo_flags_finish of all passes.
+
+2013-04-10  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (struct _slp_oprnd_info): Remove
+	first_const_oprnd field, rename first_def_type to first_op_type.
+	* tree-vect-slp.c (vect_create_oprnd_info): Adjust.
+	(vect_get_and_check_slp_defs): Always use the type of the
+	operand.  Allow mixed vect_external_def, vect_constant_def types.
+	(vect_get_constant_vectors): Handle mixed vect_external_def,
+	vect_constant_def types.
+
+2013-04-10  Joern Rennecke <joern.rennecke@embecosm.com>
+
+	PR tree-optimization/55524
+	* tree-ssa-math-opts.c
+	(convert_mult_to_fma): Don't use an fms construct
+	when we don't have an fms operation, but fnma, and it looks
+	likely that we'll be able to use the latter.
+
+2013-04-10  Zhouyi Zhou <yizhouzhou@ict.ac.cn>
+
+	* cif-code.def (OVERWRITABLE): Correct the comment for overwritable
+	function.
+	* ipa-inline.c (can_inline_edge_p): Let dump mechanism report the
+	inline fail caused by overwritable functions.
+
+2013-04-10  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* combine.c (simplify_compare_const): Use GET_MODE_MASK to filter out
+	unnecessary bits in the constant power of two case.
+
+2013-04-10  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.c (vect_get_and_check_slp_defs): Remove
+	broken code swapping operands.
+	(vect_build_slp_tree): Do not compute load permutations here.
+	(vect_analyze_slp_instance): Compute load permutations here,
+	after building the SLP tree.
+
+2013-04-09  Christian Bruel  <christian.bruel@st.com>
+
+	* config/sh/sh.md (barrier_align): Use next/prev_active_insn instead
+	of next/prev_real_insn.
+
+2013-04-09  Jan Hubicka  <jh@suse.cz>
+
+	* ipa.c (cgraph_externally_visible_p, varpool_externally_visible_p):
+	Drop aliased parameter.
+	(function_and_variable_visibility): Do not handle alias pairs.
+	* cgraph.c (varpool_externally_visible_p): Update prototype.
+	* varpool.c (varpool_add_new_variable): Update.
+
+2013-04-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm.md (minmax_arithsi_non_canon): New pattern.
+
+2013-04-09  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* sched-vis.c (print_pattern): Print SEQUENCE of insns as insns.
+
+	* config/sparc/sparc.md: Use define_c_enum for "unspec" and "unspecv".
+
+2013-04-09  Marek Polacek  <polacek@redhat.com>
+
+	PR tree-optimization/48762
+	* params.def (PARAM_MAX_CSE_INSNS): Increase the minimum
+	value to 1.
+
+2013-04-09  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.c (vect_get_and_check_slp_defs): Remove code
+	dealing with cost.
+	(vect_build_slp_tree): Likewise.
+	(vect_analyze_slp_cost_1, vect_analyze_slp_cost): New functions
+	calculating the cost of a SLP instance.
+	(vect_analyze_slp_instance): Use it from here, after building
+	the SLP tree.
+
+2013-04-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/56883
+	* omp-low.c (expand_omp_for_generic, expand_omp_for_static_nochunk,
+	expand_omp_for_static_chunk): Use simple_p = true in
+	force_gimple_operand_gsi calls when assigning to addressable decls.
+
+2013-04-09  Jeff Law  <law@redhat.com>
+
+	* tree-vrp.c (simplify_cond_using_ranges): Simplify test of boolean
+	when the boolean was created by converting a wider object which
+	had a boolean range.
+
+2013-04-09  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (slp_void_p): Remove.
+	(slp_tree): Typedef before _slp_tree declaration.
+	(struct _slp_tree): Use a vector of slp_tree as children.
+	(vect_get_place_in_interleaving_chain): Remove.
+	* tree-vect-data-refs.c (vect_get_place_in_interleaving_chain):
+	Move ...
+	* tree-vect-slp.c (vect_get_place_in_interleaving_chain): ... here
+	and make static.
+	(vect_free_slp_tree, vect_print_slp_tree, vect_mark_slp_stmts,
+	vect_mark_slp_stmts_relevant, vect_slp_rearrange_stmts,
+	vect_detect_hybrid_slp_stmts, vect_slp_analyze_node_operations,
+	vect_schedule_slp_instance, vect_remove_slp_scalar_calls):
+	Use slp_node instead of slp_void_p and adjust.
+
+2013-04-09  Richard Biener  <rguenther@suse.de>
+
+	* tree-ssa-loop-manip.c (rewrite_into_loop_closed_ssa): Avoid
+	work that is not necessary.
+
+2013-04-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/56854
+	* tree-ssa-forwprop.c (forward_propagate_addr_expr_1): Don't
+	forward into clobber stmts if it would change MEM_REF lhs into
+	non-MEM_REF.
+
+2013-04-09  Maxim Kuvyrkov  <maxim@kugelworks.com>
+
+	* tree.c (type_hash_lookup, type_hash_add): Make static.
+	* tree.h (type_hash_lookup, type_hash_add): Remove global declarations.
+
+2013-04-09  Richard Biener  <rguenther@suse.de>
+
+	* tree.h (unsave_expr_now): Remove.
+	* tree-inline.c (mark_local_for_remap_r): Remove.
+	(unsave_expr_1): Likewise.
+	(unsave_r): Likewise.
+	(unsave_expr_now): Likewise.
+	* tree-ssa-copy.c (replace_exp_1): Use unshare_expr.
+	(propagate_tree_value): Likewise.
+
+2013-04-08  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* doc/rtl.texi (sequence): Rewrite documentation to match the
+	current use of SEQUENCE rtl objects.
+	* rtl.def (SEQUENCE): Likewise.
+
+	* doc/rtl.texi (NOTE_INSN_EH_REGION_BEG, NOTE_INSN_EH_REGION_END):
+	Update documentation.
+	(NOTE_INSN_LOOP_BEG, NOTE_INSN_LOOP_END, NOTE_INSN_LOOP_CONT,
+	NOTE_INSN_LOOP_VTOP): Remove documentation for non-existing notes.
+
+	* reg-notes.def (REG_EH_CONTEXT): Remove unused note.
+
+2013-04-08  Teresa Johnson  <tejohnson@google.com>
+
+	* basic-block.h (GCOV_COMPUTE_SCALE): Define.
+	* ipa-inline-analysis.c (param_change_prob): Use helper rounding divide
+        methods.
+	(estimate_edge_size_and_time): Add comment to suggest using rounding
+	methods.
+	(estimate_node_size_and_time): Ditto.
+	(remap_edge_change_prob): Use helper rounding divide methods.
+	* value-prof.c (gimple_divmod_fixed_value_transform): Ditto.
+	(gimple_mod_pow2_value_transform): Ditto.
+	(gimple_mod_subtract_transform): Ditto.
+	(gimple_ic_transform): Ditto.
+	(gimple_stringops_transform): Ditto.
+	* stmt.c (conditional_probability): Ditto.
+	(emit_case_dispatch_table): Ditto.
+	* lto-cgraph.c (merge_profile_summaries): Ditto.
+	* tree-optimize.c (execute_fixup_cfg): Ditto.
+	* cfgcleanup.c (try_forward_edges): Ditto.
+	* cfgloopmanip.c (scale_loop_profile): Ditto.
+	(loopify): Ditto.
+	(duplicate_loop_to_header_edge): Ditto.
+	(lv_adjust_loop_entry_edge): Ditto.
+	* tree-vect-loop.c (vect_transform_loop): Ditto.
+	* profile.c (compute_branch_probabilities): Ditto.
+	* cfgbuild.c (compute_outgoing_frequencies): Ditto.
+	* lto-streamer-in.c (input_cfg): Ditto.
+	* gimple-streamer-in.c (input_bb): Ditto.
+	* ipa-cp.c (update_profiling_info): Ditto.
+	(update_specialized_profile): Ditto.
+	* tree-vect-loop-manip.c (slpeel_tree_peel_loop_to_edge): Ditto.
+	* cfg.c (update_bb_profile_for_threading): Add comment to suggest using
+        rounding methods.
+	* sched-rgn.c (compute_dom_prob_ps): Ditto.
+	(compute_trg_info): Ditto.
+	* cfgrtl.c (force_nonfallthru_and_redirect): Ditto.
+	(purge_dead_edges): Ditto.
+	* loop-unswitch.c (unswitch_loop): Ditto.
+	* cgraphclones.c (cgraph_clone_edge): Ditto.
+	(cgraph_clone_node): Ditto.
+	* tree-inline.c (copy_bb): Ditto.
+	(copy_edges_for_bb): Ditto.
+	(initialize_cfun): Ditto.
+	(copy_cfg_body): Ditto.
+	(expand_call_inline): Ditto.
+
+2013-04-08  Kai Tietz  <ktietz@redhat.com>
+
+	* config/i386/cygwin.h (EXTRA_OS_CPP_BUILTINS): Replaced
+	TARGET_CYGWIN64 by TARGET_64BIT.
+
+2013-04-08  Joern Rennecke  <joern.rennecke@embecosm.com>
+
+	* config/epiphany/epiphany.md (GPR_1): New constant.
+	(define_expand "mov<mode>cc): FAIL if gen_compare_reg returned 0.
+	* config/epiphany/epiphany.c (gen_compare_reg):
+	For flag_finite_math_only, avoid swapping operands when r0 and/or r1
+	is already in place.
+	Use GPR_0 / GPR_1 instead of 0/1 for r0/r1 register numbers.
+	Don't require being called during rtl expansion; If y operlaps r0,
+	return 0.
+	(epiphany_compute_frame_size, epiphany_expand_prologue): Use GPR_1.
+	(epiphany_expand_epilogue): Likewise.
+
+	* config/epiphany/epiphany.c (epiphany_select_cc_mode):
+	Don't use CC_FPmode for ORDERED / UNORDERED.
+	* config/epiphany/epiphany.md (cmpsf_ord): Make pattern
+	unconditional.
+
+	* config/epiphany/constraints.md (CnL): New constraint.
+	* config/epiphany/epiphany.md (addsi3_i): Add r/r/CnL alternative.
+	* config/epiphany/predicates.md (add_operand): Allow 1024.
+
+	* config/epiphany/epiphany.md (logical_op): New code iterator.
+	(op_mnc): New code attribute.
+	(<op_mnc>_f, mov_f, cstoresi4): New patterns.
+	(mov_f+1, mov_f+2): New peephole2 patterns.
+
+	* config/epiphany/epiphany.md (mov_f+2): New peephole2 pattern.
+	(cstoresi4): Also allow re-use of zero result when doing a NE
+	comparison to a non-zero operand.
+	Use (clobber (scratch)) for first insn if the gpr output is not needed.
+
+	* config/epiphany/epiphany.md (<insn_opname>v2si3):
+	Use gen_addsi3_i / gen_subsi3_i.
+
+2013-04-08  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/34949
+	PR c++/50243
+	* tree-eh.c (optimize_clobbers): Only remove clobbers if bb doesn't
+	contain anything but clobbers, at most one __builtin_stack_restore,
+	optionally debug stmts and final resx, and if it has at least one
+	incoming EH edge.  Don't check for SSA_NAME on LHS of a clobber.
+	(sink_clobbers): Don't check for SSA_NAME on LHS of a clobber.
+	Instead of moving clobbers with MEM_REF LHS with SSA_NAME address
+	which isn't defaut definition, remove them.
+	(unsplit_eh, cleanup_empty_eh): Use single_{pred,succ}_{p,edge}
+	instead of EDGE_COUNT comparisons or EDGE_{PRED,SUCC}.
+	* tree-ssa-ccp.c (execute_fold_all_builtins): Remove clobbers
+	with MEM_REF LHS with SSA_NAME address.
+
+2013-04-08  Jeff Law  <law@redhat.com>
+
+	* gimple.c (canonicalize_cond_expr_cond): Rewrite x ^ y into x != y.
+
+2013-04-08  Richard Biener  <rguenther@suse.de>
+
+	* gimple-pretty-print.c (debug_gimple_stmt): Do not print
+	extra newline.
+	* tree-vect-loop.c (vect_determine_vectorization_factor): Dump
+	determined vector type.
+	(vect_analyze_data_refs): Likewise.
+	(vect_get_new_vect_var): Adjust.
+	(vect_create_destination_var): Preserve SSA name versions.
+	* tree-vect-stmts.c (get_vectype_for_scalar_type_and_size): Do
+	not dump anything here.
+
+2013-04-08  Joern Rennecke  <joern.rennecke@embecosm.com>
+
+	* config/epiphany/epiphany.h (struct GTY (()) machine_function):
+	Add member lr_slot_known.
+	* config/epiphany/epiphany.md (reload_insi_ra): Compute lr_slot_offs
+	if necessary.
+	* config/epiphany/epiphany.c (epiphany_compute_frame_size):
+	Remove code that sets lr_slot_offset according to what a previous
+	version of epiphany_emit_save_restore used to do.
+	(epiphany_emit_save_restore): When doing an lr save or restore,
+	set/verify lr_slot_known and lr_slot_offset.
+
+2013-04-08  Xinyu Qi  <xyqi@marvell.com>
+
+ 	PR target/54338
+ 	* config/arm/arm.h (REG_CLASS_CONTENTS): Include IWMMXT_GR_REGS
+	in ALL_REGS.
+
+2013-04-08  Richard Biener  <rguenther@suse.de>
+
+	* alias.c (find_base_term): Fix thinko in previous change.
+
+2013-04-08  Jakub Jelinek  <jakub@redhat.com>
+
+	* tree-loop-distribution.c (const_with_all_bytes_same): New function.
+	(generate_memset_builtin): Only handle integer_all_onesp as -1 val if
+	TYPE_PRECISION is equal to mode bitsize.  Use const_with_all_bytes_same
+	if possible to compute val.
+	(classify_partition): Verify CONSTRUCTOR doesn't have any elts.
+	For QImode integers don't require anything about precision.  Use
+	const_with_all_bytes_same to find out if the constant doesn't have
+	repeated bytes in it.
+
+2013-04-08  Andreas Krebbel  <Andreas.Krebbel@de.ibm.com>
+
+	* config/s390/s390.c (s390_expand_insv): Only accept insertions
+	within mode size.
+
+2013-04-08  Marek Polacek  <polacek@redhat.com>
+
+	PR rtl-optimization/48182
+	* params.def (PARAM_MIN_CROSSJUMP_INSNS): Increase the minimum
+	value to 1.
+
+2013-04-06  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	PR target/55487
+	* config/pa/pa.c (legitimize_pic_address): Before incrementing label
+	nuses, make sure we have a label.
+
 2013-04-05  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
 
 	PR target/56843

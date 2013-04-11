@@ -1661,6 +1661,15 @@ package body Sem_Ch3 is
                  (New_Subp, Is_Abstract_Subprogram (Prim));
                Set_Interface_Alias (New_Subp, Iface_Prim);
 
+               --  If the returned type is an interface then propagate it to
+               --  the returned type. Needed by the thunk to generate the code
+               --  which displaces "this" to reference the corresponding
+               --  secondary dispatch table in the returned object.
+
+               if Is_Interface (Etype (Iface_Prim)) then
+                  Set_Etype (New_Subp, Etype (Iface_Prim));
+               end if;
+
                --  Internal entities associated with interface types are
                --  only registered in the list of primitives of the tagged
                --  type. They are only used to fill the contents of the
@@ -8347,7 +8356,6 @@ package body Sem_Ch3 is
            and then Present (Full_View (T))
          then
             Analyze_And_Resolve (Expr, BDT, Suppress => Overflow_Check);
-
          else
             Analyze_And_Resolve (Expr, BDT);
          end if;
@@ -16322,31 +16330,6 @@ package body Sem_Ch3 is
 
       return Assoc_List;
    end Inherit_Components;
-
-   -----------------------
-   -- Is_Constant_Bound --
-   -----------------------
-
-   function Is_Constant_Bound (Exp : Node_Id) return Boolean is
-   begin
-      if Compile_Time_Known_Value (Exp) then
-         return True;
-
-      elsif Is_Entity_Name (Exp)
-        and then Present (Entity (Exp))
-      then
-         return Is_Constant_Object (Entity (Exp))
-           or else Ekind (Entity (Exp)) = E_Enumeration_Literal;
-
-      elsif Nkind (Exp) in N_Binary_Op then
-         return Is_Constant_Bound (Left_Opnd (Exp))
-           and then Is_Constant_Bound (Right_Opnd (Exp))
-           and then Scope (Entity (Exp)) = Standard_Standard;
-
-      else
-         return False;
-      end if;
-   end Is_Constant_Bound;
 
    -----------------------
    -- Is_Null_Extension --

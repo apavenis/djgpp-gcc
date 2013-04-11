@@ -26,6 +26,7 @@
 with Aspects;  use Aspects;
 with Atree;    use Atree;
 with Checks;   use Checks;
+with Debug;    use Debug;
 with Einfo;    use Einfo;
 with Elists;   use Elists;
 with Errout;   use Errout;
@@ -82,7 +83,7 @@ package body Sem_Ch13 is
    --  type whose inherited alignment is no longer appropriate for the new
    --  size value. In this case, we reset the Alignment to unknown.
 
-   procedure Build_Predicate_Function (Typ : Entity_Id; N : Node_Id);
+   procedure Build_Predicate_Functions (Typ : Entity_Id; N : Node_Id);
    --  If Typ has predicates (indicated by Has_Predicates being set for Typ,
    --  then either there are pragma Predicate entries on the rep chain for the
    --  type (note that Predicate aspects are converted to pragma Predicate), or
@@ -90,7 +91,9 @@ package body Sem_Ch13 is
    --  This procedure builds the spec and body for the Predicate function that
    --  tests these predicates. N is the freeze node for the type. The spec of
    --  the function is inserted before the freeze node, and the body of the
-   --  function is inserted after the freeze node.
+   --  function is inserted after the freeze node. If the predicate expression
+   --  has at least one Raise_Expression, then this procedure also builds the
+   --  M version of the predicate function for use in membership tests.
 
    procedure Build_Static_Predicate
      (Typ  : Entity_Id;
@@ -1472,6 +1475,17 @@ package body Sem_Ch13 is
 
                   Delay_Required := False;
 
+               when Aspect_Depends =>
+                  Aitem :=
+                    Make_Pragma (Loc,
+                      Pragma_Identifier            =>
+                        Make_Identifier (Sloc (Id), Name_Depends),
+                      Pragma_Argument_Associations => New_List (
+                        Make_Pragma_Argument_Association (Loc,
+                          Expression => Relocate_Node (Expr))));
+
+                  Delay_Required := False;
+
                --  Aspect Global must be delayed because it can mention names
                --  and benefit from the forward visibility rules applicable to
                --  aspects of subprograms.
@@ -1679,6 +1693,14 @@ package body Sem_Ch13 is
 
                   else
                      Insert_After (N, Aitem);
+
+                     --  Pre/Postconditions on stubs are analyzed at once,
+                     --  because the proper body is analyzed next, and the
+                     --  contract must be captured before the body.
+
+                     if Nkind (N) = N_Subprogram_Body_Stub then
+                        Analyze (Aitem);
+                     end if;
                   end if;
 
                   goto Continue;
@@ -2031,12 +2053,17 @@ package body Sem_Ch13 is
 
                Set_Is_Delayed_Aspect (Aspect);
 
-               --  In the case of Default_Value, link aspect to base type
-               --  as well, even though it appears on a first subtype. This
-               --  is mandated by the semantics of the aspect. Verify that
-               --  this a scalar type, to prevent cascaded errors.
+               --  In the case of Default_Value, link the aspect to base type
+               --  as well, even though it appears on a first subtype. This is
+               --  mandated by the semantics of the aspect. Do not establish
+               --  the link when processing the base type itself as this leads
+               --  to a rep item circularity. Verify that we are dealing with
+               --  a scalar type to prevent cascaded errors.
 
-               if A_Id = Aspect_Default_Value and then Is_Scalar_Type (E) then
+               if A_Id = Aspect_Default_Value
+                 and then Is_Scalar_Type (E)
+                 and then Base_Type (E) /= E
+               then
                   Set_Has_Delayed_Aspects (Base_Type (E));
                   Record_Rep_Item (Base_Type (E), Aspect);
                end if;
@@ -4251,6 +4278,14 @@ package body Sem_Ch13 is
          return;
       end if;
 
+      --  Ignore enumeration rep clauses by default in CodePeer mode,
+      --  unless -gnatd.I is specified, as a work around for potential false
+      --  positive messages.
+
+      if CodePeer_Mode and not Debug_Flag_Dot_II then
+         return;
+      end if;
+
       --  First some basic error checks
 
       Find_Type (Ident);
@@ -4689,12 +4724,12 @@ package body Sem_Ch13 is
       --  If we have a type with predicates, build predicate function
 
       if Is_Type (E) and then Has_Predicates (E) then
-         Build_Predicate_Function (E, N);
+         Build_Predicate_Functions (E, N);
       end if;
 
       --  If type has delayed aspects, this is where we do the preanalysis at
       --  the freeze point, as part of the consistent visibility check. Note
-      --  that this must be done after calling Build_Predicate_Function or
+      --  that this must be done after calling Build_Predicate_Functions or
       --  Build_Invariant_Procedure since these subprograms fix occurrences of
       --  the subtype name in the saved expression so that they will not cause
       --  trouble in the preanalysis.
@@ -5225,9 +5260,9 @@ package body Sem_Ch13 is
       SId :=
         Make_Defining_Identifier (Loc,
           Chars => New_External_Name (Chars (Typ), "Invariant"));
-      Set_Has_Invariants (SId);
       Set_Has_Invariants (Typ);
       Set_Ekind (SId, E_Procedure);
+      Set_Is_Invariant_Procedure (SId);
       Set_Invariant_Procedure (Typ, SId);
 
       Spec :=
@@ -5597,11 +5632,11 @@ package body Sem_Ch13 is
       end if;
    end Build_Invariant_Procedure;
 
-   ------------------------------
-   -- Build_Predicate_Function --
-   ------------------------------
+   -------------------------------
+   -- Build_Predicate_Functions --
+   -------------------------------
 
-   --  The procedure that is constructed here has the form:
+   --  The procedures that are constructed here has the form:
 
    --    function typPredicate (Ixxx : typ) return Boolean is
    --    begin
@@ -5618,16 +5653,37 @@ package body Sem_Ch13 is
    --  inherited. Note that we do NOT generate Check pragmas, that's because we
    --  use this function even if checks are off, e.g. for membership tests.
 
-   procedure Build_Predicate_Function (Typ : Entity_Id; N : Node_Id) is
-      Loc   : constant Source_Ptr := Sloc (Typ);
-      Spec  : Node_Id;
-      SId   : Entity_Id;
-      FDecl : Node_Id;
-      FBody : Node_Id;
+   --  If the expression has at least one Raise_Expression, then we also build
+   --  the typPredicateM version of the function, in which any occurence of a
+   --  Raise_Expressioon is converted to "return False".
+
+   procedure Build_Predicate_Functions (Typ : Entity_Id; N : Node_Id) is
+      Loc : constant Source_Ptr := Sloc (Typ);
 
       Expr : Node_Id;
-      --  This is the expression for the return statement in the function. It
+      --  This is the expression for the result of the function. It is
       --  is build by connecting the component predicates with AND THEN.
+
+      Expr_M : Node_Id;
+      --  This is the corresponding return expression for the Predicate_M
+      --  function. It differs in that raise expressions are marked for
+      --  special expansion (see Process_REs).
+
+      Object_Name : constant Name_Id := New_Internal_Name ('I');
+      --  Name for argument of Predicate procedure. Note that we use the same
+      --  name for both predicate procedure. That way the reference within the
+      --  predicate expression is the same in both functions.
+
+      Object_Entity : constant Entity_Id :=
+                        Make_Defining_Identifier (Loc, Chars => Object_Name);
+      --  Entity for argument of Predicate procedure
+
+      Object_Entity_M : constant Entity_Id :=
+                         Make_Defining_Identifier (Loc, Chars => Object_Name);
+      --  Entity for argument of Predicate_M procedure
+
+      Raise_Expression_Present : Boolean := False;
+      --  Set True if Expr has at least one Raise_Expression
 
       procedure Add_Call (T : Entity_Id);
       --  Includes a call to the predicate function for type T in Expr if T
@@ -5639,12 +5695,19 @@ package body Sem_Ch13 is
       --  Inheritance of predicates for the parent type is done by calling the
       --  Predicate_Function of the parent type, using Add_Call above.
 
-      Object_Name : constant Name_Id := New_Internal_Name ('I');
-      --  Name for argument of Predicate procedure
+      function Test_RE (N : Node_Id) return Traverse_Result;
+      --  Used in Test_REs, tests one node for being a raise expression, and if
+      --  so sets Raise_Expression_Present True.
 
-      Object_Entity : constant Entity_Id :=
-                        Make_Defining_Identifier (Loc, Object_Name);
-      --  The entity for the spec entity for the argument
+      procedure Test_REs is new Traverse_Proc (Test_RE);
+      --  Tests to see if Expr contains any raise expressions
+
+      function Process_RE (N : Node_Id) return Traverse_Result;
+      --  Used in Process REs, tests if node N is a raise expression, and if
+      --  so, marks it to be converted to return False.
+
+      procedure Process_REs is new Traverse_Proc (Process_RE);
+      --  Marks any raise expressions in Expr_M to return False
 
       Dynamic_Predicate_Present : Boolean := False;
       --  Set True if a dynamic predicate is present, results in the entire
@@ -5730,8 +5793,8 @@ package body Sem_Ch13 is
             Rewrite (N, Make_Identifier (Sloc (N), Object_Name));
             --  Use the Sloc of the usage name, not the defining name
 
-            Set_Entity (N, Object_Entity);
             Set_Etype (N, Typ);
+            Set_Entity (N, Object_Entity);
 
             --  We want to treat the node as if it comes from source, so that
             --  ASIS will not ignore it
@@ -5830,13 +5893,37 @@ package body Sem_Ch13 is
          end loop;
       end Add_Predicates;
 
-   --  Start of processing for Build_Predicate_Function
+      ----------------
+      -- Process_RE --
+      ----------------
+
+      function Process_RE (N : Node_Id) return Traverse_Result is
+      begin
+         if Nkind (N) = N_Raise_Expression then
+            Set_Convert_To_Return_False (N);
+            return Skip;
+         else
+            return OK;
+         end if;
+      end Process_RE;
+
+      -------------
+      -- Test_RE --
+      -------------
+
+      function Test_RE (N : Node_Id) return Traverse_Result is
+      begin
+         if Nkind (N) = N_Raise_Expression then
+            Raise_Expression_Present := True;
+            return Abandon;
+         else
+            return OK;
+         end if;
+      end Test_RE;
+
+   --  Start of processing for Build_Predicate_Functions
 
    begin
-      --  Initialize for construction of statement list
-
-      Expr := Empty;
-
       --  Return if already built or if type does not have predicates
 
       if not Has_Predicates (Typ)
@@ -5844,6 +5931,10 @@ package body Sem_Ch13 is
       then
          return;
       end if;
+
+      --  Prepare to construct predicate expression
+
+      Expr := Empty;
 
       --  Add Predicates for the current type
 
@@ -5859,69 +5950,198 @@ package body Sem_Ch13 is
          end if;
       end;
 
-      --  If we have predicates, build the function
+      --  Case where predicates are present
 
       if Present (Expr) then
 
-         --  Build function declaration
+         --  Test for raise expression present
 
-         SId :=
-           Make_Defining_Identifier (Loc,
-             Chars => New_External_Name (Chars (Typ), "Predicate"));
-         Set_Has_Predicates (SId);
-         Set_Ekind (SId, E_Function);
-         Set_Predicate_Function (Typ, SId);
+         Test_REs (Expr);
 
-         --  The predicate function is shared between views of a type.
+         --  If raise expression is present, capture a copy of Expr for use
+         --  in building the predicateM function version later on. For this
+         --  copy we replace references to Object_Entity by Object_Entity_M.
 
-         if Is_Private_Type (Typ) and then Present (Full_View (Typ)) then
-            Set_Predicate_Function (Full_View (Typ), SId);
+         if Raise_Expression_Present then
+            declare
+               Map : constant Elist_Id := New_Elmt_List;
+            begin
+               Append_Elmt (Object_Entity, Map);
+               Append_Elmt (Object_Entity_M, Map);
+               Expr_M := New_Copy_Tree (Expr, Map => Map);
+            end;
          end if;
 
-         Spec :=
-           Make_Function_Specification (Loc,
-             Defining_Unit_Name       => SId,
-             Parameter_Specifications => New_List (
-               Make_Parameter_Specification (Loc,
-                 Defining_Identifier => Object_Entity,
-                 Parameter_Type      => New_Occurrence_Of (Typ, Loc))),
-             Result_Definition        =>
-               New_Occurrence_Of (Standard_Boolean, Loc));
+         --  Build the main predicate function
 
-         FDecl := Make_Subprogram_Declaration (Loc, Specification => Spec);
+         declare
+            SId : constant Entity_Id :=
+                    Make_Defining_Identifier (Loc,
+                      Chars => New_External_Name (Chars (Typ), "Predicate"));
+            --  The entity for the the function spec
 
-         --  Build function body
+            SIdB : constant Entity_Id :=
+              Make_Defining_Identifier (Loc,
+                Chars => New_External_Name (Chars (Typ), "Predicate"));
+            --  The entity for the function body
 
-         SId :=
-           Make_Defining_Identifier (Loc,
-             Chars => New_External_Name (Chars (Typ), "Predicate"));
+            Spec  : Node_Id;
+            FDecl : Node_Id;
+            FBody : Node_Id;
 
-         Spec :=
-           Make_Function_Specification (Loc,
-             Defining_Unit_Name       => SId,
-             Parameter_Specifications => New_List (
-               Make_Parameter_Specification (Loc,
-                 Defining_Identifier =>
-                   Make_Defining_Identifier (Loc, Object_Name),
-                 Parameter_Type =>
-                   New_Occurrence_Of (Typ, Loc))),
-             Result_Definition        =>
-               New_Occurrence_Of (Standard_Boolean, Loc));
+         begin
+            --  Build function declaration
 
-         FBody :=
-           Make_Subprogram_Body (Loc,
-             Specification              => Spec,
-             Declarations               => Empty_List,
-             Handled_Statement_Sequence =>
-               Make_Handled_Sequence_Of_Statements (Loc,
-                 Statements => New_List (
-                   Make_Simple_Return_Statement (Loc,
-                     Expression => Expr))));
+            Set_Ekind (SId, E_Function);
+            Set_Is_Predicate_Function (SId);
+            Set_Predicate_Function (Typ, SId);
 
-         --  Insert declaration before freeze node and body after
+            --  The predicate function is shared between views of a type
 
-         Insert_Before_And_Analyze (N, FDecl);
-         Insert_After_And_Analyze  (N, FBody);
+            if Is_Private_Type (Typ) and then Present (Full_View (Typ)) then
+               Set_Predicate_Function (Full_View (Typ), SId);
+            end if;
+
+            Spec :=
+              Make_Function_Specification (Loc,
+                Defining_Unit_Name       => SId,
+                Parameter_Specifications => New_List (
+                  Make_Parameter_Specification (Loc,
+                    Defining_Identifier => Object_Entity,
+                    Parameter_Type      => New_Occurrence_Of (Typ, Loc))),
+                Result_Definition        =>
+                  New_Occurrence_Of (Standard_Boolean, Loc));
+
+            FDecl :=
+              Make_Subprogram_Declaration (Loc,
+                Specification => Spec);
+
+            --  Build function body
+
+            Spec :=
+              Make_Function_Specification (Loc,
+                Defining_Unit_Name       => SIdB,
+                Parameter_Specifications => New_List (
+                  Make_Parameter_Specification (Loc,
+                    Defining_Identifier =>
+                      Make_Defining_Identifier (Loc, Object_Name),
+                    Parameter_Type =>
+                      New_Occurrence_Of (Typ, Loc))),
+                Result_Definition        =>
+                  New_Occurrence_Of (Standard_Boolean, Loc));
+
+            FBody :=
+              Make_Subprogram_Body (Loc,
+                Specification              => Spec,
+                Declarations               => Empty_List,
+                Handled_Statement_Sequence =>
+                  Make_Handled_Sequence_Of_Statements (Loc,
+                    Statements => New_List (
+                      Make_Simple_Return_Statement (Loc,
+                        Expression => Expr))));
+
+            --  Insert declaration before freeze node and body after
+
+            Insert_Before_And_Analyze (N, FDecl);
+            Insert_After_And_Analyze  (N, FBody);
+         end;
+
+         --  Test for raise expressions present and if so build M version
+
+         if Raise_Expression_Present then
+            declare
+               SId : constant Entity_Id :=
+                 Make_Defining_Identifier (Loc,
+                   Chars => New_External_Name (Chars (Typ), "PredicateM"));
+               --  The entity for the the function spec
+
+               SIdB : constant Entity_Id :=
+                 Make_Defining_Identifier (Loc,
+                   Chars => New_External_Name (Chars (Typ), "PredicateM"));
+               --  The entity for the function body
+
+               Spec  : Node_Id;
+               FDecl : Node_Id;
+               FBody : Node_Id;
+               BTemp : Entity_Id;
+
+            begin
+               --  Mark any raise expressions for special expansion
+
+               Process_REs (Expr_M);
+
+               --  Build function declaration
+
+               Set_Ekind (SId, E_Function);
+               Set_Is_Predicate_Function_M (SId);
+               Set_Predicate_Function_M (Typ, SId);
+
+               --  The predicate function is shared between views of a type
+
+               if Is_Private_Type (Typ) and then Present (Full_View (Typ)) then
+                  Set_Predicate_Function_M (Full_View (Typ), SId);
+               end if;
+
+               Spec :=
+                 Make_Function_Specification (Loc,
+                   Defining_Unit_Name       => SId,
+                   Parameter_Specifications => New_List (
+                     Make_Parameter_Specification (Loc,
+                       Defining_Identifier => Object_Entity_M,
+                       Parameter_Type      => New_Occurrence_Of (Typ, Loc))),
+                   Result_Definition        =>
+                     New_Occurrence_Of (Standard_Boolean, Loc));
+
+               FDecl :=
+                 Make_Subprogram_Declaration (Loc,
+                   Specification => Spec);
+
+               --  Build function body
+
+               Spec :=
+                 Make_Function_Specification (Loc,
+                   Defining_Unit_Name       => SIdB,
+                   Parameter_Specifications => New_List (
+                     Make_Parameter_Specification (Loc,
+                       Defining_Identifier =>
+                         Make_Defining_Identifier (Loc, Object_Name),
+                       Parameter_Type =>
+                         New_Occurrence_Of (Typ, Loc))),
+                   Result_Definition        =>
+                     New_Occurrence_Of (Standard_Boolean, Loc));
+
+               --  Build the body, we declare the boolean expression before
+               --  doing the return, because we are not really confident of
+               --  what happens if a return appears within a return!
+
+               BTemp :=
+                 Make_Defining_Identifier (Loc,
+                   Chars => New_Internal_Name ('B'));
+
+               FBody :=
+                 Make_Subprogram_Body (Loc,
+                   Specification              => Spec,
+
+                   Declarations               => New_List (
+                     Make_Object_Declaration (Loc,
+                       Defining_Identifier => BTemp,
+                       Constant_Present    => True,
+                         Object_Definition =>
+                           New_Reference_To (Standard_Boolean, Loc),
+                         Expression        => Expr_M)),
+
+                   Handled_Statement_Sequence =>
+                     Make_Handled_Sequence_Of_Statements (Loc,
+                       Statements => New_List (
+                         Make_Simple_Return_Statement (Loc,
+                           Expression => New_Reference_To (BTemp, Loc)))));
+
+               --  Insert declaration before freeze node and body after
+
+               Insert_Before_And_Analyze (N, FDecl);
+               Insert_After_And_Analyze  (N, FBody);
+            end;
+         end if;
 
          --  Deal with static predicate case
 
@@ -5944,7 +6164,7 @@ package body Sem_Ch13 is
             end if;
          end if;
       end if;
-   end Build_Predicate_Function;
+   end Build_Predicate_Functions;
 
    ----------------------------
    -- Build_Static_Predicate --
@@ -5973,15 +6193,15 @@ package body Sem_Ch13 is
       type REnt is record
          Lo, Hi : Uint;
       end record;
-      --  One entry in a Rlist value, a single REnt (range entry) value
-      --  denotes one range from Lo to Hi. To represent a single value
-      --  range Lo = Hi = value.
+      --  One entry in a Rlist value, a single REnt (range entry) value denotes
+      --  one range from Lo to Hi. To represent a single value range Lo = Hi =
+      --  value.
 
       type RList is array (Nat range <>) of REnt;
-      --  A list of ranges. The ranges are sorted in increasing order,
-      --  and are disjoint (there is a gap of at least one value between
-      --  each range in the table). A value is in the set of ranges in
-      --  Rlist if it lies within one of these ranges
+      --  A list of ranges. The ranges are sorted in increasing order, and are
+      --  disjoint (there is a gap of at least one value between each range in
+      --  the table). A value is in the set of ranges in Rlist if it lies
+      --  within one of these ranges.
 
       False_Range : constant RList :=
                       RList'(1 .. 0 => REnt'(No_Uint, No_Uint));
@@ -5995,41 +6215,41 @@ package body Sem_Ch13 is
       True_Range : constant RList := RList'(1 => REnt'(BLo, BHi));
       --  Range representing True, value must be in the base range
 
-      function "and" (Left, Right : RList) return RList;
-      --  And's together two range lists, returning a range list. This is
-      --  a set intersection operation.
+      function "and" (Left : RList; Right : RList) return RList;
+      --  And's together two range lists, returning a range list. This is a set
+      --  intersection operation.
 
-      function "or" (Left, Right : RList) return RList;
-      --  Or's together two range lists, returning a range list. This is a
-      --  set union operation.
+      function "or" (Left : RList; Right : RList) return RList;
+      --  Or's together two range lists, returning a range list. This is a set
+      --  union operation.
 
       function "not" (Right : RList) return RList;
       --  Returns complement of a given range list, i.e. a range list
-      --  representing all the values in TLo .. THi that are not in the
-      --  input operand Right.
+      --  representing all the values in TLo .. THi that are not in the input
+      --  operand Right.
 
       function Build_Val (V : Uint) return Node_Id;
       --  Return an analyzed N_Identifier node referencing this value, suitable
       --  for use as an entry in the Static_Predicate list. This node is typed
       --  with the base type.
 
-      function Build_Range (Lo, Hi : Uint) return Node_Id;
-      --  Return an analyzed N_Range node referencing this range, suitable
-      --  for use as an entry in the Static_Predicate list. This node is typed
-      --  with the base type.
+      function Build_Range (Lo : Uint; Hi : Uint) return Node_Id;
+      --  Return an analyzed N_Range node referencing this range, suitable for
+      --  use as an entry in the Static_Predicate list. This node is typed with
+      --  the base type.
 
       function Get_RList (Exp : Node_Id) return RList;
-      --  This is a recursive routine that converts the given expression into
-      --  a list of ranges, suitable for use in building the static predicate.
+      --  This is a recursive routine that converts the given expression into a
+      --  list of ranges, suitable for use in building the static predicate.
 
       function Is_False (R : RList) return Boolean;
       pragma Inline (Is_False);
-      --  Returns True if the given range list is empty, and thus represents
-      --  a False list of ranges that can never be satisfied.
+      --  Returns True if the given range list is empty, and thus represents a
+      --  False list of ranges that can never be satisfied.
 
       function Is_True (R : RList) return Boolean;
-      --  Returns True if R trivially represents the True predicate by having
-      --  a single range from BLo to BHi.
+      --  Returns True if R trivially represents the True predicate by having a
+      --  single range from BLo to BHi.
 
       function Is_Type_Ref (N : Node_Id) return Boolean;
       pragma Inline (Is_Type_Ref);
@@ -6062,7 +6282,7 @@ package body Sem_Ch13 is
       -- "and" --
       -----------
 
-      function "and" (Left, Right : RList) return RList is
+      function "and" (Left : RList; Right : RList) return RList is
          FEnt : REnt;
          --  First range of result
 
@@ -6087,8 +6307,8 @@ package body Sem_Ch13 is
             return False_Range;
          end if;
 
-         --  Loop to remove entries at start that are disjoint, and thus
-         --  just get discarded from the result entirely.
+         --  Loop to remove entries at start that are disjoint, and thus just
+         --  get discarded from the result entirely.
 
          loop
             --  If no operands left in either operand, result is false
@@ -6113,15 +6333,15 @@ package body Sem_Ch13 is
             end if;
          end loop;
 
-         --  Now we have two non-null operands, and first entries overlap.
-         --  The first entry in the result will be the overlapping part of
-         --  these two entries.
+         --  Now we have two non-null operands, and first entries overlap. The
+         --  first entry in the result will be the overlapping part of these
+         --  two entries.
 
          FEnt := REnt'(Lo => UI_Max (Left (SLeft).Lo, Right (SRight).Lo),
                        Hi => UI_Min (Left (SLeft).Hi, Right (SRight).Hi));
 
-         --  Now we can remove the entry that ended at a lower value, since
-         --  its contribution is entirely contained in Fent.
+         --  Now we can remove the entry that ended at a lower value, since its
+         --  contribution is entirely contained in Fent.
 
          if Left (SLeft).Hi <= Right (SRight).Hi then
             SLeft := SLeft + 1;
@@ -6129,10 +6349,10 @@ package body Sem_Ch13 is
             SRight := SRight + 1;
          end if;
 
-         --  Compute result by concatenating this first entry with the "and"
-         --  of the remaining parts of the left and right operands. Note that
-         --  if either of these is empty, "and" will yield empty, so that we
-         --  will end up with just Fent, which is what we want in that case.
+         --  Compute result by concatenating this first entry with the "and" of
+         --  the remaining parts of the left and right operands. Note that if
+         --  either of these is empty, "and" will yield empty, so that we will
+         --  end up with just Fent, which is what we want in that case.
 
          return
            FEnt & (Left (SLeft .. Left'Last) and Right (SRight .. Right'Last));
@@ -6196,7 +6416,7 @@ package body Sem_Ch13 is
       -- "or" --
       ----------
 
-      function "or" (Left, Right : RList) return RList is
+      function "or" (Left : RList; Right : RList) return RList is
          FEnt : REnt;
          --  First range of result
 
@@ -6221,8 +6441,8 @@ package body Sem_Ch13 is
             return Left;
          end if;
 
-         --  Initialize result first entry from left or right operand
-         --  depending on which starts with the lower range.
+         --  Initialize result first entry from left or right operand depending
+         --  on which starts with the lower range.
 
          if Left (SLeft).Lo < Right (SRight).Lo then
             FEnt := Left (SLeft);
@@ -6232,12 +6452,12 @@ package body Sem_Ch13 is
             SRight := SRight + 1;
          end if;
 
-         --  This loop eats ranges from left and right operands that
-         --  are contiguous with the first range we are gathering.
+         --  This loop eats ranges from left and right operands that are
+         --  contiguous with the first range we are gathering.
 
          loop
-            --  Eat first entry in left operand if contiguous or
-            --  overlapped by gathered first operand of result.
+            --  Eat first entry in left operand if contiguous or overlapped by
+            --  gathered first operand of result.
 
             if SLeft <= Left'Last
               and then Left (SLeft).Lo <= FEnt.Hi + 1
@@ -6245,8 +6465,8 @@ package body Sem_Ch13 is
                FEnt.Hi := UI_Max (FEnt.Hi, Left (SLeft).Hi);
                SLeft := SLeft + 1;
 
-               --  Eat first entry in right operand if contiguous or
-               --  overlapped by gathered right operand of result.
+            --  Eat first entry in right operand if contiguous or overlapped by
+            --  gathered right operand of result.
 
             elsif SRight <= Right'Last
               and then Right (SRight).Lo <= FEnt.Hi + 1
@@ -6254,7 +6474,7 @@ package body Sem_Ch13 is
                FEnt.Hi := UI_Max (FEnt.Hi, Right (SRight).Hi);
                SRight := SRight + 1;
 
-               --  All done if no more entries to eat!
+            --  All done if no more entries to eat
 
             else
                exit;
@@ -6273,20 +6493,18 @@ package body Sem_Ch13 is
       -- Build_Range --
       -----------------
 
-      function Build_Range (Lo, Hi : Uint) return Node_Id is
+      function Build_Range (Lo : Uint; Hi : Uint) return Node_Id is
          Result : Node_Id;
+
       begin
-         if Lo = Hi then
-            return Build_Val (Hi);
-         else
-            Result :=
-              Make_Range (Loc,
-                Low_Bound  => Build_Val (Lo),
-                High_Bound => Build_Val (Hi));
-            Set_Etype (Result, Btyp);
-            Set_Analyzed (Result);
-            return Result;
-         end if;
+         Result :=
+           Make_Range (Loc,
+             Low_Bound  => Build_Val (Lo),
+             High_Bound => Build_Val (Hi));
+         Set_Etype (Result, Btyp);
+         Set_Analyzed (Result);
+
+         return Result;
       end Build_Range;
 
       ---------------
@@ -6449,7 +6667,10 @@ package body Sem_Ch13 is
                   declare
                      Ent : constant Entity_Id := Entity (Name (Exp));
                   begin
-                     if Has_Predicates (Ent) then
+                     if Is_Predicate_Function (Ent)
+                          or else
+                        Is_Predicate_Function_M (Ent)
+                     then
                         return Stat_Pred (Etype (First_Formal (Ent)));
                      end if;
                   end;
@@ -6693,11 +6914,7 @@ package body Sem_Ch13 is
 
                   --  Convert range into required form
 
-                  if Lo = Hi then
-                     Append_To (Plist, Build_Val (Lo));
-                  else
-                     Append_To (Plist, Build_Range (Lo, Hi));
-                  end if;
+                  Append_To (Plist, Build_Range (Lo, Hi));
                end if;
             end;
          end loop;
@@ -7066,6 +7283,7 @@ package body Sem_Ch13 is
          when Aspect_Abstract_State       |
               Aspect_Contract_Case        |
               Aspect_Contract_Cases       |
+              Aspect_Depends              |
               Aspect_Dimension            |
               Aspect_Dimension_System     |
               Aspect_Implicit_Dereference |
@@ -9002,7 +9220,13 @@ package body Sem_Ch13 is
 
       procedure Too_Late is
       begin
-         Error_Msg_N ("|representation item appears too late!", N);
+         --  Other compilers seem more relaxed about rep items appearing too
+         --  late. Since analysis tools typically don't care about rep items
+         --  anyway, no reason to be too strict about this.
+
+         if not Relaxed_RM_Semantics then
+            Error_Msg_N ("|representation item appears too late!", N);
+         end if;
       end Too_Late;
 
    --  Start of processing for Rep_Item_Too_Late
@@ -9017,7 +9241,7 @@ package body Sem_Ch13 is
 
         and then not From_With_Type (T)
 
-        --  Exclude generated entitiesa (not coming from source). The common
+        --  Exclude generated entities (not coming from source). The common
         --  case is when we generate a renaming which prematurely freezes the
         --  renamed internal entity, but we still want to be able to set copies
         --  of attribute values such as Size/Alignment.
@@ -9223,12 +9447,16 @@ package body Sem_Ch13 is
          return False;
       end if;
 
-      --  Representations are different if component alignments differ
+      --  Representations are different if component alignments or scalar
+      --  storage orders differ.
 
       if (Is_Record_Type (T1) or else Is_Array_Type (T1))
-        and then
+            and then
          (Is_Record_Type (T2) or else Is_Array_Type (T2))
-        and then Component_Alignment (T1) /= Component_Alignment (T2)
+        and then
+         (Component_Alignment (T1) /= Component_Alignment (T2)
+            or else
+              Reverse_Storage_Order (T1) /= Reverse_Storage_Order (T2))
       then
          return False;
       end if;
@@ -9305,7 +9533,7 @@ package body Sem_Ch13 is
 
                function Same_Rep return Boolean;
                --  CD1 and CD2 are either components or discriminants. This
-               --  function tests whether the two have the same representation
+               --  function tests whether they have the same representation.
 
                --------------
                -- Same_Rep --
@@ -9315,8 +9543,11 @@ package body Sem_Ch13 is
                begin
                   if No (Component_Clause (CD1)) then
                      return No (Component_Clause (CD2));
-
                   else
+                     --  Note: at this point, component clauses have been
+                     --  normalized to the default bit order, so that the
+                     --  comparison of Component_Bit_Offsets is meaningful.
+
                      return
                         Present (Component_Clause (CD2))
                           and then
