@@ -163,7 +163,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       too_many_files_open_in_system = 		ENFILE,
       too_many_files_open = 			EMFILE,
       too_many_links = 				EMLINK,
+#ifdef ELOOP
       too_many_symbolic_link_levels = 		ELOOP,
+#endif
 
 #ifdef _GLIBCXX_HAVE_EOVERFLOW
       value_too_large = 			EOVERFLOW,
