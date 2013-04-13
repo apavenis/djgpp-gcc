@@ -72,7 +72,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       identifier_removed = 			EIDRM,
 #endif
 
+#ifdef EILSEQ
       illegal_byte_sequence = 			EILSEQ,
+#endif
+
       inappropriate_io_control_operation = 	ENOTTY,
       interrupted = 				EINTR,
       invalid_argument = 			EINVAL,
