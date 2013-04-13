@@ -1,4 +1,57 @@
+2013-04-12  Jakub Jelinek  <jakub@redhat.com>
+
+	* error.c (cp_print_error_function,
+	print_instantiation_partial_context_line,
+	maybe_print_constexpr_context): Colorize locus strings.
+
 2013-04-11  Jason Merrill  <jason@redhat.com>
+
+	PR c++/52748
+	* parser.c (complain_flags): New.
+	(cp_parser_postfix_expression): Use it.
+	(cp_parser_unary_expression): Likewise.
+	(cp_parser_binary_expression): Likewise.
+	(cp_parser_assignment_expression): Likewise.
+	(cp_parser_expression): Likewise.
+	(cp_parser_postfix_open_square_expression): Take decltype_p.
+	(cp_parser_builtin_offsetof): Adjust.
+	(cp_convert_range_for): Pass complain to finish_unary_op_expr.
+	* decl2.c (grok_array_decl): Add decltype_p parm.
+	* cp-tree.h: Adjust prototype.
+	* semantics.c (finish_unary_op_expr): Add complain parm.
+
+2013-04-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/56895
+	* call.c (null_ptr_cst_p): Call fold_non_dependent_expr_sfinae before
+	calling maybe_constant_value for C++98.
+
+2013-04-11  Jason Merrill  <jason@redhat.com>
+
+	PR c++/56901
+	* semantics.c (lambda_capture_field_type, lambda_proxy_type):
+	Strip references before checking WILDCARD_TYPE_P.
+
+2013-04-11  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* call.c (build_conditional_expr_1, build_over_call): Protect
+	error calls with complain & tf_error.
+	* typeck.c (finish_class_member_access_expr, cp_build_binary_op,
+	build_x_unary_op, cp_build_unary_op, cp_build_compound_expr,
+	build_ptrmemfunc): Likewise.
+	(lookup_destructor): Take tsubst_flags_t parameter, adjust.
+
+	* cvt.c (warn_ref_binding): Rename to diagnose_ref_binding.
+	(convert_to_reference): Adjust.
+
+2013-04-11  Jason Merrill  <jason@redhat.com>
+
+	* pt.c (tsubst_copy) [VAR_DECL]: Don't call tsubst for
+	local variables, look them up instead.
+	(tsubst_decl) [VAR_DECL]: Remove handling for anonymous union
+	proxies and substitution in unevaluated context.
+	(tsubst_expr) [OMP_FOR]: Instantiate OMP_FOR_PRE_BODY
+	before the iterators.
 
 	PR c++/23055
 	* pt.c (uses_deducible_template_parms): New.
