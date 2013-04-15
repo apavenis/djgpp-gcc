@@ -425,7 +425,7 @@ sub c_inc_rename_proc
                 $d1 = $d1 eq "" ? $1 : "$d1/$1";
                 $d2 = $2;
             }
-            else
+             else
             {
                 $d1 = $d1 eq "" ? $d2 : "$d1/$d2";
                 $d2 = "";
@@ -670,7 +670,7 @@ sub mk_manifest
     my @gforfiles = (
         'bin/gfortran\.exe', 'info/gfortran.info',
         '/libgf', '/f951\.exe', 'manifest/gfor',
-	'/libcaf_single.a',
+	'/libcaf_single.(?:a|la)',
         '/cat1/gfortran'
     );
 
@@ -698,7 +698,7 @@ sub mk_manifest
         '/include/cross-stdarg.h$',
         '/include/stdint(?:|-gcc).h$',
         '/install-tools/', '/libgcc\.a', '/libgcov\.a', '/libssp*',
-        '/libquadmath.a',
+        '/libquadmath.(?:a|la)',
         '/cc1\.exe',
         '/collect2\.exe',
         '/lto-wrapper.exe',
