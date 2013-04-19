@@ -1,3 +1,409 @@
+2013-04-19  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56982
+	* builtins.def (BUILT_IN_LONGJMP): longjmp is not a leaf
+	function.
+	* gimplify.c (gimplify_call_expr): Notice special calls.
+	(gimplify_modify_expr): Likewise.
+	* tree-cfg.c (make_abnormal_goto_edges): Handle setjmp-like
+	abnormal control flow receivers.
+	(call_can_make_abnormal_goto): Handle cfun->calls_setjmp
+	in the same way as cfun->has_nonlocal_labels.
+	(gimple_purge_dead_abnormal_call_edges): Likewise.
+	(stmt_starts_bb_p): Make setjmp-like abnormal control flow
+	receivers start a basic-block.
+
+2013-04-19  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (struct _slp_instance): Move load_permutation
+	member ...
+	(struct _slp_tree): ... here.  Make it a vector of unsigned ints.
+	(SLP_INSTANCE_LOAD_PERMUTATION): Remove.
+	(SLP_TREE_LOAD_PERMUTATION): Add.
+	(vect_transform_slp_perm_load): Adjust prototype.
+	* tree-vect-slp.c (vect_free_slp_tree): Adjust.
+	(vect_free_slp_instance): Likewise.
+	(vect_create_new_slp_node): Likewise.
+	(vect_supported_slp_permutation_p): Remove.
+	(vect_slp_rearrange_stmts): Adjust.
+	(vect_supported_load_permutation_p): Likewise.  Inline
+	vect_supported_slp_permutation_p here.
+	(vect_analyze_slp_instance): Compute load permutations per
+	slp node instead of per instance.
+	(vect_get_slp_defs): Adjust.
+	(vect_transform_slp_perm_load): Likewise.
+	(vect_schedule_slp_instance): Remove redundant code.
+	(vect_schedule_slp): Remove hack for PR56270, add it ...
+	* tree-vect-stmts.c (vectorizable_load): ... here, do not
+	CSE loads for SLP.  Adjust.
+
+2013-04-19  Greta Yorsh  <Greta.Yorsh@arm.com>
+
+	* config/arm/arm.c (load_multiple_sequence, ldm_stm_operation_p): Fix
+	spelling in two comments.
+
+2013-04-19  Greta Yorsh  <Greta.Yorsh@arm.com>
+
+	PR target/56797
+	* config/arm/arm.c (load_multiple_sequence): Require SP
+	as base register for loads if SP is in the register list.
+
+2013-04-19  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/56718
+	* ipa-cp.c (ipa_value_from_known_type_jfunc): Moved...
+	* ipa-prop.c (ipa_binfo_from_known_type_jfunc): ...here, renamed
+	and made public.  Adjusted all callers.
+	(ipa_intraprocedural_devirtualization): New function.
+	* ipa-prop.h (ipa_binfo_from_known_type_jfunc): Declare.
+	(ipa_intraprocedural_devirtualization): Likewise.
+	* Makefile.in (tree-ssa-pre.o): Add ipa-prop.h to dependencies.
+
+2013-04-19  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/57000
+	* tree-ssa-reassoc.c (pass_reassoc): Add TODO_update_ssa_only_virtuals.
+
+2013-04-19  Terry Guo  <terry.guo@arm.com>
+
+	* config/arm/cortex-m4-fpu.md (cortex_m4_v): Delete cpu unit.
+	Replace with ...
+	(cortex_m4_v_a,  cortex_m4_v_b): ... new cpu units.
+	(cortex_m4_v, cortex_m4_exa_va, cortex_m4_exb_vb): New reservations.
+	(cortex_m4_fmacs): Use new reservations.
+	(cortex_m4_f_load, cortex_m4_f_store): Likewise.
+
+2013-04-18  Vladimir Makarov  <vmakarov@redhat.com>
+
+	PR rtl-optimization/56999
+	* lra-coalesce.c (coalescable_pseudo_p): Remove 2nd parameter and
+	related code.
+	(lra_coalesce): Remove split_origin_bitmap and related code.
+	* lra.c (lra): Coalesce after undoing inheritance.  Recreate live
+	ranges if necessary.
+
+2013-04-18  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.c (x86_64_ms_sysv_extra_clobbered_registers):
+	New array.
+	(ix86_expand_call): Remove clobbered_registers array and use
+	x86_64_ms_sysv_extra_clobbered_registers instead.
+	* config/i386/i386.h (x86_64_ms_sysv_extra_clobbered_registers):
+	Declare here.
+	* config/i386/predicates.md (call_rex64_ms_sysv_operation): New
+	predicate.
+	* config/i386/i386.md (*call_rex64_ms_sysv): Use
+	call_rex64_ms_sysv_operation predicate.  Remove explicit clobbers.
+	(*call_value_rex64_ms_sysv): Ditto.
+
+2013-04-18  Cary Coutant  <ccoutant@google.com>
+
+	* dwarf2out.c (output_pubnames): Check die_perennial_p of
+	parent instead of die_mark.
+
+2013-04-18  Diego Novillo  <dnovillo@google.com>
+
+	* gimple.c (create_gimple_tmp): New.
+	(get_expr_type): New.
+	(build_assign): New.
+	(build_type_cast): New.
+	* gimple.h (enum ssa_mode): Define.
+	(gimple_seq_set_location): New.
+	* asan.c (build_check_stmt): Change some gimple_build_* calls
+	to use build_assign and build_type_cast.
+
+2013-04-18  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-data-refs.c (vect_analyze_group_access): Properly
+	handle negative step.  Remove redundant checks.
+	(vect_create_data_ref_ptr): Avoid ICEs with non-constant steps.
+	* tree-vect-stmts.c (vectorizable_load): Instead of asserting
+	for negative step and grouped loads fail to vectorize.
+
+2013-04-18  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* emit-rtl.c (reset_insn_used_flags): New function.
+	(reset_all_used_flags): Use it.
+	(verify_insn_sharing): New function.
+	(verify_rtl_sharing): Fix verification for SEQUENCEs.
+
+2013-04-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/56984
+	* tree-vrp.c (register_edge_assert_for_2): For (x >> M) < N
+	and (x >> M) >= N don't register any assertion if N << M is the
+	minimum value.
+
+2013-04-18  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* lower-subreg.c (resolve_simple_move): If called self-recursive,
+	do not delete_insn insns that have not yet been emitted, only
+	unlink them with remove_insn.
+	* df-scan.c (df_insn_delete): Revert r197492.
+
+2013-04-17  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* emit-rtl.c (link_insn_into_chain): Handle chaining of SEQUENCEs.
+	* reorg.c (emit_delay_sequence): Simplify with emit-rtl API.
+
+2013-04-17  Greta Yorsh  <Greta.Yorsh@arm.com>
+
+	* config/arm/arm.md (movsicc_insn): Convert define_insn into
+	define_insn_and_split.
+	(and_scc,ior_scc,negscc): Likewise.
+	(cmpsi2_addneg, subsi3_compare): Convert to named patterns.
+
+2013-04-17  Greta Yorsh  <Greta.Yorsh@arm.com>
+
+	* config/arm/arm.c (use_return_insn): Return 0 for targets that
+	can benefit from using a sequence of LDRD instructions in epilogue
+	instead of a single LDM instruction.
+
+2013-04-17  Manuel López-Ibáñez  <manu@gcc.gnu.org>
+
+	PR 45688
+	* doc/extend.texi: Fix typo.
+
+2013-04-17  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.c (vect_build_slp_tree_1): Split out from ...
+	(vect_build_slp_tree): ... here.
+	(vect_build_slp_tree_1): Compute which stmts of the SLP group
+	match.  Remove special-casing of mismatched complex loads.
+	(vect_build_slp_tree): Based on the result from vect_build_slp_tree_1
+	re-try the match with swapped commutative operands.
+	(vect_supported_load_permutation_p): Remove special-casing of
+	mismatched complex loads.
+	(vect_analyze_slp_instance): Adjust.
+
+2013-04-17  Richard Biener  <rguenther@suse.de>
+
+	PR rtl-optimization/56921
+	* cfgloop.h (struct loop): Add simple_loop_desc member.
+	(struct niter_desc): Mark with GTY(()).
+	(simple_loop_desc): Do not use aux field but simple_loop_desc.
+	* loop-iv.c (get_simple_loop_desc): Likewise.
+	(free_simple_loop_desc): Likewise.
+
+	Revert
+	2013-04-16  Richard Biener  <rguenther@suse.de>
+
+	PR rtl-optimization/56921
+	* loop-init.c (pass_rtl_move_loop_invariants): Add
+	TODO_do_not_ggc_collect to todo_flags_finish.
+	(pass_rtl_unswitch): Same.
+	(pass_rtl_unroll_and_peel_loops): Same.
+	(pass_rtl_doloop): Same.
+
+2013-04-17  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-ssa-alias.c (nonoverlapping_component_refs_of_decl_p): New.
+	(decl_refs_may_alias_p): Add REF1 and REF2 parameters.
+	Use nonoverlapping_component_refs_of_decl_p to disambiguate component
+	references.
+	(refs_may_alias_p_1): Adjust call to decl_refs_may_alias_p.
+	* tree-streamer.c (record_common_node): Adjust reference in comment.
+
+2013-04-17  Terry Guo  <terry.guo@arm.com>
+
+	* config/arm/cortex-m4.md: Add a new bypass.
+
+2013-04-16   Naveen H.S  <Naveen.Hurugalawadi@caviumnetworks.com>
+
+	* config/aarch64/aarch64.md (*adds_<optab><mode>_multp2):
+	New pattern.
+	(*subs_<optab><mode>_multp2): New pattern.
+	(*adds_<optab><ALLX:mode>_<GPI:mode>): New pattern.
+	(*subs_<optab><ALLX:mode>_<GPI:mode>): New pattern.
+
+2013-04-16   Naveen H.S  <Naveen.Hurugalawadi@caviumnetworks.com>
+
+	* config/aarch64/aarch64.md (*adds_mul_imm_<mode>): New pattern.
+	(*subs_mul_imm_<mode>): New pattern.
+
+2013-04-16  David Edelsohn  <dje.gcc@gmail.com>
+
+	PR target/56948
+	* config/rs6000/vsx.md (vsx_mov<mode>): Add j->r alternative.
+	(vsx_movti_64bit): Change j->wa to O->wa.  Add n->r alternative.
+	(vsx_movti_32bit): Change j->wa to O->wa.
+
+2013-04-16  Richard Biener  <rguenther@suse.de>
+
+	PR rtl-optimization/56921
+	* loop-init.c (pass_rtl_move_loop_invariants): Add
+	TODO_do_not_ggc_collect to todo_flags_finish.
+	(pass_rtl_unswitch): Same.
+	(pass_rtl_unroll_and_peel_loops): Same.
+	(pass_rtl_doloop): Same.
+
+2013-04-16  Greta Yorsh  <Greta.Yorsh@arm.com>
+
+	* config/arm/arm.c (emit_multi_reg_push): New declaration
+	for an existing function.
+	(arm_emit_strd_push): New function.
+	(arm_expand_prologue): Used here.
+	(arm_emit_ldrd_pop): New function.
+	(arm_expand_epilogue): Used here.
+	(arm_get_frame_offsets): Update condition.
+	(arm_emit_multi_reg_pop): Add a special case for load of a single
+	register with writeback.
+
+2013-04-16  Uros Bizjak  <ubizjak@gmail.com>
+
+	* doc/invoke.texi (i386 Option): Reword -mstack-protector-guard
+	description.
+
+2013-04-16  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56756
+	* tree-ssa-loop-im.c (struct first_mem_ref_loc_1): New functor.
+	(first_mem_ref_loc): New.
+	(execute_sm): Place the load temporarily before a previous
+	access instead of in the latch edge to ensure its SSA dependencies
+	are defined at points dominating the load.
+
+2013-04-16  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* cfgrtl.c (cfg_layout_merge_blocks): Revert r184005, implement
+	correct fix by moving header and footer insn to the footer of
+	the merged basic block.  Clear BB_END of the merged-away block.
+
+	PR middle-end/43631
+	* emit-rtl.c (make_note_raw): New function.
+	(link_insn_into_chain): New static inline function.
+	(add_insn): Use it.
+	(add_insn_before, add_insn_after): Factor insn chain linking code...
+	(add_insn_before_nobb, add_insn_after_nobb): ...here, new functions
+	using link_insn_into_chain.
+	(note_outside_basic_block_p): New helper function for emit_note_after
+	and emit_note_before.
+	(emit_note_after): Use nobb variant of add_insn_after if the note
+	should not be contained in a basic block.
+	(emit_note_before): Use nobb variant of add_insn_before if the note
+	should not be contained in a basic block.
+	(emit_note_copy): Use make_note_raw.
+	(emit_note): Likewise.
+	* bb-reorder.c (insert_section_boundary_note): Remove hack to set
+	BLOCK_FOR_INSN to NULL manually for NOTE_INSN_SWITCH_TEXT_SECTIONS.
+	* jump.c (cleanup_barriers): Use reorder_insns_nobb to avoid making
+	the moved barrier the tail of the basic block it follows.
+	* var-tracking.c (pass_variable_tracking): Add TODO_verify_flow.
+
+2013-04-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/56962
+	* gimple-ssa-strength-reduction.c (record_increment): Only set
+	initializer if gimple_assign_rhs_code is {,POINTER_}PLUS_EXPR and
+	either rhs1 or rhs2 is equal to c->base_expr.
+
+2013-04-15  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56933
+	* tree-vectorizer.h (struct _stmt_vec_info): Remove read_write_dep
+	member.
+	(GROUP_READ_WRITE_DEPENDENCE): Remove.
+	(STMT_VINFO_GROUP_READ_WRITE_DEPENDENCE): Likewise.
+	* tree-vect-data-refs.c (vect_analyze_group_access): Move
+	dependence check ...
+	vect_analyze_data_ref_dependence (vect_analyze_data_ref_dependence):
+	... here.
+	* tree-vect-stmts.c (new_stmt_vec_info): Do not initialize
+	GROUP_READ_WRITE_DEPENDENCE.
+
+2013-04-15  Andreas Krebbel  <Andreas.Krebbel@de.ibm.com>
+
+	* emit-rtl.c (reset_all_used_flags): New function.
+	(verify_rtl_sharing): Call reset_all_used_flags before and after
+	performing the checks.
+
+2013-04-15  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm.c (const_ok_for_dimode_op): Handle AND case.
+	* config/arm/arm.md (*anddi3_insn): Change to insn_and_split.
+	* config/arm/constraints.md (De): New constraint.
+	* config/arm/neon.md (anddi3_neon): Delete.
+	(neon_vand<mode>): Expand to standard anddi3 pattern.
+	* config/arm/predicates.md (imm_for_neon_inv_logic_operand):
+	Move earlier in the file.
+	(neon_inv_logic_op2): Likewise.
+	(arm_anddi_operand_neon): New predicate.
+
+2013-04-15  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* configure.ac (gcc_cv_ld_as_needed): Set
+	gcc_cv_ld_as_needed_option, gcc_cv_no_as_needed_option.
+	Use -z ignore, -z record on *-*-solaris2*.
+	(HAVE_LD_AS_NEEDED): Update comment.
+	(LD_AS_NEEDED_OPTION, LD_NO_AS_NEEDED_OPTION): Define.
+	* configure: Regenerate.
+	* config.in: Regenerate.
+	* gcc.c (init_gcc_specs) [USE_LD_AS_NEEDED]: Use
+	LD_AS_NEEDED_OPTION, LD_NO_AS_NEEDED_OPTION.
+	* config/sol2.h [HAVE_LD_AS_NEEDED] (USE_LD_AS_NEEDED): Define.
+	* doc/tm.texi.in (USE_LD_AS_NEEDED): Allow for --as-needed
+	equivalents.  Fix markup.
+	* doc/tm.texi: Regenerate.
+
+2013-04-15  Andrew Hsieh  <andrewhsieh.google.com>
+
+	* config/i386/i386.opt: New option mstack-protector-guard=.
+	* config/i386/i386-opts.h: Add enum stack_protector_guard.
+	* config/i386/i386.h: Define TARGET_SSP_GLOBAL_GUARD and
+	TARGET_SSP_TLS_GUARD.
+	* config/i386/i386.c (ix86_option_override_internal): Set
+	ix86_stack_protector_guard.
+	* config/i386/i386.md (stack_protect_set): Enable for
+	TARGET_SSP_TLS_GUARD only.
+	(stack_protect_set_<mode>): Ditto.
+	(stack_protect_test): Ditto.
+	(stack_protect_test_<mode>): Ditto.
+	* doc/invoke.texi (i386 Option): Document.
+
+2013-04-15  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR target/56890
+	* config/sparc/sparc.c (enum sparc_mode_class): Add H_MODE value.
+	(S_MODES): Set H_MODE bit.
+	(SF_MODES): Set only S_MODE and SF_MODE bits.
+	(DF_MODES): Set SF_MODES and only D_MODE and DF_MODE bits.
+	(sparc_init_modes) <MODE_INT>: Set H_MODE bit for sub-word modes.
+	<MODE_VECTOR_INT>: Do not set SF_MODE for sub-word modes.
+	<MODE_FLOAT>: Likewise.
+
+2013-04-15  Joey Ye  <joey.ye@arm.com>
+
+	* config/arm/arm.c (thumb_far_jump_used_p): Fix typo in comments.
+
+2013-04-15  Joey Ye  <joey.ye@arm.com>
+
+	* config/arm/arm.c (thumb1_final_prescan_insn): Assert lr save
+	for real far jump.
+	(thumb_far_jump_used_p): Count instruction size and set
+	far_jump_used.
+
+2013-04-14  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* reorg.c (fill_simple_delay_slots): Reindent block of code.
+	* resource.c (mark_target_live_regs): Reformat conditional block.
+
+2013-04-13  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* sched-deps.c (deps_analyze_insn): Do not check for EH_REGION insn
+	notes, they are emitted only just before final.
+	* sched-int.h: Include insn-attr.h before checking INSN_SCHEDULING.
+
+2013-04-13  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* emit-rtl.c (remove_insn): Do not call df_insn_delete here.
+	* cfgrtl.c (delete_insn): Call it here instead.
+	* lra-spills.c (lra_final_code_change): Use delete_insn.
+	* haifa-sched.c (sched_remove_insn): Likewise.
+	* sel-sched-ir.c (return_nop_to_pool): Clear INSN_DELETED_P for nops
+	returning to the nop pool.
+	(sel_remove_insn): Simplify the only_disconnect case via remove_insn,
+	use delete_insn for definitive removal.  Clear BLOCK_FOR_INSN.
+
 2013-04-12  Steven Bosscher  <steven@gcc.gnu.org>
 
 	* doc/tm.texi.in (LOOP_ALIGN): Remove loop note references.

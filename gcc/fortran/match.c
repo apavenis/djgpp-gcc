@@ -4077,11 +4077,15 @@ match_typebound_call (gfc_symtree* varst)
   if (m == MATCH_NO)
     gfc_error ("Expected component reference at %C");
   if (m != MATCH_YES)
-    return MATCH_ERROR;
+    {
+      gfc_free_expr (base);
+      return MATCH_ERROR;
+    }
 
   if (gfc_match_eos () != MATCH_YES)
     {
       gfc_error ("Junk after CALL at %C");
+      gfc_free_expr (base);
       return MATCH_ERROR;
     }
 
@@ -4093,6 +4097,7 @@ match_typebound_call (gfc_symtree* varst)
     {
       gfc_error ("Expected type-bound procedure or procedure pointer component "
 		 "at %C");
+      gfc_free_expr (base);
       return MATCH_ERROR;
     }
   new_st.expr1 = base;
@@ -5337,7 +5342,6 @@ gfc_match_select_type (void)
   char name[GFC_MAX_SYMBOL_LEN];
   bool class_array;
   gfc_symbol *sym;
-  gfc_namespace *parent_ns;
 
   m = gfc_match_label ();
   if (m == MATCH_ERROR)
@@ -5346,8 +5350,6 @@ gfc_match_select_type (void)
   m = gfc_match (" select type ( ");
   if (m != MATCH_YES)
     return m;
-
-  gfc_current_ns = gfc_build_block_ns (gfc_current_ns);
 
   m = gfc_match (" %n => %e", name, &expr2);
   if (m == MATCH_YES)
@@ -5374,12 +5376,15 @@ gfc_match_select_type (void)
     {
       m = gfc_match (" %e ", &expr1);
       if (m != MATCH_YES)
-	goto cleanup;
+	return m;
     }
 
   m = gfc_match (" )%t");
   if (m != MATCH_YES)
-    goto cleanup;
+    {
+      gfc_error ("parse error in SELECT TYPE statement at %C");
+      goto cleanup;
+    }
 
   /* This ghastly expression seems to be needed to distinguish a CLASS
      array, which can have a reference, from other expressions that
@@ -5417,9 +5422,8 @@ gfc_match_select_type (void)
   return MATCH_YES;
 
 cleanup:
-  parent_ns = gfc_current_ns->parent;
-  gfc_free_namespace (gfc_current_ns);
-  gfc_current_ns = parent_ns;
+  gfc_free_expr (expr1);
+  gfc_free_expr (expr2);
   return m;
 }
 

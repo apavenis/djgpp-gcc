@@ -1,3 +1,49 @@
+2013-04-19  Jason Merrill  <jason@redhat.com>
+
+	N3638 changes to return type deduction
+	* decl.c (undeduced_auto_decl): New.
+	(require_deduced_type): New.
+	(fndecl_declared_return_type): New.
+	(decls_match): Use it.
+	(duplicate_decls): Don't check for auto return.
+	(grokdeclarator): Reject virtual auto.
+	* class.c (resolve_address_of_overloaded_function): Handle
+	auto function templates.
+	* decl2.c (mark_used): Use undeduced_auto_decl, require_deduced_type.
+	* cp-tree.h: Declare new fns.
+	* error.c (dump_function_decl): Use fndecl_declared_return_type.
+	* search.c (check_final_overrider): Likewise.
+	* pt.c (make_decltype_auto): New.
+	(do_auto_deduction): Require plain decltype(auto).
+	(is_auto): Adjust.
+
+	DR 941
+	* decl.c (duplicate_decls): Don't propagate DECL_DELETED_FN to
+	template specializations.
+
+2013-04-16  Ed Smith-Rowland  <3dw4rd@verizon.net>
+
+	Implement n3599 - Literal operator templates for strings.
+	* parser.c (make_string_pack (tree value)): New function.
+	(cp_parser_userdef_string_literal (cp_token *)): Use it
+	to construct calls to character string literal operator templates.
+	(cp_parser_template_declaration_after_export): Check for new string
+	literal operator template parameter form.
+
+2013-04-15  Jason Merrill  <jason@redhat.com>
+
+	* pt.c (tsubst) [DECLTYPE_TYPE]: Use tsubst_copy_and_build.
+
+	PR c++/52748
+	* pt.c (tsubst) [DECLTYPE_TYPE]: If ~id is an expression
+	rather than a destructor name, it isn't an unqualified-name.
+	(tsubst_copy_and_build): Pass down decltype_flag to operator
+	handling code, too.
+
+	PR c++/56388
+	* semantics.c (insert_capture_proxy): Just use index 1 in the
+	stmt_list_stack.
+
 2013-04-12  Jakub Jelinek  <jakub@redhat.com>
 
 	* error.c (cp_print_error_function,
