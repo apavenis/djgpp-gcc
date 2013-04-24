@@ -1713,10 +1713,8 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
 	      /* If types don't match for a built-in, throw away the
 		 built-in.  No point in calling locate_old_decl here, it
 		 won't print anything.  */
-#ifndef __DJGPP__
 	      warning (0, "conflicting types for built-in function %q+D",
 		       newdecl);
-#endif
 	      return false;
 	    }
 	}
