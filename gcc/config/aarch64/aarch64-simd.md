@@ -505,8 +505,8 @@
 )
 
 (define_insn "neg<mode>2"
-  [(set (match_operand:VDQM 0 "register_operand" "=w")
-        (neg:VDQM (match_operand:VDQM 1 "register_operand" "w")))]
+  [(set (match_operand:VDQ 0 "register_operand" "=w")
+	(neg:VDQ (match_operand:VDQ 1 "register_operand" "w")))]
   "TARGET_SIMD"
   "neg\t%0.<Vtype>, %1.<Vtype>"
   [(set_attr "simd_type" "simd_negabs")
@@ -1341,7 +1341,7 @@
 
 ;; FP 'across lanes' add.
 
-(define_insn "aarch64_addvv4sf"
+(define_insn "aarch64_addpv4sf"
  [(set (match_operand:V4SF 0 "register_operand" "=w")
        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "w")]
 		    UNSPEC_FADDV))]
@@ -1357,8 +1357,8 @@
  "TARGET_SIMD"
 {
   rtx tmp = gen_reg_rtx (V4SFmode);
-  emit_insn (gen_aarch64_addvv4sf (tmp, operands[1]));
-  emit_insn (gen_aarch64_addvv4sf (operands[0], tmp));
+  emit_insn (gen_aarch64_addpv4sf (tmp, operands[1]));
+  emit_insn (gen_aarch64_addpv4sf (operands[0], tmp));
   DONE;
 })
 
@@ -1368,8 +1368,18 @@
  "TARGET_SIMD"
 {
   rtx tmp = gen_reg_rtx (V4SFmode);
-  emit_insn (gen_aarch64_addvv4sf (tmp, operands[1]));
-  emit_insn (gen_aarch64_addvv4sf (operands[0], tmp));
+  emit_insn (gen_aarch64_addpv4sf (tmp, operands[1]));
+  emit_insn (gen_aarch64_addpv4sf (operands[0], tmp));
+  DONE;
+})
+
+(define_expand "aarch64_addvv4sf"
+ [(set (match_operand:V4SF 0 "register_operand" "=w")
+	(unspec:V4SF [(match_operand:V4SF 1 "register_operand" "w")]
+		     UNSPEC_FADDV))]
+ "TARGET_SIMD"
+{
+  emit_insn (gen_reduc_splus_v4sf (operands[0], operands[1]));
   DONE;
 })
 
