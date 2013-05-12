@@ -1727,15 +1727,19 @@ cxx_alignas_expr (tree e)
        
 	   When the alignment-specifier is of the form
 	   alignas(type-id ), it shall have the same effect as
-	   alignas( alignof(type-id )).  */
+	   alignas(alignof(type-id )).  */
 
     return cxx_sizeof_or_alignof_type (e, ALIGNOF_EXPR, false);
   
-
   /* If we reach this point, it means the alignas expression if of
      the form "alignas(assignment-expression)", so we should follow
      what is stated by [dcl.align]/2.  */
 
+  if (value_dependent_expression_p (e))
+    /* Leave value-dependent expression alone for now. */
+    return e;
+
+  e = fold_non_dependent_expr (e);
   e = mark_rvalue_use (e);
 
   /* [dcl.align]/2 says:
@@ -1743,18 +1747,7 @@ cxx_alignas_expr (tree e)
          the assignment-expression shall be an integral constant
 	 expression.  */
   
-  e = fold_non_dependent_expr (e);
-  if (value_dependent_expression_p (e))
-    /* Leave value-dependent expression alone for now. */;
-  else
-    e = cxx_constant_value (e);
-
-  if (e == NULL_TREE
-      || e == error_mark_node
-      || TREE_CODE (e) != INTEGER_CST)
-    return error_mark_node;
-
-  return e;
+  return cxx_constant_value (e);
 }
 
 
@@ -3965,6 +3958,7 @@ cp_build_binary_op (location_t location,
             return error_mark_node;
           case stv_firstarg:
             {
+	      op0 = save_expr (op0);
               op0 = convert (TREE_TYPE (type1), op0);
               op0 = build_vector_from_val (type1, op0);
               type0 = TREE_TYPE (op0);
@@ -3974,6 +3968,7 @@ cp_build_binary_op (location_t location,
             }
           case stv_secondarg:
             {
+	      op1 = save_expr (op1);
               op1 = convert (TREE_TYPE (type0), op1);
               op1 = build_vector_from_val (type0, op1);
               type1 = TREE_TYPE (op1);
@@ -5142,7 +5137,7 @@ cp_build_addr_expr_1 (tree arg, bool strict_lvalue, tsubst_flags_t complain)
 		       "  Say %<&%T::%D%>",
 		       base, name);
 	}
-      arg = build_offset_ref (base, fn, /*address_p=*/true);
+      arg = build_offset_ref (base, fn, /*address_p=*/true, complain);
     }
 
   /* Uninstantiated types are all functions.  Taking the
