@@ -2012,6 +2012,7 @@ proc check_effective_target_vect_uintfloat_cvt { } {
 	      || ([istarget powerpc*-*-*]
 		  && ![istarget powerpc-*-linux*paired*])
 	      || [istarget x86_64-*-*] 
+	      || [istarget aarch64*-*-*]
 	      || ([istarget arm*-*-*]
 		  && [check_effective_target_arm_neon_ok])} {
            set et_vect_uintfloat_cvt_saved 1
@@ -4665,6 +4666,33 @@ proc check_effective_target_simulator { } {
     }
 
     return 0
+}
+
+# Return 1 if programs are intended to be run on hardware rather than
+# on a simulator
+
+proc check_effective_target_hw { } {
+
+    # All "src/sim" simulators set this one.
+    if [board_info target exists is_simulator] {
+	if [board_info target is_simulator] {
+	  return 0
+	} else {
+	  return 1
+	}
+    }
+
+    # The "sid" simulators don't set that one, but at least they set
+    # this one.
+    if [board_info target exists slow_simulator] {
+	if [board_info target slow_simulator] {
+	  return 0
+	} else {
+	  return 1
+	}
+    }
+
+    return 1
 }
 
 # Return 1 if the target is a VxWorks kernel.
