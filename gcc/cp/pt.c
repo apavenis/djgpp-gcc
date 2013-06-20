@@ -16961,7 +16961,7 @@ unify (tree tparms, tree targs, tree parm, tree arg, int strict,
 	   later.  */
 	return unify_success (explain_p);
       else
-	return unify_type_mismatch (explain_p, tparm, arg);
+	return unify_type_mismatch (explain_p, tparm, TREE_TYPE (arg));
 
       /* If ARG is a parameter pack or an expansion, we cannot unify
 	 against it unless PARM is also a parameter pack.  */
@@ -17398,6 +17398,13 @@ mark_decl_instantiated (tree result, int extern_p)
      make any modifications.  */
   if (TREE_ASM_WRITTEN (result))
     return;
+
+  /* For anonymous namespace we don't need to do anything.  */
+  if (decl_anon_ns_mem_p (result))
+    {
+      gcc_assert (!TREE_PUBLIC (result));
+      return;
+    }
 
   if (TREE_CODE (result) != FUNCTION_DECL)
     /* The TREE_PUBLIC flag for function declarations will have been
@@ -20071,6 +20078,29 @@ type_dependent_expression_p (tree expression)
       && dependent_type_p (DECL_CONTEXT (expression))
       && VAR_HAD_UNKNOWN_BOUND (expression))
     return true;
+
+  /* An array of unknown bound depending on a variadic parameter, eg:
+
+     template<typename... Args>
+       void foo (Args... args)
+       {
+         int arr[] = { args... };
+       }
+
+     template<int... vals>
+       void bar ()
+       {
+         int arr[] = { vals... };
+       }
+
+     If the array has no length and has an initializer, it must be that
+     we couldn't determine its length in cp_complete_array_type because
+     it is dependent.  */
+  if (VAR_P (expression)
+      && TREE_CODE (TREE_TYPE (expression)) == ARRAY_TYPE
+      && !TYPE_DOMAIN (TREE_TYPE (expression))
+      && DECL_INITIAL (expression))
+   return true;
 
   if (TREE_TYPE (expression) == unknown_type_node)
     {
