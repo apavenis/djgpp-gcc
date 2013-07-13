@@ -1,3 +1,65 @@
+2013-07-11  Georg-Johann Lay  <avr@gjlay.de>
+
+	Backport from 2013-07-11 trunk r200901.
+
+	PR target/57631
+	* config/avr/avr.c (avr_set_current_function): Sanity-check signal
+	name seen by assembler/linker if available.
+
+2013-07-10  Georg-Johann Lay  <avr@gjlay.de>
+
+	Backport from 2013-07-10 trunk r200872.
+
+	PR target/57844
+	* config/avr/avr.c (avr_prologue_setup_frame): Trunk -size to mode
+	of my_fp.
+
+2013-07-10  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-07-06  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/sse.md (sse_movlhps): Change alternative 3
+	of operand 2 to "m".
+
+2013-07-09  Joseph Myers  <joseph@codesourcery.com>
+
+	* config/rs6000/rs6000.c (rs6000_init_hard_regno_mode_ok): Only
+	adjust register size for TDmode and TFmode for VSX registers.
+
+2013-07-08  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* Makefile.in (tree-ssa-reassoc.o): Add dependency on $(PARAMS_H).
+
+2013-07-08  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/57829
+	* simplify-rtx.c (simplify_binary_operation_1) <case IOR>: Ensure that
+	mask bits outside of mode are just sign-extension from mode to HWI.
+
+2013-07-05  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-06-20  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/57655
+	* config/i386/i386.c (construct_container): Report error if
+	long double is used with disabled x87 float returns.
+
+2013-06-21  David Edelsohn  <dje.gcc@gmail.com>
+
+	Backport from mainline
+	2013-06-19  David Edelsohn  <dje.gcc@gmail.com>
+
+	PR driver/57652
+	* collect2.c (collect_atexit): New.
+	(collect_exit): Delete.
+	(main): Register collect_atexit with atexit.
+	(collect_wait): Change collect_exit to exit.
+	(do_wait): Same.
+	* collect2.h (collect_exit): Delete.
+	* tlink.c (do_tlink): Rename exit to ret. Change collect_exit to exit.
+
 2013-06-07  Uros Bizjak  <ubizjak@gmail.com>
 
 	Backport from mainline
