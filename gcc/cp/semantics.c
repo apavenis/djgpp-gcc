@@ -155,6 +155,17 @@ push_deferring_access_checks (deferring_kind deferring)
     }
 }
 
+/* Save the current deferred access states and start deferred access
+   checking, continuing the set of deferred checks in CHECKS.  */
+
+void
+reopen_deferring_access_checks (vec<deferred_access_check, va_gc> * checks)
+{
+  push_deferring_access_checks (dk_deferred);
+  if (!deferred_access_no_check)
+    deferred_access_stack->last().deferred_access_checks = checks;
+}
+
 /* Resume deferring access checks again after we stopped doing
    this previously.  */
 
@@ -3045,15 +3056,15 @@ finish_id_expression (tree id_expression,
 
       /* Disallow uses of local variables from containing functions, except
 	 within lambda-expressions.  */
-      if (!outer_var_p (decl)
-	  /* It's not a use (3.2) if we're in an unevaluated context.  */
-	  || cp_unevaluated_operand)
-	/* OK.  */;
-      else if (TREE_STATIC (decl))
+      if (!outer_var_p (decl))
+	/* OK */;
+      else if (TREE_STATIC (decl)
+	       /* It's not a use (3.2) if we're in an unevaluated context.  */
+	       || cp_unevaluated_operand)
 	{
 	  if (processing_template_decl)
-	    /* For a use of an outer static var, return the identifier so
-	       that we'll look it up again in the instantiation.  */
+	    /* For a use of an outer static/unevaluated var, return the id
+	       so that we'll look it up again in the instantiation.  */
 	    return id_expression;
 	}
       else
@@ -7186,7 +7197,9 @@ cxx_eval_bit_field_ref (const constexpr_call *call, tree t,
     return t;
   /* Don't VERIFY_CONSTANT here; we only want to check that we got a
      CONSTRUCTOR.  */
-  if (!*non_constant_p && TREE_CODE (whole) != CONSTRUCTOR)
+  if (!*non_constant_p
+      && TREE_CODE (whole) != VECTOR_CST
+      && TREE_CODE (whole) != CONSTRUCTOR)
     {
       if (!allow_non_constant)
 	error ("%qE is not a constant expression", orig_whole);
@@ -7194,6 +7207,10 @@ cxx_eval_bit_field_ref (const constexpr_call *call, tree t,
     }
   if (*non_constant_p)
     return t;
+
+  if (TREE_CODE (whole) == VECTOR_CST)
+    return fold_ternary (BIT_FIELD_REF, TREE_TYPE (t), whole,
+			 TREE_OPERAND (t, 1), TREE_OPERAND (t, 2));
 
   start = TREE_OPERAND (t, 2);
   istart = tree_low_cst (start, 0);
@@ -7698,11 +7715,6 @@ cxx_eval_indirect_ref (const constexpr_call *call, tree t,
     {
       tree sub = op0;
       STRIP_NOPS (sub);
-      if (TREE_CODE (sub) == POINTER_PLUS_EXPR)
-	{
-	  sub = TREE_OPERAND (sub, 0);
-	  STRIP_NOPS (sub);
-	}
       if (TREE_CODE (sub) == ADDR_EXPR)
 	{
 	  /* We couldn't fold to a constant value.  Make sure it's not
@@ -7774,7 +7786,7 @@ non_const_var_error (tree r)
     }
   else
     {
-      if (cxx_dialect >= cxx0x && !DECL_DECLARED_CONSTEXPR_P (r))
+      if (cxx_dialect >= cxx11 && !DECL_DECLARED_CONSTEXPR_P (r))
 	inform (DECL_SOURCE_LOCATION (r),
 		"%qD was not declared %<constexpr%>", r);
       else
@@ -8724,7 +8736,7 @@ potential_constant_expression_1 (tree t, bool want_rval, tsubst_flags_t flags)
     case STATIC_CAST_EXPR:
     case REINTERPRET_CAST_EXPR:
     case IMPLICIT_CONV_EXPR:
-      if (cxx_dialect < cxx0x
+      if (cxx_dialect < cxx11
 	  && !dependent_type_p (TREE_TYPE (t))
 	  && !INTEGRAL_OR_ENUMERATION_TYPE_P (TREE_TYPE (t)))
 	/* In C++98, a conversion to non-integral type can't be part of a
@@ -8894,6 +8906,9 @@ potential_constant_expression_1 (tree t, bool want_rval, tsubst_flags_t flags)
 	  return false;
       return true;
 
+    case ARRAY_NOTATION_REF:
+      return false;
+
     case FMA_EXPR:
     case VEC_PERM_EXPR:
      for (i = 0; i < 3; ++i)
@@ -9033,6 +9048,7 @@ build_lambda_object (tree lambda_expr)
       if (TREE_CODE (TREE_TYPE (field)) == ARRAY_TYPE)
 	val = build_array_copy (val);
       else if (DECL_NORMAL_CAPTURE_P (field)
+	       && !DECL_VLA_CAPTURE_P (field)
 	       && TREE_CODE (TREE_TYPE (field)) != REFERENCE_TYPE)
 	{
 	  /* "the entities that are captured by copy are used to
@@ -9161,7 +9177,7 @@ lambda_capture_field_type (tree expr, bool explicit_init_p)
     }
   else
     type = non_reference (unlowered_expr_type (expr));
-  if (!type || WILDCARD_TYPE_P (type))
+  if (!type || WILDCARD_TYPE_P (type) || type_uses_auto (type))
     {
       type = cxx_make_type (DECLTYPE_TYPE);
       DECLTYPE_TYPE_EXPR (type) = expr;
@@ -9404,8 +9420,7 @@ build_capture_proxy (tree member)
 
   type = lambda_proxy_type (object);
 
-  if (TREE_CODE (type) == RECORD_TYPE
-      && TYPE_NAME (type) == NULL_TREE)
+  if (DECL_VLA_CAPTURE_P (member))
     {
       /* Rebuild the VLA type from the pointer and maxindex.  */
       tree field = next_initializable_field (TYPE_FIELDS (type));
@@ -9414,8 +9429,9 @@ build_capture_proxy (tree member)
       tree max = build_simple_component_ref (object, field);
       type = build_array_type (TREE_TYPE (TREE_TYPE (ptr)),
 			       build_index_type (max));
-      object = convert (build_reference_type (type), ptr);
-      object = convert_from_reference (object);
+      type = build_reference_type (type);
+      REFERENCE_VLA_OK (type) = true;
+      object = convert (type, ptr);
     }
 
   var = build_decl (input_location, VAR_DECL, name, type);
@@ -9446,19 +9462,20 @@ static tree
 vla_capture_type (tree array_type)
 {
   static tree ptr_id, max_id;
+  tree type = xref_tag (record_type, make_anon_name (), ts_current, false);
+  xref_basetypes (type, NULL_TREE);
+  type = begin_class_definition (type);
   if (!ptr_id)
     {
       ptr_id = get_identifier ("ptr");
       max_id = get_identifier ("max");
     }
   tree ptrtype = build_pointer_type (TREE_TYPE (array_type));
-  tree field1 = build_decl (input_location, FIELD_DECL, ptr_id, ptrtype);
-  tree field2 = build_decl (input_location, FIELD_DECL, max_id, sizetype);
-  DECL_CHAIN (field2) = field1;
-  tree type = make_node (RECORD_TYPE);
-  finish_builtin_struct (type, "__cap", field2, NULL_TREE);
-  TYPE_NAME (type) = NULL_TREE;
-  return type;
+  tree field = build_decl (input_location, FIELD_DECL, ptr_id, ptrtype);
+  finish_member_declaration (field);
+  field = build_decl (input_location, FIELD_DECL, max_id, sizetype);
+  finish_member_declaration (field);
+  return finish_struct (type, NULL_TREE);
 }
 
 /* From an ID and INITIALIZER, create a capture (by reference if
@@ -9471,6 +9488,7 @@ add_capture (tree lambda, tree id, tree initializer, bool by_reference_p,
 {
   char *buf;
   tree type, member, name;
+  bool vla = false;
 
   if (TREE_CODE (initializer) == TREE_LIST)
     initializer = build_x_compound_expr_from_list (initializer, ELK_INIT,
@@ -9478,6 +9496,7 @@ add_capture (tree lambda, tree id, tree initializer, bool by_reference_p,
   type = lambda_capture_field_type (initializer, explicit_init_p);
   if (array_of_runtime_bound_p (type))
     {
+      vla = true;
       if (!by_reference_p)
 	error ("array of runtime bound cannot be captured by copy, "
 	       "only by reference");
@@ -9486,13 +9505,10 @@ add_capture (tree lambda, tree id, tree initializer, bool by_reference_p,
 	 maximum index, and then reconstruct the VLA for the proxy.  */
       tree elt = cp_build_array_ref (input_location, initializer,
 				     integer_zero_node, tf_warning_or_error);
-      tree ctype = vla_capture_type (type);
-      tree ptr_field = next_initializable_field (TYPE_FIELDS (ctype));
-      tree nelts_field = next_initializable_field (DECL_CHAIN (ptr_field));
-      initializer = build_constructor_va (ctype, 2,
-					  ptr_field, build_address (elt),
-					  nelts_field, array_type_nelts (type));
-      type = ctype;
+      initializer = build_constructor_va (init_list_type_node, 2,
+					  NULL_TREE, build_address (elt),
+					  NULL_TREE, array_type_nelts (type));
+      type = vla_capture_type (type);
     }
   else if (variably_modified_type_p (type, NULL_TREE))
     {
@@ -9502,6 +9518,7 @@ add_capture (tree lambda, tree id, tree initializer, bool by_reference_p,
 	  && variably_modified_type_p (TREE_TYPE (type), NULL_TREE))
 	inform (input_location, "because the array element type %qT has "
 		"variable size", TREE_TYPE (type));
+      type = error_mark_node;
     }
   else if (by_reference_p)
     {
@@ -9544,6 +9561,7 @@ add_capture (tree lambda, tree id, tree initializer, bool by_reference_p,
 
   /* Make member variable.  */
   member = build_lang_decl (FIELD_DECL, name, type);
+  DECL_VLA_CAPTURE_P (member) = vla;
 
   if (!explicit_init_p)
     /* Normal captures are invisible to name lookup but uses are replaced
