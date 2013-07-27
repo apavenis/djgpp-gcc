@@ -14,6 +14,6 @@ export AS=as
 export CC=gcc
 export ac_cv_func_mmap_dev_zero=no
 export lt_cv_sys_max_cmd_len=12000
-export ac_cv_prog_LN_S='cp -p'
+export ac_cv_prog_LN_S='ln -s'
 inst_prefix=$top/install.gcc
 make SHELL=$CONFIG_SHELL install prefix=$inst_prefix
