@@ -2613,6 +2613,9 @@ install-gnatlib: ../stamp-gnatlib-$(RTSDIR)
 	$(RM) ../stamp-gnatlib-$(RTSDIR)
 
 ../stamp-gnatlib1-$(RTSDIR): Makefile ../stamp-gnatlib2-$(RTSDIR)
+	echo "======================================================================="
+	echo "LIBGNAT_TARGET_PAIRS=$(LIBGNAT_TARGET_PAIRS)
+	echo "======================================================================="
 	$(RMDIR) $(RTSDIR)
 	$(MKDIR) $(RTSDIR)
 	$(CHMOD) u+w $(RTSDIR)
