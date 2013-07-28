@@ -260,13 +260,19 @@ TOOLS_LIBS = targext.o link.o ../../ggc-none.o ../../libcommon-target.a \
 # variable.
 host:=$(subst -, ,$(host_canonical))
 targ:=$(subst -, ,$(subst -gnu, ,$(target_alias)))
-arch:=$(word 1,$(targ))
-ifeq ($(words $(targ)),2)
+ifeq ($(words $(targ)),1)
+  arch:=$(word 1,$(subst -, ,$(subst -gnu, ,$(target))))
   manu:=
-  osys:=$(word 2,$(targ))
+  osys:=$(word 1,$(targ))
 else
-  manu:=$(word 2,$(targ))
-  osys:=$(word 3,$(targ))
+  arch:=$(word 1,$(targ))
+  ifeq ($(words $(targ)),2)
+    manu:=
+    osys:=$(word 2,$(targ))
+  else
+    manu:=$(word 2,$(targ))
+    osys:=$(word 3,$(targ))
+  endif
 endif
 
 # Specify the directories to be searched for header files.
