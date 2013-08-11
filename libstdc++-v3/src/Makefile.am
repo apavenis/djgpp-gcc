@@ -102,7 +102,6 @@ libstdc___la_LDFLAGS = \
 libstdc___la_LINK = $(CXXLINK) $(libstdc___la_LDFLAGS)
 endif
 
-
 # Use special rules for compatibility-ldbl.cc compilation, as we need to
 # pass -mlong-double-64.
 if GLIBCXX_LDBL_COMPAT
@@ -167,7 +166,7 @@ compatibility-condvar.o: compatibility-condvar.cc
 # as the occasion calls for it.
 AM_CXXFLAGS = \
 	$(glibcxx_compiler_pic_flag) \
-	$(XTEMPLATE_FLAGS) \
+	$(XTEMPLATE_FLAGS) $(VTV_CXXFLAGS) \
 	$(WARN_CXXFLAGS) $(OPTIMIZE_CXXFLAGS) $(CONFIG_CXXFLAGS)
 
 # Libtool notes
@@ -214,8 +213,8 @@ CXXLINK = \
 	$(LIBTOOL) --tag CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CXX) \
+	$(VTV_CXXLINKFLAGS) \
 	$(OPT_LDFLAGS) $(SECTION_LDFLAGS) $(AM_CXXFLAGS) $(LTLDFLAGS) -o $@
-
 
 # Symbol versioning for shared libraries.
 if ENABLE_SYMVERS
