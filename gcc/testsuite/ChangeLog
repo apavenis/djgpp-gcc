@@ -1,3 +1,116 @@
+2013-08-11  Janus Weil  <janus@gcc.gnu.org>
+
+	Backport from trunk:
+	2013-08-09  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/58058
+	* gfortran.dg/transfer_intrinsic_6.f90: New.
+
+2013-08-09  Zhenqiang Chen  <zhenqiang.chen@linaro.org>
+
+	Backport from mainline:
+	2013-08-09  Zhenqiang Chen  <zhenqiang.chen@linaro.org>
+
+	* gcc.target/arm/lp1189445.c: New testcase.
+
+2013-08-06  Martin Jambor  <mjambor@suse.cz>
+	    Bernd Edlinger <bernd.edlinger@hotmail.de>
+
+	* gcc.dg/torture/pr58041.c (foo): Accept z by reference.
+	(a): Fix constructor.
+
+2013-08-06  Martin Jambor  <mjambor@suse.cz>
+
+	PR middle-end/58041
+	* gcc.dg/torture/pr58041.c: New test.
+	* gcc.target/arm/pr58041.c: Likewise.
+
+2013-08-02  Andreas Krebbel  <Andreas.Krebbel@de.ibm.com>
+
+	Backport from mainline
+	2013-06-27  Andreas Krebbel  <Andreas.Krebbel@de.ibm.com>
+
+        * gcc.target/s390/htm-1.c: New file.
+        * gcc.target/s390/htm-nofloat-1.c: New file.
+        * gcc.target/s390/htm-xl-intrin-1.c: New file.
+
+2013-07-28  Tobias Burnus  <burnus@net-b.de>
+
+	Backport from mainline
+	2013-05-28  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/57435
+	* gfortran.dg/use_29.f90: New.
+
+2013-07-25  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/57981
+	* g++.dg/cpp0x/pr57981.C: New.
+
+2013-07-25  Terry Guo  <terry.guo@arm.com>
+
+	Backport from mainline:
+	2013-07-25  Terry Guo  <terry.guo@arm.com>
+
+	* gcc.target/arm/thumb1-Os-mult.c: New test case.
+
+2013-07-19  Wei Mi  <wmi@google.com>
+
+	Backport from mainline:
+	2013-07-18  Wei Mi  <wmi@google.com>
+
+	PR rtl-optimization/57878
+	* g++.dg/pr57518.C: New test.
+
+2013-07-19  Georg-Johann Lay  <avr@gjlay.de>
+
+	Backport from 2013-07-19 trunk r201051.
+
+	PR target/57516
+	* gcc.target/avr/torture/builtins-4-roundfx.c (test2hr, test2k):
+	Adjust to corrected rounding.
+
+2013-07-19  Kirill Yukhin  <kirill.yukhin@intel.com>
+
+	* gcc.target/i386/bmi-1.c: Extend with new instrinsics.
+	Fix scan patterns.
+	* gcc.target/i386/bmi-2.c: Ditto.
+	* gcc.target/i386/bmi-bextr-4.c: New.
+	* gcc.target/i386/bmi-bextr-5.c: Ditto.
+
+2013-07-16  Iain Sandoe  <iain@codesourcery.com>
+
+	PR target/55656
+	PR target/55657
+	* obj-c++.dg/cxx-ivars-3.mm: Use NSObject instead of Object.
+	* obj-c++.dg/strings/const-cfstring-5.mm: Likewise.
+	* obj-c++.dg/torture/strings/const-str-10.mm: Likewise.
+	* obj-c++.dg/torture/strings/const-str-9.mm: Likewise.
+	* objc.dg/image-info.m: Likewise.
+	* objc.dg/symtab-1.m: Likewise.
+	* objc.dg/torture/strings/const-str-10.m: Likewise.
+	* objc.dg/torture/strings/const-str-11.m: Likewise.
+	* objc.dg/torture/strings/const-str-9.m: Likewise.
+	* objc.dg/zero-link-1.m: Likewise.
+	* objc.dg/zero-link-2.m: Likewise.
+	* objc.dg/no-extra-load.m: Avoid Foundation.h.
+	* objc.dg/objc-foreach-4.m: Likewise.
+	* objc.dg/objc-foreach-5.m: Likewise.
+	* obj-c++.dg/proto-lossage-7.mm: Use NSObject instead of Object
+	(for Darwin).
+	* obj-c++.dg/strings/const-str-12.mm: Likewise.
+	* obj-c++.dg/syntax-error-1.mm: Likewise.
+	* objc.dg/method-6.m: Likewise.
+	* objc.dg/pr23214.m: Likewise.
+	* objc.dg/proto-lossage-7.m: Likewise.
+	* objc.dg/strings/const-str-12b.m: Likewise.
+	* objc.dg/zero-link-3.m: Likewise.
+	* obj-c++.dg/method-12.mm: Skip on Darwin versions without 'Object'.
+	* objc.dg/encode-7-next-64bit.m: Use NSObject instead of Object,
+	adjust headers, interfaces and encoded types to reflect current system
+	versions.  Add FIXME and outputs from current system compiler for
+	reference.
+
 2013-07-10  Janis Johnson  <janisjo@codesourcery.com>
 
 	* gcc.target/powerpc/20020118-1.c: Force 128-bit stack alignment
