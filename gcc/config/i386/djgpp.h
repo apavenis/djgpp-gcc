@@ -68,7 +68,6 @@ along with GCC; see the file COPYING3.  If not see
 /* Include <sys/version.h> so __DJGPP__ and __DJGPP_MINOR__ are defined.  */
 #undef CPP_SPEC
 #define CPP_SPEC "-remap %{posix:-D_POSIX_SOURCE}"
-  
 
 #undef POST_LINK_SPEC
 #define POST_LINK_SPEC "stubify %{v} %{o*:%*} %{!o*:a.out}"
@@ -97,7 +96,7 @@ along with GCC; see the file COPYING3.  If not see
 #define ASM_OUTPUT_ALIGNED_BSS(FILE, DECL, NAME, SIZE, ALIGN) \
   asm_output_aligned_bss ((FILE), (DECL), (NAME), (SIZE), (ALIGN))
 
-/* This is how to tell assembler that a symbol is weak  */ 
+/* This is how to tell assembler that a symbol is weak  */
 #undef ASM_WEAKEN_LABEL
 #define ASM_WEAKEN_LABEL(FILE,NAME) \
   do { fputs ("\t.weak\t", FILE); assemble_name (FILE, NAME); \
