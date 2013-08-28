@@ -1298,7 +1298,8 @@ remap_gimple_stmt (gimple stmt, copy_body_data *id)
 	case GIMPLE_OMP_FOR:
 	  s1 = remap_gimple_seq (gimple_omp_body (stmt), id);
 	  s2 = remap_gimple_seq (gimple_omp_for_pre_body (stmt), id);
-	  copy = gimple_build_omp_for (s1, gimple_omp_for_clauses (stmt),
+	  copy = gimple_build_omp_for (s1, gimple_omp_for_kind (stmt),
+				       gimple_omp_for_clauses (stmt),
 				       gimple_omp_for_collapse (stmt), s2);
 	  {
 	    size_t i;
@@ -1383,6 +1384,23 @@ remap_gimple_stmt (gimple stmt, copy_body_data *id)
 	      value = *n;
 	      STRIP_TYPE_NOPS (value);
 	      if (TREE_CONSTANT (value) || TREE_READONLY (value))
+		return gimple_build_nop ();
+	    }
+	}
+
+      /* For *ptr_N ={v} {CLOBBER}, if ptr_N is SSA_NAME defined
+	 in a block that we aren't copying during tree_function_versioning,
+	 just drop the clobber stmt.  */
+      if (id->blocks_to_copy && gimple_clobber_p (stmt))
+	{
+	  tree lhs = gimple_assign_lhs (stmt);
+	  if (TREE_CODE (lhs) == MEM_REF
+	      && TREE_CODE (TREE_OPERAND (lhs, 0)) == SSA_NAME)
+	    {
+	      gimple def_stmt = SSA_NAME_DEF_STMT (TREE_OPERAND (lhs, 0));
+	      if (gimple_bb (def_stmt)
+		  && !bitmap_bit_p (id->blocks_to_copy,
+				    gimple_bb (def_stmt)->index))
 		return gimple_build_nop ();
 	    }
 	}
@@ -2382,6 +2400,8 @@ copy_cfg_body (copy_body_data * id, gcov_type count, int frequency_scale,
 		  get_loop (src_cfun, 0));
       /* Defer to cfgcleanup to update loop-father fields of basic-blocks.  */
       loops_state_set (LOOPS_NEED_FIXUP);
+      cfun->has_force_vect_loops |= src_cfun->has_force_vect_loops;
+      cfun->has_simduid_loops |= src_cfun->has_simduid_loops;
     }
 
   /* If the loop tree in the source function needed fixup, mark the
@@ -5161,6 +5181,7 @@ tree_function_versioning (tree old_decl, tree new_decl,
   id.src_node = old_version_node;
   id.dst_node = new_version_node;
   id.src_cfun = DECL_STRUCT_FUNCTION (old_decl);
+  id.blocks_to_copy = blocks_to_copy;
   if (id.src_node->ipa_transforms_to_apply.exists ())
     {
       vec<ipa_opt_pass> old_transforms_to_apply
