@@ -1,3 +1,92 @@
+2013-09-03  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2013-08-29  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/58246
+	* tree-ssa-dce.c (mark_aliased_reaching_defs_necessary_1): Properly
+	handle the dominance check inside a basic-block.
+
+2013-09-03  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2013-08-30  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/58228
+	* tree-vect-data-refs.c (vect_analyze_data_ref_access): Do not
+	allow invariant loads in nested loop vectorization.
+
+2013-09-03  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2013-08-30  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/58010
+	* tree-vect-loop.c (vect_create_epilog_for_reduction): Remove
+	assert that we have a loop-closed PHI.
+
+2013-09-01  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-08-31  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/alpha/alpha.c (alpha_emit_conditional_move): Update
+	"cmp" RTX before signed_comparison_operator check to account
+	for "code" changes.
+
+2013-09-01  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.md: Allow "const 0" operand 1 in "scc" insns.
+
+2013-08-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/58277
+	* tree-ssa-strlen.c (strlen_enter_block): If do_invalidate gave up
+	after seeing too many stmts with vdef in between dombb and current
+	bb, invalidate everything.
+
+2013-08-29  Oleg Endo  <olegendo@gcc.gnu.org>
+
+	Backport from mainline
+	2013-08-05  Oleg Endo  <olegendo@gcc.gnu.org>
+
+	PR other/12081
+	* recog.h (rtx (*insn_gen_fn) (rtx, ...)): Replace typedef with	new
+	class insn_gen_fn.
+	* expr.c (move_by_pieces_1, store_by_pieces_2): Replace argument
+	rtx (*) (rtx, ...) with insn_gen_fn.
+	* genoutput.c (output_insn_data): Cast gen_? function pointers to
+	insn_gen_fn::stored_funcptr.  Add initializer braces.
+
+	Backport from mainline
+	2013-08-07  Oleg Endo  <olegendo@gcc.gnu.org>
+
+	PR other/12081
+	* config/rs6000/rs6000.c (gen_2arg_fn_t): Remove typedef.
+	(rs6000_emit_swdiv_high_precision, rs6000_emit_swdiv_low_precision,
+	rs6000_emit_swrsqrt): Don't cast result of GEN_FCN to gen_2arg_fn_t.
+
+2013-08-29  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2013-05-27  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/57381
+	PR tree-optimization/57417
+	* tree-ssa-sccvn.c (vn_reference_fold_indirect): Fix test
+	for unchanged base.
+	(set_ssa_val_to): Compare addresses using
+	get_addr_base_and_unit_offset.
+
+	PR tree-optimization/57396
+	* tree-affine.c (double_int_constant_multiple_p): Properly
+	return false for val == 0 and div != 0.
+
+	PR tree-optimization/57343
+	* tree-ssa-loop-niter.c (number_of_iterations_ne_max): Do not
+	use multiple_of_p if not TYPE_OVERFLOW_UNDEFINED.
+	(number_of_iterations_cond): Do not build the folded tree.
+
 2013-08-28  Jakub Jelinek  <jakub@redhat.com>
 
 	PR middle-end/58257
