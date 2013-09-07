@@ -1,7 +1,7 @@
 // { dg-options "-std=gnu++11" }
 
 //
-// 2013-08-10  Tim Shen <timshen91@gmail.com>
+// 2013-09-02  Tim Shen <timshen91@gmail.com>
 //
 // Copyright (C) 2013 Free Software Foundation, Inc.
 //

@@ -1,7 +1,7 @@
 // { dg-options "-std=gnu++11" }
 
 //
-// 2013-08-26  Tim Shen <timshen91@gmail.com>
+// 2013-09-02  Tim Shen <timshen91@gmail.com>
 //
 // Copyright (C) 2013 Free Software Foundation, Inc.
 //
@@ -21,7 +21,7 @@
 // <http://www.gnu.org/licenses/>.
 
 // 28.11.2 regex_match
-// Tests ECMAScript \x and \u.
+// Tests ECMAScript empty-grouping against a C-string.
 
 #include <regex>
 #include <testsuite_hooks.h>
@@ -33,17 +33,21 @@ test01()
 {
   bool test __attribute__((unused)) = true;
 
-  VERIFY(regex_match(":", regex("\\x3a")));
-  VERIFY(regex_match(L"\u1234", wregex(L"\\u1234")));
-  try
-    {
-      regex("\\u400x");
-      VERIFY(false);
-    }
-  catch (...)
-    {
-      VERIFY(true);
-    }
+  {
+    regex re("()*\\1");
+    cmatch m;
+    const char s[] = "";
+    VERIFY( regex_match(s, m, re) );
+    VERIFY( m.size() == 2 );
+    VERIFY( m[0].matched );
+    VERIFY( m[1].matched );
+  }
+  {
+    regex re("()*");
+    cmatch m;
+    const char s[] = "";
+    VERIFY( regex_match(s, m, re) );
+  }
 }
 
 int
