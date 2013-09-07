@@ -1,3 +1,102 @@
+2013-09-01  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-08-31  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/alpha/alpha.c (alpha_emit_conditional_move): Update
+	"cmp" RTX before signed_comparison_operator check to account
+	for "code" changes.
+
+2013-09-01  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.md: Allow "const 0" operand 1 in "scc" insns.
+
+2013-09-01  Iain Sandoe  <iain@codesourcery.com>
+
+	Backported from 4.8
+	2012-06-19  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* doc/tm.texi.in (TARGET_OBJC_DECLARE_UNRESOLVED_CLASS_REFERENCE,
+	TARGET_OBJC_DECLARE_CLASS_DEFINITION): Add @hooks.
+	(ASM_DECLARE_CLASS_REFERENCE, ASM_DECLARE_UNRESOLVED_REFERENCE):
+	Remove.
+	* doc/tm.texi: Regenerate.
+	* config/darwin.h (ASM_OUTPUT_LABELREF): Remove special case for
+	.objc_class_name_*.
+	* config/darwin-c.c: Include target.h.
+	(darwin_objc_declare_unresolved_class_reference): New function.
+	(darwin_objc_declare_class_definition): New function.
+	(TARGET_OBJC_DECLARE_UNRESOLVED_CLASS_REFERENCE): Define.
+	(TARGET_OBJC_DECLARE_CLASS_DEFINITION): Define.
+
+2013-09-01  Iain Sandoe  <iain@codesourcery.com>
+
+	Backport from mainline:
+	2013-07-22  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (nonlocal_goto_receiver): Delete insn if
+	it is not needed after split.
+
+	2013-07-20  Iain Sandoe  <iain@codesourcery.com>
+
+	PR target/51784
+	* config/i386/i386.c (output_set_got) [TARGET_MACHO]: Adjust to emit a
+	second label for nonlocal goto receivers. Don't output pic base labels
+	unless we're producing PIC; mark that action unreachable().
+	(ix86_save_reg): If the function contains a nonlocal label, save the
+	PIC base reg.
+	* config/darwin-protos.h (machopic_should_output_picbase_label): New.
+	* gcc/config/darwin.c (emitted_pic_label_num): New GTY.
+	(update_pic_label_number_if_needed): New.
+	(machopic_output_function_base_name): Adjust for nonlocal receiver
+	case.
+	(machopic_should_output_picbase_label): New.
+	* config/i386/i386.md (enum unspecv): UNSPECV_NLGR: New.
+	(nonlocal_goto_receiver): New insn and split.
+
+2013-08-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-08-27  Christian Widmer  <shadow@umbrox.de>
+
+	PR target/57927
+	* config/i386/driver-i386.c (host_detect_local_cpu): Add detection
+	of Ivy Bridge processors.
+
+2013-08-21  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/56979
+	* arm.c (aapcs_vfp_allocate): Decompose the argument if the
+	suggested mode for the assignment isn't compatible with the
+	registers required.
+
+2013-08-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-08-12  Perez Read  <netfirewall@gmail.com>
+
+	PR target/58132
+	* config/i386/i386.md (*movabs<mode>_1):  Add <ptrsize> PTR before
+	operand 0 for intel asm alternative.
+	(*movabs<mode>_2): Ditto for operand 1.
+
+2013-08-13  Marek Polacek  <polacek@redhat.com>
+
+	Backport from 4.8:
+	2013-0813  Marek Polacek  <polacek@redhat.com>
+		   Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/57980
+	* tree-tailcall.c (process_assignment): Return false
+	when not dealing with integers or floats.
+
+2013-08-12  David Edelsohn  <dje.gcc@gmail.com>
+
+	Backport from mainline
+	2013-02-14  Steven Bosscher  <steven@gcc.gnu.org>
+
+	* collect2-aix.h: Define F_LOADONLY.
+
 2013-08-02  Eric Botcazou  <ebotcazou@adacore.com>
 
 	* config/sparc/sparc.c (sparc_emit_membar_for_model) <SMM_TSO>: Add
