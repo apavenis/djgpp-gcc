@@ -1,3 +1,115 @@
+2013-09-11  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/58377
+	* g++.dg/uninit-pred-4.C: New testcase.
+
+2013-09-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/58385
+	* gcc.c-torture/execute/pr58385.c: New test.
+
+2013-09-11  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/arm/thumb-ifcvt-2.c: New test.
+
+2013-09-10  Jeff Law  <law@redhat.com>
+
+	* g++.dg/torture/pr58380.C: New test.
+
+2013-09-10  Jan Hubicka  <jh@suse.cz>
+	    Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* g++.dg/template/cond2.C: Tweak, do not expect a "required from".
+
+2013-09-10  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/compile/pr58343.c: New test.
+
+2013-09-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/58365
+	* gcc.c-torture/execute/pr58365.c: New test.
+
+2013-09-10  Michael Zolotukhin  <michael.v.zolotukhin@gmail.com>
+
+	* gcc.dg/torture/memcpy-1.c: New test.
+
+2013-09-10  Alan Modra  <amodra@gmail.com>
+
+	* gcc.target/powerpc/pr58330.c: New.
+
+2013-09-10  Alan Modra  <amodra@gmail.com>
+
+	* gcc.target/powerpc/medium_offset.c: New.
+
+2013-09-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/58325
+	* g++.dg/warn/Wunused-var-21.C: New test.
+
+	PR tree-optimization/58364
+	* gcc.c-torture/execute/pr58364.c: New test.
+
+2013-09-09  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/43452
+	* g++.dg/warn/Wdelete-incomplete-1.C: New.
+	* g++.dg/warn/Wdelete-incomplete-2.C: Likewise.
+	* g++.dg/init/delete1.C: Adjust.
+
+2013-09-09  Ian Bolton  <ian.bolton@arm.com>
+
+	* gcc.target/aarch64/movdi_1.c: New test.
+
+2013-09-09  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/58362
+	* g++.dg/warn/Wunused-parm-5.C: New.
+
+2013-09-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/aarch64/cmn-neg.c: New test.
+
+2013-09-09  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/58326
+	* gcc.dg/torture/pr58326-1.c: New testcase.
+	* gcc.dg/torture/pr58326-2.c: Likewise.
+
+2013-09-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/57735
+	* g++.dg/ext/pr57735.C: New test.
+
+2013-09-09  Jan Hubicka  <jh@suse.cz>
+
+	PR middle-end/58294
+	* g++.dg/torture/PR58294.C: New testcase.
+
+2013-09-08  Jeff Law  <law@redhat.com>
+
+	* gcc.c-torture/compile/pr58340.c: New test.
+
+2013-09-08  Richard Sandiford  <rdsandiford@googlemail.com>
+
+	* g++.dg/debug/ra1.C: New test.
+
+2013-09-08  Jan Hubicka  <jh@suse.cz>
+
+	* testsuite/g++.dg/ipa/devirt-11.C: Update template.
+	* testsuite/g++.dg/ipa/devirt-16.C: New testcase.
+	* testsuite/g++.dg/ipa/devirt-17.C: New testcase.
+	* testsuite/g++.dg/ipa/devirt-18.C: New testcase.
+
+2013-09-08  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/54941
+	* g++.dg/overload/new1.C: Adjust.
+
+2013-09-08  Joern Rennecke  <joern.rennecke@embecosm.com>
+
+	* c-c++-common/opaque-vector.c: New test.
+
 2013-09-08  Tom de Vries  <tom@codesourcery.com>
 
 	PR c++/58282

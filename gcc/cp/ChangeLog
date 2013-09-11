@@ -1,3 +1,49 @@
+2013-09-10  Jan Hubicka  <jh@suse.cz>
+	    Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* error.c (print_instantiation_partial_context_line): If
+	loc == UNKNOWN_LOCATION return immediately.
+
+2013-09-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/58325
+	* init.c (build_vec_delete): Call mark_rvalue_use on base.
+
+2013-09-09  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/43452
+	* init.c (build_vec_delete_1): When the type is incomplete emit a
+	warning, enabled by default (not an error).
+	(build_delete): Adjust to use OPT_Wdelete_incomplete.
+
+2013-09-09  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/58362
+	* error.c (location_of): Don't handle PARM_DECLs specially.
+
+2013-09-09  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* error.c (dump_expr, [PSEUDO_DTOR_EXPR]): Fix.
+	* cxx-pretty-print.c (cxx_pretty_printer::postfix_expression):
+	Tweak, TREE_OPERAND (t, 1) may be null.
+
+2013-09-08  Caroline Tice  <cmtice@google.com>
+
+	PR c++/58300
+	* vtable-class-hierarchy.c (vtv_generate_init_routine):  In
+	preinit case, move call to assemble_vtv_preinit_initializer to
+	after call to cgraph_process_new_functions.
+
+2013-09-08  Tom de Vries  <tom@codesourcery.com>
+
+	PR c++/58282
+	* except.c (build_must_not_throw_expr): Handle
+	flag_exceptions.
+
+2013-09-08  Joern Rennecke  <joern.rennecke@embecosm.com>
+
+	* typeck.c (cp_build_binary_op): Use vector_types_compatible_elements_p.
+
 2013-09-04  Paolo Carlini  <paolo.carlini@oracle.com>
 
 	PR c++/24926

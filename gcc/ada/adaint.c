@@ -2291,7 +2291,7 @@ __gnat_is_executable_file_attr (char* name, struct file_attributes* attr)
 #endif
    }
 
-   return attr->executable;
+   return attr->regular && attr->executable;
 }
 
 int
@@ -3794,6 +3794,11 @@ get_gcc_version (void)
   return (int) (version_string[0] - '0');
 #endif
 }
+
+/*
+ * Set Close_On_Exec as indicated.
+ * Note: this is used for both GNAT.OS_Lib and GNAT.Sockets.
+ */
 
 int
 __gnat_set_close_on_exec (int fd ATTRIBUTE_UNUSED,

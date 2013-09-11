@@ -2586,7 +2586,6 @@ try_make_edge_direct_simple_call (struct cgraph_edge *ie,
   struct cgraph_edge *cs;
   tree target;
   bool agg_contents = ie->indirect_info->agg_contents;
-  bool speculative = ie->speculative;
 
   if (ie->indirect_info->agg_contents)
     target = ipa_find_agg_cst_for_param (&jfunc->agg,
@@ -2598,8 +2597,7 @@ try_make_edge_direct_simple_call (struct cgraph_edge *ie,
     return NULL;
   cs = ipa_make_edge_direct_to_target (ie, target);
 
-  /* FIXME: speculative edges can be handled.  */
-  if (cs && !agg_contents && !speculative)
+  if (cs && !agg_contents)
     {
       bool ok;
       gcc_checking_assert (cs->callee
@@ -3526,7 +3524,7 @@ ipa_modify_call_arguments (struct cgraph_edge *cs, gimple stmt,
 	{
 	  tree expr, base, off;
 	  location_t loc;
-	  unsigned int deref_align;
+	  unsigned int deref_align = 0;
 	  bool deref_base = false;
 
 	  /* We create a new parameter out of the value of the old one, we can
