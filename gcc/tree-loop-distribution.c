@@ -44,7 +44,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tree-flow.h"
+#include "tree-ssa.h"
 #include "cfgloop.h"
 #include "tree-chrec.h"
 #include "tree-data-ref.h"
@@ -92,7 +92,10 @@ enum rdg_dep_type
   output_dd = 'o',
 
   /* Read After Read (RAR).  */
-  input_dd = 'i'
+  input_dd = 'i',
+
+  /* Control dependence (execute conditional on).  */
+  control_dd = 'c'
 };
 
 /* Dependence information attached to an edge of the RDG.  */
@@ -114,14 +117,6 @@ typedef struct rdg_edge
 #define RDGE_TYPE(E)        ((struct rdg_edge *) ((E)->data))->type
 #define RDGE_LEVEL(E)       ((struct rdg_edge *) ((E)->data))->level
 #define RDGE_RELATION(E)    ((struct rdg_edge *) ((E)->data))->relation
-
-/* Strongly connected components of the reduced data dependence graph.  */
-
-typedef struct rdg_component
-{
-  int num;
-  vec<int> vertices;
-} *rdgc;
 
 /* Dump vertex I in RDG to FILE.  */
 
@@ -158,52 +153,15 @@ debug_rdg_vertex (struct graph *rdg, int i)
   dump_rdg_vertex (stderr, rdg, i);
 }
 
-/* Dump component C of RDG to FILE.  If DUMPED is non-null, set the
-   dumped vertices to that bitmap.  */
-
-static void
-dump_rdg_component (FILE *file, struct graph *rdg, int c, bitmap dumped)
-{
-  int i;
-
-  fprintf (file, "(%d\n", c);
-
-  for (i = 0; i < rdg->n_vertices; i++)
-    if (rdg->vertices[i].component == c)
-      {
-	if (dumped)
-	  bitmap_set_bit (dumped, i);
-
-	dump_rdg_vertex (file, rdg, i);
-      }
-
-  fprintf (file, ")\n");
-}
-
-/* Call dump_rdg_vertex on stderr.  */
-
-DEBUG_FUNCTION void
-debug_rdg_component (struct graph *rdg, int c)
-{
-  dump_rdg_component (stderr, rdg, c, NULL);
-}
-
 /* Dump the reduced dependence graph RDG to FILE.  */
 
 static void
 dump_rdg (FILE *file, struct graph *rdg)
 {
-  int i;
-  bitmap dumped = BITMAP_ALLOC (NULL);
-
   fprintf (file, "(rdg\n");
-
-  for (i = 0; i < rdg->n_vertices; i++)
-    if (!bitmap_bit_p (dumped, i))
-      dump_rdg_component (file, rdg, rdg->vertices[i].component, dumped);
-
+  for (int i = 0; i < rdg->n_vertices; i++)
+    dump_rdg_vertex (file, rdg, i);
   fprintf (file, ")\n");
-  BITMAP_FREE (dumped);
 }
 
 /* Call dump_rdg on stderr.  */
@@ -218,6 +176,9 @@ static void
 dot_rdg_1 (FILE *file, struct graph *rdg)
 {
   int i;
+  pretty_printer buffer;
+  pp_needs_newline (&buffer) = false;
+  buffer.buffer->stream = file;
 
   fprintf (file, "digraph RDG {\n");
 
@@ -225,6 +186,11 @@ dot_rdg_1 (FILE *file, struct graph *rdg)
     {
       struct vertex *v = &(rdg->vertices[i]);
       struct graph_edge *e;
+
+      fprintf (file, "%d [label=\"[%d] ", i, i);
+      pp_gimple_stmt_1 (&buffer, RDGV_STMT (v), 0, TDF_SLIM);
+      pp_flush (&buffer);
+      fprintf (file, "\"]\n");
 
       /* Highlight reads from memory.  */
       if (RDG_MEM_READS_STMT (rdg, i))
@@ -255,6 +221,10 @@ dot_rdg_1 (FILE *file, struct graph *rdg)
              fprintf (file, "%d -> %d [label=anti] \n", i, e->dest);
              break;
 
+	   case control_dd:
+             fprintf (file, "%d -> %d [label=control] \n", i, e->dest);
+             break;
+
            default:
              gcc_unreachable ();
            }
@@ -268,16 +238,15 @@ dot_rdg_1 (FILE *file, struct graph *rdg)
 DEBUG_FUNCTION void
 dot_rdg (struct graph *rdg)
 {
-  /* When debugging, enable the following code.  This cannot be used
-     in production compilers because it calls "system".  */
-#if 0
-  FILE *file = fopen ("/tmp/rdg.dot", "w");
-  gcc_assert (file != NULL);
-
+  /* When debugging, you may want to enable the following code.  */
+#if 1
+  FILE *file = popen("dot -Tx11", "w");
+  if (!file)
+    return;
   dot_rdg_1 (file, rdg);
-  fclose (file);
-
-  system ("dotty /tmp/rdg.dot &");
+  fflush (file);
+  close (fileno (file));
+  pclose (file);
 #else
   dot_rdg_1 (stderr, rdg);
 #endif
@@ -363,10 +332,38 @@ create_rdg_edges_for_scalar (struct graph *rdg, tree def, int idef)
     }
 }
 
+/* Creates an edge for the control dependences of BB to the vertex V.  */
+
+static void
+create_edge_for_control_dependence (struct graph *rdg, basic_block bb,
+				    int v, control_dependences *cd)
+{
+  bitmap_iterator bi;
+  unsigned edge_n;
+  EXECUTE_IF_SET_IN_BITMAP (cd->get_edges_dependent_on (bb->index),
+			    0, edge_n, bi)
+    {
+      basic_block cond_bb = cd->get_edge (edge_n)->src;
+      gimple stmt = last_stmt (cond_bb);
+      if (stmt && is_ctrl_stmt (stmt))
+	{
+	  struct graph_edge *e;
+	  int c = rdg_vertex_for_stmt (rdg, stmt);
+	  if (c < 0)
+	    continue;
+
+	  e = add_edge (rdg, c, v);
+	  e->data = XNEW (struct rdg_edge);
+	  RDGE_TYPE (e) = control_dd;
+	  RDGE_RELATION (e) = NULL;
+	}
+    }
+}
+
 /* Creates the edges of the reduced dependence graph RDG.  */
 
 static void
-create_rdg_edges (struct graph *rdg, vec<ddr_p> ddrs)
+create_rdg_edges (struct graph *rdg, vec<ddr_p> ddrs, control_dependences *cd)
 {
   int i;
   struct data_dependence_relation *ddr;
@@ -376,11 +373,28 @@ create_rdg_edges (struct graph *rdg, vec<ddr_p> ddrs)
   FOR_EACH_VEC_ELT (ddrs, i, ddr)
     if (DDR_ARE_DEPENDENT (ddr) == NULL_TREE)
       create_rdg_edge_for_ddr (rdg, ddr);
+    else
+      free_dependence_relation (ddr);
 
   for (i = 0; i < rdg->n_vertices; i++)
     FOR_EACH_PHI_OR_STMT_DEF (def_p, RDG_STMT (rdg, i),
 			      iter, SSA_OP_DEF)
       create_rdg_edges_for_scalar (rdg, DEF_FROM_PTR (def_p), i);
+
+  if (cd)
+    for (i = 0; i < rdg->n_vertices; i++)
+      {
+	gimple stmt = RDG_STMT (rdg, i);
+	if (gimple_code (stmt) == GIMPLE_PHI)
+	  {
+	    edge_iterator ei;
+	    edge e;
+	    FOR_EACH_EDGE (e, ei, gimple_bb (stmt)->preds)
+	      create_edge_for_control_dependence (rdg, e->src, i, cd);
+	  }
+	else
+	  create_edge_for_control_dependence (rdg, gimple_bb (stmt), i, cd);
+      }
 }
 
 /* Build the vertices of the reduced dependence graph RDG.  Return false
@@ -424,11 +438,10 @@ create_rdg_vertices (struct graph *rdg, vec<gimple> stmts, loop_p loop,
   return true;
 }
 
-/* Initialize STMTS with all the statements of LOOP.  When
-   INCLUDE_PHIS is true, include also the PHI nodes.  The order in
+/* Initialize STMTS with all the statements of LOOP.  The order in
    which we discover statements is important as
    generate_loops_for_partition is using the same traversal for
-   identifying statements. */
+   identifying statements in loop copies.  */
 
 static void
 stmts_from_loop (struct loop *loop, vec<gimple> *stmts)
@@ -443,7 +456,8 @@ stmts_from_loop (struct loop *loop, vec<gimple> *stmts)
       gimple stmt;
 
       for (bsi = gsi_start_phis (bb); !gsi_end_p (bsi); gsi_next (&bsi))
-	stmts->safe_push (gsi_stmt (bsi));
+	if (!virtual_operand_p (gimple_phi_result (gsi_stmt (bsi))))
+	  stmts->safe_push (gsi_stmt (bsi));
 
       for (bsi = gsi_start_bb (bb); !gsi_end_p (bsi); gsi_next (&bsi))
 	{
@@ -454,21 +468,6 @@ stmts_from_loop (struct loop *loop, vec<gimple> *stmts)
     }
 
   free (bbs);
-}
-
-/* Returns true when all the dependences are computable.  */
-
-static bool
-known_dependences_p (vec<ddr_p> dependence_relations)
-{
-  ddr_p ddr;
-  unsigned int i;
-
-  FOR_EACH_VEC_ELT (dependence_relations, i, ddr)
-    if (DDR_ARE_DEPENDENT (ddr) == chrec_dont_know)
-      return false;
-
-  return true;
 }
 
 /* Build the Reduced Dependence Graph (RDG) with one vertex per
@@ -512,80 +511,47 @@ free_rdg (struct graph *rdg)
 }
 
 /* Build the Reduced Dependence Graph (RDG) with one vertex per
-   statement of the loop nest, and one edge per data dependence or
+   statement of the loop nest LOOP_NEST, and one edge per data dependence or
    scalar dependence.  */
 
 static struct graph *
-build_rdg (struct loop *loop)
+build_rdg (vec<loop_p> loop_nest, control_dependences *cd)
 {
   struct graph *rdg;
-  vec<loop_p> loop_nest;
   vec<gimple> stmts;
   vec<data_reference_p> datarefs;
   vec<ddr_p> dependence_relations;
 
-  loop_nest.create (3);
-  if (!find_loop_nest (loop, &loop_nest))
-    {
-      loop_nest.release ();
-      return NULL;
-    }
-
+  /* Create the RDG vertices from the stmts of the loop nest.  */
   stmts.create (10);
-  stmts_from_loop (loop, &stmts);
+  stmts_from_loop (loop_nest[0], &stmts);
   rdg = build_empty_rdg (stmts.length ());
   datarefs.create (10);
-  if (!create_rdg_vertices (rdg, stmts, loop, &datarefs))
+  if (!create_rdg_vertices (rdg, stmts, loop_nest[0], &datarefs))
     {
       stmts.release ();
+      datarefs.release ();
       free_rdg (rdg);
       return NULL;
     }
   stmts.release ();
+
+  /* Create the RDG edges from the data dependences in the loop nest.  */
   dependence_relations.create (100);
   if (!compute_all_dependences (datarefs, &dependence_relations, loop_nest,
 				false)
       || !known_dependences_p (dependence_relations))
     {
-      loop_nest.release ();
+      free_dependence_relations (dependence_relations);
       datarefs.release ();
-      dependence_relations.release ();
       free_rdg (rdg);
       return NULL;
     }
-  loop_nest.release ();
-  create_rdg_edges (rdg, dependence_relations);
+  create_rdg_edges (rdg, dependence_relations, cd);
   dependence_relations.release ();
+  datarefs.release ();
 
   return rdg;
-}
-
-/* Determines whether the statement from vertex V of the RDG has a
-   definition used outside the loop that contains this statement.  */
-
-static bool
-rdg_defs_used_in_other_loops_p (struct graph *rdg, int v)
-{
-  gimple stmt = RDG_STMT (rdg, v);
-  struct loop *loop = loop_containing_stmt (stmt);
-  use_operand_p imm_use_p;
-  imm_use_iterator iterator;
-  ssa_op_iter it;
-  def_operand_p def_p;
-
-  if (!loop)
-    return true;
-
-  FOR_EACH_PHI_OR_STMT_DEF (def_p, stmt, it, SSA_OP_DEF)
-    {
-      FOR_EACH_IMM_USE_FAST (imm_use_p, iterator, DEF_FROM_PTR (def_p))
-	{
-	  if (loop_containing_stmt (USE_STMT (imm_use_p)) != loop)
-	    return true;
-	}
-    }
-
-  return false;
 }
 
 
@@ -644,17 +610,6 @@ partition_has_writes (partition_t partition)
 {
   return partition->has_writes;
 }
-
-/* If bit I is not set, it means that this node represents an
-   operation that has already been performed, and that should not be
-   performed again.  This is the subgraph of remaining important
-   computations that is passed to the DFS algorithm for avoiding to
-   include several times the same stores in different loops.  */
-static bitmap remaining_stmts;
-
-/* A node of the RDG is marked in this bitmap when it has as a
-   predecessor a node that writes to memory.  */
-static bitmap upstream_mem_writes;
 
 /* Returns true when DEF is an SSA_NAME defined in LOOP and used after
    the LOOP.  */
@@ -735,7 +690,7 @@ static void
 generate_loops_for_partition (struct loop *loop, partition_t partition,
 			      bool copy_p)
 {
-  unsigned i, x;
+  unsigned i;
   gimple_stmt_iterator bsi;
   basic_block *bbs;
 
@@ -747,58 +702,75 @@ generate_loops_for_partition (struct loop *loop, partition_t partition,
       create_bb_after_loop (loop);
     }
 
-  /* Remove stmts not in the PARTITION bitmap.  The order in which we
-     visit the phi nodes and the statements is exactly as in
-     stmts_from_loop.  */
+  /* Remove stmts not in the PARTITION bitmap.  */
   bbs = get_loop_body_in_dom_order (loop);
 
   if (MAY_HAVE_DEBUG_STMTS)
-    for (x = 0, i = 0; i < loop->num_nodes; i++)
+    for (i = 0; i < loop->num_nodes; i++)
       {
 	basic_block bb = bbs[i];
 
 	for (bsi = gsi_start_phis (bb); !gsi_end_p (bsi); gsi_next (&bsi))
-	  if (!bitmap_bit_p (partition->stmts, x++))
-	    reset_debug_uses (gsi_stmt (bsi));
+	  {
+	    gimple phi = gsi_stmt (bsi);
+	    if (!virtual_operand_p (gimple_phi_result (phi))
+		&& !bitmap_bit_p (partition->stmts, gimple_uid (phi)))
+	      reset_debug_uses (phi);
+	  }
 
 	for (bsi = gsi_start_bb (bb); !gsi_end_p (bsi); gsi_next (&bsi))
 	  {
 	    gimple stmt = gsi_stmt (bsi);
 	    if (gimple_code (stmt) != GIMPLE_LABEL
 		&& !is_gimple_debug (stmt)
-		&& !bitmap_bit_p (partition->stmts, x++))
+		&& !bitmap_bit_p (partition->stmts, gimple_uid (stmt)))
 	      reset_debug_uses (stmt);
 	  }
       }
 
-  for (x = 0, i = 0; i < loop->num_nodes; i++)
+  for (i = 0; i < loop->num_nodes; i++)
     {
       basic_block bb = bbs[i];
 
       for (bsi = gsi_start_phis (bb); !gsi_end_p (bsi);)
-	if (!bitmap_bit_p (partition->stmts, x++))
-	  {
-	    gimple phi = gsi_stmt (bsi);
-	    if (virtual_operand_p (gimple_phi_result (phi)))
-	      mark_virtual_phi_result_for_renaming (phi);
+	{
+	  gimple phi = gsi_stmt (bsi);
+	  if (!virtual_operand_p (gimple_phi_result (phi))
+	      && !bitmap_bit_p (partition->stmts, gimple_uid (phi)))
 	    remove_phi_node (&bsi, true);
-	  }
-	else
-	  gsi_next (&bsi);
+	  else
+	    gsi_next (&bsi);
+	}
 
       for (bsi = gsi_start_bb (bb); !gsi_end_p (bsi);)
 	{
 	  gimple stmt = gsi_stmt (bsi);
 	  if (gimple_code (stmt) != GIMPLE_LABEL
 	      && !is_gimple_debug (stmt)
-	      && !bitmap_bit_p (partition->stmts, x++))
+	      && !bitmap_bit_p (partition->stmts, gimple_uid (stmt)))
 	    {
-	      unlink_stmt_vdef (stmt);
-	      gsi_remove (&bsi, true);
-	      release_defs (stmt);
+	      /* Choose an arbitrary path through the empty CFG part
+		 that this unnecessary control stmt controls.  */
+	      if (gimple_code (stmt) == GIMPLE_COND)
+		{
+		  gimple_cond_make_false (stmt);
+		  update_stmt (stmt);
+		}
+	      else if (gimple_code (stmt) == GIMPLE_SWITCH)
+		{
+		  gimple_switch_set_index
+		      (stmt, CASE_LOW (gimple_switch_label (stmt, 1)));
+		  update_stmt (stmt);
+		}
+	      else
+		{
+		  unlink_stmt_vdef (stmt);
+		  gsi_remove (&bsi, true);
+		  release_defs (stmt);
+		  continue;
+		}
 	    }
-	  else
-	    gsi_next (&bsi);
+	  gsi_next (&bsi);
 	}
     }
 
@@ -1080,139 +1052,11 @@ rdg_cannot_recompute_vertex_p (struct graph *rdg, int v)
 static inline bool
 already_processed_vertex_p (bitmap processed, int v)
 {
-  return (bitmap_bit_p (processed, v)
-	  || !bitmap_bit_p (remaining_stmts, v));
-}
-
-/* Returns NULL when there is no anti-dependence or output-dependence
-   among the successors of vertex V, otherwise returns the edge with the
-   dependency.  */
-
-static struct graph_edge *
-has_anti_or_output_dependence (struct vertex *v)
-{
-  struct graph_edge *e;
-
-  if (v->succ)
-    for (e = v->succ; e; e = e->succ_next)
-      if (RDGE_TYPE (e) == anti_dd
-	  || RDGE_TYPE (e) == output_dd)
-	return e;
-
-  return NULL;
-}
-
-/* Returns true when V has an anti-dependence edge among its successors.  */
-
-static bool
-predecessor_has_mem_write (struct graph *rdg, struct vertex *v)
-{
-  struct graph_edge *e;
-
-  if (v->pred)
-    for (e = v->pred; e; e = e->pred_next)
-      if (bitmap_bit_p (upstream_mem_writes, e->src)
-	  /* Don't consider flow channels: a write to memory followed
-	     by a read from memory.  These channels allow the split of
-	     the RDG in different partitions.  */
-	  && !RDG_MEM_WRITE_STMT (rdg, e->src))
-	return true;
-
-  return false;
-}
-
-/* Initializes the upstream_mem_writes bitmap following the
-   information from RDG.  */
-
-static void
-mark_nodes_having_upstream_mem_writes (struct graph *rdg)
-{
-  int v, x;
-  bitmap seen = BITMAP_ALLOC (NULL);
-
-  for (v = rdg->n_vertices - 1; v >= 0; v--)
-    if (!bitmap_bit_p (seen, v))
-      {
-	unsigned i;
-	vec<int> nodes;
-	nodes.create (3);
-
-	graphds_dfs (rdg, &v, 1, &nodes, false, NULL);
-
-	FOR_EACH_VEC_ELT (nodes, i, x)
-	  {
-	    if (!bitmap_set_bit (seen, x))
-	      continue;
-
-	    if (RDG_MEM_WRITE_STMT (rdg, x)
-		|| predecessor_has_mem_write (rdg, &(rdg->vertices[x]))
-		/* In anti dependences the read should occur before
-		   the write, this is why both the read and the write
-		   should be placed in the same partition.  In output
-		   dependences the writes order need to be preserved.  */
-		|| has_anti_or_output_dependence (&(rdg->vertices[x])))
-	      bitmap_set_bit (upstream_mem_writes, x);
-	  }
-
-	nodes.release ();
-      }
-}
-
-/* Returns true when vertex u has a memory write node as a predecessor
-   in RDG.  */
-
-static bool
-has_upstream_mem_writes (int u)
-{
-  return bitmap_bit_p (upstream_mem_writes, u);
+  return bitmap_bit_p (processed, v);
 }
 
 static void rdg_flag_vertex_and_dependent (struct graph *, int, partition_t,
 					   bitmap);
-
-/* Flag the uses of U stopping following the information from
-   upstream_mem_writes.  */
-
-static void
-rdg_flag_uses (struct graph *rdg, int u, partition_t partition,
-	       bitmap processed)
-{
-  struct vertex *x = &(rdg->vertices[u]);
-  gimple stmt = RDGV_STMT (x);
-  struct graph_edge *anti_dep = has_anti_or_output_dependence (x);
-
-  /* Keep in the same partition the destination of an antidependence,
-     because this is a store to the exact same location.  Putting this
-     in another partition is bad for cache locality.  */
-  if (anti_dep)
-    {
-      int v = anti_dep->dest;
-
-      if (!already_processed_vertex_p (processed, v))
-	rdg_flag_vertex_and_dependent (rdg, v, partition, processed);
-    }
-
-  if (is_gimple_assign (stmt) && has_upstream_mem_writes (u))
-    {
-      tree op0 = gimple_assign_lhs (stmt);
-
-      /* Scalar channels don't have enough space for transmitting data
-	 between tasks, unless we add more storage by privatizing.  */
-      if (is_gimple_reg (op0))
-	{
-	  use_operand_p use_p;
-	  imm_use_iterator iter;
-
-	  FOR_EACH_IMM_USE_FAST (use_p, iter, op0)
-	    {
-	      int v = rdg_vertex_for_stmt (rdg, USE_STMT (use_p));
-
-	      if (!already_processed_vertex_p (processed, v))
-		rdg_flag_vertex_and_dependent (rdg, v, partition, processed);
-	    }
-	}
-    }
-}
 
 /* Flag V from RDG as part of PARTITION, and also flag its loop number
    in LOOPS.  */
@@ -1229,10 +1073,7 @@ rdg_flag_vertex (struct graph *rdg, int v, partition_t partition)
   bitmap_set_bit (partition->loops, loop->num);
 
   if (rdg_cannot_recompute_vertex_p (rdg, v))
-    {
-      partition->has_writes = true;
-      bitmap_clear_bit (remaining_stmts, v);
-    }
+    partition->has_writes = true;
 }
 
 /* Flag in the bitmap PARTITION the vertex V and all its predecessors.
@@ -1247,153 +1088,26 @@ rdg_flag_vertex_and_dependent (struct graph *rdg, int v, partition_t partition,
   nodes.create (3);
   int x;
 
-  bitmap_set_bit (processed, v);
-  rdg_flag_uses (rdg, v, partition, processed);
-  graphds_dfs (rdg, &v, 1, &nodes, false, remaining_stmts);
-  rdg_flag_vertex (rdg, v, partition);
+  graphds_dfs (rdg, &v, 1, &nodes, false, NULL);
 
   FOR_EACH_VEC_ELT (nodes, i, x)
-    if (!already_processed_vertex_p (processed, x))
-      rdg_flag_vertex_and_dependent (rdg, x, partition, processed);
+    if (bitmap_set_bit (processed, x))
+      rdg_flag_vertex (rdg, x, partition);
 
   nodes.release ();
 }
 
-/* Initialize CONDS with all the condition statements from the basic
-   blocks of LOOP.  */
-
-static void
-collect_condition_stmts (struct loop *loop, vec<gimple> *conds)
-{
-  unsigned i;
-  edge e;
-  vec<edge> exits = get_loop_exit_edges (loop);
-
-  FOR_EACH_VEC_ELT (exits, i, e)
-    {
-      gimple cond = last_stmt (e->src);
-
-      if (cond)
-	conds->safe_push (cond);
-    }
-
-  exits.release ();
-}
-
-/* Add to PARTITION all the exit condition statements for LOOPS
-   together with all their dependent statements determined from
-   RDG.  */
-
-static void
-rdg_flag_loop_exits (struct graph *rdg, partition_t partition,
-		     bitmap processed)
-{
-  unsigned i;
-  bitmap_iterator bi;
-  vec<gimple> conds;
-  conds.create (3);
-
-  EXECUTE_IF_SET_IN_BITMAP (partition->loops, 0, i, bi)
-    collect_condition_stmts (get_loop (cfun, i), &conds);
-
-  while (!conds.is_empty ())
-    {
-      gimple cond = conds.pop ();
-      int v = rdg_vertex_for_stmt (rdg, cond);
-      if (!already_processed_vertex_p (processed, v))
-	{
-	  bitmap saved_loops = BITMAP_ALLOC (NULL);
-	  bitmap_copy (saved_loops, partition->loops);
-	  rdg_flag_vertex_and_dependent (rdg, v, partition, processed);
-	  EXECUTE_IF_AND_COMPL_IN_BITMAP (partition->loops, saved_loops,
-					  0, i, bi)
-	    collect_condition_stmts (get_loop (cfun, i), &conds);
-	  BITMAP_FREE (saved_loops);
-	}
-    }
-
-  conds.release ();
-}
-
-/* Returns a bitmap in which all the statements needed for computing
-   the strongly connected component C of the RDG are flagged, also
-   including the loop exit conditions.  */
+/* Returns a partition with all the statements needed for computing
+   the vertex V of the RDG, also including the loop exit conditions.  */
 
 static partition_t
-build_rdg_partition_for_component (struct graph *rdg, rdgc c)
+build_rdg_partition_for_vertex (struct graph *rdg, int v)
 {
-  int i, v;
   partition_t partition = partition_alloc (NULL, NULL);
   bitmap processed = BITMAP_ALLOC (NULL);
-
-  FOR_EACH_VEC_ELT (c->vertices, i, v)
-    if (!already_processed_vertex_p (processed, v))
-      rdg_flag_vertex_and_dependent (rdg, v, partition, processed);
-
-  rdg_flag_loop_exits (rdg, partition, processed);
-
+  rdg_flag_vertex_and_dependent (rdg, v, partition, processed);
   BITMAP_FREE (processed);
   return partition;
-}
-
-/* Free memory for COMPONENTS.  */
-
-static void
-free_rdg_components (vec<rdgc> components)
-{
-  int i;
-  rdgc x;
-
-  FOR_EACH_VEC_ELT (components, i, x)
-    {
-      x->vertices.release ();
-      free (x);
-    }
-
-  components.release ();
-}
-
-/* Build the COMPONENTS vector with the strongly connected components
-   of RDG in which the STARTING_VERTICES occur.  */
-
-static void
-rdg_build_components (struct graph *rdg, vec<int> starting_vertices,
-		      vec<rdgc> *components)
-{
-  int i, v;
-  bitmap saved_components = BITMAP_ALLOC (NULL);
-  int n_components = graphds_scc (rdg, NULL);
-  /* ??? Macros cannot process template types with more than one
-     argument, so we need this typedef.  */
-  typedef vec<int> vec_int_heap;
-  vec<int> *all_components = XNEWVEC (vec_int_heap, n_components);
-
-  for (i = 0; i < n_components; i++)
-    all_components[i].create (3);
-
-  for (i = 0; i < rdg->n_vertices; i++)
-    all_components[rdg->vertices[i].component].safe_push (i);
-
-  FOR_EACH_VEC_ELT (starting_vertices, i, v)
-    {
-      int c = rdg->vertices[v].component;
-
-      if (bitmap_set_bit (saved_components, c))
-	{
-	  rdgc x = XCNEW (struct rdg_component);
-	  x->num = c;
-	  x->vertices = all_components[c];
-
-	  components->safe_push (x);
-	}
-    }
-
-  for (i = 0; i < n_components; i++)
-    if (!bitmap_bit_p (saved_components, i))
-      all_components[i].release ();
-
-  free (all_components);
-  BITMAP_FREE (saved_components);
 }
 
 /* Classifies the builtin kind we can generate for PARTITION of RDG and LOOP.
@@ -1612,23 +1326,28 @@ similar_memory_accesses (struct graph *rdg, partition_t partition1,
    distributed in different loops.  */
 
 static void
-rdg_build_partitions (struct graph *rdg, vec<rdgc> components,
-		      vec<int> *other_stores,
-		      vec<partition_t> *partitions, bitmap processed)
+rdg_build_partitions (struct graph *rdg,
+		      vec<gimple> starting_stmts,
+		      vec<partition_t> *partitions)
 {
+  bitmap processed = BITMAP_ALLOC (NULL);
   int i;
-  rdgc x;
+  gimple stmt;
   partition_t partition = partition_alloc (NULL, NULL);
 
-  FOR_EACH_VEC_ELT (components, i, x)
+  FOR_EACH_VEC_ELT (starting_stmts, i, stmt)
     {
       partition_t np;
-      int v = x->vertices[0];
+      int v = rdg_vertex_for_stmt (rdg, stmt);
+
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	fprintf (dump_file,
+		 "ldist asked to generate code for vertex %d\n", v);
 
       if (bitmap_bit_p (processed, v))
 	continue;
 
-      np = build_rdg_partition_for_component (rdg, x);
+      np = build_rdg_partition_for_vertex (rdg, v);
       bitmap_ior_into (partition->stmts, np->stmts);
       partition->has_writes = partition_has_writes (np);
       bitmap_ior_into (processed, np->stmts);
@@ -1647,36 +1366,23 @@ rdg_build_partitions (struct graph *rdg, vec<rdgc> components,
 	}
     }
 
-  /* Add the nodes from the RDG that were not marked as processed, and
-     that are used outside the current loop.  These are scalar
-     computations that are not yet part of previous partitions.  */
-  for (i = 0; i < rdg->n_vertices; i++)
-    if (!bitmap_bit_p (processed, i)
-	&& rdg_defs_used_in_other_loops_p (rdg, i))
-      other_stores->safe_push (i);
+  /* All vertices should have been assigned to at least one partition now,
+     other than vertices belonging to dead code.  */
 
-  /* If there are still statements left in the OTHER_STORES array,
-     create other components and partitions with these stores and
-     their dependences.  */
-  if (other_stores->length () > 0)
+  if (!bitmap_empty_p (partition->stmts))
     {
-      vec<rdgc> comps;
-      comps.create (3);
-      vec<int> foo;
-      foo.create (3);
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "remaining partition:\n");
+	  dump_bitmap (dump_file, partition->stmts);
+	}
 
-      rdg_build_components (rdg, *other_stores, &comps);
-      rdg_build_partitions (rdg, comps, &foo, partitions, processed);
-
-      foo.release ();
-      free_rdg_components (comps);
+      partitions->safe_push (partition);
     }
-
-  /* If there is something left in the last partition, save it.  */
-  if (bitmap_count_bits (partition->stmts) > 0)
-    partitions->safe_push (partition);
   else
     partition_free (partition);
+
+  BITMAP_FREE (processed);
 }
 
 /* Dump to FILE the PARTITIONS.  */
@@ -1759,56 +1465,47 @@ partition_contains_all_rw (struct graph *rdg,
   return false;
 }
 
-/* Generate code from STARTING_VERTICES in RDG.  Returns the number of
-   distributed loops.  */
+
+/* Distributes the code from LOOP in such a way that producer
+   statements are placed before consumer statements.  Tries to separate
+   only the statements from STMTS into separate loops.
+   Returns the number of distributed loops.  */
 
 static int
-ldist_gen (struct loop *loop, struct graph *rdg,
-	   vec<int> starting_vertices)
+distribute_loop (struct loop *loop, vec<gimple> stmts,
+		 control_dependences *cd)
 {
-  int i, nbp;
-  vec<rdgc> components;
-  components.create (3);
+  struct graph *rdg;
+  vec<loop_p> loop_nest;
   vec<partition_t> partitions;
-  partitions.create (3);
-  vec<int> other_stores;
-  other_stores.create (3);
   partition_t partition;
-  bitmap processed = BITMAP_ALLOC (NULL);
   bool any_builtin;
+  int i, nbp;
 
-  remaining_stmts = BITMAP_ALLOC (NULL);
-  upstream_mem_writes = BITMAP_ALLOC (NULL);
-
-  for (i = 0; i < rdg->n_vertices; i++)
+  loop_nest.create (3);
+  if (!find_loop_nest (loop, &loop_nest))
     {
-      bitmap_set_bit (remaining_stmts, i);
-
-      /* Save in OTHER_STORES all the memory writes that are not in
-	 STARTING_VERTICES.  */
-      if (RDG_MEM_WRITE_STMT (rdg, i))
-	{
-	  int v;
-	  unsigned j;
-	  bool found = false;
-
-	  FOR_EACH_VEC_ELT (starting_vertices, j, v)
-	    if (i == v)
-	      {
-		found = true;
-		break;
-	      }
-
-	  if (!found)
-	    other_stores.safe_push (i);
-	}
+      loop_nest.release ();
+      return 0;
     }
 
-  mark_nodes_having_upstream_mem_writes (rdg);
-  rdg_build_components (rdg, starting_vertices, &components);
-  rdg_build_partitions (rdg, components, &other_stores, &partitions,
-			processed);
-  BITMAP_FREE (processed);
+  rdg = build_rdg (loop_nest, cd);
+  if (!rdg)
+    {
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	fprintf (dump_file,
+		 "Loop %d not distributed: failed to build the RDG.\n",
+		 loop->num);
+
+      loop_nest.release ();
+      return 0;
+    }
+
+  if (dump_file && (dump_flags & TDF_DETAILS))
+    dump_rdg (dump_file, rdg);
+
+  partitions.create (3);
+  rdg_build_partitions (rdg, stmts, &partitions);
 
   any_builtin = false;
   FOR_EACH_VEC_ELT (partitions, i, partition)
@@ -1864,9 +1561,6 @@ ldist_gen (struct loop *loop, struct graph *rdg,
 	       partitions.iterate (j, &partition); ++j)
 	    {
 	      if (!partition_builtin_p (partition)
-		  /* ???  The following is horribly inefficient,
-		     we are re-computing and analyzing data-references
-		     of the stmts in the partitions all the time.  */
 		  && similar_memory_accesses (rdg, into, partition))
 		{
 		  if (dump_file && (dump_flags & TDF_DETAILS))
@@ -1929,67 +1623,13 @@ ldist_gen (struct loop *loop, struct graph *rdg,
 
  ldist_done:
 
-  BITMAP_FREE (remaining_stmts);
-  BITMAP_FREE (upstream_mem_writes);
-
   FOR_EACH_VEC_ELT (partitions, i, partition)
     partition_free (partition);
-
-  other_stores.release ();
   partitions.release ();
-  free_rdg_components (components);
-  return nbp;
-}
 
-/* Distributes the code from LOOP in such a way that producer
-   statements are placed before consumer statements.  When STMTS is
-   NULL, performs the maximal distribution, if STMTS is not NULL,
-   tries to separate only these statements from the LOOP's body.
-   Returns the number of distributed loops.  */
-
-static int
-distribute_loop (struct loop *loop, vec<gimple> stmts)
-{
-  int res = 0;
-  struct graph *rdg;
-  gimple s;
-  unsigned i;
-  vec<int> vertices;
-
-  rdg = build_rdg (loop);
-  if (!rdg)
-    {
-      if (dump_file && (dump_flags & TDF_DETAILS))
-	fprintf (dump_file,
-		 "FIXME: Loop %d not distributed: failed to build the RDG.\n",
-		 loop->num);
-
-      return res;
-    }
-
-  vertices.create (3);
-
-  if (dump_file && (dump_flags & TDF_DETAILS))
-    dump_rdg (dump_file, rdg);
-
-  FOR_EACH_VEC_ELT (stmts, i, s)
-    {
-      int v = rdg_vertex_for_stmt (rdg, s);
-
-      if (v >= 0)
-	{
-	  vertices.safe_push (v);
-
-	  if (dump_file && (dump_flags & TDF_DETAILS))
-	    fprintf (dump_file,
-		     "ldist asked to generate code for vertex %d\n", v);
-	}
-    }
-
-  res = ldist_gen (loop, rdg, vertices);
-  vertices.release ();
   free_rdg (rdg);
-  return res;
+  loop_nest.release ();
+  return nbp;
 }
 
 /* Distribute all loops in the current function.  */
@@ -2001,6 +1641,7 @@ tree_loop_distribution (void)
   loop_iterator li;
   bool changed = false;
   basic_block bb;
+  control_dependences *cd = NULL;
 
   FOR_ALL_BB (bb)
     {
@@ -2030,10 +1671,6 @@ tree_loop_distribution (void)
       if (!optimize_loop_for_speed_p (loop))
 	continue;
 
-      /* Only distribute loops with a header and latch for now.  */
-      if (loop->num_nodes > 2)
-	continue;
-
       /* Initialize the worklist with stmts we seed the partitions with.  */
       bbs = get_loop_body_in_dom_order (loop);
       for (i = 0; i < loop->num_nodes; ++i)
@@ -2042,6 +1679,15 @@ tree_loop_distribution (void)
 	  for (gsi = gsi_start_bb (bbs[i]); !gsi_end_p (gsi); gsi_next (&gsi))
 	    {
 	      gimple stmt = gsi_stmt (gsi);
+
+	      /* If there is a stmt with side-effects bail out - we
+	         cannot and should not distribute this loop.  */
+	      if (gimple_has_side_effects (stmt))
+		{
+		  work_list.truncate (0);
+		  goto out;
+		}
+
 	      /* Distribute stmts which have defs that are used outside of
 	         the loop.  */
 	      if (stmt_has_scalar_dependences_outside_loop (loop, stmt))
@@ -2054,10 +1700,19 @@ tree_loop_distribution (void)
 	      work_list.safe_push (stmt);
 	    }
 	}
+out:
       free (bbs);
 
       if (work_list.length () > 0)
-	nb_generated_loops = distribute_loop (loop, work_list);
+	{
+	  if (!cd)
+	    {
+	      calculate_dominance_info (CDI_POST_DOMINATORS);
+	      cd = new control_dependences (create_edge_list ());
+	      free_dominance_info (CDI_POST_DOMINATORS);
+	    }
+	  nb_generated_loops = distribute_loop (loop, work_list, cd);
+	}
 
       if (nb_generated_loops > 0)
 	changed = true;
@@ -2073,6 +1728,9 @@ tree_loop_distribution (void)
 
       work_list.release ();
     }
+
+  if (cd)
+    delete cd;
 
   if (changed)
     {

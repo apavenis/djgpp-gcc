@@ -32,7 +32,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "optabs.h"
 #include "regs.h"
 #include "ggc.h"
-#include "tree-flow.h"
+#include "tree-ssa.h"
 #include "tree-flow-inline.h"
 #include "diagnostic.h"
 #include "gimple-pretty-print.h"
@@ -589,7 +589,7 @@ check_counter (gimple stmt, const char * name,
             dump_printf_loc (MSG_MISSED_OPTIMIZATION, locus,
                              "correcting inconsistent value profile: %s "
                              "profiler overall count (%d) does not match BB "
-                             "count (%d)", name, (int)*all, (int)bb_count);
+                             "count (%d)\n", name, (int)*all, (int)bb_count);
 	  *all = bb_count;
 	  if (*count > *all)
             *count = *all;
@@ -1275,7 +1275,7 @@ check_ic_target (gimple call_stmt, struct cgraph_node *target)
    locus =  gimple_location (call_stmt);
    if (dump_enabled_p ())
      dump_printf_loc (MSG_MISSED_OPTIMIZATION, locus,
-                      "Skipping target %s with mismatching types for icall ",
+                      "Skipping target %s with mismatching types for icall\n",
                       cgraph_node_name (target));
    return false;
 }
