@@ -15,6 +15,8 @@
 %define target @__TARGET__@
 
 %define include_ada 1
+%define include_fortran 1
+%define include_objc 1
 %define do_native_bootstrap 1
 %define create_djgpp_source_zip 1
 
@@ -23,10 +25,18 @@
 %define debug_package %{nil}
 
 %if %include_ada
-%define languages c,c++,f95,objc,obj-c++,ada
-%else
-%define languages c,c++,f95,objc,obj-c++
+%define support_ada 1
 %endif
+
+%if %include_fortran
+%define support_fortran 1
+%endif
+
+%if %include_objc
+%define support_objc 1
+%endif
+
+%define languages c,c++%{?support_fortran:,f95}%{?support_objc:,objc,obj-c++}%{?support_ada:,ada}
 
 Name: djcross-gcc
 Summary:  GCC cross-compiler for target i586-pc-msdosdjgpp
@@ -58,15 +68,19 @@ Summary: GCC cross-compiler for i586-pc-msdosdjgpp (C++)
 Requires: djcross-gcc = %{version}
 Group: Development/Tools
 
+%if %include_fortran
 %package gfortran
 Summary: GCC cross-compiler for i586-pc-msdosdjgpp (GNU Fortran)
 Requires: djcross-gcc = %{version}
 Group: Development/Tools
+%endif
 
+%if %include_objc
 %package objc
 Summary: GCC cross-compiler for i586-pc-msdosdjgpp (Objective C and Objective C++)
 Requires: djcross-gcc = %{version}
 Group: Development/Tools
+%endif
 
 %if %include_ada
 %package gnat
@@ -102,11 +116,15 @@ Support of the following programing languages is included:
 C++ Cross-compiler for target i586-pc-msdosdjgpp. Includes both
 C++ compiler and C++ standard library.
 
+%if %include_fortran
 %description gfortran
 GNU Fortran compiler for target i586-pc-msdosdjgpp
+%endif
 
+%if %include_objc
 %description objc
 GNU Objective C and Objective C++ compilers for target i586-pc-msdosdjgpp
+%endif
 
 %if %include_ada
 %description gnat
@@ -306,11 +324,11 @@ rm -f %{buildroot}/usr/%{target}/lib/libiberty.a
 
 for file in $(find %{buildroot}%{_mandir} -type f) ; do gzip -v9 $file; done
 
-( cd %{buildroot}%{_libexecdir}/gcc/%{target}/%{gcc_version} &&\
-    strip cc1* collect2 f951 install-tools/fixincl )
-
-( cd %{buildroot}%{_libexecdir}/gcc/%{target}/%{gcc_version} &&\
-    if [ -f gnat1 ] ; then strip gnat1; fi; )
+for file in cc1 cc1plus collect2 f951 gnat1 install_tools/fixincl ; do
+    if [ -f %{buildroot}%{_libexecdir}/gcc/%{target}/%{gcc_version}/$file ] ; then
+        strip %{buildroot}%{_libexecdir}/gcc/%{target}/%{gcc_version}/$file
+    fi
+done
 
 %clean
 rm -fr %{buildroot}
@@ -372,6 +390,7 @@ rm -fr %{buildroot}
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1plus
 %{_mandir}/man1/%{target}-g++.1.gz
 
+%if %include_fortran
 %files gfortran
 %defattr(-,root,root)
 %{_bindir}/%{target}-gfortran
@@ -384,7 +403,9 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/finclude
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/f951
 %{_mandir}/man1/%{target}-gfortran.1.gz
+%endif
 
+%if %include_objc
 %files objc
 %defattr(-,root,root)
 %{_libdir}/gcc/%{target}/%{gcc_version}/libobjc.a
@@ -392,6 +413,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/objc/*
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1obj
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1objplus
+%endif
 
 %if %include_ada
 %files gnat
@@ -420,6 +442,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Oct  5 2013 Andris Pavenis <andris.pavenis@iki.fi>
+- Fix typo in SPEC file
+- build also fortran, objc, objc++ compilers conditionally
+
 * Fri May 31 2013 Andris Pavenis <andris.pavenis@iki.fi> 4.8.1-1ap
 - Update to GCC-4.8.1
 - Use GMP-5.1.2
