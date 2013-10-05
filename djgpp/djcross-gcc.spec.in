@@ -249,7 +249,7 @@ cd djcross
 
 %native_cc_spec \
 %native_cxx_spec \
-PATH=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH \
+PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
 ../gnu/gcc-%{shortver}/configure --build=%{_build} \
                                  --host=%{_host} \
 			         --target=%{target} \
@@ -276,7 +276,7 @@ PATH=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH \
 			         --enable-version-specific-runtime-libs \
 			         --enable-languages=%{languages} || exit 1 
 
-make %{_smp_mflags} PATH=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH || exit 1
+make %{_smp_mflags} PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" || exit 1
 
 cd ..
 
@@ -294,7 +294,7 @@ rm -fr %{buildroot}
 export STRIP=/bin/true
 cd $RPM_BUILD_DIR/%{name}-%{version}/djcross
 # makeinstall
-PATH=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH make install DESTDIR=%{buildroot} datadir=%{buildroot}/usr/share
+PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" make install DESTDIR=%{buildroot} datadir=%{buildroot}/usr/share
 ( cd %{buildroot}%{_bindir} && for file in *; do case $file in *gccbug) ;; *) strip $file ;; esac; done )
 ( cd %{buildroot}%{_bindir} && if [ -f gprmake ] ; then mv -fv gprmake i586-pc-msdosdjgpp-gprmake; fi )
 ( cd %{buildroot}%{_bindir} && if [ -f vxaddr2line ] ; then mv -fv vxaddr2line i586-pc-msdosdjgpp-vxaddr2line; fi )
