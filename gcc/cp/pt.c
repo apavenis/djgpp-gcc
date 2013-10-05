@@ -11540,7 +11540,7 @@ tsubst (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 					    /*entering_scope=*/0,
 					   complain);
 		return cp_build_qualified_type_real
-		  (r, cp_type_quals (t), complain);
+		  (r, cp_type_quals (t) | cp_type_quals (r), complain);
 	      }
 	    else
 	      /* TEMPLATE_TEMPLATE_PARM or TEMPLATE_PARM_INDEX.  */
@@ -12434,7 +12434,8 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
       return t;
 
     case BASELINK:
-      return tsubst_baselink (t, current_class_type, args, complain, in_decl);
+      return tsubst_baselink (t, current_nonlambda_class_type (),
+			      args, complain, in_decl);
 
     case TEMPLATE_DECL:
       if (DECL_TEMPLATE_TEMPLATE_PARM_P (t))

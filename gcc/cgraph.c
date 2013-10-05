@@ -870,12 +870,12 @@ cgraph_create_edge_1 (struct cgraph_node *caller, struct cgraph_node *callee,
     edge->call_stmt_cannot_inline_p = true;
   else
     edge->call_stmt_cannot_inline_p = false;
-  if (call_stmt && caller->call_site_hash)
-    cgraph_add_edge_to_call_site_hash (edge);
 
   edge->indirect_info = NULL;
   edge->indirect_inlining_edge = 0;
   edge->speculative = false;
+  if (call_stmt && caller->call_site_hash)
+    cgraph_add_edge_to_call_site_hash (edge);
 
   return edge;
 }
@@ -1188,7 +1188,9 @@ cgraph_resolve_speculation (struct cgraph_edge *edge, tree callee_decl)
 
   gcc_assert (edge->speculative);
   cgraph_speculative_call_info (edge, e2, edge, ref);
-  if (ref->referred->symbol.decl != callee_decl)
+  if (!callee_decl
+      || !symtab_semantically_equivalent_p ((symtab_node) ref->referred,
+					    symtab_get_node (callee_decl)))
     {
       if (dump_file)
 	{
@@ -2048,6 +2050,8 @@ cgraph_function_body_availability (struct cgraph_node *node)
     avail = AVAIL_LOCAL;
   else if (node->symbol.alias && node->symbol.weakref)
     cgraph_function_or_thunk_node (node, &avail);
+  else if (lookup_attribute ("ifunc", DECL_ATTRIBUTES (node->symbol.decl)))
+    avail = AVAIL_OVERWRITABLE;
   else if (!node->symbol.externally_visible)
     avail = AVAIL_AVAILABLE;
   /* Inline functions are safe to be analyzed even if their symbol can

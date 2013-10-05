@@ -905,13 +905,19 @@ possible_polymorphic_call_target_p (tree otr_type,
 {
   vec <cgraph_node *> targets;
   unsigned int i;
+  bool final;
 
   if (!odr_hash.is_created ())
     return true;
-  targets = possible_polymorphic_call_targets (otr_type, otr_token);
+  targets = possible_polymorphic_call_targets (otr_type, otr_token, &final);
   for (i = 0; i < targets.length (); i++)
     if (n == targets[i])
       return true;
+
+  /* At a moment we allow middle end to dig out new external declarations
+     as a targets of polymorphic calls.  */
+  if (!final && !n->symbol.definition)
+    return true;
   return false;
 }
 
@@ -1098,7 +1104,13 @@ ipa_devirt (void)
 			   cgraph_node_name (likely_target),
 			   likely_target->symbol.order);
 		if (!symtab_can_be_discarded ((symtab_node) likely_target))
-		  likely_target = cgraph (symtab_nonoverwritable_alias ((symtab_node)likely_target));
+		  {
+		    cgraph_node *alias;
+		    alias = cgraph (symtab_nonoverwritable_alias
+				     ((symtab_node)likely_target));
+		    if (alias)
+		      likely_target = alias;
+		  }
 		nconverted++;
 		update = true;
 		cgraph_turn_edge_to_speculative

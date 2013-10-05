@@ -1923,6 +1923,14 @@ find_regno_fusage (const_rtx insn, enum rtx_code code, unsigned int regno)
 }
 
 
+/* Return true if KIND is an integer REG_NOTE.  */
+
+static bool
+int_reg_note_p (enum reg_note kind)
+{
+  return kind == REG_BR_PROB;
+}
+
 /* Allocate a register note with kind KIND and datum DATUM.  LIST is
    stored as the pointer to the next register note.  */
 
@@ -1931,6 +1939,7 @@ alloc_reg_note (enum reg_note kind, rtx datum, rtx list)
 {
   rtx note;
 
+  gcc_checking_assert (!int_reg_note_p (kind));
   switch (kind)
     {
     case REG_CC_SETTER:
@@ -1959,6 +1968,27 @@ void
 add_reg_note (rtx insn, enum reg_note kind, rtx datum)
 {
   REG_NOTES (insn) = alloc_reg_note (kind, datum, REG_NOTES (insn));
+}
+
+/* Add an integer register note with kind KIND and datum DATUM to INSN.  */
+
+void
+add_int_reg_note (rtx insn, enum reg_note kind, int datum)
+{
+  gcc_checking_assert (int_reg_note_p (kind));
+  REG_NOTES (insn) = gen_rtx_INT_LIST ((enum machine_mode) kind,
+				       datum, REG_NOTES (insn));
+}
+
+/* Add a register note like NOTE to INSN.  */
+
+void
+add_shallow_copy_of_reg_note (rtx insn, rtx note)
+{
+  if (GET_CODE (note) == INT_LIST)
+    add_int_reg_note (insn, REG_NOTE_KIND (note), XINT (note, 0));
+  else
+    add_reg_note (insn, REG_NOTE_KIND (note), XEXP (note, 0));
 }
 
 /* Remove register note NOTE from the REG_NOTES of INSN.  */
@@ -5437,12 +5467,29 @@ split_double (rtx value, rtx *first, rtx *second)
     }
 }
 
+/* Return true if X is a sign_extract or zero_extract from the least
+   significant bit.  */
+
+static bool
+lsb_bitfield_op_p (rtx x)
+{
+  if (GET_RTX_CLASS (GET_CODE (x)) == RTX_BITFIELD_OPS)
+    {
+      enum machine_mode mode = GET_MODE (XEXP (x, 0));
+      unsigned HOST_WIDE_INT len = INTVAL (XEXP (x, 1));
+      HOST_WIDE_INT pos = INTVAL (XEXP (x, 2));
+
+      return (pos == (BITS_BIG_ENDIAN ? GET_MODE_PRECISION (mode) - len : 0));
+    }
+  return false;
+}
+
 /* Strip outer address "mutations" from LOC and return a pointer to the
    inner value.  If OUTER_CODE is nonnull, store the code of the innermost
    stripped expression there.
 
    "Mutations" either convert between modes or apply some kind of
-   alignment.  */
+   extension, truncation or alignment.  */
 
 rtx *
 strip_address_mutations (rtx *loc, enum rtx_code *outer_code)
@@ -5453,6 +5500,10 @@ strip_address_mutations (rtx *loc, enum rtx_code *outer_code)
       if (GET_RTX_CLASS (code) == RTX_UNARY)
 	/* Things like SIGN_EXTEND, ZERO_EXTEND and TRUNCATE can be
 	   used to convert between pointer sizes.  */
+	loc = &XEXP (*loc, 0);
+      else if (lsb_bitfield_op_p (*loc))
+	/* A [SIGN|ZERO]_EXTRACT from the least significant bit effectively
+	   acts as a combined truncation and extension.  */
 	loc = &XEXP (*loc, 0);
       else if (code == AND && CONST_INT_P (XEXP (*loc, 1)))
 	/* (and ... (const_int -X)) is used to align to X bytes.  */
@@ -5483,7 +5534,13 @@ must_be_base_p (rtx x)
 static bool
 must_be_index_p (rtx x)
 {
-  return GET_CODE (x) == MULT || GET_CODE (x) == ASHIFT;
+  return (GET_CODE (x) == MULT
+          || GET_CODE (x) == ASHIFT
+          /* Needed by ARM targets.  */
+          || GET_CODE (x) == ASHIFTRT
+          || GET_CODE (x) == LSHIFTRT
+          || GET_CODE (x) == ROTATE
+          || GET_CODE (x) == ROTATERT);
 }
 
 /* Set the segment part of address INFO to LOC, given that INNER is the
@@ -5505,7 +5562,7 @@ set_address_segment (struct address_info *info, rtx *loc, rtx *inner)
 static void
 set_address_base (struct address_info *info, rtx *loc, rtx *inner)
 {
-  if (GET_CODE (*inner) == LO_SUM)
+  if (must_be_base_p (*inner))
     inner = strip_address_mutations (&XEXP (*inner, 0));
   gcc_checking_assert (REG_P (*inner)
 		       || MEM_P (*inner)
@@ -5522,8 +5579,7 @@ set_address_base (struct address_info *info, rtx *loc, rtx *inner)
 static void
 set_address_index (struct address_info *info, rtx *loc, rtx *inner)
 {
-  if ((GET_CODE (*inner) == MULT || GET_CODE (*inner) == ASHIFT)
-      && CONSTANT_P (XEXP (*inner, 1)))
+  if (must_be_index_p (*inner) && CONSTANT_P (XEXP (*inner, 1)))
     inner = strip_address_mutations (&XEXP (*inner, 0));
   gcc_checking_assert (REG_P (*inner)
 		       || MEM_P (*inner)

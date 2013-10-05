@@ -49,7 +49,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "timevar.h"
 #include "df.h"
 #include "diagnostic.h"
-#include "ssaexpand.h"
+#include "tree-outof-ssa.h"
 #include "target-globals.h"
 #include "params.h"
 
@@ -4709,8 +4709,6 @@ expand_assignment (tree to, tree from, bool nontemporal)
       int unsignedp;
       int volatilep = 0;
       tree tem;
-      bool misalignp;
-      rtx mem = NULL_RTX;
 
       push_temp_slots ();
       tem = get_inner_reference (to, &bitsize, &bitpos, &offset, &mode1,
@@ -4720,40 +4718,7 @@ expand_assignment (tree to, tree from, bool nontemporal)
 	  && DECL_BIT_FIELD_TYPE (TREE_OPERAND (to, 1)))
 	get_bit_range (&bitregion_start, &bitregion_end, to, &bitpos, &offset);
 
-      /* If we are going to use store_bit_field and extract_bit_field,
-	 make sure to_rtx will be safe for multiple use.  */
-      mode = TYPE_MODE (TREE_TYPE (tem));
-      if (TREE_CODE (tem) == MEM_REF
-	  && mode != BLKmode
-	  && ((align = get_object_alignment (tem))
-	      < GET_MODE_ALIGNMENT (mode))
-	  && ((icode = optab_handler (movmisalign_optab, mode))
-	      != CODE_FOR_nothing))
-	{
-	  struct expand_operand ops[2];
-
-	  misalignp = true;
-	  to_rtx = gen_reg_rtx (mode);
-	  mem = expand_expr (tem, NULL_RTX, VOIDmode, EXPAND_WRITE);
-
-	  /* If the misaligned store doesn't overwrite all bits, perform
-	     rmw cycle on MEM.  */
-	  if (bitsize != GET_MODE_BITSIZE (mode))
-	    {
-	      create_input_operand (&ops[0], to_rtx, mode);
-	      create_fixed_operand (&ops[1], mem);
-	      /* The movmisalign<mode> pattern cannot fail, else the assignment
-		 would silently be omitted.  */
-	      expand_insn (icode, 2, ops);
-
-	      mem = copy_rtx (mem);
-	    }
-	}
-      else
-	{
-	  misalignp = false;
-	  to_rtx = expand_expr (tem, NULL_RTX, VOIDmode, EXPAND_WRITE);
-	}
+      to_rtx = expand_expr (tem, NULL_RTX, VOIDmode, EXPAND_WRITE);
 
       /* If the bitfield is volatile, we want to access it in the
 	 field's mode, not the computed mode.
@@ -4871,11 +4836,7 @@ expand_assignment (tree to, tree from, bool nontemporal)
 	      /* If the field is at offset zero, we could have been given the
 		 DECL_RTX of the parent struct.  Don't munge it.  */
 	      to_rtx = shallow_copy_rtx (to_rtx);
-
 	      set_mem_attributes_minus_bitpos (to_rtx, to, 0, bitpos);
-
-	      /* Deal with volatile and readonly fields.  The former is only
-		 done for MEM.  Also set MEM_KEEP_ALIAS_SET_P if needed.  */
 	      if (volatilep)
 		MEM_VOLATILE_P (to_rtx) = 1;
 	    }
@@ -4890,17 +4851,6 @@ expand_assignment (tree to, tree from, bool nontemporal)
 				  bitregion_start, bitregion_end,
 				  mode1, from,
 				  get_alias_set (to), nontemporal);
-	}
-
-      if (misalignp)
-	{
-	  struct expand_operand ops[2];
-
-	  create_fixed_operand (&ops[0], mem);
-	  create_input_operand (&ops[1], to_rtx, mode);
-	  /* The movmisalign<mode> pattern cannot fail, else the assignment
-	     would silently be omitted.  */
-	  expand_insn (icode, 2, ops);
 	}
 
       if (result)
@@ -9175,6 +9125,24 @@ expand_expr_real_2 (sepops ops, rtx target, enum machine_mode tmode,
   return REDUCE_BIT_FIELD (temp);
 }
 #undef REDUCE_BIT_FIELD
+
+
+/* Return TRUE if expression STMT is suitable for replacement.  
+   Never consider memory loads as replaceable, because those don't ever lead 
+   into constant expressions.  */
+
+static bool
+stmt_is_replaceable_p (gimple stmt)
+{
+  if (ssa_is_replaceable_p (stmt))
+    {
+      /* Don't move around loads.  */
+      if (!gimple_assign_single_p (stmt)
+	  || is_gimple_val (gimple_assign_rhs1 (stmt)))
+	return true;
+    }
+  return false;
+}
 
 rtx
 expand_expr_real_1 (tree exp, rtx target, enum machine_mode tmode,

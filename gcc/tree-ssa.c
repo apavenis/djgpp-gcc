@@ -231,6 +231,135 @@ flush_pending_stmts (edge e)
   redirect_edge_var_map_clear (e);
 }
 
+
+/* Data structure used to count the number of dereferences to PTR
+   inside an expression.  */
+struct count_ptr_d
+{
+  tree ptr;
+  unsigned num_stores;
+  unsigned num_loads;
+};
+
+
+/* Helper for count_uses_and_derefs.  Called by walk_tree to look for
+   (ALIGN/MISALIGNED_)INDIRECT_REF nodes for the pointer passed in DATA.  */
+
+static tree
+count_ptr_derefs (tree *tp, int *walk_subtrees, void *data)
+{
+  struct walk_stmt_info *wi_p = (struct walk_stmt_info *) data;
+  struct count_ptr_d *count_p = (struct count_ptr_d *) wi_p->info;
+
+  /* Do not walk inside ADDR_EXPR nodes.  In the expression &ptr->fld,
+     pointer 'ptr' is *not* dereferenced, it is simply used to compute
+     the address of 'fld' as 'ptr + offsetof(fld)'.  */
+  if (TREE_CODE (*tp) == ADDR_EXPR)
+    {
+      *walk_subtrees = 0;
+      return NULL_TREE;
+    }
+
+  if (TREE_CODE (*tp) == MEM_REF && TREE_OPERAND (*tp, 0) == count_p->ptr)
+    {
+      if (wi_p->is_lhs)
+	count_p->num_stores++;
+      else
+	count_p->num_loads++;
+    }
+
+  return NULL_TREE;
+}
+
+
+/* Count the number of direct and indirect uses for pointer PTR in
+   statement STMT.  The number of direct uses is stored in
+   *NUM_USES_P.  Indirect references are counted separately depending
+   on whether they are store or load operations.  The counts are
+   stored in *NUM_STORES_P and *NUM_LOADS_P.  */
+
+void
+count_uses_and_derefs (tree ptr, gimple stmt, unsigned *num_uses_p,
+		       unsigned *num_loads_p, unsigned *num_stores_p)
+{
+  ssa_op_iter i;
+  tree use;
+
+  *num_uses_p = 0;
+  *num_loads_p = 0;
+  *num_stores_p = 0;
+
+  /* Find out the total number of uses of PTR in STMT.  */
+  FOR_EACH_SSA_TREE_OPERAND (use, stmt, i, SSA_OP_USE)
+    if (use == ptr)
+      (*num_uses_p)++;
+
+  /* Now count the number of indirect references to PTR.  This is
+     truly awful, but we don't have much choice.  There are no parent
+     pointers inside INDIRECT_REFs, so an expression like
+     '*x_1 = foo (x_1, *x_1)' needs to be traversed piece by piece to
+     find all the indirect and direct uses of x_1 inside.  The only
+     shortcut we can take is the fact that GIMPLE only allows
+     INDIRECT_REFs inside the expressions below.  */
+  if (is_gimple_assign (stmt)
+      || gimple_code (stmt) == GIMPLE_RETURN
+      || gimple_code (stmt) == GIMPLE_ASM
+      || is_gimple_call (stmt))
+    {
+      struct walk_stmt_info wi;
+      struct count_ptr_d count;
+
+      count.ptr = ptr;
+      count.num_stores = 0;
+      count.num_loads = 0;
+
+      memset (&wi, 0, sizeof (wi));
+      wi.info = &count;
+      walk_gimple_op (stmt, count_ptr_derefs, &wi);
+
+      *num_stores_p = count.num_stores;
+      *num_loads_p = count.num_loads;
+    }
+
+  gcc_assert (*num_uses_p >= *num_loads_p + *num_stores_p);
+}
+
+
+/* Replace the LHS of STMT, an assignment, either a GIMPLE_ASSIGN or a
+   GIMPLE_CALL, with NLHS, in preparation for modifying the RHS to an
+   expression with a different value.
+
+   This will update any annotations (say debug bind stmts) referring
+   to the original LHS, so that they use the RHS instead.  This is
+   done even if NLHS and LHS are the same, for it is understood that
+   the RHS will be modified afterwards, and NLHS will not be assigned
+   an equivalent value.
+
+   Adjusting any non-annotation uses of the LHS, if needed, is a
+   responsibility of the caller.
+
+   The effect of this call should be pretty much the same as that of
+   inserting a copy of STMT before STMT, and then removing the
+   original stmt, at which time gsi_remove() would have update
+   annotations, but using this function saves all the inserting,
+   copying and removing.  */
+
+void
+gimple_replace_ssa_lhs (gimple stmt, tree nlhs)
+{
+  if (MAY_HAVE_DEBUG_STMTS)
+    {
+      tree lhs = gimple_get_lhs (stmt);
+
+      gcc_assert (SSA_NAME_DEF_STMT (lhs) == stmt);
+
+      insert_debug_temp_for_var_def (NULL, lhs);
+    }
+
+  gimple_set_lhs (stmt, nlhs);
+}
+
+
 /* Given a tree for an expression for which we might want to emit
    locations or values in debug information (generally a variable, but
    we might deal with other kinds of trees in the future), return the
@@ -1193,6 +1322,31 @@ tree_ssa_strip_useless_type_conversions (tree exp)
 }
 
 
+/* Return true if T, an SSA_NAME, has an undefined value.  */
+
+bool
+ssa_undefined_value_p (tree t)
+{
+  tree var = SSA_NAME_VAR (t);
+
+  if (!var)
+    ;
+  /* Parameters get their initial value from the function entry.  */
+  else if (TREE_CODE (var) == PARM_DECL)
+    return false;
+  /* When returning by reference the return address is actually a hidden
+     parameter.  */
+  else if (TREE_CODE (var) == RESULT_DECL && DECL_BY_REFERENCE (var))
+    return false;
+  /* Hard register variables get their initial value from the ether.  */
+  else if (TREE_CODE (var) == VAR_DECL && DECL_HARD_REGISTER (var))
+    return false;
+
+  /* The value is undefined iff its definition statement is empty.  */
+  return gimple_nop_p (SSA_NAME_DEF_STMT (t));
+}
+
+
 /* Internal helper for walk_use_def_chains.  VAR, FN and DATA are as
    described in walk_use_def_chains.
 
@@ -1299,215 +1453,6 @@ walk_use_def_chains (tree var, walk_use_def_chains_fn fn, void *data,
       walk_use_def_chains_1 (var, fn, data, visited, is_dfs);
       pointer_set_destroy (visited);
     }
-}
-
-
-/* Emit warnings for uninitialized variables.  This is done in two passes.
-
-   The first pass notices real uses of SSA names with undefined values.
-   Such uses are unconditionally uninitialized, and we can be certain that
-   such a use is a mistake.  This pass is run before most optimizations,
-   so that we catch as many as we can.
-
-   The second pass follows PHI nodes to find uses that are potentially
-   uninitialized.  In this case we can't necessarily prove that the use
-   is really uninitialized.  This pass is run after most optimizations,
-   so that we thread as many jumps and possible, and delete as much dead
-   code as possible, in order to reduce false positives.  We also look
-   again for plain uninitialized variables, since optimization may have
-   changed conditionally uninitialized to unconditionally uninitialized.  */
-
-/* Emit a warning for EXPR based on variable VAR at the point in the
-   program T, an SSA_NAME, is used being uninitialized.  The exact
-   warning text is in MSGID and LOCUS may contain a location or be null.
-   WC is the warning code.  */
-
-void
-warn_uninit (enum opt_code wc, tree t,
-	     tree expr, tree var, const char *gmsgid, void *data)
-{
-  gimple context = (gimple) data;
-  location_t location, cfun_loc;
-  expanded_location xloc, floc;
-
-  if (!ssa_undefined_value_p (t))
-    return;
-
-  /* TREE_NO_WARNING either means we already warned, or the front end
-     wishes to suppress the warning.  */
-  if ((context
-       && (gimple_no_warning_p (context)
-	   || (gimple_assign_single_p (context)
-	       && TREE_NO_WARNING (gimple_assign_rhs1 (context)))))
-      || TREE_NO_WARNING (expr))
-    return;
-
-  location = (context != NULL && gimple_has_location (context))
-	     ? gimple_location (context)
-	     : DECL_SOURCE_LOCATION (var);
-  location = linemap_resolve_location (line_table, location,
-				       LRK_SPELLING_LOCATION,
-				       NULL);
-  cfun_loc = DECL_SOURCE_LOCATION (cfun->decl);
-  xloc = expand_location (location);
-  floc = expand_location (cfun_loc);
-  if (warning_at (location, wc, gmsgid, expr))
-    {
-      TREE_NO_WARNING (expr) = 1;
-
-      if (location == DECL_SOURCE_LOCATION (var))
-	return;
-      if (xloc.file != floc.file
-	  || linemap_location_before_p (line_table,
-					location, cfun_loc)
-	  || linemap_location_before_p (line_table,
-					cfun->function_end_locus,
-					location))
-	inform (DECL_SOURCE_LOCATION (var), "%qD was declared here", var);
-    }
-}
-
-unsigned int
-warn_uninitialized_vars (bool warn_possibly_uninitialized)
-{
-  gimple_stmt_iterator gsi;
-  basic_block bb;
-
-  FOR_EACH_BB (bb)
-    {
-      bool always_executed = dominated_by_p (CDI_POST_DOMINATORS,
-					     single_succ (ENTRY_BLOCK_PTR), bb);
-      for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
-	{
-	  gimple stmt = gsi_stmt (gsi);
-	  use_operand_p use_p;
-	  ssa_op_iter op_iter;
-	  tree use;
-
-	  if (is_gimple_debug (stmt))
-	    continue;
-
-	  /* We only do data flow with SSA_NAMEs, so that's all we
-	     can warn about.  */
-	  FOR_EACH_SSA_USE_OPERAND (use_p, stmt, op_iter, SSA_OP_USE)
-	    {
-	      use = USE_FROM_PTR (use_p);
-	      if (always_executed)
-		warn_uninit (OPT_Wuninitialized, use,
-			     SSA_NAME_VAR (use), SSA_NAME_VAR (use),
-			     "%qD is used uninitialized in this function",
-			     stmt);
-	      else if (warn_possibly_uninitialized)
-		warn_uninit (OPT_Wmaybe_uninitialized, use,
-			     SSA_NAME_VAR (use), SSA_NAME_VAR (use),
-			     "%qD may be used uninitialized in this function",
-			     stmt);
-	    }
-
-	  /* For memory the only cheap thing we can do is see if we
-	     have a use of the default def of the virtual operand.
-	     ???  Note that at -O0 we do not have virtual operands.
-	     ???  Not so cheap would be to use the alias oracle via
-	     walk_aliased_vdefs, if we don't find any aliasing vdef
-	     warn as is-used-uninitialized, if we don't find an aliasing
-	     vdef that kills our use (stmt_kills_ref_p), warn as
-	     may-be-used-uninitialized.  But this walk is quadratic and
-	     so must be limited which means we would miss warning
-	     opportunities.  */
-	  use = gimple_vuse (stmt);
-	  if (use
-	      && gimple_assign_single_p (stmt)
-	      && !gimple_vdef (stmt)
-	      && SSA_NAME_IS_DEFAULT_DEF (use))
-	    {
-	      tree rhs = gimple_assign_rhs1 (stmt);
-	      tree base = get_base_address (rhs);
-
-	      /* Do not warn if it can be initialized outside this function.  */
-	      if (TREE_CODE (base) != VAR_DECL
-		  || DECL_HARD_REGISTER (base)
-		  || is_global_var (base))
-		continue;
-
-	      if (always_executed)
-		warn_uninit (OPT_Wuninitialized, use, 
-			     gimple_assign_rhs1 (stmt), base,
-			     "%qE is used uninitialized in this function",
-			     stmt);
-	      else if (warn_possibly_uninitialized)
-		warn_uninit (OPT_Wmaybe_uninitialized, use,
-			     gimple_assign_rhs1 (stmt), base,
-			     "%qE may be used uninitialized in this function",
-			     stmt);
-	    }
-	}
-    }
-
-  return 0;
-}
-
-static unsigned int
-execute_early_warn_uninitialized (void)
-{
-  /* Currently, this pass runs always but
-     execute_late_warn_uninitialized only runs with optimization. With
-     optimization we want to warn about possible uninitialized as late
-     as possible, thus don't do it here.  However, without
-     optimization we need to warn here about "may be uninitialized".
-  */
-  calculate_dominance_info (CDI_POST_DOMINATORS);
-
-  warn_uninitialized_vars (/*warn_possibly_uninitialized=*/!optimize);
-
-  /* Post-dominator information can not be reliably updated. Free it
-     after the use.  */
-
-  free_dominance_info (CDI_POST_DOMINATORS);
-  return 0;
-}
-
-static bool
-gate_warn_uninitialized (void)
-{
-  return warn_uninitialized != 0;
-}
-
-namespace {
-
-const pass_data pass_data_early_warn_uninitialized =
-{
-  GIMPLE_PASS, /* type */
-  "*early_warn_uninitialized", /* name */
-  OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
-  true, /* has_execute */
-  TV_TREE_UNINIT, /* tv_id */
-  PROP_ssa, /* properties_required */
-  0, /* properties_provided */
-  0, /* properties_destroyed */
-  0, /* todo_flags_start */
-  0, /* todo_flags_finish */
-};
-
-class pass_early_warn_uninitialized : public gimple_opt_pass
-{
-public:
-  pass_early_warn_uninitialized(gcc::context *ctxt)
-    : gimple_opt_pass(pass_data_early_warn_uninitialized, ctxt)
-  {}
-
-  /* opt_pass methods: */
-  bool gate () { return gate_warn_uninitialized (); }
-  unsigned int execute () { return execute_early_warn_uninitialized (); }
-
-}; // class pass_early_warn_uninitialized
-
-} // anon namespace
-
-gimple_opt_pass *
-make_pass_early_warn_uninitialized (gcc::context *ctxt)
-{
-  return new pass_early_warn_uninitialized (ctxt);
 }
 
 
