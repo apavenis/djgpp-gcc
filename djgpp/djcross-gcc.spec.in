@@ -460,7 +460,7 @@ rm -fr %{buildroot}
 * Sat May 21 2011 Andris Pavenis <andris.pavenis@iki.fi> 4.6.0-2ap
 - Updates to build also libquadmath
 
-* Sun May  3 2011 Andris Pavenis <andris.pavenis@iki.fi> 4.6.0-1ap
+* Tue May  3 2011 Andris Pavenis <andris.pavenis@iki.fi> 4.6.0-1ap
 - Update to gcc-4.6.0
 
 * Mon Jan  3 2011 Andris Pavenis <andris.pavenis@iki.fi> 4.5.2-1ap
@@ -535,7 +535,7 @@ rm -fr %{buildroot}
 - Use gcc-4.3-20080221
 - use 'make install DESTDIR=...' instead of '%makeinstall'.
 
-* Sat Feb  4 2008 Andris Pavenis <andris.pavenis@iki.fi>
+* Mon Feb  4 2008 Andris Pavenis <andris.pavenis@iki.fi>
 - Use gcc-4.3-20080201
 - Disable building libssp
 - Fix libstdc++-v3 configuration for DJGPP (add os/djgpp/error_constants.h)
@@ -550,17 +550,17 @@ rm -fr %{buildroot}
 * Tue Oct  9 2007 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-4.2.2 (4.2.2-11ap)
 
-* Tue Sep  5 2007 Andris Pavenis <andris.pavenis@iki.fi>
+* Wed Sep  5 2007 Andris Pavenis <andris.pavenis@iki.fi>
 - Add BuildArch for x86_64.
 
-* Fri Jul 25 2007 Andris Pavenis <andris.pavenis@iki.fi>
+* Wed Jul 25 2007 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-4.2.1 (4.2.1-9).
 
-* Fri Jul 23 2007 Andris Pavenis <andris.pavenis@iki.fi>
+* Mon Jul 23 2007 Andris Pavenis <andris.pavenis@iki.fi>
 - Small updates not really influencing functionality
   (4.2.0-8).
 
-* Fri Jun 07 2007 Andris Pavenis <andris.pavenis@iki.fi>
+* Thu Jun 07 2007 Andris Pavenis <andris.pavenis@iki.fi>
 - Small updates not really influencing functionality
   (4.2.0-7).
 
@@ -595,7 +595,7 @@ rm -fr %{buildroot}
 - Patched libssp directory to fix problem with generated
   gcc410s.zip. Cross-compiler itself does not change.
 
-* Sat Mar  5 2006 Andris Pavenis <andris.pavenis@iki.fi>
+* Sun Mar  5 2006 Andris Pavenis <andris.pavenis@iki.fi>
 - Bootstrap at first native compiler to be used for building 
   cross-compiler as one need to build cross-compiler with the
   same version of GCC (use of GCC-4.0.2 causes failure in 
@@ -608,5 +608,5 @@ rm -fr %{buildroot}
 - Added modification of readme.DJGPP according the version of GCC and DJGPP, as
   otherwise it is rather easy to forget to edit it manually when needed
 
-* Mon Nov 15 2005 Andris Pavenis <pavenis@latnet.lv>
+* Tue Nov 15 2005 Andris Pavenis <pavenis@latnet.lv>
 - Initial version of rpm spec file for DJGPP cross-compiler
