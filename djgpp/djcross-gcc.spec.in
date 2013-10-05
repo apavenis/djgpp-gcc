@@ -321,13 +321,11 @@ rm -fr %{buildroot}
 %{_bindir}/%{target}-gcc*
 %{_bindir}/%{target}-gcov
 # FIXME: why one haves empty directory here?
-%{_libdir}/gcc/%{target}/%{gcc_version}/finclude
 %{_libdir}/gcc/%{target}/%{gcc_version}/include-fixed/*
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgcc.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgcov.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libquadmath.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libquadmath.la
-%{_libdir}/gcc/%{target}/%{gcc_version}/libcaf_single.*
 %{_libdir}/gcc/%{target}/%{gcc_version}/libssp.*
 %{_libdir}/gcc/%{target}/%{gcc_version}/libssp_nonshared.*
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/ssp/*.h
@@ -382,6 +380,8 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgfortran.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgfortran.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgfortran.spec
+%{_libdir}/gcc/%{target}/%{gcc_version}/libcaf_single.*
+%{_libdir}/gcc/%{target}/%{gcc_version}/finclude
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/f951
 %{_mandir}/man1/%{target}-gfortran.1.gz
 
