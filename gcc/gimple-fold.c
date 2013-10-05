@@ -29,7 +29,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa.h"
 #include "tree-ssa-propagate.h"
 #include "target.h"
-#include "gimple-fold.h"
 #include "ipa-utils.h"
 #include "gimple-pretty-print.h"
 
@@ -2825,7 +2824,7 @@ fold_array_ctor_reference (tree type, tree ctor,
   else
     low_bound = double_int_zero;
   /* Static constructors for variably sized objects makes no sense.  */
-  gcc_assert (TREE_CODE(TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (ctor))))
+  gcc_assert (TREE_CODE (TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (ctor))))
 	      == INTEGER_CST);
   elt_size =
     tree_to_double_int (TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (ctor))));

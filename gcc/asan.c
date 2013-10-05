@@ -2268,12 +2268,12 @@ const pass_data pass_data_asan =
 class pass_asan : public gimple_opt_pass
 {
 public:
-  pass_asan(gcc::context *ctxt)
-    : gimple_opt_pass(pass_data_asan, ctxt)
+  pass_asan (gcc::context *ctxt)
+    : gimple_opt_pass (pass_data_asan, ctxt)
   {}
 
   /* opt_pass methods: */
-  opt_pass * clone () { return new pass_asan (ctxt_); }
+  opt_pass * clone () { return new pass_asan (m_ctxt); }
   bool gate () { return gate_asan (); }
   unsigned int execute () { return asan_instrument (); }
 
@@ -2314,8 +2314,8 @@ const pass_data pass_data_asan_O0 =
 class pass_asan_O0 : public gimple_opt_pass
 {
 public:
-  pass_asan_O0(gcc::context *ctxt)
-    : gimple_opt_pass(pass_data_asan_O0, ctxt)
+  pass_asan_O0 (gcc::context *ctxt)
+    : gimple_opt_pass (pass_data_asan_O0, ctxt)
   {}
 
   /* opt_pass methods: */

@@ -20,8 +20,14 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_TREE_SSA_H
 #define GCC_TREE_SSA_H
 
-#include "tree-flow.h"
+#include "gimple.h"
+#include "tree-ssa-operands.h"
+#include "tree-phinodes.h"
+#include "gimple-ssa.h"
+#include "ssa-iterators.h"
 #include "tree-ssanames.h"
+#include "tree-ssa-dom.h"
+#include "tree-flow.h"
 
 /* Mapping for redirected edges.  */
 struct _edge_var_map {
@@ -55,11 +61,6 @@ extern void init_tree_ssa (struct function *);
 extern void delete_tree_ssa (void);
 extern bool tree_ssa_useless_type_conversion (tree);
 extern tree tree_ssa_strip_useless_type_conversions (tree);
-
-/* Call-back function for walk_use_def_chains().  At each reaching
-   definition, a function with this prototype is called.  */
-typedef bool (*walk_use_def_chains_fn) (tree, gimple, void *);
-extern void walk_use_def_chains (tree, walk_use_def_chains_fn, void *, bool);
 
 extern bool ssa_undefined_value_p (tree);
 extern void execute_update_addresses_taken (void);
