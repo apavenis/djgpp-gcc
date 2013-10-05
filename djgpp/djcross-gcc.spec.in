@@ -174,7 +174,7 @@ PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
 %else
 cd $RPM_BUILD_DIR/%{name}-%{version}
 PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
-    sh unpack-gcc.sh --no-djgpp-sources gcc-%{gcc_source_name}.tar.@__GCC_SRC_EXT__@ || exit 1
+    sh unpack-gcc.sh --no-djgpp-source gcc-%{gcc_source_name}.tar.@__GCC_SRC_EXT__@ || exit 1
 %endif
 
 for fn in gnu/gcc-%{shortver}/COPYING* gnu/gcc-%{shortver}/NEWS gnu/gcc-%{shortver}/README \
