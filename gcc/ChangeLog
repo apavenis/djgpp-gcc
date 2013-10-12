@@ -1,3 +1,45 @@
+2013-10-02  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config.gcc (hppa*64*-*-linux*): Don't add pa/t-linux to tmake_file.
+
+2013-09-23  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-ssa-ccp.c (insert_clobber_before_stack_restore): Recurse on copy
+	assignment statements.
+
+2013-09-20  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.md: In "scc" insn patterns, change output template to
+	handle const0_rtx in reg_or_0_operand operands.
+
+2013-09-18  Daniel Morris  <danielm@ecoscentric.com>
+	    Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/58458
+	* doc/implement-cxx.texi: Fix references to the C++ standards.
+
+2013-09-14  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR target/58382
+	* config/pa/pa.c (pa_expand_prologue): Change mode in gen_rtx_POST_INC
+	calls to word_mode.
+
+2013-09-12  Terry Guo  <terry.guo@arm.com>
+
+	Backport from mainline
+	2012-09-17  Richard Guenther  <rguenther@suse.de>
+
+	PR lto/54598
+	* tree-streamer-in.c (unpack_ts_real_cst_value_fields): Use ggc'ed
+	FIXED_VALUE_TYPE instead of struct fixed_value.
+
+2013-09-10  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/58361
+	* arm/vfp.md (combine_vcvt_f32_<FCVTI32typename>): Fix pattern to
+	support conditional execution.
+	(combine_vcvt_f64_<FCVTI32typename>): Likewise.
+
 2013-09-01  Uros Bizjak  <ubizjak@gmail.com>
 
 	Backport from mainline
