@@ -376,7 +376,7 @@ package body Exp_Aggr is
    --  Start of processing for Aggr_Size_OK
 
    begin
-      --  The normal aggregate limit is 5000, but we increase this limit to
+      --  The normal aggregate limit is 50000, but we increase this limit to
       --  2**24 (about 16 million) if Restrictions (No_Elaboration_Code) or
       --  Restrictions (No_Implicit_Loops) is specified, since in either case
       --  we are at risk of declaring the program illegal because of this
@@ -389,10 +389,14 @@ package body Exp_Aggr is
       --  efficient to construct a one-dimensional equivalent array with static
       --  components.
 
+      --  Conversely, we decrease the maximum size if none of the above
+      --  requirements apply, and if the aggregate has a single component
+      --  association, which will be more efficient if implemented with a loop.
+
       --  Finally, we use a small limit in CodePeer mode where we favor loops
       --  instead of thousands of single assignments (from large aggregates).
 
-      Max_Aggr_Size := 5000;
+      Max_Aggr_Size := 50000;
 
       if CodePeer_Mode then
          Max_Aggr_Size := 100;
@@ -404,6 +408,11 @@ package body Exp_Aggr is
                  and then Static_Elaboration_Desired (Current_Scope)))
       then
          Max_Aggr_Size := 2 ** 24;
+
+      elsif No (Expressions (N))
+        and then No (Next (First (Component_Associations (N))))
+      then
+         Max_Aggr_Size := 5000;
       end if;
 
       Siz  := Component_Count (Component_Type (Typ));
@@ -4877,6 +4886,43 @@ package body Exp_Aggr is
       if Aggr_Dimension > 1 then
          Check_Same_Aggr_Bounds (N, 1);
       end if;
+
+      --  STEP 1d
+
+      --  If we have a default component value, or simple initialization is
+      --  required for the component type, then we replace <> in component
+      --  associations by the required default value.
+
+      declare
+         Default_Val : Node_Id;
+         Assoc       : Node_Id;
+
+      begin
+         if (Present (Default_Aspect_Component_Value (Typ))
+              or else Needs_Simple_Initialization (Ctyp))
+           and then Present (Component_Associations (N))
+         then
+            Assoc := First (Component_Associations (N));
+            while Present (Assoc) loop
+               if Nkind (Assoc) = N_Component_Association
+                 and then Box_Present (Assoc)
+               then
+                  Set_Box_Present (Assoc, False);
+
+                  if Present (Default_Aspect_Component_Value (Typ)) then
+                     Default_Val := Default_Aspect_Component_Value (Typ);
+                  else
+                     Default_Val := Get_Simple_Init_Val (Ctyp, N);
+                  end if;
+
+                  Set_Expression (Assoc, New_Copy_Tree (Default_Val));
+                  Analyze_And_Resolve (Expression (Assoc), Ctyp);
+               end if;
+
+               Next (Assoc);
+            end loop;
+         end if;
+      end;
 
       --  STEP 2
 

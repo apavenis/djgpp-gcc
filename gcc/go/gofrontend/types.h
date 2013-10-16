@@ -901,7 +901,7 @@ class Type
   // Build a type descriptor entry for this type.  Return a pointer to
   // it.  The location is the location which causes us to need the
   // entry.
-  tree
+  Bexpression*
   type_descriptor_pointer(Gogo* gogo, Location);
 
   // Return the type reflection string for this type.
@@ -1717,7 +1717,8 @@ class Function_type : public Type
 		Typed_identifier_list* results, Location location)
     : Type(TYPE_FUNCTION),
       receiver_(receiver), parameters_(parameters), results_(results),
-      location_(location), is_varargs_(false), is_builtin_(false)
+      location_(location), is_varargs_(false), is_builtin_(false),
+      fnbtype_(NULL)
   { }
 
   // Get the receiver.
@@ -1798,6 +1799,11 @@ class Function_type : public Type
   static Type*
   make_function_type_descriptor_type();
 
+  // Return the backend representation of this function type. This is used
+  // as the real type of a backend function declaration or defintion.
+  Btype*
+  get_backend_fntype(Gogo*);
+
  protected:
   int
   do_traverse(Traverse*);
@@ -1851,6 +1857,9 @@ class Function_type : public Type
   // Whether this is a special builtin function which can not simply
   // be called.  This is used for len, cap, etc.
   bool is_builtin_;
+  // The backend representation of this type for backend function
+  // declarations and definitions.
+  Btype* fnbtype_;
 };
 
 // The type of a pointer.
@@ -2392,7 +2401,7 @@ class Map_type : public Type
   // Build a map descriptor for this type.  Return a pointer to it.
   // The location is the location which causes us to need the
   // descriptor.
-  tree
+  Bexpression*
   map_descriptor_pointer(Gogo* gogo, Location);
 
  protected:

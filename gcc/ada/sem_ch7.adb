@@ -224,15 +224,10 @@ package body Sem_Ch7 is
 
       Body_Id := Defining_Entity (N);
 
-      if Has_Aspects (N) then
-         Analyze_Aspect_Specifications (N, Body_Id);
-      end if;
+      --  Body is body of package instantiation. Corresponding spec has already
+      --  been set.
 
       if Present (Corresponding_Spec (N)) then
-
-         --  Body is body of package instantiation. Corresponding spec has
-         --  already been set.
-
          Spec_Id := Corresponding_Spec (N);
          Pack_Decl := Unit_Declaration_Node (Spec_Id);
 
@@ -315,6 +310,7 @@ package body Sem_Ch7 is
       Set_Ekind (Body_Id, E_Package_Body);
       Set_Body_Entity (Spec_Id, Body_Id);
       Set_Spec_Entity (Body_Id, Spec_Id);
+      Set_Contract    (Body_Id, Make_Contract (Sloc (Body_Id)));
 
       --  Defining name for the package body is not a visible entity: Only the
       --  defining name for the declaration is visible.
@@ -337,6 +333,10 @@ package body Sem_Ch7 is
       Set_In_Package_Body (Spec_Id);
       Set_Has_Completion (Spec_Id);
       Last_Spec_Entity := Last_Entity (Spec_Id);
+
+      if Has_Aspects (N) then
+         Analyze_Aspect_Specifications (N, Body_Id);
+      end if;
 
       Push_Scope (Spec_Id);
 
@@ -770,6 +770,21 @@ package body Sem_Ch7 is
       --  True when this package declaration is not a nested declaration
 
    begin
+      if Debug_Flag_C then
+         Write_Str ("==> package spec ");
+         Write_Name (Chars (Id));
+         Write_Str (" from ");
+         Write_Location (Sloc (N));
+         Write_Eol;
+         Indent;
+      end if;
+
+      Generate_Definition (Id);
+      Enter_Name (Id);
+      Set_Ekind    (Id, E_Package);
+      Set_Etype    (Id, Standard_Void_Type);
+      Set_Contract (Id, Make_Contract (Sloc (Id)));
+
       --  Analyze aspect specifications immediately, since we need to recognize
       --  things like Pure early enough to diagnose violations during analysis.
 
@@ -787,20 +802,6 @@ package body Sem_Ch7 is
       if From_With_Type (Id) then
          return;
       end if;
-
-      if Debug_Flag_C then
-         Write_Str ("==> package spec ");
-         Write_Name (Chars (Id));
-         Write_Str (" from ");
-         Write_Location (Sloc (N));
-         Write_Eol;
-         Indent;
-      end if;
-
-      Generate_Definition (Id);
-      Enter_Name (Id);
-      Set_Ekind (Id, E_Package);
-      Set_Etype (Id, Standard_Void_Type);
 
       Push_Scope (Id);
 
@@ -1167,6 +1168,11 @@ package body Sem_Ch7 is
                --  then finish off by looping through the nongeneric parents
                --  and installing their private declarations.
 
+               --  If one of the non-generic parents is itself on the scope
+               --  stack, do not install its private declarations: they are
+               --  installed in due time when the private part of that parent
+               --  is analyzed. This is delicate ???
+
                else
                   while Present (Inst_Par)
                     and then Inst_Par /= Standard_Standard
@@ -1477,7 +1483,38 @@ package body Sem_Ch7 is
          Clear_Constants (Id, First_Private_Entity (Id));
       end if;
 
+      --  Issue an error in SPARK mode if a package specification contains
+      --  more than one tagged type or type extension.
+
       Check_One_Tagged_Type_Or_Extension_At_Most;
+
+      --  Issue an error if a package that is a library unit does not require a
+      --  body, and we have a non-null abstract state (SPARK LRM 7.1.5(4)).
+
+      if not Unit_Requires_Body (Id, Ignore_Abstract_State => True)
+        and then Present (Abstract_States (Id))
+
+        --  We use Scope_Depth of 1 to identify library units, which seems a
+        --  bit ugly, but there doesn't seem to be an easier way.
+
+        and then Scope_Depth (Id) = 1
+
+        --  A null abstract state always appears as the sole element of the
+        --  state list.
+
+        and then not Is_Null_State (Node (First_Elmt (Abstract_States (Id))))
+      then
+         declare
+            P : constant Node_Id := Get_Pragma (Id, Pragma_Abstract_State);
+         begin
+            Error_Msg_NE
+              ("package & specifies a non-null abstract state", P, Id);
+            Error_Msg_N
+              ("\but package does not otherwise require a body", P);
+            Error_Msg_N
+              ("\pragma Elaborate_Body is required in this case", P);
+         end;
+      end if;
    end Analyze_Package_Specification;
 
    --------------------------------------
@@ -2582,7 +2619,10 @@ package body Sem_Ch7 is
    -- Unit_Requires_Body --
    ------------------------
 
-   function Unit_Requires_Body (P : Entity_Id) return Boolean is
+   function Unit_Requires_Body
+     (P                     : Entity_Id;
+      Ignore_Abstract_State : Boolean := False) return Boolean
+   is
       E : Entity_Id;
 
    begin
@@ -2621,12 +2661,17 @@ package body Sem_Ch7 is
          end;
 
       --  A [generic] package that introduces at least one non-null abstract
-      --  state requires completion. A null abstract state always appears as
-      --  the sole element of the state list.
+      --  state requires completion. However, there is a separate rule that
+      --  requires that such a package have a reason other than this for a
+      --  body being required (if necessary a pragma Elaborate_Body must be
+      --  provided). If Ignore_Abstract_State is True, we don't do this check
+      --  (so we can use Unit_Requires_Body to check for some other reason).
 
       elsif Ekind_In (P, E_Generic_Package, E_Package)
+        and then not Ignore_Abstract_State
         and then Present (Abstract_States (P))
-        and then not Is_Null_State (Node (First_Elmt (Abstract_States (P))))
+        and then
+            not Is_Null_State (Node (First_Elmt (Abstract_States (P))))
       then
          return True;
       end if;

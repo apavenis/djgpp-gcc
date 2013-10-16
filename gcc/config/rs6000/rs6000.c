@@ -3716,7 +3716,7 @@ rs6000_option_override_internal (bool global_init_p)
   /* Save the initial options in case the user does function specific options */
   if (global_init_p)
     target_option_default_node = target_option_current_node
-      = build_target_option_node ();
+      = build_target_option_node (&global_options);
 
   /* If not explicitly specified via option, decide whether to generate the
      extra blr's required to preserve the link stack on some cpus (eg, 476).  */
@@ -7665,6 +7665,106 @@ rs6000_eliminate_indexed_memrefs (rtx operands[2])
 			       copy_addr_to_reg (XEXP (operands[1], 0)));
 }
 
+/* Generate a vector of constants to permute MODE for a little-endian
+   storage operation by swapping the two halves of a vector.  */
+static rtvec
+rs6000_const_vec (enum machine_mode mode)
+{
+  int i, subparts;
+  rtvec v;
+
+  switch (mode)
+    {
+    case V2DFmode:
+    case V2DImode:
+      subparts = 2;
+      break;
+    case V4SFmode:
+    case V4SImode:
+      subparts = 4;
+      break;
+    case V8HImode:
+      subparts = 8;
+      break;
+    case V16QImode:
+      subparts = 16;
+      break;
+    default:
+      gcc_unreachable();
+    }
+
+  v = rtvec_alloc (subparts);
+
+  for (i = 0; i < subparts / 2; ++i)
+    RTVEC_ELT (v, i) = gen_rtx_CONST_INT (DImode, i + subparts / 2);
+  for (i = subparts / 2; i < subparts; ++i)
+    RTVEC_ELT (v, i) = gen_rtx_CONST_INT (DImode, i - subparts / 2);
+
+  return v;
+}
+
+/* Generate a permute rtx that represents an lxvd2x, stxvd2x, or xxpermdi
+   for a VSX load or store operation.  */
+rtx
+rs6000_gen_le_vsx_permute (rtx source, enum machine_mode mode)
+{
+  rtx par = gen_rtx_PARALLEL (VOIDmode, rs6000_const_vec (mode));
+  return gen_rtx_VEC_SELECT (mode, source, par);
+}
+
+/* Emit a little-endian load from vector memory location SOURCE to VSX
+   register DEST in mode MODE.  The load is done with two permuting
+   insn's that represent an lxvd2x and xxpermdi.  */
+void
+rs6000_emit_le_vsx_load (rtx dest, rtx source, enum machine_mode mode)
+{
+  rtx tmp = can_create_pseudo_p () ? gen_reg_rtx_and_attrs (dest) : dest;
+  rtx permute_mem = rs6000_gen_le_vsx_permute (source, mode);
+  rtx permute_reg = rs6000_gen_le_vsx_permute (tmp, mode);
+  emit_insn (gen_rtx_SET (VOIDmode, tmp, permute_mem));
+  emit_insn (gen_rtx_SET (VOIDmode, dest, permute_reg));
+}
+
+/* Emit a little-endian store to vector memory location DEST from VSX
+   register SOURCE in mode MODE.  The store is done with two permuting
+   insn's that represent an xxpermdi and an stxvd2x.  */
+void
+rs6000_emit_le_vsx_store (rtx dest, rtx source, enum machine_mode mode)
+{
+  rtx tmp = can_create_pseudo_p () ? gen_reg_rtx_and_attrs (source) : source;
+  rtx permute_src = rs6000_gen_le_vsx_permute (source, mode);
+  rtx permute_tmp = rs6000_gen_le_vsx_permute (tmp, mode);
+  emit_insn (gen_rtx_SET (VOIDmode, tmp, permute_src));
+  emit_insn (gen_rtx_SET (VOIDmode, dest, permute_tmp));
+}
+
+/* Emit a sequence representing a little-endian VSX load or store,
+   moving data from SOURCE to DEST in mode MODE.  This is done
+   separately from rs6000_emit_move to ensure it is called only
+   during expand.  LE VSX loads and stores introduced later are
+   handled with a split.  The expand-time RTL generation allows
+   us to optimize away redundant pairs of register-permutes.  */
+void
+rs6000_emit_le_vsx_move (rtx dest, rtx source, enum machine_mode mode)
+{
+  gcc_assert (!BYTES_BIG_ENDIAN
+	      && VECTOR_MEM_VSX_P (mode)
+	      && mode != TImode
+	      && (MEM_P (source) ^ MEM_P (dest)));
+
+  if (MEM_P (source))
+    {
+      gcc_assert (REG_P (dest));
+      rs6000_emit_le_vsx_load (dest, source, mode);
+    }
+  else
+    {
+      if (!REG_P (source))
+	source = force_reg (mode, source);
+      rs6000_emit_le_vsx_store (dest, source, mode);
+    }
+}
+
 /* Emit a move from SOURCE to DEST in mode MODE.  */
 void
 rs6000_emit_move (rtx dest, rtx source, enum machine_mode mode)
@@ -8234,7 +8334,7 @@ init_cumulative_args (CUMULATIVE_ARGS *cum, tree fntype,
 	{
 	  tree ret_type = TREE_TYPE (fntype);
 	  fprintf (stderr, " ret code = %s,",
-		   tree_code_name[ (int)TREE_CODE (ret_type) ]);
+		   get_tree_code_name (TREE_CODE (ret_type)));
 	}
 
       if (cum->call_cookie & CALL_LONG)
@@ -28426,6 +28526,136 @@ rs6000_emit_parity (rtx dst, rtx src)
     }
 }
 
+/* Expand an Altivec constant permutation for little endian mode.
+   There are two issues: First, the two input operands must be
+   swapped so that together they form a double-wide array in LE
+   order.  Second, the vperm instruction has surprising behavior
+   in LE mode:  it interprets the elements of the source vectors
+   in BE mode ("left to right") and interprets the elements of
+   the destination vector in LE mode ("right to left").  To
+   correct for this, we must subtract each element of the permute
+   control vector from 31.
+
+   For example, suppose we want to concatenate vr10 = {0, 1, 2, 3}
+   with vr11 = {4, 5, 6, 7} and extract {0, 2, 4, 6} using a vperm.
+   We place {0,1,2,3,8,9,10,11,16,17,18,19,24,25,26,27} in vr12 to
+   serve as the permute control vector.  Then, in BE mode,
+
+     vperm 9,10,11,12
+
+   places the desired result in vr9.  However, in LE mode the 
+   vector contents will be
+
+     vr10 = 00000003 00000002 00000001 00000000
+     vr11 = 00000007 00000006 00000005 00000004
+
+   The result of the vperm using the same permute control vector is
+
+     vr9  = 05000000 07000000 01000000 03000000
+
+   That is, the leftmost 4 bytes of vr10 are interpreted as the
+   source for the rightmost 4 bytes of vr9, and so on.
+
+   If we change the permute control vector to
+
+     vr12 = {31,20,29,28,23,22,21,20,15,14,13,12,7,6,5,4}
+
+   and issue
+
+     vperm 9,11,10,12
+
+   we get the desired
+
+   vr9  = 00000006 00000004 00000002 00000000.  */
+
+void
+altivec_expand_vec_perm_const_le (rtx operands[4])
+{
+  unsigned int i;
+  rtx perm[16];
+  rtx constv, unspec;
+  rtx target = operands[0];
+  rtx op0 = operands[1];
+  rtx op1 = operands[2];
+  rtx sel = operands[3];
+
+  /* Unpack and adjust the constant selector.  */
+  for (i = 0; i < 16; ++i)
+    {
+      rtx e = XVECEXP (sel, 0, i);
+      unsigned int elt = 31 - (INTVAL (e) & 31);
+      perm[i] = GEN_INT (elt);
+    }
+
+  /* Expand to a permute, swapping the inputs and using the
+     adjusted selector.  */
+  if (!REG_P (op0))
+    op0 = force_reg (V16QImode, op0);
+  if (!REG_P (op1))
+    op1 = force_reg (V16QImode, op1);
+
+  constv = gen_rtx_CONST_VECTOR (V16QImode, gen_rtvec_v (16, perm));
+  constv = force_reg (V16QImode, constv);
+  unspec = gen_rtx_UNSPEC (V16QImode, gen_rtvec (3, op1, op0, constv),
+			   UNSPEC_VPERM);
+  if (!REG_P (target))
+    {
+      rtx tmp = gen_reg_rtx (V16QImode);
+      emit_move_insn (tmp, unspec);
+      unspec = tmp;
+    }
+
+  emit_move_insn (target, unspec);
+}
+
+/* Similarly to altivec_expand_vec_perm_const_le, we must adjust the
+   permute control vector.  But here it's not a constant, so we must
+   generate a vector splat/subtract to do the adjustment.  */
+
+void
+altivec_expand_vec_perm_le (rtx operands[4])
+{
+  rtx splat, unspec;
+  rtx target = operands[0];
+  rtx op0 = operands[1];
+  rtx op1 = operands[2];
+  rtx sel = operands[3];
+  rtx tmp = target;
+
+  /* Get everything in regs so the pattern matches.  */
+  if (!REG_P (op0))
+    op0 = force_reg (V16QImode, op0);
+  if (!REG_P (op1))
+    op1 = force_reg (V16QImode, op1);
+  if (!REG_P (sel))
+    sel = force_reg (V16QImode, sel);
+  if (!REG_P (target))
+    tmp = gen_reg_rtx (V16QImode);
+
+  /* SEL = splat(31) - SEL.  */
+  /* We want to subtract from 31, but we can't vspltisb 31 since
+     it's out of range.  -1 works as well because only the low-order
+     five bits of the permute control vector elements are used.  */
+  splat = gen_rtx_VEC_DUPLICATE (V16QImode,
+				 gen_rtx_CONST_INT (QImode, -1));
+  emit_move_insn (tmp, splat);
+  sel = gen_rtx_MINUS (V16QImode, tmp, sel);
+  emit_move_insn (tmp, sel);
+
+  /* Permute with operands reversed and adjusted selector.  */
+  unspec = gen_rtx_UNSPEC (V16QImode, gen_rtvec (3, op1, op0, tmp),
+			   UNSPEC_VPERM);
+
+  /* Copy into target, possibly by way of a register.  */
+  if (!REG_P (target))
+    {
+      emit_move_insn (tmp, unspec);
+      unspec = tmp;
+    }
+
+  emit_move_insn (target, unspec);
+}
+
 /* Expand an Altivec constant permutation.  Return true if we match
    an efficient implementation; false to fall back to VPERM.  */
 
@@ -28604,6 +28834,12 @@ altivec_expand_vec_perm_const (rtx operands[4])
 	    emit_move_insn (target, gen_lowpart (V16QImode, x));
 	  return true;
 	}
+    }
+
+  if (!BYTES_BIG_ENDIAN)
+    {
+      altivec_expand_vec_perm_const_le (operands);
+      return true;
     }
 
   return false;
@@ -29515,7 +29751,7 @@ rs6000_valid_attribute_p (tree fndecl,
 {
   struct cl_target_option cur_target;
   bool ret;
-  tree old_optimize = build_optimization_node ();
+  tree old_optimize = build_optimization_node (&global_options);
   tree new_target, new_optimize;
   tree func_optimize = DECL_FUNCTION_SPECIFIC_OPTIMIZATION (fndecl);
 
@@ -29542,7 +29778,7 @@ rs6000_valid_attribute_p (tree fndecl,
       fprintf (stderr, "--------------------\n");
     }
 
-  old_optimize = build_optimization_node ();
+  old_optimize = build_optimization_node (&global_options);
   func_optimize = DECL_FUNCTION_SPECIFIC_OPTIMIZATION (fndecl);
 
   /* If the function changed the optimization levels as well as setting target
@@ -29561,12 +29797,12 @@ rs6000_valid_attribute_p (tree fndecl,
   if (ret)
     {
       ret = rs6000_option_override_internal (false);
-      new_target = build_target_option_node ();
+      new_target = build_target_option_node (&global_options);
     }
   else
     new_target = NULL;
 
-  new_optimize = build_optimization_node ();
+  new_optimize = build_optimization_node (&global_options);
 
   if (!new_target)
     ret = false;
@@ -29596,7 +29832,7 @@ rs6000_valid_attribute_p (tree fndecl,
 bool
 rs6000_pragma_target_parse (tree args, tree pop_target)
 {
-  tree prev_tree = build_target_option_node ();
+  tree prev_tree = build_target_option_node (&global_options);
   tree cur_tree;
   struct cl_target_option *prev_opt, *cur_opt;
   HOST_WIDE_INT prev_flags, cur_flags, diff_flags;
@@ -29633,7 +29869,8 @@ rs6000_pragma_target_parse (tree args, tree pop_target)
       rs6000_cpu_index = rs6000_tune_index = -1;
       if (!rs6000_inner_target_options (args, false)
 	  || !rs6000_option_override_internal (false)
-	  || (cur_tree = build_target_option_node ()) == NULL_TREE)
+	  || (cur_tree = build_target_option_node (&global_options))
+	     == NULL_TREE)
 	{
 	  if (TARGET_DEBUG_BUILTIN || TARGET_DEBUG_TARGET)
 	    fprintf (stderr, "invalid pragma\n");

@@ -516,6 +516,13 @@ package Opt is
    --  to make a single long message, and then this message is split up into
    --  multiple lines not exceeding the specified length. Set by -gnatj=nn.
 
+   Error_To_Warning : Boolean := False;
+   --  GNAT
+   --  If True, then certain error messages (e.g. parameter overlap messages
+   --  for procedure calls in Ada 2012 mode) are treated as warnings instead
+   --  of errors. Set by debug flag -gnatd.E. A search for Error_To_Warning
+   --  will identify affected messages.
+
    Exception_Handler_Encountered : Boolean := False;
    --  GNAT
    --  This flag is set true if the parser encounters an exception handler.
@@ -718,6 +725,12 @@ package Opt is
    --  GNAT
    --  Set True to ignore all Style_Checks pragmas. Can be set True by use
    --  of -gnateY.
+
+   Ignore_Unrecognized_VWY_Switches : Boolean := False;
+   --  GNAT
+   --  Set True to ignore unrecognized y, V, w switches. Can be set True
+   --  by use of -gnateu, causing subsequent unrecognized switches to result
+   --  in a warning rather than an error.
 
    Implementation_Unit_Warnings : Boolean := True;
    --  GNAT
@@ -1734,12 +1747,12 @@ package Opt is
    Ada_Version_Config : Ada_Version_Type;
    --  GNAT
    --  This is the value of the configuration switch for the Ada 83 mode, as
-   --  set by the command line switches -gnat83/95/05, and possibly modified by
-   --  the use of configuration pragmas Ada_*. This switch is used to set the
-   --  initial value for Ada_Version mode at the start of analysis of a unit.
-   --  Note however that the setting of this flag is ignored for internal and
-   --  predefined units (which are always compiled in the most up to date
-   --  version of Ada).
+   --  set by the command line switches -gnat83/95/2005/2012, and possibly
+   --  modified by the use of configuration pragmas Ada_*. This switch is used
+   --  to set the initial value for Ada_Version mode at the start of analysis
+   --  of a unit.  Note however that the setting of this flag is ignored for
+   --  internal and predefined units (which are always compiled in the most up
+   --  to date version of Ada).
 
    Ada_Version_Pragma_Config : Node_Id;
    --  This will be set non empty if it is set by a configuration pragma

@@ -911,7 +911,7 @@ print_pre_expr (FILE *outfile, const pre_expr expr)
       {
 	unsigned int i;
 	vn_nary_op_t nary = PRE_EXPR_NARY (expr);
-	fprintf (outfile, "{%s,", tree_code_name [nary->opcode]);
+	fprintf (outfile, "{%s,", get_tree_code_name (nary->opcode));
 	for (i = 0; i < nary->length; i++)
 	  {
 	    print_generic_expr (outfile, nary->op[i], 0);
@@ -936,7 +936,7 @@ print_pre_expr (FILE *outfile, const pre_expr expr)
 	    if (vro->opcode != SSA_NAME
 		&& TREE_CODE_CLASS (vro->opcode) != tcc_declaration)
 	      {
-		fprintf (outfile, "%s", tree_code_name [vro->opcode]);
+		fprintf (outfile, "%s", get_tree_code_name (vro->opcode));
 		if (vro->op0)
 		  {
 		    fprintf (outfile, "<");
@@ -1758,7 +1758,14 @@ phi_translate (pre_expr expr, bitmap_set_t set1, bitmap_set_t set2,
   phitrans = phi_translate_1 (expr, set1, set2, pred, phiblock);
 
   if (slot)
-    slot->v = phitrans;
+    {
+      if (phitrans)
+	slot->v = phitrans;
+      else
+	/* Remove failed translations again, they cause insert
+	   iteration to not pick up new opportunities reliably.  */
+	phi_translate_table.remove_elt_with_hash (slot, slot->hashcode);
+    }
 
   return phitrans;
 }

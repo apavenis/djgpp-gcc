@@ -1204,7 +1204,7 @@ Type::finish_backend(Gogo* gogo, Btype *placeholder)
 
 // Return a pointer to the type descriptor for this type.
 
-tree
+Bexpression*
 Type::type_descriptor_pointer(Gogo* gogo, Location location)
 {
   Type* t = this->forwarded();
@@ -1215,10 +1215,9 @@ Type::type_descriptor_pointer(Gogo* gogo, Location location)
       t->make_type_descriptor_var(gogo);
       go_assert(t->type_descriptor_var_ != NULL);
     }
-  tree var_tree = var_to_tree(t->type_descriptor_var_);
-  if (var_tree == error_mark_node)
-    return error_mark_node;
-  return build_fold_addr_expr_loc(location.gcc_location(), var_tree);
+  Bexpression* var_expr =
+      gogo->backend()->var_expression(t->type_descriptor_var_, location);
+  return gogo->backend()->address_expression(var_expr, location);
 }
 
 // A mapping from unnamed types to type descriptor variables.
@@ -3383,6 +3382,68 @@ Function_type::do_hash_for_method(Gogo* gogo) const
 // Get the backend representation for a function type.
 
 Btype*
+Function_type::get_backend_fntype(Gogo* gogo)
+{
+  if (this->fnbtype_ == NULL)
+    {
+      Backend::Btyped_identifier breceiver;
+      if (this->receiver_ != NULL)
+        {
+          breceiver.name = Gogo::unpack_hidden_name(this->receiver_->name());
+
+          // We always pass the address of the receiver parameter, in
+          // order to make interface calls work with unknown types.
+          Type* rtype = this->receiver_->type();
+          if (rtype->points_to() == NULL)
+            rtype = Type::make_pointer_type(rtype);
+          breceiver.btype = rtype->get_backend(gogo);
+          breceiver.location = this->receiver_->location();
+        }
+
+      std::vector<Backend::Btyped_identifier> bparameters;
+      if (this->parameters_ != NULL)
+        {
+          bparameters.resize(this->parameters_->size());
+          size_t i = 0;
+          for (Typed_identifier_list::const_iterator p =
+                   this->parameters_->begin(); p != this->parameters_->end();
+               ++p, ++i)
+	    {
+              bparameters[i].name = Gogo::unpack_hidden_name(p->name());
+              bparameters[i].btype = p->type()->get_backend(gogo);
+              bparameters[i].location = p->location();
+            }
+          go_assert(i == bparameters.size());
+        }
+
+      std::vector<Backend::Btyped_identifier> bresults;
+      if (this->results_ != NULL)
+        {
+          bresults.resize(this->results_->size());
+          size_t i = 0;
+          for (Typed_identifier_list::const_iterator p =
+                   this->results_->begin(); p != this->results_->end();
+               ++p, ++i)
+	    {
+              bresults[i].name = Gogo::unpack_hidden_name(p->name());
+              bresults[i].btype = p->type()->get_backend(gogo);
+              bresults[i].location = p->location();
+            }
+          go_assert(i == bresults.size());
+        }
+
+      this->fnbtype_ = gogo->backend()->function_type(breceiver, bparameters,
+                                                      bresults,
+                                                      this->location());
+
+    }
+
+  return this->fnbtype_;
+}
+
+// Get the backend representation for a Go function type.
+
+Btype*
 Function_type::do_get_backend(Gogo* gogo)
 {
   // When we do anything with a function value other than call it, it
@@ -3395,57 +3456,9 @@ Function_type::do_get_backend(Gogo* gogo)
     gogo->backend()->placeholder_struct_type("__go_descriptor", loc);
   Btype* ptr_struct_type = gogo->backend()->pointer_type(struct_type);
 
-  Backend::Btyped_identifier breceiver;
-  if (this->receiver_ != NULL)
-    {
-      breceiver.name = Gogo::unpack_hidden_name(this->receiver_->name());
-
-      // We always pass the address of the receiver parameter, in
-      // order to make interface calls work with unknown types.
-      Type* rtype = this->receiver_->type();
-      if (rtype->points_to() == NULL)
-	rtype = Type::make_pointer_type(rtype);
-      breceiver.btype = rtype->get_backend(gogo);
-      breceiver.location = this->receiver_->location();
-    }
-
-  std::vector<Backend::Btyped_identifier> bparameters;
-  if (this->parameters_ != NULL)
-    {
-      bparameters.resize(this->parameters_->size());
-      size_t i = 0;
-      for (Typed_identifier_list::const_iterator p = this->parameters_->begin();
-	   p != this->parameters_->end();
-	   ++p, ++i)
-	{
-	  bparameters[i].name = Gogo::unpack_hidden_name(p->name());
-	  bparameters[i].btype = p->type()->get_backend(gogo);
-	  bparameters[i].location = p->location();
-	}
-      go_assert(i == bparameters.size());
-    }
-
-  std::vector<Backend::Btyped_identifier> bresults;
-  if (this->results_ != NULL)
-    {
-      bresults.resize(this->results_->size());
-      size_t i = 0;
-      for (Typed_identifier_list::const_iterator p = this->results_->begin();
-	   p != this->results_->end();
-	   ++p, ++i)
-	{
-	  bresults[i].name = Gogo::unpack_hidden_name(p->name());
-	  bresults[i].btype = p->type()->get_backend(gogo);
-	  bresults[i].location = p->location();
-	}
-      go_assert(i == bresults.size());
-    }
-
-  Btype* fntype = gogo->backend()->function_type(breceiver, bparameters,
-						 bresults, loc);
   std::vector<Backend::Btyped_identifier> fields(1);
   fields[0].name = "code";
-  fields[0].btype = fntype;
+  fields[0].btype = this->get_backend_fntype(gogo);
   fields[0].location = loc;
   if (!gogo->backend()->set_placeholder_struct_type(struct_type, fields))
     return gogo->backend()->error_type();
@@ -4264,12 +4277,7 @@ Struct_type::do_verify()
        ++p)
     {
       Type* t = p->type();
-      if (t->is_undefined())
-	{
-	  error_at(p->location(), "struct field type is incomplete");
-	  p->set_type(Type::make_error_type());
-	}
-      else if (p->is_anonymous())
+      if (p->is_anonymous())
 	{
 	  if (t->named_type() != NULL && t->points_to() != NULL)
 	    {
@@ -5248,6 +5256,19 @@ Struct_type::do_import(Import* imp)
 	      imp->require_c_string(" ");
 	    }
 	  Type* ftype = imp->read_type();
+
+	  // We don't pack the names of builtin types.  In
+	  // Struct_field::is_field_name we cope with a hack.  Now we
+	  // need another hack so that we don't accidentally think
+	  // that an embedded builtin type is accessible from another
+	  // package (we know that all the builtin types are not
+	  // exported).
+	  if (name.empty() && ftype->deref()->named_type() != NULL)
+	    {
+	      const std::string fn(ftype->deref()->named_type()->name());
+	      if (fn[0] >= 'a' && fn[0] <= 'z')
+		name = '.' + imp->package()->pkgpath() + '.' + fn;
+	    }
 
 	  Struct_field sf(Typed_identifier(name, ftype, imp->location()));
 
@@ -6228,14 +6249,12 @@ Map_type::Map_descriptors Map_type::map_descriptors;
 
 // Build a map descriptor for this type.  Return a pointer to it.
 
-tree
+Bexpression*
 Map_type::map_descriptor_pointer(Gogo* gogo, Location location)
 {
   Bvariable* bvar = this->map_descriptor(gogo);
-  tree var_tree = var_to_tree(bvar);
-  if (var_tree == error_mark_node)
-    return error_mark_node;
-  return build_fold_addr_expr_loc(location.gcc_location(), var_tree);
+  Bexpression* var_expr = gogo->backend()->var_expression(bvar, location);
+  return gogo->backend()->address_expression(var_expr, location);
 }
 
 // Build a map descriptor for this type.
@@ -9022,6 +9041,8 @@ Type::build_stub_methods(Gogo* gogo, const Type* type, const Methods* methods,
 				      fntype->is_varargs(), location);
 	  gogo->finish_function(fntype->location());
 
+	  if (type->named_type() == NULL && stub->is_function())
+	    stub->func_value()->set_is_unnamed_type_stub_method();
 	  if (m->nointerface() && stub->is_function())
 	    stub->func_value()->set_nointerface();
 	}

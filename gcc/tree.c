@@ -91,7 +91,7 @@ const unsigned char tree_code_length[] = {
 #define DEFTREECODE(SYM, NAME, TYPE, LEN) NAME,
 #define END_OF_BASE_TREE_CODES "@dummy",
 
-const char *const tree_code_name[] = {
+static const char *const tree_code_name[] = {
 #include "all-tree.def"
 };
 
@@ -237,7 +237,13 @@ unsigned const char omp_clause_num_ops[] =
   1, /* OMP_CLAUSE_COPYIN  */
   1, /* OMP_CLAUSE_COPYPRIVATE  */
   2, /* OMP_CLAUSE_LINEAR  */
+  2, /* OMP_CLAUSE_ALIGNED  */
+  1, /* OMP_CLAUSE_DEPEND  */
   1, /* OMP_CLAUSE_UNIFORM  */
+  2, /* OMP_CLAUSE_FROM  */
+  2, /* OMP_CLAUSE_TO  */
+  2, /* OMP_CLAUSE_MAP  */
+  1, /* OMP_CLAUSE__LOOPTEMP_  */
   1, /* OMP_CLAUSE_IF  */
   1, /* OMP_CLAUSE_NUM_THREADS  */
   1, /* OMP_CLAUSE_SCHEDULE  */
@@ -248,7 +254,19 @@ unsigned const char omp_clause_num_ops[] =
   0, /* OMP_CLAUSE_UNTIED   */
   1, /* OMP_CLAUSE_FINAL  */
   0, /* OMP_CLAUSE_MERGEABLE  */
+  1, /* OMP_CLAUSE_DEVICE  */
+  1, /* OMP_CLAUSE_DIST_SCHEDULE  */
+  0, /* OMP_CLAUSE_INBRANCH  */
+  0, /* OMP_CLAUSE_NOTINBRANCH  */
+  1, /* OMP_CLAUSE_NUM_TEAMS  */
+  1, /* OMP_CLAUSE_THREAD_LIMIT  */
+  0, /* OMP_CLAUSE_PROC_BIND  */
   1, /* OMP_CLAUSE_SAFELEN  */
+  1, /* OMP_CLAUSE_SIMDLEN  */
+  0, /* OMP_CLAUSE_FOR  */
+  0, /* OMP_CLAUSE_PARALLEL  */
+  0, /* OMP_CLAUSE_SECTIONS  */
+  0, /* OMP_CLAUSE_TASKGROUP  */
   1, /* OMP_CLAUSE__SIMDUID_  */
 };
 
@@ -263,7 +281,13 @@ const char * const omp_clause_code_name[] =
   "copyin",
   "copyprivate",
   "linear",
+  "aligned",
+  "depend",
   "uniform",
+  "from",
+  "to",
+  "map",
+  "_looptemp_",
   "if",
   "num_threads",
   "schedule",
@@ -274,7 +298,19 @@ const char * const omp_clause_code_name[] =
   "untied",
   "final",
   "mergeable",
+  "device",
+  "dist_schedule",
+  "inbranch",
+  "notinbranch",
+  "num_teams",
+  "thread_limit",
+  "proc_bind",
   "safelen",
+  "simdlen",
+  "for",
+  "parallel",
+  "sections",
+  "taskgroup",
   "_simduid_"
 };
 
@@ -4560,6 +4596,87 @@ build_type_attribute_qual_variant (tree ttype, tree attribute, int quals)
   return ttype;
 }
 
+/* Check if "omp declare simd" attribute arguments, CLAUSES1 and CLAUSES2, are
+   the same.  */
+
+static bool
+omp_declare_simd_clauses_equal (tree clauses1, tree clauses2)
+{
+  tree cl1, cl2;
+  for (cl1 = clauses1, cl2 = clauses2;
+       cl1 && cl2;
+       cl1 = OMP_CLAUSE_CHAIN (cl1), cl2 = OMP_CLAUSE_CHAIN (cl2))
+    {
+      if (OMP_CLAUSE_CODE (cl1) != OMP_CLAUSE_CODE (cl2))
+	return false;
+      if (OMP_CLAUSE_CODE (cl1) != OMP_CLAUSE_SIMDLEN)
+	{
+	  if (simple_cst_equal (OMP_CLAUSE_DECL (cl1),
+				OMP_CLAUSE_DECL (cl2)) != 1)
+	    return false;
+	}
+      switch (OMP_CLAUSE_CODE (cl1))
+	{
+	case OMP_CLAUSE_ALIGNED:
+	  if (simple_cst_equal (OMP_CLAUSE_ALIGNED_ALIGNMENT (cl1),
+				OMP_CLAUSE_ALIGNED_ALIGNMENT (cl2)) != 1)
+	    return false;
+	  break;
+	case OMP_CLAUSE_LINEAR:
+	  if (simple_cst_equal (OMP_CLAUSE_LINEAR_STEP (cl1),
+				OMP_CLAUSE_LINEAR_STEP (cl2)) != 1)
+	    return false;
+	  break;
+	case OMP_CLAUSE_SIMDLEN:
+	  if (simple_cst_equal (OMP_CLAUSE_SIMDLEN_EXPR (cl1),
+				OMP_CLAUSE_SIMDLEN_EXPR (cl2)) != 1)
+	    return false;
+	default:
+	  break;
+	}
+    }
+  return true;
+}
+
+/* Remove duplicate "omp declare simd" attributes.  */
+
+void
+omp_remove_redundant_declare_simd_attrs (tree fndecl)
+{
+  tree attr, end_attr = NULL_TREE, last_attr = NULL_TREE;
+  for (attr = lookup_attribute ("omp declare simd", DECL_ATTRIBUTES (fndecl));
+       attr;
+       attr = lookup_attribute ("omp declare simd", TREE_CHAIN (attr)))
+    {
+      tree *pc;
+      for (pc = &TREE_CHAIN (attr); *pc && *pc != end_attr; )
+	{
+	  if (is_attribute_p ("omp declare simd", TREE_PURPOSE (*pc)))
+	    {
+	      last_attr = TREE_CHAIN (*pc);
+	      if (TREE_VALUE (attr) == NULL_TREE)
+		{
+		  if (TREE_VALUE (*pc) == NULL_TREE)
+		    {
+		      *pc = TREE_CHAIN (*pc);
+		      continue;
+		    }
+		}
+	      else if (TREE_VALUE (*pc) != NULL_TREE
+		       && omp_declare_simd_clauses_equal
+				(TREE_VALUE (TREE_VALUE (*pc)),
+				 TREE_VALUE (TREE_VALUE (attr))))
+		{
+		  *pc = TREE_CHAIN (*pc);
+		  continue;
+		}
+	    }
+	  pc = &TREE_CHAIN (*pc);
+	}
+      end_attr = last_attr;
+    }
+}
+
 /* Compare two attributes for their value identity.  Return true if the
    attribute values are known to be equal; otherwise return false.
 */
@@ -4576,6 +4693,13 @@ attribute_value_equal (const_tree attr1, const_tree attr2)
       && TREE_CODE (TREE_VALUE (attr2)) == TREE_LIST)
     return (simple_cst_list_equal (TREE_VALUE (attr1),
 				   TREE_VALUE (attr2)) == 1);
+
+  if (flag_openmp
+      && TREE_VALUE (attr1) && TREE_VALUE (attr2)
+      && TREE_CODE (TREE_VALUE (attr1)) == OMP_CLAUSE
+      && TREE_CODE (TREE_VALUE (attr2)) == OMP_CLAUSE)
+    return omp_declare_simd_clauses_equal (TREE_VALUE (attr1),
+					   TREE_VALUE (attr2));
 
   return (simple_cst_equal (TREE_VALUE (attr1), TREE_VALUE (attr2)) == 1);
 }
@@ -8974,7 +9098,8 @@ dump_tree_statistics (void)
       fprintf (stderr, "Code                   Nodes\n");
       fprintf (stderr, "----------------------------\n");
       for (i = 0; i < (int) MAX_TREE_CODES; i++)
-	fprintf (stderr, "%-20s %7d\n", tree_code_name[i], tree_code_counts[i]);
+	fprintf (stderr, "%-20s %7d\n", get_tree_code_name ((enum tree_code) i),
+                 tree_code_counts[i]);
       fprintf (stderr, "----------------------------\n");
       ssanames_print_statistics ();
       phinodes_print_statistics ();
@@ -9144,11 +9269,11 @@ tree_check_failed (const_tree node, const char *file,
   va_list args;
   const char *buffer;
   unsigned length = 0;
-  int code;
+  enum tree_code code;
 
   va_start (args, function);
-  while ((code = va_arg (args, int)))
-    length += 4 + strlen (tree_code_name[code]);
+  while ((code = (enum tree_code) va_arg (args, int)))
+    length += 4 + strlen (get_tree_code_name (code));
   va_end (args);
   if (length)
     {
@@ -9157,14 +9282,14 @@ tree_check_failed (const_tree node, const char *file,
       length += strlen ("expected ");
       buffer = tmp = (char *) alloca (length);
       length = 0;
-      while ((code = va_arg (args, int)))
+      while ((code = (enum tree_code) va_arg (args, int)))
 	{
 	  const char *prefix = length ? " or " : "expected ";
 
 	  strcpy (tmp + length, prefix);
 	  length += strlen (prefix);
-	  strcpy (tmp + length, tree_code_name[code]);
-	  length += strlen (tree_code_name[code]);
+	  strcpy (tmp + length, get_tree_code_name (code));
+	  length += strlen (get_tree_code_name (code));
 	}
       va_end (args);
     }
@@ -9172,7 +9297,7 @@ tree_check_failed (const_tree node, const char *file,
     buffer = "unexpected node";
 
   internal_error ("tree check: %s, have %s in %s, at %s:%d",
-		  buffer, tree_code_name[TREE_CODE (node)],
+		  buffer, get_tree_code_name (TREE_CODE (node)),
 		  function, trim_filename (file), line);
 }
 
@@ -9187,29 +9312,29 @@ tree_not_check_failed (const_tree node, const char *file,
   va_list args;
   char *buffer;
   unsigned length = 0;
-  int code;
+  enum tree_code code;
 
   va_start (args, function);
-  while ((code = va_arg (args, int)))
-    length += 4 + strlen (tree_code_name[code]);
+  while ((code = (enum tree_code) va_arg (args, int)))
+    length += 4 + strlen (get_tree_code_name (code));
   va_end (args);
   va_start (args, function);
   buffer = (char *) alloca (length);
   length = 0;
-  while ((code = va_arg (args, int)))
+  while ((code = (enum tree_code) va_arg (args, int)))
     {
       if (length)
 	{
 	  strcpy (buffer + length, " or ");
 	  length += 4;
 	}
-      strcpy (buffer + length, tree_code_name[code]);
-      length += strlen (tree_code_name[code]);
+      strcpy (buffer + length, get_tree_code_name (code));
+      length += strlen (get_tree_code_name (code));
     }
   va_end (args);
 
   internal_error ("tree check: expected none of %s, have %s in %s, at %s:%d",
-		  buffer, tree_code_name[TREE_CODE (node)],
+		  buffer, get_tree_code_name (TREE_CODE (node)),
 		  function, trim_filename (file), line);
 }
 
@@ -9224,7 +9349,7 @@ tree_class_check_failed (const_tree node, const enum tree_code_class cl,
     ("tree check: expected class %qs, have %qs (%s) in %s, at %s:%d",
      TREE_CODE_CLASS_STRING (cl),
      TREE_CODE_CLASS_STRING (TREE_CODE_CLASS (TREE_CODE (node))),
-     tree_code_name[TREE_CODE (node)], function, trim_filename (file), line);
+     get_tree_code_name (TREE_CODE (node)), function, trim_filename (file), line);
 }
 
 /* Similar to tree_check_failed, except that instead of specifying a
@@ -9240,7 +9365,7 @@ tree_range_check_failed (const_tree node, const char *file, int line,
   unsigned int c;
 
   for (c = c1; c <= c2; ++c)
-    length += 4 + strlen (tree_code_name[c]);
+    length += 4 + strlen (get_tree_code_name ((enum tree_code) c));
 
   length += strlen ("expected ");
   buffer = (char *) alloca (length);
@@ -9252,12 +9377,12 @@ tree_range_check_failed (const_tree node, const char *file, int line,
 
       strcpy (buffer + length, prefix);
       length += strlen (prefix);
-      strcpy (buffer + length, tree_code_name[c]);
-      length += strlen (tree_code_name[c]);
+      strcpy (buffer + length, get_tree_code_name ((enum tree_code) c));
+      length += strlen (get_tree_code_name ((enum tree_code) c));
     }
 
   internal_error ("tree check: %s, have %s in %s, at %s:%d",
-		  buffer, tree_code_name[TREE_CODE (node)],
+		  buffer, get_tree_code_name (TREE_CODE (node)),
 		  function, trim_filename (file), line);
 }
 
@@ -9273,7 +9398,7 @@ tree_not_class_check_failed (const_tree node, const enum tree_code_class cl,
     ("tree check: did not expect class %qs, have %qs (%s) in %s, at %s:%d",
      TREE_CODE_CLASS_STRING (cl),
      TREE_CODE_CLASS_STRING (TREE_CODE_CLASS (TREE_CODE (node))),
-     tree_code_name[TREE_CODE (node)], function, trim_filename (file), line);
+     get_tree_code_name (TREE_CODE (node)), function, trim_filename (file), line);
 }
 
 
@@ -9284,7 +9409,7 @@ omp_clause_check_failed (const_tree node, const char *file, int line,
                          const char *function, enum omp_clause_code code)
 {
   internal_error ("tree check: expected omp_clause %s, have %s in %s, at %s:%d",
-		  omp_clause_code_name[code], tree_code_name[TREE_CODE (node)],
+		  omp_clause_code_name[code], get_tree_code_name (TREE_CODE (node)),
 		  function, trim_filename (file), line);
 }
 
@@ -9345,7 +9470,7 @@ tree_contains_struct_check_failed (const_tree node,
   internal_error
     ("tree check: expected tree that contains %qs structure, have %qs in %s, at %s:%d",
      TS_ENUM_NAME (en),
-     tree_code_name[TREE_CODE (node)], function, trim_filename (file), line);
+     get_tree_code_name (TREE_CODE (node)), function, trim_filename (file), line);
 }
 
 
@@ -9368,10 +9493,10 @@ void
 tree_operand_check_failed (int idx, const_tree exp, const char *file,
 			   int line, const char *function)
 {
-  int code = TREE_CODE (exp);
+  enum tree_code code = TREE_CODE (exp);
   internal_error
     ("tree check: accessed operand %d of %s with %d operands in %s, at %s:%d",
-     idx + 1, tree_code_name[code], TREE_OPERAND_LENGTH (exp),
+     idx + 1, get_tree_code_name (code), TREE_OPERAND_LENGTH (exp),
      function, trim_filename (file), line);
 }
 
@@ -11047,7 +11172,14 @@ walk_tree_1 (tree *tp, walk_tree_fn func, void *data,
 	case OMP_CLAUSE_NUM_THREADS:
 	case OMP_CLAUSE_SCHEDULE:
 	case OMP_CLAUSE_UNIFORM:
+	case OMP_CLAUSE_DEPEND:
+	case OMP_CLAUSE_NUM_TEAMS:
+	case OMP_CLAUSE_THREAD_LIMIT:
+	case OMP_CLAUSE_DEVICE:
+	case OMP_CLAUSE_DIST_SCHEDULE:
 	case OMP_CLAUSE_SAFELEN:
+	case OMP_CLAUSE_SIMDLEN:
+	case OMP_CLAUSE__LOOPTEMP_:
 	case OMP_CLAUSE__SIMDUID_:
 	  WALK_SUBTREE (OMP_CLAUSE_OPERAND (*tp, 0));
 	  /* FALLTHRU */
@@ -11057,6 +11189,13 @@ walk_tree_1 (tree *tp, walk_tree_fn func, void *data,
 	case OMP_CLAUSE_DEFAULT:
 	case OMP_CLAUSE_UNTIED:
 	case OMP_CLAUSE_MERGEABLE:
+	case OMP_CLAUSE_PROC_BIND:
+	case OMP_CLAUSE_INBRANCH:
+	case OMP_CLAUSE_NOTINBRANCH:
+	case OMP_CLAUSE_FOR:
+	case OMP_CLAUSE_PARALLEL:
+	case OMP_CLAUSE_SECTIONS:
+	case OMP_CLAUSE_TASKGROUP:
 	  WALK_SUBTREE_TAIL (OMP_CLAUSE_CHAIN (*tp));
 
 	case OMP_CLAUSE_LASTPRIVATE:
@@ -11072,7 +11211,11 @@ walk_tree_1 (tree *tp, walk_tree_fn func, void *data,
 	    WALK_SUBTREE_TAIL (OMP_CLAUSE_CHAIN (*tp));
 	  }
 
+	case OMP_CLAUSE_ALIGNED:
 	case OMP_CLAUSE_LINEAR:
+	case OMP_CLAUSE_FROM:
+	case OMP_CLAUSE_TO:
+	case OMP_CLAUSE_MAP:
 	  WALK_SUBTREE (OMP_CLAUSE_DECL (*tp));
 	  WALK_SUBTREE (OMP_CLAUSE_OPERAND (*tp, 1));
 	  WALK_SUBTREE_TAIL (OMP_CLAUSE_CHAIN (*tp));
@@ -11456,10 +11599,10 @@ cl_option_hash_eq (const void *x, const void *y)
   return (memcmp (xp, yp, len) == 0);
 }
 
-/* Build an OPTIMIZATION_NODE based on the current options.  */
+/* Build an OPTIMIZATION_NODE based on the options in OPTS.  */
 
 tree
-build_optimization_node (void)
+build_optimization_node (struct gcc_options *opts)
 {
   tree t;
   void **slot;
@@ -11467,7 +11610,7 @@ build_optimization_node (void)
   /* Use the cache of optimization nodes.  */
 
   cl_optimization_save (TREE_OPTIMIZATION (cl_optimization_node),
-			&global_options);
+			opts);
 
   slot = htab_find_slot (cl_option_hash_table, cl_optimization_node, INSERT);
   t = (tree) *slot;
@@ -11484,10 +11627,10 @@ build_optimization_node (void)
   return t;
 }
 
-/* Build a TARGET_OPTION_NODE based on the current options.  */
+/* Build a TARGET_OPTION_NODE based on the options in OPTS.  */
 
 tree
-build_target_option_node (void)
+build_target_option_node (struct gcc_options *opts)
 {
   tree t;
   void **slot;
@@ -11495,7 +11638,7 @@ build_target_option_node (void)
   /* Use the cache of optimization nodes.  */
 
   cl_target_option_save (TREE_TARGET_OPTION (cl_target_option_node),
-			 &global_options);
+			 opts);
 
   slot = htab_find_slot (cl_option_hash_table, cl_target_option_node, INSERT);
   t = (tree) *slot;
@@ -12245,6 +12388,36 @@ block_may_fallthru (const_tree block)
     default:
       return lang_hooks.block_may_fallthru (stmt);
     }
+}
+
+/* True if we are using EH to handle cleanups.  */
+static bool using_eh_for_cleanups_flag = false;
+
+/* This routine is called from front ends to indicate eh should be used for
+   cleanups.  */
+void
+using_eh_for_cleanups (void)
+{
+  using_eh_for_cleanups_flag = true;
+}
+
+/* Query whether EH is used for cleanups.  */
+bool
+using_eh_for_cleanups_p (void)
+{
+  return using_eh_for_cleanups_flag;
+}
+
+/* Wrapper for tree_code_name to ensure that tree code is valid */
+const char *
+get_tree_code_name (enum tree_code code)
+{
+  const char *invalid = "<invalid tree code>";
+
+  if (code >= MAX_TREE_CODES)
+    return invalid;
+
+  return tree_code_name[code];
 }
 
 #include "gt-tree.h"

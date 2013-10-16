@@ -4891,6 +4891,7 @@ package body Exp_Ch4 is
       Loc     : constant Source_Ptr := Sloc (N);
       Typ     : constant Entity_Id  := Etype (N);
       Cstmt   : Node_Id;
+      Decl    : Node_Id;
       Tnn     : Entity_Id;
       Pnn     : Entity_Id;
       Actions : List_Id;
@@ -4958,19 +4959,24 @@ package body Exp_Ch4 is
          Append_To (Actions,
            Make_Full_Type_Declaration (Loc,
              Defining_Identifier => Pnn,
-             Type_Definition =>
+             Type_Definition     =>
                Make_Access_To_Object_Definition (Loc,
-                 All_Present => True,
-                 Subtype_Indication =>
-                   New_Reference_To (Typ, Loc))));
+                 All_Present        => True,
+                 Subtype_Indication => New_Reference_To (Typ, Loc))));
          Ttyp := Pnn;
       end if;
 
       Tnn := Make_Temporary (Loc, 'T');
-      Append_To (Actions,
+
+      --  Create declaration for target of expression, and indicate that it
+      --  does not require initialization.
+
+      Decl :=
         Make_Object_Declaration (Loc,
           Defining_Identifier => Tnn,
-          Object_Definition   => New_Occurrence_Of (Ttyp, Loc)));
+          Object_Definition   => New_Occurrence_Of (Ttyp, Loc));
+      Set_No_Initialization (Decl);
+      Append_To (Actions, Decl);
 
       --  Now process the alternatives
 
@@ -12153,11 +12159,22 @@ package body Exp_Ch4 is
          Top : Node_Id;
 
       begin
+         --  In most cases an expression that creates a controlled object
+         --  generates a transient scope around it. If this is the case then
+         --  other controlled values can reuse it.
+
+         if Scope_Is_Transient then
+            return Node_To_Be_Wrapped;
+
+         --  In some cases, such as return statements, no transient scope is
+         --  generated, in which case we have to look up in the tree to find
+         --  the proper list on which to place the transient.
+
          --  When the node is inside a case/if expression, the lifetime of any
          --  temporary controlled object is extended. Find a suitable insertion
          --  node by locating the topmost case or if expressions.
 
-         if Within_Case_Or_If_Expression (N) then
+         elsif Within_Case_Or_If_Expression (N) then
             Par := N;
             Top := N;
             while Present (Par) loop
@@ -12396,15 +12413,7 @@ package body Exp_Ch4 is
                  Name       => New_Reference_To (Temp_Id, Loc),
                  Expression => Make_Null (Loc))));
 
-         --  Use the Actions list of logical operators when inserting the
-         --  finalization call. This ensures that all transient controlled
-         --  objects are finalized after the operators are evaluated.
-
-         if Nkind_In (Context, N_And_Then, N_Or_Else) then
-            Insert_Action (Context, Fin_Call);
-         else
-            Insert_Action_After (Context, Fin_Call);
-         end if;
+         Insert_Action_After (Context, Fin_Call);
       end if;
    end Process_Transient_Object;
 

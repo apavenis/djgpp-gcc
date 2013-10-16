@@ -2611,8 +2611,13 @@ package body Sem_Type is
 
             begin
                AI := First (Interface_List (Parent (Target_Typ)));
+
+               --  The progenitor itself may be a subtype of an interface type.
+
                while Present (AI) loop
-                  if Etype (AI) = Iface_Typ then
+                  if Etype (AI) = Iface_Typ
+                    or else Base_Type (Etype (AI)) = Iface_Typ
+                  then
                      return True;
 
                   elsif Present (Interfaces (Etype (AI)))
@@ -3204,6 +3209,8 @@ package body Sem_Type is
 
    begin
       if Is_Overloaded (Old_N) then
+         Set_Is_Overloaded (New_N);
+
          if Nkind (Old_N) = N_Selected_Component
            and then Is_Overloaded (Selector_Name (Old_N))
          then

@@ -1208,11 +1208,22 @@ package body Sem_Ch8 is
       --  may have been rewritten in several ways.
 
       elsif Is_Object_Reference (Nam) then
-         if Comes_From_Source (N)
-           and then Is_Dependent_Component_Of_Mutable_Object (Nam)
-         then
-            Error_Msg_N
-              ("illegal renaming of discriminant-dependent component", Nam);
+         if Comes_From_Source (N) then
+            if Is_Dependent_Component_Of_Mutable_Object (Nam) then
+               Error_Msg_N
+                 ("illegal renaming of discriminant-dependent component", Nam);
+            end if;
+
+            --  If the renaming comes from source and the renamed object is a
+            --  dereference, then mark the prefix as needing debug information,
+            --  since it might have been rewritten hence internally generated
+            --  and Debug_Renaming_Declaration will link the renaming to it.
+
+            if Nkind (Nam) = N_Explicit_Dereference
+              and then Is_Entity_Name (Prefix (Nam))
+            then
+               Set_Debug_Info_Needed (Entity (Prefix (Nam)));
+            end if;
          end if;
 
       --  A static function call may have been folded into a literal
@@ -4987,6 +4998,7 @@ package body Sem_Ch8 is
 
          if Comes_From_Source (N)
            and then Is_Remote_Access_To_Subprogram_Type (E)
+           and then Ekind (E) = E_Access_Subprogram_Type
            and then Expander_Active
            and then Get_PCS_Name /= Name_No_DSA
          then
@@ -5157,12 +5169,10 @@ package body Sem_Ch8 is
       Selector  : constant Node_Id := Selector_Name (N);
       Candidate : Entity_Id        := Empty;
       P_Name    : Entity_Id;
-      O_Name    : Entity_Id;
       Id        : Entity_Id;
 
    begin
       P_Name := Entity (Prefix (N));
-      O_Name := P_Name;
 
       --  If the prefix is a renamed package, look for the entity in the
       --  original package.
@@ -5340,15 +5350,22 @@ package body Sem_Ch8 is
             else
                --  Within the instantiation of a child unit, the prefix may
                --  denote the parent instance, but the selector has the name
-               --  of the original child. Find whether we are within the
-               --  corresponding instance, and get the proper entity, which
-               --  can only be an enclosing scope.
+               --  of the original child. That is to say, when A.B appears
+               --  within an instantiation of generic child unit B, the scope
+               --  stack includes an instance of A (P_Name) and an instance
+               --  of B under some other name. We scan the scope to find this
+               --  child instance, which is the desired entity.
+               --  Note that the parent may itself be a child instance, if
+               --  the reference is of the form A.B.C, in which case A.B has
+               --  already been rewritten with the proper entity.
 
-               if O_Name /= P_Name
-                 and then In_Open_Scopes (P_Name)
+               if In_Open_Scopes (P_Name)
                  and then Is_Generic_Instance (P_Name)
                then
                   declare
+                     Gen_Par : constant Entity_Id :=
+                                 Generic_Parent (Specification
+                                   (Unit_Declaration_Node (P_Name)));
                      S : Entity_Id := Current_Scope;
                      P : Entity_Id;
 
@@ -5365,9 +5382,12 @@ package body Sem_Ch8 is
                            P := Generic_Parent (Specification
                                   (Unit_Declaration_Node (S)));
 
+                           --  Check that P is a generic child of the generic
+                           --  parent of the prefix.
+
                            if Present (P)
-                             and then Chars (Scope (P)) = Chars (O_Name)
                              and then Chars (P) = Chars (Selector)
+                             and then Scope (P) = Gen_Par
                            then
                               Id := S;
                               goto Found;
@@ -5480,6 +5500,7 @@ package body Sem_Ch8 is
       <<Found>>
       if Comes_From_Source (N)
         and then Is_Remote_Access_To_Subprogram_Type (Id)
+        and then Ekind (Id) = E_Access_Subprogram_Type
         and then Present (Equivalent_Type (Id))
       then
          --  If we are not actually generating distribution code (i.e. the
