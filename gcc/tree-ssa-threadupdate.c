@@ -20,10 +20,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
 #include "tree.h"
 #include "flags.h"
-#include "tm_p.h"
 #include "basic-block.h"
 #include "function.h"
 #include "tree-ssa.h"
@@ -31,6 +29,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "dumpfile.h"
 #include "cfgloop.h"
 #include "hash-table.h"
+#include "dbgcnt.h"
 
 /* Given a block B, update the CFG and SSA graph to reflect redirecting
    one or more in-edges to B to instead reach the destination of an
@@ -1245,7 +1244,7 @@ mark_threaded_blocks (bitmap threaded_blocks)
      When this occurs ignore the jump thread request with the joiner
      block.  It's totally subsumed by the simpler jump thread request.
 
-     This results in less block copying, simpler CFGs.  More improtantly,
+     This results in less block copying, simpler CFGs.  More importantly,
      when we duplicate the joiner block, B, in this case we will create
      a new threading opportunity that we wouldn't be able to optimize
      until the next jump threading iteration.
@@ -1264,20 +1263,30 @@ mark_threaded_blocks (bitmap threaded_blocks)
 	}
     }
 
-
-  /* Now iterate again, converting cases where we threaded through
-     a joiner block, but ignoring those where we have already
-     threaded through the joiner block.  */
+  /* Now iterate again, converting cases where we want to thread
+     through a joiner block, but only if no other edge on the path
+     already has a jump thread attached to it.  */
   for (i = 0; i < paths.length (); i++)
     {
       vec<jump_thread_edge *> *path = paths[i];
 
-      if ((*path)[1]->type == EDGE_COPY_SRC_JOINER_BLOCK
-	  && (*path)[0]->e->aux == NULL)
+      
+      if ((*path)[1]->type == EDGE_COPY_SRC_JOINER_BLOCK)
 	{
-	  edge e = (*path)[0]->e;
-	  e->aux = path;
-	  bitmap_set_bit (tmp, e->dest->index);
+	  unsigned int j;
+
+	  for (j = 0; j < path->length (); j++)
+	    if ((*path)[j]->e->aux != NULL)
+	      break;
+
+	  /* If we iterated through the entire path without exiting the loop,
+	     then we are good to go, attach the path to the starting edge.  */
+	  if (j == path->length ())
+	    {
+	      edge e = (*path)[0]->e;
+	      e->aux = path;
+	      bitmap_set_bit (tmp, e->dest->index);
+	    }
 	}
     }
 
@@ -1534,6 +1543,14 @@ dump_jump_thread_path (FILE *dump_file, vec<jump_thread_edge *> path)
 void
 register_jump_thread (vec<jump_thread_edge *> *path)
 {
+  if (!dbg_cnt (registered_jump_thread))
+    {
+      for (unsigned int i = 0; i < path->length (); i++)
+	delete (*path)[i];
+      path->release ();
+      return;
+    }
+
   /* First make sure there are no NULL outgoing edges on the jump threading
      path.  That can happen for jumping to a constant address.  */
   for (unsigned int i = 0; i < path->length (); i++)
