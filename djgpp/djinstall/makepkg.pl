@@ -756,7 +756,7 @@ sub mk_manifest
         if ($file =~ m/\.exe$/)
         {
             system ("$strip $file");
-            if ($file =~ m/(?:cc1|cc1obj|cc1plus|g951|gnat1)\.exe$/)
+            if ($file =~ m/(?:cc1|cc1obj|cc1objplus|cc1plus|f951|gnat1)\.exe$/)
             {
                 system ("stubedit $file minstack=2048K");
             }
