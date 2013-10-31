@@ -328,7 +328,7 @@ for file in cc1 cc1obj cc1objplus cc1plus collect2 f951 gnat1 install_tools/fixi
     if [ -f %{buildroot}%{_libexecdir}/gcc/%{target}/%{gcc_version}/$file ] ; then
         strip %{buildroot}%{_libexecdir}/gcc/%{target}/%{gcc_version}/$file
     else
-        echo "WARNING: File $file not found
+        echo "WARNING: File $file not found"
     fi
 done
 
