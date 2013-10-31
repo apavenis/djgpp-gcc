@@ -30,7 +30,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "function.h"
 #include "timevar.h"
 #include "dumpfile.h"
-#include "tree-ssa.h"
+#include "gimple.h"
+#include "gimple-ssa.h"
+#include "tree-cfg.h"
+#include "tree-phinodes.h"
+#include "ssa-iterators.h"
+#include "tree-ssanames.h"
 #include "tree-ssa-propagate.h"
 #include "tree-ssa-threadupdate.h"
 #include "langhooks.h"
@@ -639,7 +644,7 @@ propagate_threaded_block_debug_into (basic_block dest, basic_block src)
       i++;
     }
 
-  vec<tree, va_stack> fewvars = vNULL;
+  stack_vec<tree, alloc_count> fewvars;
   pointer_set_t *vars = NULL;
 
   /* If we're already starting with 3/4 of alloc_count, go for a
@@ -647,8 +652,6 @@ propagate_threaded_block_debug_into (basic_block dest, basic_block src)
      VEC.  */
   if (i * 4 > alloc_count * 3)
     vars = pointer_set_create ();
-  else if (alloc_count)
-    vec_stack_alloc (tree, fewvars, alloc_count);
 
   /* Now go through the initial debug stmts in DEST again, this time
      actually inserting in VARS or FEWVARS.  Don't bother checking for
@@ -1034,6 +1037,16 @@ thread_across_edge (gimple dummy_cond,
     edge taken_edge;
     edge_iterator ei;
     bool found;
+
+    /* If E->dest has abnormal outgoing edges, then there's no guarantee
+       we can safely redirect any of the edges.  Just punt those cases.  */
+    FOR_EACH_EDGE (taken_edge, ei, e->dest->succs)
+      if (taken_edge->flags & EDGE_ABNORMAL)
+	{
+	  remove_temporary_equivalences (stack);
+	  BITMAP_FREE (visited);
+	  return;
+	}
 
     /* Look at each successor of E->dest to see if we can thread through it.  */
     FOR_EACH_EDGE (taken_edge, ei, e->dest->succs)
