@@ -1,3 +1,59 @@
+2013-10-28  Tom de Vries  <tom@codesourcery.com>
+
+	* cfgexpand.c (gimple_expand_cfg): Remove test for parm_birth_insn.
+	Don't commit insertions after NOTE_INSN_FUNCTION_BEG.
+
+2013-10-28  Tom de Vries  <tom@codesourcery.com>
+
+	* cfgexpand.c (gimple_expand_cfg): Remove test for parm_birth_insn.
+	Don't commit insertions after NOTE_INSN_FUNCTION_BEG.
+
+2013-10-26  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-10-22  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/58779
+	* config/i386/i386.c (put_condition_code) <case GTU, case LEU>:
+	Remove CCCmode handling.
+	<case LTU>: Return 'c' suffix for CCCmode.
+	<case GEU>: Return 'nc' suffix for CCCmode.
+	(ix86_cc_mode) <case GTU, case LEU>: Do not generate overflow checks.
+	* config/i386/i386.md (*sub<mode>3_cconly_overflow): Remove.
+	(*sub<mode>3_cc_overflow): Ditto.
+	(*subsi3_zext_cc_overflow): Ditto.
+
+2013-10-26  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-10-19  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/58792
+	* config/i386/i386.c (ix86_function_value_regno): Add DX_REG,
+	ST1_REG and XMM1_REG for 32bit and 64bit targets.  Also add DI_REG
+	and SI_REG for 64bit SYSV ABI targets.
+
+2013-10-25  Richard Henderson  <rth@twiddle.net>
+
+	PR rtl/58542
+	* optabs.c (maybe_emit_atomic_exchange): Use create_input_operand
+	instead of create_convert_operand_to.
+	(maybe_emit_sync_lock_test_and_set): Likewise.
+	(expand_atomic_compare_and_swap): Likewise.
+	(maybe_emit_compare_and_swap_exchange_loop): Don't convert_modes.
+
+2013-10-25  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR rtl-optimization/58831
+	* alias.c (init_alias_analysis): At the beginning of each iteration,
+	set the reg_seen[N] flag if static_reg_base_value[N] is non-null.
+
+2013-10-25  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* recog.c (search_ofs): New static variable moved from...
+	(peep2_find_free_register): ...here.
+	(peephole2_optimize): Initialize it.
+
 2013-10-02  John David Anglin  <danglin@gcc.gnu.org>
 
 	* config.gcc (hppa*64*-*-linux*): Don't add pa/t-linux to tmake_file.
