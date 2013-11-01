@@ -5467,6 +5467,19 @@ finish_omp_clauses (tree clauses)
 		error ("%qE is not a variable in %<aligned%> clause", t);
 	      remove = true;
 	    }
+	  else if (!type_dependent_expression_p (t)
+		   && TREE_CODE (TREE_TYPE (t)) != POINTER_TYPE
+		   && TREE_CODE (TREE_TYPE (t)) != ARRAY_TYPE
+		   && (TREE_CODE (TREE_TYPE (t)) != REFERENCE_TYPE
+		       || (!POINTER_TYPE_P (TREE_TYPE (TREE_TYPE (t)))
+			   && (TREE_CODE (TREE_TYPE (TREE_TYPE (t)))
+			       != ARRAY_TYPE))))
+	    {
+	      error_at (OMP_CLAUSE_LOCATION (c),
+			"%qE in %<aligned%> clause is neither a pointer nor "
+			"an array nor a reference to pointer or array", t);
+	      remove = true;
+	    }
 	  else if (bitmap_bit_p (&aligned_head, DECL_UID (t)))
 	    {
 	      error ("%qD appears more than once in %<aligned%> clauses", t);
@@ -8289,12 +8302,18 @@ cxx_eval_call_expression (const constexpr_call *old_call, tree t,
       return t;
     }
 
-  /* Shortcut trivial copy constructor/op=.  */
-  if (call_expr_nargs (t) == 2 && trivial_fn_p (fun))
+  /* Shortcut trivial constructor/op=.  */
+  if (trivial_fn_p (fun))
     {
-      tree arg = convert_from_reference (get_nth_callarg (t, 1));
-      return cxx_eval_constant_expression (old_call, arg, allow_non_constant,
-					   addr, non_constant_p, overflow_p);
+      if (call_expr_nargs (t) == 2)
+	{
+	  tree arg = convert_from_reference (get_nth_callarg (t, 1));
+	  return cxx_eval_constant_expression (old_call, arg, allow_non_constant,
+					       addr, non_constant_p, overflow_p);
+	}
+      else if (TREE_CODE (t) == AGGR_INIT_EXPR
+	       && AGGR_INIT_ZERO_FIRST (t))
+	return build_zero_init (DECL_CONTEXT (fun), NULL_TREE, false);
     }
 
   /* If in direct recursive call, optimize definition search.  */
