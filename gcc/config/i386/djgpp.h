@@ -17,6 +17,9 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+#define DBX_DEBUGGING_INFO 1
+#define SDB_DEBUGGING_INFO 1
+
 /* Support generation of DWARF2 debugging info.  */
 #define DWARF2_DEBUGGING_INFO 1
 
