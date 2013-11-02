@@ -444,6 +444,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Nov  2 2013 Andris Pavenis <andris.pavenis@iki.fi> 4.8.2-2ap
+- Strip some executables not stripped earlier
+- Fix support of backtrace in GDB by enabling other debug information types 
+
 * Wed Oct 16 2013 Andris Pavenis <andris.pavenis@iki.fi> 4.8.2-1ap
 - Update to GCC-4.8.2
 
