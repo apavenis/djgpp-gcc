@@ -425,6 +425,7 @@ extern gimple_opt_pass *make_pass_sink_code (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_fre (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_check_data_deps (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_copy_prop (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_isolate_erroneous_paths (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_vrp (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_uncprop (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_return_slot (gcc::context *ctxt);
@@ -446,6 +447,8 @@ extern gimple_opt_pass *make_pass_split_functions (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_feedback_split_functions (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_strength_reduction (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_vtable_verify (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_ubsan (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_sanopt (gcc::context *ctxt);
 
 /* IPA Passes */
 extern simple_ipa_opt_pass *make_pass_ipa_lower_emutls (gcc::context *ctxt);
@@ -457,7 +460,6 @@ extern simple_ipa_opt_pass *make_pass_early_local_passes (gcc::context *ctxt);
 
 extern ipa_opt_pass_d *make_pass_ipa_whole_program_visibility (gcc::context
 							       *ctxt);
-extern ipa_opt_pass_d *make_pass_ipa_lto_gimple_out (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_increase_alignment (gcc::context
 							      *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_inline (gcc::context *ctxt);
@@ -469,7 +471,6 @@ extern ipa_opt_pass_d *make_pass_ipa_devirt (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_reference (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_pure_const (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_pta (gcc::context *ctxt);
-extern ipa_opt_pass_d *make_pass_ipa_lto_finish_out (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_tm (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_profile (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_cdtor_merge (gcc::context *ctxt);
@@ -530,6 +531,7 @@ extern rtl_opt_pass *make_pass_lower_subreg2 (gcc::context *ctxt);
 extern rtl_opt_pass *make_pass_mode_switching (gcc::context *ctxt);
 extern rtl_opt_pass *make_pass_sms (gcc::context *ctxt);
 extern rtl_opt_pass *make_pass_sched (gcc::context *ctxt);
+extern rtl_opt_pass *make_pass_live_range_shrinkage (gcc::context *ctxt);
 extern rtl_opt_pass *make_pass_ira (gcc::context *ctxt);
 extern rtl_opt_pass *make_pass_reload (gcc::context *ctxt);
 extern rtl_opt_pass *make_pass_clean_state (gcc::context *ctxt);

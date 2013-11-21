@@ -1073,6 +1073,20 @@ unpack_filename (char *cstring, const char *fstring, int len)
 }
 
 
+/* Set the close-on-exec flag for an existing fd, if the system
+   supports such.  */
+
+static void __attribute__ ((unused))
+set_close_on_exec (int fd __attribute__ ((unused)))
+{
+  /* Mingw does not define F_SETFD.  */
+#if defined(F_SETFD) && defined(FD_CLOEXEC)
+  if (fd >= 0)
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
+#endif
+}
+
+
 /* Helper function for tempfile(). Tries to open a temporary file in
    the directory specified by tempdir. If successful, the file name is
    stored in fname and the descriptor returned. Returns -1 on
@@ -1117,7 +1131,12 @@ tempfile_open (const char *tempdir, char **fname)
   mode_mask = umask (S_IXUSR | S_IRWXG | S_IRWXO);
 #endif
 
+#if defined(HAVE_MKOSTEMP) && defined(O_CLOEXEC)
+  fd = mkostemp (template, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC);
+#else
   fd = mkstemp (template);
+  set_close_on_exec (fd);
+#endif
 
 #ifdef HAVE_UMASK
   (void) umask (mode_mask);
@@ -1127,6 +1146,13 @@ tempfile_open (const char *tempdir, char **fname)
   fd = -1;
   int count = 0;
   size_t slashlen = strlen (slash);
+  int flags = O_RDWR | O_CREAT | O_EXCL;
+#if defined(HAVE_CRLF) && defined(O_BINARY)
+  flags |= O_BINARY;
+#endif
+#ifdef O_CLOEXEC
+  flags |= O_CLOEXEC;
+#endif
   do
     {
       snprintf (template, tempdirlen + 23, "%s%sgfortrantmpaaaXXXXXX", 
@@ -1150,14 +1176,12 @@ tempfile_open (const char *tempdir, char **fname)
 	continue;
       }
 
-#if defined(HAVE_CRLF) && defined(O_BINARY)
-      fd = open (template, O_RDWR | O_CREAT | O_EXCL | O_BINARY,
-		 S_IRUSR | S_IWUSR);
-#else
-      fd = open (template, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-#endif
+      fd = open (template, flags, S_IRUSR | S_IWUSR);
     }
   while (fd == -1 && errno == EEXIST);
+#ifndef O_CLOEXEC
+  set_close_on_exec (fd);
+#endif
 #endif /* HAVE_MKSTEMP */
 
   *fname = template;
@@ -1229,7 +1253,7 @@ regular_file (st_parameter_open *opp, unit_flags *flags)
   char path[min(PATH_MAX, opp->file_len + 1)];
   int mode;
   int rwflag;
-  int crflag;
+  int crflag, crflag2;
   int fd;
   int err;
 
@@ -1281,8 +1305,6 @@ regular_file (st_parameter_open *opp, unit_flags *flags)
     }
 #endif
 
-  rwflag = 0;
-
   switch (flags->action)
     {
     case ACTION_READ:
@@ -1313,8 +1335,10 @@ regular_file (st_parameter_open *opp, unit_flags *flags)
       break;
 
     case STATUS_UNKNOWN:
-    case STATUS_SCRATCH:
-      crflag = O_CREAT;
+      if (rwflag == O_RDONLY)
+	crflag = 0;
+      else
+	crflag = O_CREAT;
       break;
 
     case STATUS_REPLACE:
@@ -1322,6 +1346,8 @@ regular_file (st_parameter_open *opp, unit_flags *flags)
       break;
 
     default:
+      /* Note: STATUS_SCRATCH is handled by tempfile () and should
+	 never be seen here.  */
       internal_error (&opp->common, "regular_file(): Bad status");
     }
 
@@ -1329,6 +1355,10 @@ regular_file (st_parameter_open *opp, unit_flags *flags)
 
 #if defined(HAVE_CRLF) && defined(O_BINARY)
   crflag |= O_BINARY;
+#endif
+
+#ifdef O_CLOEXEC
+  crflag |= O_CLOEXEC;
 #endif
 
   mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
@@ -1346,14 +1376,18 @@ regular_file (st_parameter_open *opp, unit_flags *flags)
 
   /* retry for read-only access */
   rwflag = O_RDONLY;
-  fd = open (path, rwflag | crflag, mode);
+  if (flags->status == STATUS_UNKNOWN)
+    crflag2 = crflag & ~(O_CREAT);
+  else
+    crflag2 = crflag;
+  fd = open (path, rwflag | crflag2, mode);
   if (fd >=0)
     {
       flags->action = ACTION_READ;
       return fd;		/* success */
     }
   
-  if (errno != EACCES)
+  if (errno != EACCES && errno != ENOENT)
     return fd;			/* failure */
 
   /* retry for write-only access */
@@ -1394,6 +1428,9 @@ open_external (st_parameter_open *opp, unit_flags *flags)
       /* regular_file resets flags->action if it is ACTION_UNSPECIFIED and
        * if it succeeds */
       fd = regular_file (opp, flags);
+#ifndef O_CLOEXEC
+      set_close_on_exec (fd);
+#endif
     }
 
   if (fd < 0)

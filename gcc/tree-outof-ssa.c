@@ -23,16 +23,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
+#include "stor-layout.h"
 #include "ggc.h"
 #include "basic-block.h"
 #include "gimple-pretty-print.h"
 #include "bitmap.h"
 #include "sbitmap.h"
 #include "gimple.h"
+#include "gimple-iterator.h"
 #include "gimple-ssa.h"
 #include "tree-cfg.h"
 #include "tree-phinodes.h"
 #include "ssa-iterators.h"
+#include "stringpool.h"
 #include "tree-ssanames.h"
 #include "dumpfile.h"
 #include "diagnostic-core.h"
@@ -548,6 +551,23 @@ eliminate_name (elim_graph g, int T)
   elim_graph_add_node (g, T);
 }
 
+/* Return true if this phi argument T should have a copy queued when using
+   var_map MAP.  PHI nodes should contain only ssa_names and invariants.  A
+   test for ssa_name is definitely simpler, but don't let invalid contents
+   slip through in the meantime.  */
+
+static inline bool
+queue_phi_copy_p (var_map map, tree t)
+{
+  if (TREE_CODE (t) == SSA_NAME)
+    { 
+      if (var_to_partition (map, t) == NO_PARTITION)
+        return true;
+      return false;
+    }
+  gcc_checking_assert (is_gimple_min_invariant (t));
+  return true;
+}
 
 /* Build elimination graph G for basic block BB on incoming PHI edge
    G->e.  */
@@ -577,9 +597,7 @@ eliminate_build (elim_graph g)
       /* If this argument is a constant, or a SSA_NAME which is being
 	 left in SSA form, just queue a copy to be emitted on this
 	 edge.  */
-      if (!phi_ssa_name_p (Ti)
-	  || (TREE_CODE (Ti) == SSA_NAME
-	      && var_to_partition (g->map, Ti) == NO_PARTITION))
+      if (queue_phi_copy_p (g->map, Ti))
         {
 	  /* Save constant copies until all other copies have been emitted
 	     on this edge.  */
@@ -913,7 +931,8 @@ expand_phi_nodes (struct ssaexpand *sa)
   elim_graph g = new_elim_graph (sa->map->num_partitions);
   g->map = sa->map;
 
-  FOR_BB_BETWEEN (bb, ENTRY_BLOCK_PTR->next_bb, EXIT_BLOCK_PTR, next_bb)
+  FOR_BB_BETWEEN (bb, ENTRY_BLOCK_PTR_FOR_FN (cfun)->next_bb,
+		  EXIT_BLOCK_PTR_FOR_FN (cfun), next_bb)
     if (!gimple_seq_empty_p (phi_nodes (bb)))
       {
 	edge e;

@@ -31,6 +31,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
+#include "stringpool.h"
+#include "varasm.h"
+#include "attribs.h"
+#include "stor-layout.h"
+#include "calls.h"
+#include "gimple.h"
 #include "flags.h"
 #include "cp-tree.h"
 #include "decl.h"
@@ -45,7 +51,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "c-family/c-pragma.h"
 #include "dumpfile.h"
 #include "intl.h"
-#include "gimple.h"
 #include "pointer-set.h"
 #include "splay-tree.h"
 #include "langhooks.h"
@@ -3789,7 +3794,7 @@ build_java_method_aliases (struct pointer_set_t *candidates)
 /* Return C++ property of T, based on given operation OP.  */
 
 static int
-cpp_check (tree t, cpp_operation op)
+cpp_check (const_tree t, cpp_operation op)
 {
   switch (op)
     {
@@ -3803,6 +3808,8 @@ cpp_check (tree t, cpp_operation op)
 	return DECL_COPY_CONSTRUCTOR_P (t);
       case IS_TEMPLATE:
 	return TREE_CODE (t) == TEMPLATE_DECL;
+      case IS_TRIVIAL:
+	return trivial_type_p (t);
       default:
         return 0;
     }

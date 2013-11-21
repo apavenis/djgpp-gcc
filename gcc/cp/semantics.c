@@ -28,6 +28,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
+#include "stmt.h"
+#include "varasm.h"
+#include "stor-layout.h"
+#include "stringpool.h"
 #include "cp-tree.h"
 #include "c-family/c-common.h"
 #include "c-family/c-objc.h"
@@ -42,6 +46,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "vec.h"
 #include "target.h"
 #include "gimple.h"
+#include "gimplify.h"
 #include "bitmap.h"
 #include "hash-table.h"
 #include "omp-low.h"
@@ -2182,6 +2187,11 @@ finish_call_expr (tree fn, vec<tree, va_gc> **args, bool disallow_virtual,
 					complain);
 	}
     }
+
+  /* Per 13.3.1.1, '(&f)(...)' is the same as '(f)(...)'.  */
+  if (TREE_CODE (fn) == ADDR_EXPR
+      && TREE_CODE (TREE_OPERAND (fn, 0)) == OVERLOAD)
+    fn = TREE_OPERAND (fn, 0);
 
   if (is_overloaded_fn (fn))
     fn = baselink_for_fns (fn);
@@ -5188,12 +5198,16 @@ finish_omp_clauses (tree clauses)
 	  if (t == NULL_TREE)
 	    t = integer_one_node;
 	  if (t == error_mark_node)
-	    remove = true;
+	    {
+	      remove = true;
+	      break;
+	    }
 	  else if (!type_dependent_expression_p (t)
 		   && !INTEGRAL_TYPE_P (TREE_TYPE (t)))
 	    {
 	      error ("linear step expression must be integral");
 	      remove = true;
+	      break;
 	    }
 	  else
 	    {
@@ -5210,7 +5224,10 @@ finish_omp_clauses (tree clauses)
 					   MINUS_EXPR, sizetype, t,
 					   OMP_CLAUSE_DECL (c));
 		      if (t == error_mark_node)
-			remove = true;
+			{
+			  remove = true;
+			  break;
+			}
 		    }
 		}
 	      OMP_CLAUSE_LINEAR_STEP (c) = t;
@@ -5626,8 +5643,9 @@ finish_omp_clauses (tree clauses)
 	      else
 		error ("%qE is not an argument in %<uniform%> clause", t);
 	      remove = true;
+	      break;
 	    }
-	  break;
+	  goto check_dup_generic;
 
 	case OMP_CLAUSE_NOWAIT:
 	case OMP_CLAUSE_ORDERED:
@@ -7431,8 +7449,7 @@ build_anon_member_initialization (tree member, tree init,
      to build up the initializer from the outside in so that we can reuse
      previously built CONSTRUCTORs if this is, say, the second field in an
      anonymous struct.  So we use a vec as a stack.  */
-  vec<tree> fields;
-  fields.create (2);
+  stack_vec<tree, 2> fields;
   do
     {
       fields.safe_push (TREE_OPERAND (member, 1));
@@ -7464,7 +7481,6 @@ build_anon_member_initialization (tree member, tree init,
   /* Now we're at the innermost field, the one that isn't an anonymous
      aggregate.  Add its initializer to the CONSTRUCTOR and we're done.  */
   gcc_assert (fields.is_empty());
-  fields.release ();
   CONSTRUCTOR_APPEND_ELT (*vec, field, init);
 
   return true;
@@ -8599,7 +8615,7 @@ cxx_eval_array_reference (const constexpr_call *call, tree t,
       *non_constant_p = true;
       return t;
     }
-  i = tree_low_cst (index, 0);
+  i = tree_to_shwi (index);
   if (TREE_CODE (ary) == CONSTRUCTOR)
     return (*CONSTRUCTOR_ELTS (ary))[i].value;
   else if (elem_nchars == 1)
@@ -8714,8 +8730,8 @@ cxx_eval_bit_field_ref (const constexpr_call *call, tree t,
 			 TREE_OPERAND (t, 1), TREE_OPERAND (t, 2));
 
   start = TREE_OPERAND (t, 2);
-  istart = tree_low_cst (start, 0);
-  isize = tree_low_cst (TREE_OPERAND (t, 1), 0);
+  istart = tree_to_shwi (start);
+  isize = tree_to_shwi (TREE_OPERAND (t, 1));
   utype = TREE_TYPE (t);
   if (!TYPE_UNSIGNED (utype))
     utype = build_nonstandard_integer_type (TYPE_PRECISION (utype), 1);
@@ -8727,11 +8743,11 @@ cxx_eval_bit_field_ref (const constexpr_call *call, tree t,
 	return value;
       if (TREE_CODE (TREE_TYPE (field)) == INTEGER_TYPE
 	  && TREE_CODE (value) == INTEGER_CST
-	  && host_integerp (bitpos, 0)
-	  && host_integerp (DECL_SIZE (field), 0))
+	  && tree_fits_shwi_p (bitpos)
+	  && tree_fits_shwi_p (DECL_SIZE (field)))
 	{
-	  HOST_WIDE_INT bit = tree_low_cst (bitpos, 0);
-	  HOST_WIDE_INT sz = tree_low_cst (DECL_SIZE (field), 0);
+	  HOST_WIDE_INT bit = tree_to_shwi (bitpos);
+	  HOST_WIDE_INT sz = tree_to_shwi (DECL_SIZE (field));
 	  HOST_WIDE_INT shift;
 	  if (bit >= istart && bit + sz <= istart + isize)
 	    {
@@ -8888,7 +8904,7 @@ cxx_eval_vec_init_1 (const constexpr_call *call, tree atype, tree init,
 		     bool *non_constant_p, bool *overflow_p)
 {
   tree elttype = TREE_TYPE (atype);
-  int max = tree_low_cst (array_type_nelts (atype), 0);
+  int max = tree_to_shwi (array_type_nelts (atype));
   vec<constructor_elt, va_gc> *n;
   vec_alloc (n, max + 1);
   bool pre_init = false;
@@ -9107,9 +9123,9 @@ cxx_fold_indirect_ref (location_t loc, tree type, tree op0, bool *empty_base)
 	      && (same_type_ignoring_top_level_qualifiers_p
 		  (type, TREE_TYPE (op00type))))
 	    {
-	      HOST_WIDE_INT offset = tree_low_cst (op01, 0);
+	      HOST_WIDE_INT offset = tree_to_shwi (op01);
 	      tree part_width = TYPE_SIZE (type);
-	      unsigned HOST_WIDE_INT part_widthi = tree_low_cst (part_width, 0)/BITS_PER_UNIT;
+	      unsigned HOST_WIDE_INT part_widthi = tree_to_shwi (part_width)/BITS_PER_UNIT;
 	      unsigned HOST_WIDE_INT indexi = offset * BITS_PER_UNIT;
 	      tree index = bitsize_int (indexi);
 

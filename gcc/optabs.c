@@ -29,6 +29,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "insn-config.h"
 #include "rtl.h"
 #include "tree.h"
+#include "stor-layout.h"
+#include "stringpool.h"
+#include "varasm.h"
 #include "tm_p.h"
 #include "flags.h"
 #include "function.h"
@@ -6674,7 +6677,7 @@ expand_vec_perm (enum machine_mode mode, rtx v0, rtx v1, rtx sel, rtx target)
 	}
       tmp = gen_rtx_CONST_VECTOR (qimode, vec);
       sel = gen_lowpart (qimode, sel);
-      sel = expand_vec_perm (qimode, gen_reg_rtx (qimode), sel, tmp, NULL);
+      sel = expand_vec_perm (qimode, sel, sel, tmp, NULL);
       gcc_assert (sel != NULL);
 
       /* Add the byte offset to each byte element.  */
@@ -8229,6 +8232,10 @@ maybe_gen_insn (enum insn_code icode, unsigned int nops,
       return GEN_FCN (icode) (ops[0].value, ops[1].value, ops[2].value,
 			      ops[3].value, ops[4].value, ops[5].value,
 			      ops[6].value, ops[7].value);
+    case 9:
+      return GEN_FCN (icode) (ops[0].value, ops[1].value, ops[2].value,
+			      ops[3].value, ops[4].value, ops[5].value,
+			      ops[6].value, ops[7].value, ops[8].value);
     }
   gcc_unreachable ();
 }

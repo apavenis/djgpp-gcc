@@ -53,6 +53,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "machmode.h"
 #include "rtl.h"
 #include "tree.h"
+#include "stor-layout.h"
+#include "varasm.h"
 #include "expr.h"
 #include "output.h"
 #include "diagnostic-core.h"
@@ -69,6 +71,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "intl.h"
 #include "opts.h"
 #include "gimple.h"
+#include "gimplify.h"
+#include "stringpool.h"
 #include "tree-ssanames.h"
 #include "tree-ssa-alias.h"
 #include "insn-codes.h"
@@ -137,7 +141,6 @@ default_promote_function_mode_always_promote (const_tree type,
 {
   return promote_mode (type, mode, punsignedp);
 }
-
 
 enum machine_mode
 default_cc_modes_compatible (enum machine_mode m1, enum machine_mode m2)
@@ -271,7 +274,6 @@ default_cxx_guard_type (void)
 {
   return long_long_integer_type_node;
 }
-
 
 /* Returns the size of the cookie to use when allocating an array
    whose elements have the indicated TYPE.  Assumes that it is already
@@ -434,6 +436,19 @@ bool
 targhook_float_words_big_endian (void)
 {
   return !!FLOAT_WORDS_BIG_ENDIAN;
+}
+
+/* True if the target supports floating-point exceptions and rounding
+   modes.  */
+
+bool
+default_float_exceptions_rounding_supported_p (void)
+{
+#ifdef HAVE_adddf3
+  return HAVE_adddf3;
+#else
+  return false;
+#endif
 }
 
 /* True if the target supports decimal floating point.  */
@@ -980,7 +995,7 @@ tree default_mangle_decl_assembler_name (tree decl ATTRIBUTE_UNUSED,
 HOST_WIDE_INT
 default_vector_alignment (const_tree type)
 {
-  return tree_low_cst (TYPE_SIZE (type), 0);
+  return tree_to_shwi (TYPE_SIZE (type));
 }
 
 bool
@@ -1587,6 +1602,13 @@ default_canonicalize_comparison (int *, rtx *, rtx *, bool)
 {
 }
 
+/* Default implementation of TARGET_ATOMIC_ASSIGN_EXPAND_FENV.  */
+
+void
+default_atomic_assign_expand_fenv (tree *, tree *, tree *)
+{
+}
+
 #ifndef PAD_VARARGS_DOWN
 #define PAD_VARARGS_DOWN BYTES_BIG_ENDIAN
 #endif
@@ -1718,5 +1740,14 @@ default_builtin_chkp_function (unsigned int fcode ATTRIBUTE_UNUSED)
   return NULL_TREE;
 }
 
+/* An implementation of TARGET_CAN_USE_DOLOOP_P for targets that do
+   not support nested low-overhead loops.  */
+
+bool
+can_use_doloop_if_innermost (double_int, double_int,
+			     unsigned int loop_depth, bool)
+{
+  return loop_depth == 1;
+}
 
 #include "gt-targhooks.h"

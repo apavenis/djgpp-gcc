@@ -29,6 +29,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "line-map.h"
 #include "input.h"
 #include "tree.h"
+#include "varasm.h"
+#include "tree-inline.h"
 #include "realmpfr.h"	/* For GMP/MPFR/MPC versions, in print_version.  */
 #include "version.h"
 #include "rtl.h"
@@ -1286,9 +1288,6 @@ process_options (void)
     {
       if (targetm.chkp_bound_mode () == VOIDmode)
 	error ("-fcheck-pointers is not supported for this target");
-
-      if (!lang_hooks.chkp_supported)
-	flag_check_pointer_bounds = 0;
     }
 
   /* One region RA really helps to decrease the code size.  */
@@ -1971,10 +1970,12 @@ toplev_main (int argc, char **argv)
 
   if (warningcount || errorcount || werrorcount)
     print_ignored_options ();
-  diagnostic_finish (global_dc);
 
-  /* Invoke registered plugin callbacks if any.  */
+  /* Invoke registered plugin callbacks if any.  Some plugins could
+     emit some diagnostics here.  */
   invoke_plugin_callbacks (PLUGIN_FINISH, NULL);
+
+  diagnostic_finish (global_dc);
 
   finalize_plugins ();
   location_adhoc_data_fini (line_table);

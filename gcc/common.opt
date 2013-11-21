@@ -874,11 +874,6 @@ fbounds-check
 Common Report Var(flag_bounds_check)
 Generate code to check bounds before indexing arrays
 
-fcheck-pointer-bounds
-Common Report Var(flag_check_pointer_bounds)
-Add Pointer Bounds Checker instrumentation.  fchkp-* flags are used to
-control instrumentation.  Currently available for C, C++ and ObjC.
-
 fbranch-count-reg
 Common Report Var(flag_branch_on_count_reg) Init(1) Optimization
 Replace add, compare, branch with branch on count register
@@ -1161,7 +1156,7 @@ ffast-math
 Common
 
 ffat-lto-objects
-Common Var(flag_fat_lto_objects) Init(1)
+Common Var(flag_fat_lto_objects)
 Output lto objects containing both the intermediate language and binary output.
 
 ffinite-math-only
@@ -1396,6 +1391,10 @@ Perform interprocedural points-to analysis
 fipa-pure-const
 Common Report Var(flag_ipa_pure_const) Init(0) Optimization
 Discover pure and const functions
+
+fipa-sem-equality
+Common Report Var(flag_ipa_sem_equality) Iinit(1) Optimization
+Perform Semantic function equality
 
 fipa-reference
 Common Report Var(flag_ipa_reference) Init(0) Optimization
@@ -1737,6 +1736,10 @@ Return small aggregates in registers
 fregmove
 Common Ignore
 Does nothing. Preserved for backward compatibility.
+
+flive-range-shrinkage
+Common Report Var(flag_live_range_shrinkage) Init(0) Optimization
+Relief of register pressure through live range shrinkage
 
 frename-registers
 Common Report Var(flag_rename_registers) Init(2) Optimization
@@ -2109,6 +2112,12 @@ foptimize-strlen
 Common Report Var(flag_optimize_strlen) Optimization
 Enable string length optimizations on trees
 
+fisolate-erroneous-paths
+Common Report Var(flag_isolate_erroneous_paths) Optimization
+Detect paths which trigger erroneous or undefined behaviour.  Isolate those
+paths from the main control flow and turn the statement with erroneous or
+undefined behaviour into a trap.
+
 ftree-loop-distribution
 Common Report Var(flag_tree_loop_distribution) Optimization
 Enable loop distribution on trees
@@ -2238,7 +2247,7 @@ Common Negative(fuse-ld=bfd)
 Use the gold linker instead of the default linker
 
 fuse-linker-plugin
-Common Undocumented
+Common Undocumented Var(flag_use_linker_plugin)
 
 ; Positive if we should track variables, negative if we should run
 ; the var-tracking pass only to discard debug annotations, zero if
