@@ -357,6 +357,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/mm3dnow.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/mm_malloc.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdarg.h
+%{_libdir}/gcc/%{target}/%{gcc_version}/include/stdatomic.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdbool.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stddef.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdfix.h
@@ -444,6 +445,13 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Thu Nov 21 2013 Andris Pavenis <andris.pavenis@iki.fi>
+- Package also stdatomic.h
+
+* Fri Nov  1 2013 Andris Pavenis <andris.pavenis@iki.fi>
+- Fix debugging info for DJGPP (backtrace command in GDB did not work properly)
+- Fix list of executables for stripping debug info
+
 * Sat Oct  5 2013 Andris Pavenis <andris.pavenis@iki.fi>
 - Fix typo in SPEC file
 - build also fortran, objc, objc++ compilers conditionally
