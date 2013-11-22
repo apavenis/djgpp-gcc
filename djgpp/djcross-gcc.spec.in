@@ -17,6 +17,7 @@
 %define include_ada 1
 %define include_fortran 1
 %define include_objc 1
+%define enable_lto 1
 %define do_native_bootstrap 1
 %define create_djgpp_source_zip 1
 
@@ -34,6 +35,10 @@
 
 %if %include_objc
 %define support_objc 1
+%endif
+
+%if %enable_lto
+%define support_lto 1
 %endif
 
 %define languages c,c++%{?support_fortran:,f95}%{?support_objc:,objc,obj-c++}%{?support_ada:,ada}
@@ -291,6 +296,9 @@ PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
 			         --disable-nls \
 			         --disable-lto \
 				 --enable-libquadmath-support \
+%if %enable_lto
+                                 --enable-lto \
+%endif
                                  --with-gmp=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
                                  --with-mpfr=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
                                  --with-mpc=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
@@ -375,6 +383,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/plugin/include/*
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/collect2
+%{_libexecdir}/gcc/%{target}/%{gcc_version}/lto1
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/lto-wrapper
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/plugin/gengtype
 %{_mandir}/man1/%{target}-cpp.1.gz
