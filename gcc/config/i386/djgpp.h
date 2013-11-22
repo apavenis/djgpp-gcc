@@ -88,7 +88,7 @@ along with GCC; see the file COPYING3.  If not see
 #define STARTFILE_SPEC "%{pg:gcrt0.o%s}%{!pg:crt0.o%s}"
 
 /* Switch into a generic section.  */
-#define TARGET_ASM_NAMED_SECTION  default_coff_asm_named_section
+#define TARGET_ASM_NAMED_SECTION  i386_djgpp_asm_named_section
 
 /* This is how to output an assembler line
    that says to advance the location counter
@@ -178,3 +178,9 @@ along with GCC; see the file COPYING3.  If not see
                                                                         \
         }                                                               \
     while (0)
+
+/* Function protypes for gcc/i486/djgpp.c */
+
+void
+i386_djgpp_asm_named_section(const char *name, unsigned int flags,
+			     tree decl);
