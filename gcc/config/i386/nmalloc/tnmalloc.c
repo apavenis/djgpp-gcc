@@ -553,7 +553,7 @@ void test09(int n, int reps)
    printf("Under development\n"); fflush(stdout);
    if (!reps) reps = 512;
    for (i = 0; i < n; i++) {
-      p = nmemalign(65 * i, reps);
+     p = nmemalign(reps, 65 * i);
    }
 } /* test09 */
 
