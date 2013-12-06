@@ -29,6 +29,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm.h"
 #include "tree.h"
 #include "c-common.h"
+#include "basic-block.h"
+#include "tree-ssa-alias.h"
+#include "internal-fn.h"
+#include "gimple-expr.h"
+#include "is-a.h"
 #include "gimple.h"
 #include "gimplify.h"
 #include "tree-inline.h"
@@ -194,7 +199,9 @@ c_gimplify_expr (tree *expr_p, gimple_seq *pre_p ATTRIBUTE_UNUSED,
 	tree type = TREE_TYPE (TREE_OPERAND (*expr_p, 0));
 	if (INTEGRAL_TYPE_P (type) && c_promoting_integer_type_p (type))
 	  {
-	    if (TYPE_OVERFLOW_UNDEFINED (type))
+	    if (TYPE_OVERFLOW_UNDEFINED (type)
+		|| ((flag_sanitize & SANITIZE_SI_OVERFLOW)
+		    && !TYPE_OVERFLOW_WRAPS (type)))
 	      type = unsigned_type_for (type);
 	    return gimplify_self_mod_expr (expr_p, pre_p, post_p, 1, type);
 	  }

@@ -26,11 +26,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "stringpool.h"
 #include "cgraph.h"
 #include "tree-pass.h"
-#include "gimple.h"
-#include "gimplify.h"
-#include "ggc.h"
-#include "flags.h"
 #include "pointer-set.h"
+#include "gimple-expr.h"
+#include "gimplify.h"
+#include "flags.h"
 #include "target.h"
 #include "tree-iterator.h"
 #include "ipa-utils.h"
@@ -247,7 +246,7 @@ walk_polymorphic_call_targets (pointer_set_t *reachable_call_targets,
      hope calls to them will be devirtualized. 
 
      Again we remove them after inlining.  In late optimization some
-     devirtualization may happen, but it is not importnat since we won't inline
+     devirtualization may happen, but it is not important since we won't inline
      the call. In theory early opts and IPA should work out all important cases.
 
    - virtual clones needs bodies of their origins for later materialization;
@@ -275,7 +274,7 @@ walk_polymorphic_call_targets (pointer_set_t *reachable_call_targets,
    by reachable symbols or origins of clones).  The queue is represented
    as linked list by AUX pointer terminated by 1.
 
-   A the end we keep all reachable symbols. For symbols in boundary we always
+   At the end we keep all reachable symbols. For symbols in boundary we always
    turn definition into a declaration, but we may keep function body around
    based on body_needed_for_clonning
 
@@ -292,7 +291,7 @@ symtab_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
 {
   symtab_node *first = (symtab_node *) (void *) 1;
   struct cgraph_node *node, *next;
-  struct varpool_node *vnode, *vnext;
+  varpool_node *vnode, *vnext;
   bool changed = false;
   struct pointer_set_t *reachable = pointer_set_create ();
   struct pointer_set_t *body_needed_for_clonning = pointer_set_create ();
@@ -427,6 +426,19 @@ symtab_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
 		      enqueue_node (cnode, &first, reachable);
 		    }
 		}
+
+	    }
+	  /* If any reachable function has simd clones, mark them as
+	     reachable as well.  */
+	  if (cnode->simd_clones)
+	    {
+	      cgraph_node *next;
+	      for (next = cnode->simd_clones;
+		   next;
+		   next = next->simdclone->next_clone)
+		if (in_boundary_p
+		    || !pointer_set_insert (reachable, next))
+		  enqueue_node (next, &first, reachable);
 	    }
 	}
       /* When we see constructor of external variable, keep referred nodes in the
@@ -594,7 +606,7 @@ symtab_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
 void
 ipa_discover_readonly_nonaddressable_vars (void)
 {
-  struct varpool_node *vnode;
+  varpool_node *vnode;
   if (dump_file)
     fprintf (dump_file, "Clearing variable flags:");
   FOR_EACH_VARIABLE (vnode)
@@ -651,7 +663,7 @@ address_taken_from_non_vtable_p (symtab_node *node)
 					     i, ref); i++)
     if (ref->use == IPA_REF_ADDR)
       {
-	struct varpool_node *node;
+	varpool_node *node;
 	if (is_a <cgraph_node> (ref->referring))
 	  return true;
 	node = ipa_ref_referring_varpool_node (ref);
@@ -789,7 +801,7 @@ cgraph_externally_visible_p (struct cgraph_node *node,
 /* Return true when variable VNODE should be considered externally visible.  */
 
 bool
-varpool_externally_visible_p (struct varpool_node *vnode)
+varpool_externally_visible_p (varpool_node *vnode)
 {
   if (DECL_EXTERNAL (vnode->decl))
     return true;
@@ -883,7 +895,7 @@ static unsigned int
 function_and_variable_visibility (bool whole_program)
 {
   struct cgraph_node *node;
-  struct varpool_node *vnode;
+  varpool_node *vnode;
 
   /* All aliases should be procssed at this point.  */
   gcc_checking_assert (!alias_pairs || !alias_pairs->length ());
@@ -1263,11 +1275,9 @@ make_pass_ipa_whole_program_visibility (gcc::context *ctxt)
 }
 
 /* Generate and emit a static constructor or destructor.  WHICH must
-   be one of 'I' (for a constructor), 'D' (for a destructor), 'P'
-   (for chp static vars constructor) or 'B' (for chkp static bounds
-   constructor).  BODY is a STATEMENT_LIST containing GENERIC
-   statements.  PRIORITY is the initialization priority for this
-   constructor or destructor.
+   be one of 'I' (for a constructor) or 'D' (for a destructor).  BODY
+   is a STATEMENT_LIST containing GENERIC statements.  PRIORITY is the
+   initialization priority for this constructor or destructor. 
 
    FINAL specify whether the externally visible name for collect2 should
    be produced. */
@@ -1326,20 +1336,6 @@ cgraph_build_static_cdtor_1 (char which, tree body, int priority, bool final)
       DECL_STATIC_CONSTRUCTOR (decl) = 1;
       decl_init_priority_insert (decl, priority);
       break;
-    case 'P':
-      DECL_STATIC_CONSTRUCTOR (decl) = 1;
-      DECL_ATTRIBUTES (decl) = tree_cons (get_identifier ("chkp ctor"),
-					  NULL,
-					  NULL_TREE);
-      decl_init_priority_insert (decl, priority);
-      break;
-    case 'B':
-      DECL_STATIC_CONSTRUCTOR (decl) = 1;
-      DECL_ATTRIBUTES (decl) = tree_cons (get_identifier ("bnd_legacy"),
-					  NULL,
-					  NULL_TREE);
-      decl_init_priority_insert (decl, priority);
-      break;
     case 'D':
       DECL_STATIC_DESTRUCTOR (decl) = 1;
       decl_fini_priority_insert (decl, priority);
@@ -1357,11 +1353,9 @@ cgraph_build_static_cdtor_1 (char which, tree body, int priority, bool final)
 }
 
 /* Generate and emit a static constructor or destructor.  WHICH must
-   be one of 'I' (for a constructor), 'D' (for a destructor), 'P'
-   (for chkp static vars constructor) or 'B' (for chkp static bounds
-   constructor).  BODY is a STATEMENT_LIST containing GENERIC
-   statements.  PRIORITY is the initialization priority for this
-   constructor or destructor.  */
+   be one of 'I' (for a constructor) or 'D' (for a destructor).  BODY
+   is a STATEMENT_LIST containing GENERIC statements.  PRIORITY is the
+   initialization priority for this constructor or destructor.  */
 
 void
 cgraph_build_static_cdtor (char which, tree body, int priority)

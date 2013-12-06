@@ -24,12 +24,15 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "dumpfile.h"
 #include "tm.h"
-#include "ggc.h"
 #include "tree.h"
 #include "stor-layout.h"
 #include "target.h"
 #include "basic-block.h"
 #include "gimple-pretty-print.h"
+#include "tree-ssa-alias.h"
+#include "internal-fn.h"
+#include "gimple-expr.h"
+#include "is-a.h"
 #include "gimple.h"
 #include "gimple-iterator.h"
 #include "gimple-ssa.h"
@@ -48,23 +51,23 @@ along with GCC; see the file COPYING3.  If not see
 /* Extract the location of the basic block in the source code.
    Return the basic block location if succeed and NULL if not.  */
 
-LOC
+source_location
 find_bb_location (basic_block bb)
 {
   gimple stmt = NULL;
   gimple_stmt_iterator si;
 
   if (!bb)
-    return UNKNOWN_LOC;
+    return UNKNOWN_LOCATION;
 
   for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
     {
       stmt = gsi_stmt (si);
-      if (gimple_location (stmt) != UNKNOWN_LOC)
+      if (gimple_location (stmt) != UNKNOWN_LOCATION)
         return gimple_location (stmt);
     }
 
-  return UNKNOWN_LOC;
+  return UNKNOWN_LOCATION;
 }
 
 
@@ -2173,7 +2176,7 @@ vect_slp_analyze_bb_1 (basic_block bb)
     }
 
   /* Cost model: check if the vectorization is worthwhile.  */
-  if (!unlimited_cost_model ()
+  if (!unlimited_cost_model (NULL)
       && !vect_bb_vectorization_profitable_p (bb_vinfo))
     {
       if (dump_enabled_p ())

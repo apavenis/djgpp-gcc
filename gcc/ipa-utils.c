@@ -23,13 +23,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "tree.h"
+#include "basic-block.h"
+#include "tree-ssa-alias.h"
+#include "internal-fn.h"
+#include "gimple-expr.h"
+#include "is-a.h"
 #include "gimple.h"
 #include "tree-inline.h"
 #include "dumpfile.h"
 #include "langhooks.h"
-#include "pointer-set.h"
 #include "splay-tree.h"
-#include "ggc.h"
 #include "ipa-utils.h"
 #include "ipa-reference.h"
 #include "flags.h"
@@ -524,7 +527,7 @@ varpool_node_set_new (void)
 /* Add varpool_node NODE to varpool_node_set SET.  */
 
 void
-varpool_node_set_add (varpool_node_set set, struct varpool_node *node)
+varpool_node_set_add (varpool_node_set set, varpool_node *node)
 {
   void **slot;
 
@@ -548,11 +551,11 @@ varpool_node_set_add (varpool_node_set set, struct varpool_node *node)
 /* Remove varpool_node NODE from varpool_node_set SET.  */
 
 void
-varpool_node_set_remove (varpool_node_set set, struct varpool_node *node)
+varpool_node_set_remove (varpool_node_set set, varpool_node *node)
 {
   void **slot, **last_slot;
   int index;
-  struct varpool_node *last_node;
+  varpool_node *last_node;
 
   slot = pointer_map_contains (set->map, node);
   if (slot == NULL || !*slot)
@@ -584,7 +587,7 @@ varpool_node_set_remove (varpool_node_set set, struct varpool_node *node)
    is returned if NODE is not in SET.  */
 
 varpool_node_set_iterator
-varpool_node_set_find (varpool_node_set set, struct varpool_node *node)
+varpool_node_set_find (varpool_node_set set, varpool_node *node)
 {
   void **slot;
   varpool_node_set_iterator vsi;
@@ -609,7 +612,7 @@ dump_varpool_node_set (FILE *f, varpool_node_set set)
 
   for (iter = vsi_start (set); !vsi_end_p (iter); vsi_next (&iter))
     {
-      struct varpool_node *node = vsi_node (iter);
+      varpool_node *node = vsi_node (iter);
       fprintf (f, " %s", node->name ());
     }
   fprintf (f, "\n");

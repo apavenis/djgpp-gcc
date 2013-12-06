@@ -167,6 +167,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "stringpool.h"
 #include "output.h"
 #include "rtl.h"
+#include "basic-block.h"
+#include "tree-ssa-alias.h"
+#include "internal-fn.h"
+#include "gimple-fold.h"
+#include "gimple-expr.h"
+#include "is-a.h"
 #include "gimple.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
@@ -177,10 +183,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa.h"
 #include "tree-inline.h"
 #include "langhooks.h"
-#include "pointer-set.h"
 #include "toplev.h"
 #include "flags.h"
-#include "ggc.h"
 #include "debug.h"
 #include "target.h"
 #include "diagnostic.h"
@@ -733,10 +737,10 @@ process_common_attributes (tree decl)
 
 static void
 process_function_and_variable_attributes (struct cgraph_node *first,
-                                          struct varpool_node *first_var)
+                                          varpool_node *first_var)
 {
   struct cgraph_node *node;
-  struct varpool_node *vnode;
+  varpool_node *vnode;
 
   for (node = cgraph_first_function (); node != first;
        node = cgraph_next_function (node))
@@ -809,7 +813,7 @@ process_function_and_variable_attributes (struct cgraph_node *first,
 void
 varpool_finalize_decl (tree decl)
 {
-  struct varpool_node *node = varpool_node_for_decl (decl);
+  varpool_node *node = varpool_node_for_decl (decl);
 
   gcc_assert (TREE_STATIC (decl) || DECL_EXTERNAL (decl));
 
@@ -924,8 +928,8 @@ analyze_functions (void)
      intermodule optimization.  */
   static struct cgraph_node *first_analyzed;
   struct cgraph_node *first_handled = first_analyzed;
-  static struct varpool_node *first_analyzed_var;
-  struct varpool_node *first_handled_var = first_analyzed_var;
+  static varpool_node *first_analyzed_var;
+  varpool_node *first_handled_var = first_analyzed_var;
   struct pointer_set_t *reachable_call_targets = pointer_set_create ();
 
   symtab_node *node;
@@ -1525,7 +1529,6 @@ expand_thunk (struct cgraph_node *node, bool output_asm_thunks)
       int i;
       tree resdecl;
       tree restmp = NULL;
-      vec<tree> vargs;
 
       gimple call;
       gimple ret;
@@ -1579,7 +1582,7 @@ expand_thunk (struct cgraph_node *node, bool output_asm_thunks)
 
       for (arg = a; arg; arg = DECL_CHAIN (arg))
         nargs++;
-      vargs.create (nargs);
+      auto_vec<tree> vargs (nargs);
       if (this_adjusting)
         vargs.quick_push (thunk_adjust (&bsi, a, 1, fixed_offset,
 					virtual_offset));
@@ -1591,7 +1594,6 @@ expand_thunk (struct cgraph_node *node, bool output_asm_thunks)
 	  vargs.quick_push (arg);
       call = gimple_build_call_vec (build_fold_addr_expr_loc (0, alias), vargs);
       node->callees->call_stmt = call;
-      vargs.release ();
       gimple_call_set_from_thunk (call, true);
       if (restmp)
 	{
@@ -1889,7 +1891,7 @@ struct cgraph_order_sort
   union
   {
     struct cgraph_node *f;
-    struct varpool_node *v;
+    varpool_node *v;
     struct asm_node *a;
   } u;
 };
@@ -1907,7 +1909,7 @@ output_in_order (void)
   struct cgraph_order_sort *nodes;
   int i;
   struct cgraph_node *pf;
-  struct varpool_node *pv;
+  varpool_node *pv;
   struct asm_node *pa;
 
   max = symtab_order;
@@ -2017,7 +2019,7 @@ ipa_passes (void)
       cgraph_process_new_functions ();
 
       execute_ipa_summary_passes
-	((struct ipa_opt_pass_d *) passes->all_regular_ipa_passes);
+	((ipa_opt_pass_d *) passes->all_regular_ipa_passes);
     }
 
   /* Some targets need to handle LTO assembler output specially.  */
