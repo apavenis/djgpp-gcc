@@ -18,7 +18,7 @@ void nfree(void *ptr);
 void *nrealloc(void *ptr, size_t sz);
 void *ncalloc(size_t n, size_t s);
 #ifdef MEMALIGN
-   void *nmemalign(size_t sz, size_t alignment);
+void *nmemalign(size_t alignment, size_t sz);
 #endif
 
 #endif

@@ -94,7 +94,7 @@ static inline int invalid(size_t alignment)
 /* return memory aligned so that the return value is a */
 /* multiple of alignment.  Otherwise similar to malloc */
 /* alignment MUST be a power of two, max 65536.        */
-void *nmemalign(size_t size, size_t alignment)
+void *nmemalign(size_t alignment, size_t size)
 {
    memblockp m = NULL, m1;
    void     *minit;
