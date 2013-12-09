@@ -1,3 +1,46 @@
+2013-12-04  Marek Polacek  <polacek@redhat.com>
+
+	PR c/59351
+	* gcc.dg/pr59351.c: Use -pedantic instead of -Wpedantic.
+
+2013-12-03  Marek Polacek  <polacek@redhat.com>
+
+	Backport from mainline
+	2013-12-03  Marek Polacek  <polacek@redhat.com>
+
+	PR c/59351
+	* gcc.dg/pr59351.c: New test.
+
+2013-11-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-11-27  Uros Bizjak  <ubizjak@gmail.com>
+		    Ganesh Gopalasubramanian  <Ganesh.Gopalasubramanian@amd.com>
+
+	PR target/56788
+	* gcc.target/i386/xop-frczX.c: New test.
+
+2013-11-25  Vidya Praveen  <vidyapraveen@arm.com>
+
+	Backport from mainline
+	2013-10-21  Vidya Praveen  <vidyapraveen@arm.com>
+
+	* gcc.dg/20050922-1.c: Remove stdlib.h and declare abort().
+	* gcc.dg/20050922-1.c: Remove stdlib.h and declare abort() and exit().
+
+2013-11-17  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/58771
+	* gfortran.dg/derived_external_function_1.f90 : New test
+
+2013-11-02  Janus Weil  <janus@gcc.gnu.org>
+
+	Backport from mainline
+	2013-09-23  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/58355
+	* gfortran.dg/extends_15.f90: New.
+
 2013-10-28  Tom de Vries  <tom@codesourcery.com>
 
 	* gcc.target/arm/require-pic-register-loc.c: New test.
