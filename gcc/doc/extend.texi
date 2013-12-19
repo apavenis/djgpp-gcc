@@ -2919,6 +2919,13 @@ upon exit.  Reentrant functions cannot also have the @code{naked}
 or @code{critical} attributes.  They can have the @code{interrupt}
 attribute.
 
+@item wakeup
+@cindex @code{wakeup} attribute
+This attribute only applies to interrupt functions.  It is silently
+ignored if applied to a non-interrupt function.  A wakeup interrupt
+function will rouse the processor from any low-power state that it
+might be in when the function exits.
+
 @end table
 
 On Epiphany targets one or more optional parameters can be added like this:
@@ -3258,6 +3265,17 @@ On 32-bit i[34567]86-*-* targets and 64-bit x86_64-*-* targets, you can use
 this function attribute to make GCC generate the ``hot-patching'' function
 prologue used in Win32 API functions in Microsoft Windows XP Service Pack 2
 and newer.
+
+@item hotpatch [(@var{prologue-halfwords})]
+@cindex @code{hotpatch} attribute
+
+On S/390 System z targets, you can use this function attribute to
+make GCC generate a ``hot-patching'' function prologue.  The
+@code{hotpatch} has no effect on funtions that are explicitly
+inline.  If the @option{-mhotpatch} or @option{-mno-hotpatch}
+command-line option is used at the same time, the @code{hotpatch}
+attribute takes precedence.  If an argument is given, the maximum
+allowed value is 1000000.
 
 @item naked
 @cindex function without a prologue/epilogue code

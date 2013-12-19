@@ -461,8 +461,8 @@ enum reg_class
 
 enum target_cpus
 {
-#define AARCH64_CORE(NAME, IDENT, ARCH, FLAGS, COSTS) \
-  TARGET_CPU_##IDENT,
+#define AARCH64_CORE(NAME, INTERNAL_IDENT, IDENT, ARCH, FLAGS, COSTS) \
+  TARGET_CPU_##INTERNAL_IDENT,
 #include "aarch64-cores.def"
 #undef AARCH64_CORE
   TARGET_CPU_generic
@@ -856,5 +856,20 @@ extern enum aarch64_code_model aarch64_cmodel;
 
 #define ENDIAN_LANE_N(mode, n)  \
   (BYTES_BIG_ENDIAN ? GET_MODE_NUNITS (mode) - 1 - n : n)
+
+#define BIG_LITTLE_SPEC \
+   " %{mcpu=*:%<mcpu=* -mcpu=%:rewrite_mcpu(%{mcpu=*:%*})}"
+
+extern const char *aarch64_rewrite_mcpu (int argc, const char **argv);
+#define BIG_LITTLE_CPU_SPEC_FUNCTIONS \
+  { "rewrite_mcpu", aarch64_rewrite_mcpu },
+
+#define ASM_CPU_SPEC \
+   BIG_LITTLE_SPEC
+
+#define EXTRA_SPEC_FUNCTIONS BIG_LITTLE_CPU_SPEC_FUNCTIONS
+
+#define EXTRA_SPECS						\
+  { "asm_cpu_spec",		ASM_CPU_SPEC }
 
 #endif /* GCC_AARCH64_H */
