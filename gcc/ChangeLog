@@ -1,3 +1,62 @@
+2013-12-18  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/arm/arm.c (arm_expand_epilogue_apcs_frame): Fix thinko.
+
+2013-12-12  Vladimir Makarov  <vmakarov@redhat.com>
+
+	PR middle-end/59470
+	* lra-coalesce.c (lra_coalesce): Invalidate inheritance pseudo
+	values if necessary.
+
+2013-12-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/59467
+	* gimplify.c (omp_check_private): Add copyprivate argument, if it
+	is true, don't check omp_privatize_by_reference.
+	(gimplify_scan_omp_clauses): For OMP_CLAUSE_COPYPRIVATE verify
+	decl is private in outer context.  Adjust omp_check_private caller.
+
+2013-12-10  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR rtl-optimization/58295
+	* simplify-rtx.c (simplify_truncation): Restrict the distribution for
+	WORD_REGISTER_OPERATIONS targets.
+
+2013-12-10  Kai Tietz  <ktietz@redhat.com>
+
+	PR target/56807
+	* config/i386/i386.c (ix86_expand_prologue): Address saved
+	registers stack-relative, not via frame-pointer.
+
+2013-12-09  Alan Modra  <amodra@gmail.com>
+
+	Apply from mainline
+	2013-12-05  Alan Modra  <amodra@gmail.com>
+	* configure.ac (BUILD_CXXFLAGS) Don't use ALL_CXXFLAGS for
+	build != host.
+	<recursive call for build != host>: Clear GMPINC.  Don't bother
+	saving CFLAGS.
+	* configure: Regenerate.
+
+2013-12-08  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-12-06  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/59405
+	* config/i386/i386.c (type_natural_mode): Properly handle
+	size 8 for !TARGET_64BIT.
+
+2013-12-07  Ralf Corsépius  <ralf.corsepius@rtems.org>
+
+	* config.gcc (microblaze*-*-rtems*): Add TARGET_BIG_ENDIAN_DEFAULT.
+
+2013-12-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/59388
+	* tree-ssa-reassoc.c (update_range_test): If op == range->exp,
+	gimplify tem after stmt rather than before it.
+
 2013-12-06  Oleg Endo  <olegendo@gcc.gnu.org>
 
 	Backport from mainline
@@ -29,7 +88,7 @@
 	PR tree-optimization/59334
 	* tree-ssa-dce.c (eliminate_unnecessary_stmts): Fix bug
 	in previous commit.
- 
+
 	2013-11-28  Richard Biener  <rguenther@suse.de>
 
 	PR tree-optimization/59330
