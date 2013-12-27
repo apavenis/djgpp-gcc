@@ -1,33 +1,540 @@
+2013-12-26   H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/59588
+	* config/i386/i386.c (ix86_option_override_internal): Don't
+	check generic tuning.  Don't change i686 tuning.
+
+2013-12-26   H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/59601
+	* config/i386/i386.c (get_builtin_code_for_version): Map
+	PROCESSOR_NEHALEM to "corei7".
+
+2013-12-26  Ganesh Gopalasubramanian  <Ganesh.Gopalasubramanian@amd.com>
+
+	* config/i386/i386.c (get_builtin_code_for_version): Rename AMD 
+	CPU names M_AMD_BOBCAT to M_AMD_BTVER1 and M_AMD_JAGUAR 
+	to M_AMD_BTVER2.
+	(processor_model): Likewise.
+	(arch_names_table): Likewise.
+
+2013-12-26  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/driver-i386.c (decode_caches_intel): Add missing entries.
+
+2013-12-25   H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/59587
+	* config/i386/i386.c (struct ptt): Add a field for processor name.
+	(processor_target_table): Sync with processor_type.
+	Add processor names.
+	(cpu_names): Removed.
+	(ix86_option_override_internal): Default x_ix86_tune_string
+	to processor_target_table[TARGET_CPU_DEFAULT].name.
+	(ix86_function_specific_print): Assert arch and tune < PROCESSOR_max.
+	Use processor_target_table to print arch and tune names.
+	* config/i386/i386.h (TARGET_CPU_DEFAULT): Default to
+	PROCESSOR_GENERIC.
+	(target_cpu_default): Removed.
+	(processor_type): Reordered.
+
+2013-12-25  Allan Sandfeld Jensen  <sandfeld@kde.org>
+	    H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/59422
+	* config/i386/i386.c (get_builtin_code_for_version): Handle
+	PROCESSOR_HASWELL, PROCESSOR_SILVERMONT, PROCESSOR_BTVER1,
+	PROCESSOR_BTVER2, PROCESSOR_BDVER3 and PROCESSOR_BDVER4.
+	Change priority of PROCESSOR_BDVER1 to P_PROC_XOP.
+	(fold_builtin_cpu): Add "ivybridge", "haswell", "bonnell",
+	"silvermont", "bobcat" and "jaguar" CPU names.  Add "sse4a",
+	"fma4", "xop" and "fma" ISA names.
+
+2013-12-24   H.J. Lu  <hongjiu.lu@intel.com>
+
+	* config/i386/i386.c (ix86_option_override_internal): Check
+	opts->x_ix86_arch_string instead of ix86_arch_string.
+
+2013-12-24  Renlin Li  <Renlin.Li@arm.com>
+
+	* config/arm/arm-protos.h (vfp_const_double_for_bits): Declare.
+	* config/arm/constraints.md (Dp): Define new constraint.
+	* config/arm/predicates.md (const_double_vcvt_power_of_two): Define
+	new predicate.
+	* config/arm/arm.c (arm_print_operand): Add print for new fucntion.
+	(vfp3_const_double_for_bits): New function.
+	* config/arm/vfp.md (combine_vcvtf2i): Define new instruction.
+
+2013-12-23  Hans-Peter Nilsson  <hp@axis.com>
+
+	PR target/59203
+	* config/cris/cris.c (cris_pic_symbol_type_of): Fix typo,
+	checking t1 twice instead of t1 and t2 respectively.
+
+	PR middle-end/59584
+	* config/cris/predicates.md (cris_nonsp_register_operand):
+	New define_predicate.
+	* config/cris/cris.md: Replace register_operand with
+	cris_nonsp_register_operand for destinations in all
+	define_splits where a register is set more than once.
+
+2013-12-23  Jason Merrill  <jason@redhat.com>
+
+	* gdbinit.in (input_line, input_filename): Define.
+
+	* cgraph.h (struct cgraph_node): Add calls_comdat_local.
+	(symtab_comdat_local_p, symtab_in_same_comdat_p): New.
+	* cif-code.def: Add USES_COMDAT_LOCAL.
+	* symtab.c (verify_symtab_base): Make sure we don't refer to a
+	comdat-local symbol from outside its comdat.
+	* cgraph.c (verify_cgraph_node): Likewise.
+	* cgraphunit.c (mark_functions_to_output): Don't mark comdat-locals.
+	* ipa.c (symtab_remove_unreachable_nodes): Likewise.
+	(function_and_variable_visibility): Handle comdat-local fns.
+	* ipa-cp.c (determine_versionability): Don't clone comdat-locals.
+	* ipa-inline-analysis.c (compute_inline_parameters): Update
+	calls_comdat_local.
+	* ipa-inline-transform.c (inline_call): Likewise.
+	(save_inline_function_body): Don't clear DECL_COMDAT_GROUP.
+	* ipa-inline.c (can_inline_edge_p): Check calls_comdat_local.
+	* lto-cgraph.c (input_overwrite_node): Read calls_comdat_local.
+	(lto_output_node): Write it.
+	* symtab.c (symtab_dissolve_same_comdat_group_list): Clear
+	DECL_COMDAT_GROUP for comdat-locals.
+
+2013-12-23   H.J. Lu  <hongjiu.lu@intel.com>
+
+	* config/i386/i386.c (processor_target_table): Move Bonnell and
+	Silvermont entries before generic.
+
+2013-12-23  Bingfeng Mei  <bmei@broadcom.com>
+
+	PR middle-end/59569
+	* tree-vect-stmts.c (vectorizable_store): Skip permutation for
+	consant/external operand, and add a few missing \n.
+
+2013-12-23   H.J. Lu  <hongjiu.lu@intel.com>
+	     Tocar Ilya  <ilya.tocar@intel.com>
+
+	* config/i386/core2.md: Replace corei7 with nehalem.
+
+	* config/i386/driver-i386.c (host_detect_local_cpu): Use nehalem,
+	westmere, sandybridge, ivybridge, haswell, bonnell, silvermont
+	for cpu names.
+
+	* config/i386/i386-c.c (ix86_target_macros_internal): Replace
+	PROCESSOR_COREI7, PROCESSOR_COREI7_AVX, PROCESSOR_ATOM,
+	PROCESSOR_SLM with PROCESSOR_NEHALEM, PROCESSOR_SANDYBRIDGE,
+	PROCESSOR_BONNELL, PROCESSOR_SILVERMONT.  Define
+	__nehalem/__nehalem__, __sandybridge/__sandybridge__,
+	__haswell/__haswell__, __tune_nehalem__, __tune_sandybridge__,
+	__tune_haswell__, __bonnell/__bonnell__,
+	__silvermont/__silvermont__, __tune_bonnell__,
+	__tune_silvermont__.
+
+	* config/i386/i386.c (m_COREI7): Renamed to ...
+	(m_NEHALEM): This.
+	(m_COREI7_AVX): Renamed to ...
+	(m_SANDYBRIDGE): This.
+	(m_ATOM): Renamed to ...
+	(m_BONNELL): This.
+	(m_SLM): Renamed to ...
+	(m_SILVERMONT): This.
+	(m_CORE_ALL): Updated.
+	(cpu_names): Add "nehalem", "westmere", "sandybridge",
+	"ivybridge", "haswell", "broadwell", "bonnell", "silvermont".
+	(PTA_CORE2): New.
+	(PTA_NEHALEM): Likewise.
+	(PTA_WESTMERE): Likewise.
+	(PTA_SANDYBRIDGE): Likewise.
+	(PTA_IVYBRIDGE): Likewise.
+	(PTA_HASWELL): Likewise.
+	(PTA_BROADWELL): Likewise.
+	(PTA_BONNELL): Likewise.
+	(PTA_SILVERMONT): Likewise.
+	(ix86_option_override_internal): Use new PTA_XXX.  Add nehalem,
+	westmere, sandybridge, ivybridge, haswell, bonnell, silvermont.
+	(ix86_lea_outperforms): Updated.
+	(ix86_issue_rate): Likewise.
+	(ix86_adjust_cost): Likewise.
+	(ia32_multipass_dfa_lookahead): Likewise.
+	(do_reorder_for_imul): Likewise.
+	(swap_top_of_ready_list): Likewise.
+	(ix86_sched_reorder): Likewise.
+	(ix86_sched_init_global): Likewise.
+	(get_builtin_code_for_version): Likewise.
+	(processor_model): Replace M_INTEL_ATOM, M_INTEL_SLM with
+	M_INTEL_BONNELL, M_INTEL_SILVERMONT.
+	(arch_names_table): Updated.
+
+	* config/i386/i386.h (TARGET_COREI7): Removed.
+	(TARGET_COREI7_AVX): Likewise.
+	(TARGET_ATOM): Likewise.
+	(TARGET_SLM): Likewise.
+	(TARGET_NEHALEM): New.
+	(TARGET_SANDYBRIDGE): Likewise.
+	(TARGET_BONNELL): Likewise.
+	(TARGET_SILVERMONT): Likewise.
+	(target_cpu_default): Add TARGET_CPU_DEFAULT_core_avx2,
+	TARGET_CPU_DEFAULT_nehalem, TARGET_CPU_DEFAULT_westmere,
+	TARGET_CPU_DEFAULT_sandybridge, TARGET_CPU_DEFAULT_ivybridge,
+	TARGET_CPU_DEFAULT_broadwell, TARGET_CPU_DEFAULT_bonnell,
+	TARGET_CPU_DEFAULT_silvermont.  Move TARGET_CPU_DEFAULT_haswell
+	before TARGET_CPU_DEFAULT_broadwell.
+	(processor_type): Replace PROCESSOR_COREI7, PROCESSOR_COREI7_AVX,
+	PROCESSOR_ATOM, PROCESSOR_SLM with PROCESSOR_NEHALEM,
+	PROCESSOR_SANDYBRIDGE, PROCESSOR_BONNELL, PROCESSOR_SILVERMONT.
+
+	* config/i386/i386.md (cpu): Replace corei7 with nehalem.
+
+	* config/i386/x86-tune.def: Updated.
+
+	* doc/invoke.texi: Replace corei7, corei7-avx, core-avx-i,
+	core-avx2, atom, slm with nehalem, sandybridge, ivybridge,
+	haswell, bonnel, silvermont.  Add westmere.
+
+2013-12-23  Andrey Belevantsev  <abel@ispras.ru>
+
+	PR rtl-optimization/57422
+	* sel-sched.c (fill_vec_av_set): Assert that the fence insn
+	can always be scheduled in its current form.
+
+2013-12-23  Andrey Belevantsev  <abel@ispras.ru>
+
+	PR rtl-optimization/57422
+	* sel-sched.c (mark_unavailable_hard_regs): Fix typo when calling
+	add_to_hard_reg_set.
+
+2013-12-20  Sharad Singhai  <singhai@google.com>
+
+	* Makefile.in: Add optinfo.texi.
+	* doc/invoke.texi: Fix typo.
+	* doc/optinfo.texi: New documentation for optimization info.
+	* doc/passes.texi: Add new node.
+
+2013-12-20  Trevor saunders  <tsaunders@mozilla.com>
+
+	* vec.h (stack_vec): Convert to a templaate specialization of
+	auto_vec.
+	* config/i386/i386.c, df-scan.c, function.c, genautomata.c,
+	gimplify.c, graphite-clast-to-gimple.c, graphite-dependences.c,
+	graphite-scop-detection.c, graphite-sese-to-poly.c, hw-doloop.c,
+	trans-mem.c, tree-call-cdce.c, tree-data-ref.c, tree-dfa.c,
+	tree-if-conv.c, tree-inline.c, tree-loop-distribution.c,
+	tree-parloops.c, tree-predcom.c, tree-ssa-alias.c,
+	tree-ssa-loop-ivcanon.c, tree-ssa-phiopt.c, tree-ssa-threadedge.c,
+	tree-ssa-uncprop.c, tree-vect-loop.c, tree-vect-patterns.c,
+	tree-vect-slp.c, tree-vect-stmts.c, var-tracking.c: Adjust.
+
+2013-12-20  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/arm/arm.c (arm_expand_prologue): In a nested APCS frame with
+	arguments to push onto the stack and no varargs, save ip into the last
+	stack slot if r3 isn't available on entry.
+
+2013-12-20  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/neon.ml (crypto_intrinsics): Add vceq_64 and vtst_p64.
+	* config/arm/arm_neon.h: Regenerate.
+	* config/arm/neon-docgen.ml: Add vceq_p64 and vtst_p64.
+	* doc/arm-neon-intrinsics.texi: Regenerate.
+
+2013-12-20  Vladimir Makarov  <vmakarov@redhat.com>
+
+	* config/arm/arm.h (THUMB_SECONDARY_OUTPUT_RELOAD_CLASS): Return
+	NO_REGS for LRA.
+
+2013-12-20  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm_acle.h: Add underscores before variables.
+
+2013-12-20  Bingfeng Mei  <bmei@broadcom.com>
+
+	PR tree-optimization/59544
+	* tree-vect-stmts.c (perm_mask_for_reverse): Move before
+	vectorizable_store.
+	(vectorizable_store): Handle negative step.
+
+2013-12-20  Tocar Ilya  <ilya.tocar@intel.com>
+
+	* config.gcc: Support march=broadwell.
+	* config/i386/driver-i386.c (host_detect_local_cpu): Detect Broadwell.
+	* config/i386/i386.c (ix86_option_override_internal): Add broadwell.
+	* doc/invoke.texi: Document march=broadwell.
+
+2013-12-20  Jakub Jelinek  <jakub@redhat.com>
+
+	* ubsan.c: Include tree-ssanames.h, asan.h and gimplify-me.h.
+	(ubsan_type_descriptor): Handle BOOLEAN_TYPE and ENUMERAL_TYPE
+	like INTEGER_TYPE.
+	(instrument_bool_enum_load): New function.
+	(ubsan_pass): Call it.
+	(gate_ubsan): Also enable for SANITIZE_BOOL or SANITIZE_ENUM.
+	* asan.c (create_cond_insert_point): No longer static.
+	* asan.h (create_cond_insert_point): Declare.
+	* sanitizer.def (BUILT_IN_UBSAN_HANDLE_LOAD_INVALID_VALUE): New
+	built-in.
+	* opts.c (common_handle_option): Handle -fsanitize=bool and
+	-fsanitize=enum.
+	* builtins.c (fold_builtin_memory_op): When sanitizing bool
+	and enum loads, don't use enum or bool types for memcpy folding.
+	* flag-types.h (SANITIZE_BOOL, SANITIZE_ENUM): New.
+	(SANITIZE_UNDEFINED): Or these in.
+
+2013-12-20  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32.h (NDS32_MODE_TYPE_ALIGN): New macro.
+	(NDS32_AVAILABLE_REGNUM_FOR_ARG): Use more accurate alignment checking
+	to determine available register number.
+	* config/nds32/nds32.c (nds32_needs_double_word_align): Use new
+	macro NDS32_MODE_TYPE_ALIGN.
+	(nds32_function_arg): Refine code layout.
+
+2013-12-19  Jeff Law  <law@redhat.com>
+
+	* doc/invoke.texi: (dump-rtl-ree): Fix typo and clarify ree
+	handles both zero and sign extension.
+
+2013-12-19  Teresa Johnson  <tejohnson@google.com>
+
+	PR gcov-profile/59542
+	* bb-reorder.c (duplicate_computed_gotos): Invoke fixup_partitions
+	if we have made any changes.
+
+2013-12-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR other/59545
+	* genattrtab.c (struct attr_hash): Change hashcode type to unsigned.
+	(attr_hash_add_rtx, attr_hash_add_string): Change hashcode parameter
+	to unsigned.
+	(attr_rtx_1): Change hashcode variable to unsigned.
+	(attr_string): Likewise.  Perform first multiplication in
+	unsigned type.
+	* ifcvt.c (noce_try_store_flag_constants): Avoid signed integer
+	overflows.
+	* double-int.c (neg_double): Likewise.
+	* stor-layout.c (set_min_and_max_values_for_integral_type): Likewise.
+	* combine.c (force_to_mode): Likewise.
+	* postreload.c (move2add_use_add2_insn, move2add_use_add3_insn,
+	reload_cse_move2add, move2add_note_store): Likewise.
+	* simplify-rtx.c (simplify_const_unary_operation,
+	simplify_const_binary_operation): Likewise.
+	* ipa-split.c (find_split_points): Initialize first.can_split
+	and first.non_ssa_vars.
+	* gengtype-state.c (read_state_files_list): Fix up check.
+	* genautomata.c (reserv_sets_hash_value): Use portable rotation idiom.
+
+2013-12-19  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/neon-docgen.ml: Add crypto intrinsics documentation.
+	* doc/arm-neon-intrinsics.texi: Regenerate.
+
+2013-12-19  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/neon-testgen.ml (effective_target): Handle "CRYPTO".
+
+2013-12-19  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm.c (enum arm_builtins): Add crypto builtins.
+	(arm_init_neon_builtins): Handle crypto builtins.
+	(bdesc_2arg): Likewise.
+	(bdesc_1arg): Likewise.
+	(bdesc_3arg): New table.
+	(arm_expand_ternop_builtin): New function.
+	(arm_expand_unop_builtin): Handle sha1h explicitly.
+	(arm_expand_builtin): Handle ternary builtins.
+	* config/arm/arm.h (TARGET_CPU_CPP_BUILTINS):
+	Define __ARM_FEATURE_CRYPTO.
+	* config/arm/arm.md: Include crypto.md.
+	(is_neon_type): Add crypto types.
+	* config/arm/arm_neon_builtins.def: Add TImode reinterprets.
+	* config/arm/crypto.def: New.
+	* config/arm/crypto.md: Likewise.
+	* config/arm/iterators.md (CRYPTO_UNARY): New int iterator.
+	(CRYPTO_BINARY): Likewise.
+	(CRYPTO_TERNARY): Likewise.
+	(CRYPTO_SELECTING): Likewise.
+	(crypto_pattern): New int attribute.
+	(crypto_size_sfx): Likewise.
+	(crypto_mode): Likewise.
+	(crypto_type): Likewise.
+	* config/arm/neon-gen.ml: Handle poly64_t and poly128_t types.
+	Handle crypto intrinsics.
+	* config/arm/neon.ml: Add support for poly64 and polt128 types
+	and intrinsics. Define crypto intrinsics.
+	* config/arm/neon.md (neon_vreinterpretti<mode>): New pattern.
+	(neon_vreinterpretv16qi<mode>): Use VQXMOV mode iterator.
+	(neon_vreinterpretv8hi<mode>): Likewise.
+	(neon_vreinterpretv4si<mode>): Likewise.
+	(neon_vreinterpretv4sf<mode>): Likewise.
+	(neon_vreinterpretv2di<mode>): Likewise.
+	* config/arm/unspecs.md (UNSPEC_AESD, UNSPEC_AESE, UNSPEC_AESIMC)
+	(UNSPEC_AESMC, UNSPEC_SHA1C, UNSPEC_SHA1M, UNSPEC_SHA1P, UNSPEC_SHA1H)
+	(UNSPEC_SHA1SU0, UNSPEC_SHA1SU1, UNSPEC_SHA256H, UNSPEC_SHA256H2)
+	(UNSPEC_SHA256SU0, UNSPEC_SHA256SU1, VMULLP64): Define.
+	* config/arm/arm_neon.h: Regenerate.
+
+2013-12-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR driver/59321
+	* collect2.c (main): Check -fuse-ld=[bfd|gold] when
+	DEFAULT_LINKER is defined.
+	* common.opt (fuse-ld=bfd): Add Driver.
+	(fuse-ld=gold): Likewise.
+	* gcc.c (use_ld): New variable.
+	(driver_handle_option): Set use_ld for OPT_fuse_ld_bfd and
+	OPT_fuse_ld_gold.
+	(main): Check -fuse-ld=[bfd|gold] for -print-prog-name=ld.
+
+2013-12-19  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* Makefile.in (TEXI_GCC_FILES): Add arm-acle-intrinsics.texi.
+	* config.gcc (extra_headers): Add arm_acle.h.
+	* config/arm/arm.c (FL_CRC32): Define.
+	(arm_have_crc): Likewise.
+	(arm_option_override): Set arm_have_crc.
+	(arm_builtins): Add CRC32 builtins.
+	(bdesc_2arg): Likewise.
+	(arm_init_crc32_builtins): New function.
+	(arm_init_builtins): Initialise CRC32 builtins.
+	(arm_file_start): Handle architecture extensions.
+	* config/arm/arm.h (TARGET_CPU_CPP_BUILTINS): Define
+	__ARM_FEATURE_CRC32.  Define __ARM_32BIT_STATE.
+	(TARGET_CRC32): Define.
+	* config/arm/arm-arches.def: Add armv8-a+crc.
+	* config/arm/arm-tables.opt: Regenerate.
+	* config/arm/arm.md (type): Add crc.
+	(<crc_variant>): New insn.
+	* config/arm/arm_acle.h: New file.
+	* config/arm/iterators.md (CRC): New int iterator.
+	(crc_variant, crc_mode): New int attributes.
+	* confg/arm/unspecs.md (UNSPEC_CRC32B, UNSPEC_CRC32H, UNSPEC_CRC32W,
+	UNSPEC_CRC32CB, UNSPEC_CRC32CH, UNSPEC_CRC32CW): New unspecs.
+	* doc/invoke.texi: Document -march=armv8-a+crc option.
+	* doc/extend.texi: Document ACLE intrinsics.
+
+2013-12-19  Charles Baylis  <charles.baylis@linaro.org>
+
+	PR target/59142
+	* config/arm/arm-ldmstm.ml: Use low_register_operand for Thumb
+	patterns.
+	* config/arm/ldmstm.md: Regenerate.
+
+2013-12-19  Charles Baylis  <charles.baylis@linaro.org>
+
+	PR target/59142
+	* config/arm/predicates.md (arm_hard_general_register_operand):
+	New predicate.
+	(arm_hard_register_operand): Remove.
+	* config/arm/arm-ldmstm.ml: Use arm_hard_general_register_operand
+	for all patterns.
+	* config/arm/ldmstm.md: Regenerate.
+
+2013-12-19  Charles Baylis  <charles.baylis@linaro.org>
+
+	PR target/59142
+	* config/arm/predicates.md (vfp_hard_register_operand): New predicate.
+	* config/arm/arm.md (vfp_pop_multiple_with_writeback): Use
+	vfp_hard_register_operand.
+
+2013-12-19  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/aarch64-builtins.c (aarch64_init_simd_builtins):
+	Define builtin types for poly64_t poly128_t.
+	(TYPES_BINOPP, aarch64_types_binopp_qualifiers): New.
+	* aarch64/aarch64-simd-builtins.def: Update builtins table.
+	* config/aarch64/aarch64-simd.md (aarch64_crypto_pmulldi,
+	aarch64_crypto_pmullv2di): New.
+	* config/aarch64/aarch64.c (aarch64_simd_mangle_map): Update table for
+	poly64x2_t mangler.
+	* config/aarch64/arm_neon.h (poly64x2_t, poly64_t, poly128_t): Define.
+	(vmull_p64, vmull_high_p64): New.
+	* config/aarch64/iterators.md (UNSPEC_PMULL<2>): New.
+
+2013-12-19  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/aarch64-simd-builtins.def: Update builtins table.
+	* config/aarch64/aarch64-simd.md
+	(aarch64_crypto_sha256h<sha256_op>v4si, aarch64_crypto_sha256su0v4si,
+	aarch64_crypto_sha256su1v4si): New.
+	* config/aarch64/arm_neon.h (vsha256hq_u32, vsha256h2q_u32,
+	vsha256su0q_u32, vsha256su1q_u32): New.
+	* config/aarch64/iterators.md (UNSPEC_SHA256H<2>, UNSPEC_SHA256SU<01>):
+	New.
+	(CRYPTO_SHA256): New int iterator.
+	(sha256_op): New int attribute.
+
+2013-12-19  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/aarch64-simd-builtins.def: Update builtins table.
+	* config/aarch64/aarch64-builtins.c (aarch64_types_ternopu_qualifiers,
+	TYPES_TERNOPU): New.
+	* config/aarch64/aarch64-simd.md (aarch64_crypto_sha1hsi,
+	aarch64_crypto_sha1su1v4si, aarch64_crypto_sha1<sha1_op>v4si,
+	aarch64_crypto_sha1su0v4si): New.
+	* config/aarch64/arm_neon.h (vsha1cq_u32, sha1mq_u32, vsha1pq_u32,
+	vsha1h_u32, vsha1su0q_u32, vsha1su1q_u32): New.
+	* config/aarch64/iterators.md (UNSPEC_SHA1<CPMH>, UNSPEC_SHA1SU<01>):
+	New.
+	(CRYPTO_SHA1): New int iterator.
+	(sha1_op): New int attribute.
+
+2013-12-19  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/aarch64-simd-builtins.def: Update builtins table.
+	* config/aarch64/aarch64-builtins.c (aarch64_types_binopu_qualifiers,
+	TYPES_BINOPU): New.
+	* config/aarch64/aarch64-simd.md (aarch64_crypto_aes<aes_op>v16qi,
+	aarch64_crypto_aes<aesmc_op>v16qi): New.
+	* config/aarch64/arm_neon.h (vaeseq_u8, vaesdq_u8, vaesmcq_u8,
+	vaesimcq_u8): New.
+	* config/aarch64/iterators.md (UNSPEC_AESE, UNSPEC_AESD, UNSPEC_AESMC,
+	UNSPEC_AESIMC): New.
+	(CRYPTO_AES, CRYPTO_AESMC): New int iterators.
+	(aes_op, aesmc_op): New int attributes.
+
+2013-12-19  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/arm/types.md (neon_mul_d_long, crypto_aes, crypto_sha1_xor,
+	crypto_sha1_fast, crypto_sha1_slow, crypto_sha256_fast,
+	crypto_sha256_slow): New.
+
+2013-12-19  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/aarch64.h (TARGET_CRYPTO): New.
+	(__ARM_FEATURE_CRYPTO): Define if TARGET_CRYPTO is true.
+
 2013-12-19  Dominik Vogt  <vogt@linux.vnet.ibm.com>
 	    Andreas Krebbel  <Andreas.Krebbel@de.ibm.com>
 
 	* config/s390/s390.c (s390_hotpatch_trampoline_halfwords_default): New
-	constant
-	(s390_hotpatch_trampoline_halfwords_max): New constant
-	(s390_hotpatch_trampoline_halfwords): New static variable
-	(get_hotpatch_attribute): New function
-	(s390_handle_hotpatch_attribute): New function
-	(s390_attribute_table): New target specific attribute table to implement
-	the hotpatch attribute
-	(s390_option_override): Parse hotpatch options
-	(s390_function_num_hotpatch_trampoline_halfwords): New function
+	constant.
+	(s390_hotpatch_trampoline_halfwords_max): New constant.
+	(s390_hotpatch_trampoline_halfwords): New static variable.
+	(get_hotpatch_attribute): New function.
+	(s390_handle_hotpatch_attribute): New function.
+	(s390_attribute_table): New target specific attribute table to
+	implement the hotpatch attribute.
+	(s390_option_override): Parse hotpatch options.
+	(s390_function_num_hotpatch_trampoline_halfwords): New function.
 	(s390_can_inline_p): Implement target hook to
-	suppress hotpatching for explicitly inlined functions
-	(s390_asm_output_function_label): Generate hotpatch prologue
-	(TARGET_ATTRIBUTE_TABLE): Define to implement target attribute table
-	(TARGET_CAN_INLINE_P): Define to implement target hook
-	* config/s390/s390.opt (mhotpatch): New options -mhotpatch, -mhotpatch=
+	suppress hotpatching for explicitly inlined functions.
+	(s390_asm_output_function_label): Generate hotpatch prologue.
+	(TARGET_ATTRIBUTE_TABLE): Define to implement target attribute table.
+	(TARGET_CAN_INLINE_P): Define to implement target hook.
+	* config/s390/s390.opt (mhotpatch): New options -mhotpatch,
+	-mhotpatch=.
 	* config/s390/s390-protos.h (s390_asm_output_function_label): Add
-	prototype
+	prototype.
 	* config/s390/s390.h (ASM_OUTPUT_FUNCTION_LABEL): Target specific
-	function label generation for hotpatching
-	(FUNCTION_BOUNDARY): Align functions to eight bytes
-	* doc/extend.texi: Document hotpatch attribute
-	* doc/invoke.texi: Document -mhotpatch option
+	function label generation for hotpatching.
+	(FUNCTION_BOUNDARY): Align functions to eight bytes.
+	* doc/extend.texi: Document hotpatch attribute.
+	* doc/invoke.texi: Document -mhotpatch option.
 
 2013-12-19  Ganesh Gopalasubramanian  <Ganesh.Gopalasubramanian@amd.com>
 
-	* config/i386/i386.c: Include cfgloop.h. 
+	* config/i386/i386.c: Include cfgloop.h.
 	(ix86_loop_memcount): New function.
 	(ix86_loop_unroll_adjust): New function.
 	(TARGET_LOOP_UNROLL_ADJUST): Define.
@@ -60,15 +567,11 @@
 
 2013-12-18  James Greenhalgh  <james.greenhalgh@arm.com>
 
-	* config/aarch64/aarch64-cores.def: Add new column for
-	SCHEDULER_IDENT.
-	* config/aarch64/aarch64-opts.h (AARCH64_CORE): Handle
-	SCHEDULER_IDENT.
-	* config/aarch64/aarch64.c (AARCH64_CORE): Handle
-	SCHEDULER_IDENT.
+	* config/aarch64/aarch64-cores.def: Add new column for SCHEDULER_IDENT.
+	* config/aarch64/aarch64-opts.h (AARCH64_CORE): Handle SCHEDULER_IDENT.
+	* config/aarch64/aarch64.c (AARCH64_CORE): Handle SCHEDULER_IDENT.
 	(aarch64_parse_cpu): mcpu implies a default value for mtune.
-	* config/aarch64/aarch64.h (AARCH64_CORE): Handle
-	SCHEDULER_IDENT.
+	* config/aarch64/aarch64.h (AARCH64_CORE): Handle SCHEDULER_IDENT.
 
 2013-12-18  James Greenhalgh  <james.greenhalgh@arm.com>
 
@@ -90,9 +593,9 @@
 
 	* omp-low.c (simd_clone_clauses_extract): Replaced the string
 	"cilk simd elemental" with "cilk simd function."
-	* config/i386/i386.c (ix86_simd_clone_compute_vecsize_and_simdlen): 
+	* config/i386/i386.c (ix86_simd_clone_compute_vecsize_and_simdlen):
 	Removed a carriage-return from a warning string.
-	
+
 2013-12-18  Aldy Hernandez  <aldyh@redhat.com>
 
 	* passes.c (execute_function_dump): Set graph_dump_initialized
@@ -122,7 +625,7 @@
 	* config/arm/arm.c (arm_expand_epilogue_apcs_frame): Fix thinko.
 
 2013-12-18  James Greenhalgh  <james.greenhalgh@arm.com>
-              Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+	    Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
 
 	* config/arm/t-aprofile: Add cortex-a15.cortex-a7, cortex-a12,
 	cortex-a57, cortex-a57.cortex-a53.
@@ -239,8 +742,7 @@
 
 2013-12-17  Thomas Schwinge  <thomas@codesourcery.com>
 
-	* omp-low.c (tmp_ompfn_id_num): Remove leftover variable
-	definition.
+	* omp-low.c (tmp_ompfn_id_num): Remove leftover variable definition.
 
 	* tree-pass.h (make_pass_expand_omp_ssa): Remove leftover function
 	declaration.
@@ -249,8 +751,7 @@
 
 	* omp-low.c (check_combined_parallel): Reflect reality in comment.
 
-	* doc/cfg.texi (Control Flow): Refer to passes.def instead of
-	passes.c.
+	* doc/cfg.texi (Control Flow): Refer to passes.def instead of passes.c.
 	* doc/passes.texi (Pass manager): Refer to passes.def.
 
 	* doc/gccint.texi (Top): Fix inclusion order.
@@ -322,8 +823,8 @@
 
 2013-12-17  Jan Hubicka  <hubicka@ucw.cz>
 
-	* ipa-utils.h (possible_polymorphic_call_targets): Determine context of
-	the call.
+	* ipa-utils.h (possible_polymorphic_call_targets): Determine
+	context of the call.
 	* gimple-fold.c (gimple_fold_call): Use ipa-devirt to devirtualize.
 
 2013-12-17  Jakub Jelinek  <jakub@redhat.com>
@@ -358,12 +859,12 @@
 	* config/arm/driver-arm.c (arm_cpu_table): Add cortex-a12 entry.
 
 2013-12-14  Jan Hubicka  <jh@suse.cz>
-	    Markus Trippelsdorf <octoploid@yandex.com>
+	    Markus Trippelsdorf  <octoploid@yandex.com>
 
 	PR ipa/59265
 	* ipa-profile.c (ipa_profile_generate_summary): Do not ICE when
 	call is already devirtualized.
-	
+
 2013-12-16  Jakub Jelinek  <jakub@redhat.com>
 
 	* Makefile.in (version.o): Restore dependencies on
@@ -428,6 +929,7 @@
 	devirtualized calls.
 
 2013-12-14   Jan Hubicka  <jh@suse.cz>
+
 	PR middle-end/58477
 	* ipa-prop.c (stmt_may_be_vtbl_ptr_store): Skip clobbers.
 
@@ -491,7 +993,7 @@
 2013-12-13  Kenneth Zadeck  <zadeck@naturalbridge.com>
 
 	* genmodes.c (emit_max_int): Fixed missing parens.
-	
+
 2013-12-13  Aldy Hernandez  <aldyh@redhat.com>
 
 	PR tree-optimization/59149
@@ -612,8 +1114,7 @@
 2013-12-11  Bernd Edlinger  <bernd.edlinger@hotmail.de>
 
 	* expr.c (expand_assignment): Remove dependency on
-	flag_strict_volatile_bitfields. Always set the memory 
-	access mode.
+	flag_strict_volatile_bitfields.  Always set the memory access mode.
 	(expand_expr_real_1): Likewise.
 
 2013-12-11  Bernd Edlinger  <bernd.edlinger@hotmail.de>
@@ -780,7 +1281,7 @@
 
 2013-12-10  H.J. Lu  <hongjiu.lu@intel.com>
 
-	* basic-block.h (gcov_working_set_t): Put back typedef. 
+	* basic-block.h (gcov_working_set_t): Put back typedef.
 	* gcov-io.h (gcov_bucket_type): Likewise.
 	(gcov_working_set_info, gcov_working_set_t): Likewise.
 
@@ -952,8 +1453,7 @@
 	afterwards, check gimple_code of stmts here.  Replace is_predicated
 	check with dominance check.  Add any_mask_load_store argument,
 	pass it down to if_convertible_stmt_p and if_convertible_phi_p,
-	call if_convertible_phi_p only after all if_convertible_stmt_p
-	calls.
+	call if_convertible_phi_p only after all if_convertible_stmt_p calls.
 	(if_convertible_loop_p): Add any_mask_load_store argument,
 	pass it down to if_convertible_loop_p_1.
 	(predicate_mem_writes): Emit MASK_LOAD and/or MASK_STORE calls.
@@ -1002,8 +1502,7 @@
 	pass_if_conversion.
 	* tree-predcom.c (split_data_refs_to_components): Give up if
 	DR_STMT is a call.
-	* tree-vect-stmts.c (vect_mark_relevant): Don't crash if lhs
-	is NULL.
+	* tree-vect-stmts.c (vect_mark_relevant): Don't crash if lhs is NULL.
 	(exist_non_indexing_operands_for_use_p): Handle MASK_LOAD
 	and MASK_STORE.
 	(vectorizable_mask_load_store): New function.
@@ -1091,7 +1590,7 @@
 	* predict.c (estimate_loops): Likewise.
 	* sched-rgn.c (haifa_find_rgns): Likewise.
 	* tree-cfg.c (split_critical_edges): Likewise.
- 	* tree-dfa.c (renumber_gimple_stmt_uids): Likewise.
+	* tree-dfa.c (renumber_gimple_stmt_uids): Likewise.
 	* tree-loop-distribution.c (tree_loop_distribution): Likewise.
 	* tree-ssa-pre.c (compute_antic, insert, init_pre): Likewise.
 	* tree-ssa-propagate.c (ssa_prop_init): Likewise.
@@ -1328,8 +1827,9 @@
 	vrp_initialize, identify_jump_threads, instrument_memory_accesses):
 	Likewise.
 	* ubsan.c (ubsan_pass): Likewise.
-	* value-prof.c (verify_histograms, gimple_value_profile_transformations,
-	gimple_find_values_to_profile): Likewise.
+	* value-prof.c (verify_histograms,
+	gimple_value_profile_transformations, gimple_find_values_to_profile):
+	Likewise.
 	* var-tracking.c (vt_find_locations, dump_dataflow_sets, vt_emit_notes,
 	vt_initialize, delete_debug_insns, vt_finalize): Likewise.
 
@@ -1383,16 +1883,16 @@
 	* graphite-sese-to-poly.c (build_scop_bbs): Likewise.
 	* haifa-sched.c (unlink_bb_notes): Likewise.
 	* ipa-split.c (execute_split_functions): Likewise.
-	* ira-build.c (create_loop_tree_nodes,
-	remove_unnecessary_regions): Likewise.
+	* ira-build.c (create_loop_tree_nodes, remove_unnecessary_regions):
+	Likewise.
 	* ira-emit.c (ira_emit): Likewise.
 	* ira.c (find_moveable_pseudos, ira): Likewise.
 	* lcm.c (compute_antinout_edge, compute_laterin,
 	compute_insert_delete, pre_edge_lcm, compute_available,
 	compute_nearerout, compute_rev_insert_delete,
 	pre_edge_rev_lcm): Likewise.
-	* loop-unroll.c (opt_info_start_duplication,
-	apply_opt_in_copies): Likewise.
+	* loop-unroll.c (opt_info_start_duplication, apply_opt_in_copies):
+	Likewise.
 	* lower-subreg.c (decompose_multiword_subregs): Likewise.
 	* lra-lives.c (lra_create_live_ranges): Likewise.
 	* lra.c (lra): Likewise.
@@ -1464,9 +1964,8 @@
 
 	* basic-block.h (label_to_block_map): Eliminate macro.
 
-	* gimple.c (gimple_set_bb): Replace uses of label_to_block_map
-	with uses of label_to_block_map_for_fn, making uses of cfun be
-	explicit.
+	* gimple.c (gimple_set_bb): Replace uses of label_to_block_map with
+	uses of label_to_block_map_for_fn, making uses of cfun be explicit.
 	* tree-cfg.c (delete_tree_cfg_annotations): Likewise.
 	(verify_gimple_label): Likewise.
 
@@ -1474,9 +1973,8 @@
 
 	* basic-block.h (basic_block_info): Eliminate macro.
 
-	* cfgrtl.c (rtl_create_basic_block): Replace uses of
-	basic_block_info with basic_block_info_for_fn, making uses
-	of cfun be explicit.
+	* cfgrtl.c (rtl_create_basic_block): Replace uses of basic_block_info
+	with basic_block_info_for_fn, making uses of cfun be explicit.
 	* tree-cfg.c (build_gimple_cfg, create_bb): Likewise.
 
 2013-12-09  David Malcolm  <dmalcolm@redhat.com>
@@ -1521,8 +2019,8 @@
 	* lra-lives.c (lra_create_live_ranges): Likewise.
 	* predict.c (propagate_freq): Likewise.
 	* regrename.c (regrename_analyze): Likewise.
-	* regstat.c (regstat_bb_compute_ri,
-	regstat_bb_compute_calls_crossed): Likewise.
+	* regstat.c (regstat_bb_compute_ri, regstat_bb_compute_calls_crossed):
+	Likewise.
 	* resource.c (mark_target_live_regs): Likewise.
 	* sched-ebb.c (ebb_fix_recovery_cfg): Likewise.
 	* sched-int.h (EBB_FIRST_BB, EBB_LAST_BB): Likewise.
@@ -1533,8 +2031,8 @@
 	* sel-sched-ir.c (sel_finish_global_and_expr, verify_backedges,
 	purge_empty_blocks, sel_remove_loop_preheader): Likewise.
 	* sel-sched.c (remove_insns_that_need_bookkeeping)
-	(current_region_empty_p, sel_region_init,
-	simplify_changed_insns): Likewise.
+	(current_region_empty_p, sel_region_init, simplify_changed_insns):
+	Likewise.
 	* trans-mem.c (execute_tm_mark, execute_tm_edges,
 	tm_memopt_compute_antic, ipa_tm_scan_irr_function): Likewise.
 	* tree-cfg.c (make_edges, end_recording_case_labels,
@@ -1549,10 +2047,11 @@
 	insert_phi_nodes_for, insert_updated_phi_nodes_for): Likewise.
 	* tree-ssa-dom.c (tree_ssa_dominator_optimize): Likewise.
 	* tree-ssa-live.c (live_worklist): Likewise.
-	* tree-ssa-loop-manip.c (compute_live_loop_exits,
-	add_exit_phis_var, find_uses_to_rename, copy_phi_node_args): Likewise.
+	* tree-ssa-loop-manip.c (compute_live_loop_exits, add_exit_phis_var,
+	find_uses_to_rename, copy_phi_node_args): Likewise.
 	* tree-ssa-pre.c (compute_antic): Likewise.
-	* tree-ssa-reassoc.c (update_range_test, optimize_range_tests): Likewise.
+	* tree-ssa-reassoc.c (update_range_test, optimize_range_tests):
+	Likewise.
 	* tree-ssa-sink.c (nearest_common_dominator_of_uses): Likewise.
 	* tree-ssa-tail-merge.c (same_succ_hash, same_succ_def::equal,
 	same_succ_flush_bbs, update_worklist, set_cluster,
@@ -1637,8 +2136,7 @@
 	unreachable code.
 	(do_complex_constraint): Call set_union_with_increment with
 	the solution delta, not the full solution.
-	(make_transitive_closure_constraints): Merge the two
-	constraints.
+	(make_transitive_closure_constraints): Merge the two constraints.
 
 2013-12-09  Richard Earnshaw  <rearnsha@arm.com>
 
@@ -14150,7 +14648,7 @@
 
 2013-10-10  Andrew MacLeod  <amacleod@redhat.com>
 
-	* config/aplha/alpha.c: Add gimple-ssa.h to include list.
+	* config/alpha/alpha.c: Add gimple-ssa.h to include list.
 
 2013-10-09  Easwaran Raman <eraman@google.com>
 
