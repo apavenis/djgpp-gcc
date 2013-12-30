@@ -1,7 +1,7 @@
 #! /bin/sh
 
 gcc_src_ext=bz2
-gmp_version=5.1.2
+gmp_version=5.1.3
 mpfr_version=3.1.2
 mpc_version=1.0.1
 autoconf_version=2.64
