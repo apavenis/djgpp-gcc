@@ -703,6 +703,8 @@ sub mk_manifest
 	'/include/(?:adx|fxsr|prfchw|rdseed|rtm|xsave|xsaveopt)intrin.h$',
         '/include/cross-stdarg.h$',
         '/include/stdint(?:|-gcc).h$',
+        '/include/avx512[^\.]*.h$',
+        '/include/shaintrin\.h$',
         '/install-tools/', '/libgcc\.a', '/libgcov\.a', '/libssp*',
         '/libquadmath.a',
         '/cc1\.exe',
