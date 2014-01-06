@@ -456,6 +456,11 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Mon Jan  6 2014 Andris Pavenis <andris.pavenis@iki.fi> 4.8.2-3ap
+- Backport changes to enable LTO
+- Disable some optional configuration options for temporary native
+  compiler to enable build on RHEL5, CentOS 5 etc.
+
 * Sat Nov  2 2013 Andris Pavenis <andris.pavenis@iki.fi> 4.8.2-2ap
 - Strip some executables not stripped earlier
 - Fix support of backtrace in GDB by enabling other debug information types 
