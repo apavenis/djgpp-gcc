@@ -23,7 +23,7 @@ conf_options="$target --disable-werror"
 conf_options="$conf_options --enable-languages=c,c++,fortran,objc,obj-c++,ada"
 #conf_options="$conf_options --enable-languages=c,c++,fortran,objc,obj-c++"
 conf_options="$conf_options --enable-libquadmath-support"
-conf_options="$conf_options --disable-lto"
+conf_options="$conf_options --enable-lto"
 #
 srcdir=`(cd $src && pwd) | sed -e 's,^[a-zA-Z]:/,/,' -e 's,^/dev/[a-zA-Z]/,/,'`
 builddir=`pwd | sed -e 's,^[a-zA-Z]:/,/,' -e 's,^/dev/[a-zA-Z]/,/,'`

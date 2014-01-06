@@ -84,7 +84,7 @@ along with GCC; see the file COPYING3.  If not see
 #define STARTFILE_SPEC "%{pg:gcrt0.o%s}%{!pg:crt0.o%s}"
 
 /* Switch into a generic section.  */
-#define TARGET_ASM_NAMED_SECTION  default_coff_asm_named_section
+#define TARGET_ASM_NAMED_SECTION  i386_djgpp_asm_named_section
 
 /* This is how to output an assembler line
    that says to advance the location counter
@@ -104,12 +104,6 @@ along with GCC; see the file COPYING3.  If not see
 #define ASM_WEAKEN_LABEL(FILE,NAME) \
   do { fputs ("\t.weak\t", FILE); assemble_name (FILE, NAME); \
        fputc ('\n', FILE); } while (0)
-
-#undef ASM_DECLARE_FUNCTION_NAME
-#define ASM_DECLARE_FUNCTION_NAME(FILE, NAME, DECL)                     \
-  do {                                                                  \
-    ASM_OUTPUT_FUNCTION_LABEL (FILE, NAME, DECL);                       \
-  } while (0)
 
 /* djgpp automatically calls its own version of __main, so don't define one
    in libgcc, nor call one in main().  */
@@ -167,14 +161,8 @@ along with GCC; see the file COPYING3.  If not see
         }                                                               \
     while (0)
 
-/* Write the extra assembler code needed to declare a function properly.
-   Some svr4 assemblers need to also have something extra said about the
-   function's return value.  We allow for that here.  */
+/* Function protypes for gcc/i486/djgpp.c */
 
-#undef ASM_DECLARE_FUNCTION_NAME
-#define ASM_DECLARE_FUNCTION_NAME(FILE, NAME, DECL)		\
-  do								\
-    {								\
-      ASM_OUTPUT_FUNCTION_LABEL (FILE, NAME, DECL);		\
-    }								\
-  while (0)
+void
+i386_djgpp_asm_named_section(const char *name, unsigned int flags,
+			     tree decl);

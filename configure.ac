@@ -1682,7 +1682,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
   build_lto_plugin=yes
 ],[if test x"$default_enable_lto" = x"yes" ; then
     case $target in
-      *-apple-darwin9* | *-cygwin* | *-mingw*) ;;
+      *-apple-darwin9* | *-cygwin* | *-mingw* | *djgpp*) ;;
       # On other non-ELF platforms, LTO has yet to be validated.
       *) enable_lto=no ;;
     esac
@@ -1693,7 +1693,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
   # warn during gcc/ subconfigure; unless you're bootstrapping with
   # -flto it won't be needed until after installation anyway.
     case $target in
-      *-cygwin* | *-mingw* | *-apple-darwin*) ;;
+      *-cygwin* | *-mingw* | *-apple-darwin* | *djgpp*) ;;
       *) if test x"$enable_lto" = x"yes"; then
 	AC_MSG_ERROR([LTO support is not enabled for this target.])
         fi
