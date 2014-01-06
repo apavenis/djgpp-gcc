@@ -64,6 +64,7 @@ BuildArch: i686 x86_64
 Requires: djcrx djcross-binutils >= 2.17
 BuildRequires: gcc gcc-gnat djcrx djcross-binutils >= 2.17
 BuildRequires: zlib-devel glibc-devel texinfo-tex
+BuildRequires:  flex
 
 %define shortver %(echo %{rpm_version} | sed -e 's:\\.::2g' -e 's:_:-:g')
 %define shortver2 %(echo %{rpm_version} | sed -e 's:\\.::g' -e 's:_:-:g')
@@ -256,7 +257,9 @@ cd tmpbuild
     --with-mpfr=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
     --with-mpc=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
     --enable-languages=c$(echo %{languages} | grep -q ada && echo ",ada") \
-    --enable-__cxa_atexit
+    --enable-__cxa_atexit \
+    --disable-multilib \
+    --disable-libsanitizer
 
 make %{_smp_mflags} bootstrap
 make install
