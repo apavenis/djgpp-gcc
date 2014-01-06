@@ -59,6 +59,7 @@ BuildArch: i686 x86_64
 Requires: djcrx djcross-binutils >= 2.17
 BuildRequires: gcc gcc-gnat djcrx djcross-binutils >= 2.17
 BuildRequires: zlib-devel glibc-devel texinfo-tex
+BuildRequires:  flex
 
 %define shortver %(echo %{rpm_version} | sed -e 's:\\.::2g' -e 's:_:-:g')
 %define shortver2 %(echo %{rpm_version} | sed -e 's:\\.::g' -e 's:_:-:g')
