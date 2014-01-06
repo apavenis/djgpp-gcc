@@ -108,6 +108,12 @@ along with GCC; see the file COPYING3.  If not see
   do { fputs ("\t.weak\t", FILE); assemble_name (FILE, NAME); \
        fputc ('\n', FILE); } while (0)
 
+#undef ASM_DECLARE_FUNCTION_NAME
+#define ASM_DECLARE_FUNCTION_NAME(FILE, NAME, DECL)                     \
+  do {                                                                  \
+    ASM_OUTPUT_FUNCTION_LABEL (FILE, NAME, DECL);                       \
+  } while (0)
+
 /* djgpp automatically calls its own version of __main, so don't define one
    in libgcc, nor call one in main().  */
 #define HAS_INIT_SECTION
