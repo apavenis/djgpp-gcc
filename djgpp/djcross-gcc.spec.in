@@ -252,7 +252,9 @@ cd tmpbuild
     --with-mpfr=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
     --with-mpc=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
     --enable-languages=c$(echo %{languages} | grep -q ada && echo ",ada") \
-    --enable-__cxa_atexit
+    --enable-__cxa_atexit \
+    --disable-multilib \
+    --disable-libsanitizer
 
 make %{_smp_mflags} bootstrap
 make install
