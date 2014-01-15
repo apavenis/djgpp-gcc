@@ -1,5 +1,5 @@
 /* Parser for C and Objective-C.
-   Copyright (C) 1987-2013 Free Software Foundation, Inc.
+   Copyright (C) 1987-2014 Free Software Foundation, Inc.
 
    Parser actions based on the old Bison parser; structure somewhat
    influenced by and fragments based on the C++ parser.
@@ -7500,7 +7500,7 @@ c_parser_postfix_expression (c_parser *parser)
 	      expr = c_parser_postfix_expression (parser);
 	      expr.value = error_mark_node;	      
 	    }
-	  if (c_parser_peek_token (parser)->keyword == RID_CILK_SPAWN)
+	  else if (c_parser_peek_token (parser)->keyword == RID_CILK_SPAWN)
 	    {
 	      error_at (loc, "consecutive %<_Cilk_spawn%> keywords "
 			"are not permitted");

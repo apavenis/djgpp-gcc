@@ -1,5 +1,5 @@
 /* Callgraph handling code.
-   Copyright (C) 2003-2013 Free Software Foundation, Inc.
+   Copyright (C) 2003-2014 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -1426,8 +1426,12 @@ varpool_variable_node (varpool_node *node,
 {
   varpool_node *n;
 
-  n = dyn_cast <varpool_node> (symtab_alias_ultimate_target (node,
-							     availability));
+  if (node)
+    n = dyn_cast <varpool_node> (symtab_alias_ultimate_target (node,
+							       availability));
+  else
+    n = NULL;
+
   if (!n && availability)
     *availability = AVAIL_NOT_AVAILABLE;
   return n;

@@ -1,5 +1,5 @@
 ;; GCC machine description for AVX512F instructions
-;; Copyright (C) 2013 Free Software Foundation, Inc.
+;; Copyright (C) 2013-2014 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -51,7 +51,7 @@
 (define_subst_attr "mask_operand18" "mask" "" "%{%19%}%N18")
 (define_subst_attr "mask_operand19" "mask" "" "%{%20%}%N19")
 (define_subst_attr "mask_codefor" "mask" "*" "")
-(define_subst_attr "mask_mode512bit_condition" "mask" "1" "(GET_MODE_SIZE (<MODE>mode) == 64)")
+(define_subst_attr "mask_mode512bit_condition" "mask" "1" "(<MODE_SIZE> == 64)")
 (define_subst_attr "store_mask_constraint" "mask" "vm" "v")
 (define_subst_attr "store_mask_predicate" "mask" "nonimmediate_operand" "register_operand")
 (define_subst_attr "mask_prefix" "mask" "vex" "evex")
@@ -85,7 +85,7 @@
 (define_subst_attr "sd_mask_op4" "sd" "" "%{%5%}%N4")
 (define_subst_attr "sd_mask_op5" "sd" "" "%{%6%}%N5")
 (define_subst_attr "sd_mask_codefor" "sd" "*" "")
-(define_subst_attr "sd_mask_mode512bit_condition" "sd" "1" "(GET_MODE_SIZE (<MODE>mode) == 64)")
+(define_subst_attr "sd_mask_mode512bit_condition" "sd" "1" "(<MODE_SIZE> == 64)")
 
 (define_subst "sd"
  [(set (match_operand:SUBST_V 0)
@@ -133,8 +133,6 @@
 (define_subst_attr "round_saeonly_name" "round_saeonly" "" "_round")
 (define_subst_attr "round_saeonly_mask_operand2" "mask" "%R2" "%R4")
 (define_subst_attr "round_saeonly_mask_operand3" "mask" "%R3" "%R5")
-(define_subst_attr "round_saeonly_mask_scalar_operand3" "mask_scalar" "%R3" "%R5")
-(define_subst_attr "round_saeonly_mask_scalar_operand4" "mask_scalar" "%R4" "%R6")
 (define_subst_attr "round_saeonly_mask_scalar_merge_operand4" "mask_scalar_merge" "%R4" "%R5")
 (define_subst_attr "round_saeonly_sd_mask_operand5" "sd" "%R5" "%R7")
 (define_subst_attr "round_saeonly_op2" "round_saeonly" "" "%R2")
@@ -145,8 +143,6 @@
 (define_subst_attr "round_saeonly_prefix" "round_saeonly" "vex" "evex")
 (define_subst_attr "round_saeonly_mask_op2" "round_saeonly" "" "<round_saeonly_mask_operand2>")
 (define_subst_attr "round_saeonly_mask_op3" "round_saeonly" "" "<round_saeonly_mask_operand3>")
-(define_subst_attr "round_saeonly_mask_scalar_op3" "round_saeonly" "" "<round_saeonly_mask_scalar_operand3>")
-(define_subst_attr "round_saeonly_mask_scalar_op4" "round_saeonly" "" "<round_saeonly_mask_scalar_operand4>")
 (define_subst_attr "round_saeonly_mask_scalar_merge_op4" "round_saeonly" "" "<round_saeonly_mask_scalar_merge_operand4>")
 (define_subst_attr "round_saeonly_sd_mask_op5" "round_saeonly" "" "<round_saeonly_sd_mask_operand5>")
 (define_subst_attr "round_saeonly_constraint" "round_saeonly" "vm" "v")
