@@ -1587,7 +1587,7 @@ ira_init_register_move_cost (enum machine_mode mode)
 	      cost = 65535;
 	    else
 	      cost = (ira_memory_move_cost[mode][cl1][0]
-		      + ira_memory_move_cost[mode][cl2][1]);
+		      + ira_memory_move_cost[mode][cl2][1]) * 2;
 	  }
 	else
 	  {
@@ -2405,7 +2405,7 @@ ira_setup_eliminable_regset (void)
        || (SUPPORTS_STACK_ALIGNMENT && crtl->stack_realign_needed)
        /* We need a frame pointer for all Cilk Plus functions that use
 	  Cilk keywords.  */
-       || (flag_enable_cilkplus && cfun->is_cilk_function)
+       || (flag_cilkplus && cfun->is_cilk_function)
        || targetm.frame_pointer_required ());
 
     /* The chance that FRAME_POINTER_NEEDED is changed from inspecting
@@ -5531,6 +5531,18 @@ do_reload (void)
 
   if (need_dce && optimize)
     run_fast_dce ();
+
+  /* Diagnose uses of the hard frame pointer when it is used as a global
+     register.  Often we can get away with letting the user appropriate
+     the frame pointer, but we should let them know when code generation
+     makes that impossible.  */
+  if (global_regs[HARD_FRAME_POINTER_REGNUM] && frame_pointer_needed)
+    {
+      tree decl = global_regs_decl[HARD_FRAME_POINTER_REGNUM];
+      error_at (DECL_SOURCE_LOCATION (current_function_decl),
+                "frame pointer required, but reserved");
+      inform (DECL_SOURCE_LOCATION (decl), "for %qD", decl);
+    }
 
   timevar_pop (TV_IRA);
 }

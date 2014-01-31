@@ -9977,12 +9977,6 @@ build_common_builtin_nodes (void)
 			BUILT_IN_SETJMP_SETUP,
 			"__builtin_setjmp_setup", ECF_NOTHROW);
 
-  ftype = build_function_type_list (ptr_type_node, ptr_type_node, NULL_TREE);
-  local_define_builtin ("__builtin_setjmp_dispatcher", ftype,
-			BUILT_IN_SETJMP_DISPATCHER,
-			"__builtin_setjmp_dispatcher",
-			ECF_PURE | ECF_NOTHROW);
-
   ftype = build_function_type_list (void_type_node, ptr_type_node, NULL_TREE);
   local_define_builtin ("__builtin_setjmp_receiver", ftype,
 			BUILT_IN_SETJMP_RECEIVER,
@@ -10823,6 +10817,7 @@ walk_type_fields (tree type, walk_tree_fn func, void *data,
     {
     case POINTER_TYPE:
     case REFERENCE_TYPE:
+    case VECTOR_TYPE:
       /* We have to worry about mutually recursive pointers.  These can't
 	 be written in C.  They can in Ada.  It's pathological, but
 	 there's an ACATS test (c38102a) that checks it.  Deal with this
@@ -11995,16 +11990,35 @@ get_binfo_at_offset (tree binfo, HOST_WIDE_INT offset, tree expected_type)
 	 represented in the binfo for the derived class.  */
       else if (offset != 0)
 	{
-	  tree base_binfo, found_binfo = NULL_TREE;
-	  for (i = 0; BINFO_BASE_ITERATE (binfo, i, base_binfo); i++)
-	    if (types_same_for_odr (TREE_TYPE (base_binfo), TREE_TYPE (fld)))
-	      {
-		found_binfo = base_binfo;
-		break;
-	      }
-	  if (!found_binfo)
-	    return NULL_TREE;
-	  binfo = found_binfo;
+	  tree base_binfo, binfo2 = binfo;
+
+	  /* Find BINFO corresponding to FLD.  This is bit harder
+	     by a fact that in virtual inheritance we may need to walk down
+	     the non-virtual inheritance chain.  */
+	  while (true)
+	    {
+	      tree containing_binfo = NULL, found_binfo = NULL;
+	      for (i = 0; BINFO_BASE_ITERATE (binfo2, i, base_binfo); i++)
+		if (types_same_for_odr (TREE_TYPE (base_binfo), TREE_TYPE (fld)))
+		  {
+		    found_binfo = base_binfo;
+		    break;
+		  }
+		else
+		  if (BINFO_OFFSET (base_binfo) - BINFO_OFFSET (binfo) < pos
+		      && (!containing_binfo
+			  || (BINFO_OFFSET (containing_binfo)
+			      < BINFO_OFFSET (base_binfo))))
+		    containing_binfo = base_binfo;
+	      if (found_binfo)
+		{
+		  binfo = found_binfo;
+		  break;
+		}
+	      if (!containing_binfo)
+		return NULL_TREE;
+	      binfo2 = containing_binfo;
+	    }
 	}
 
       type = TREE_TYPE (fld);

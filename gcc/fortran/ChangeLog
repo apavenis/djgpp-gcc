@@ -1,3 +1,32 @@
+2014-01-28  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/59414
+	* trans-stmt.c (gfc_trans_allocate): Before the pointer
+	assignment to transfer the source _vptr to a class allocate
+	expression, the final class reference should be exposed. The
+	tail that includes the _data and array references is stored.
+	This reduced expression is transferred to 'lhs' and the _vptr
+	added. Then the tail is restored to the allocate expression.
+
+2014-01-26  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/58007
+	* module.c (read_module): Assert for component name correctness.
+
+2014-01-18  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/58007
+	* module.c (MOD_VERSION): Bump.
+	(fp2, find_pointer2): Remove.
+	(mio_component_ref): Don't forcedfully set the containing derived type
+	symbol for loading.  Remove unused argument.
+	(mio_ref): Update caller
+	(mio_symbol): Dump component list earlier.
+	(skip_list): New argument nest_level.  Initialize level with the new
+	argument.
+	(read_module): Add forced pointer components association for derived
+	type symbols.
+
 2014-01-12  Janus Weil  <janus@gcc.gnu.org>
 
 	PR fortran/58026

@@ -244,6 +244,7 @@ vect_analyze_data_ref_dependence (struct data_dependence_relation *ddr,
 	{
 	  if (loop->safelen < *max_vf)
 	    *max_vf = loop->safelen;
+	  LOOP_VINFO_NO_DATA_DEPENDENCIES (loop_vinfo) = false;
 	  return false;
 	}
 
@@ -291,6 +292,7 @@ vect_analyze_data_ref_dependence (struct data_dependence_relation *ddr,
 	{
 	  if (loop->safelen < *max_vf)
 	    *max_vf = loop->safelen;
+	  LOOP_VINFO_NO_DATA_DEPENDENCIES (loop_vinfo) = false;
 	  return false;
 	}
 
@@ -447,6 +449,7 @@ vect_analyze_data_ref_dependences (loop_vec_info loop_vinfo, int *max_vf)
     dump_printf_loc (MSG_NOTE, vect_location,
                      "=== vect_analyze_data_ref_dependences ===\n");
 
+  LOOP_VINFO_NO_DATA_DEPENDENCIES (loop_vinfo) = true;
   if (!compute_all_dependences (LOOP_VINFO_DATAREFS (loop_vinfo),
 				&LOOP_VINFO_DDRS (loop_vinfo),
 				LOOP_VINFO_LOOP_NEST (loop_vinfo), true))
@@ -2481,19 +2484,21 @@ vect_analyze_data_ref_accesses (loop_vec_info loop_vinfo, bb_vec_info bb_vinfo)
     return true;
 
   /* Sort the array of datarefs to make building the interleaving chains
-     linear.  */
-  qsort (datarefs.address (), datarefs.length (),
+     linear.  Don't modify the original vector's order, it is needed for
+     determining what dependencies are reversed.  */
+  vec<data_reference_p> datarefs_copy = datarefs.copy ();
+  qsort (datarefs_copy.address (), datarefs_copy.length (),
 	 sizeof (data_reference_p), dr_group_sort_cmp);
 
   /* Build the interleaving chains.  */
-  for (i = 0; i < datarefs.length () - 1;)
+  for (i = 0; i < datarefs_copy.length () - 1;)
     {
-      data_reference_p dra = datarefs[i];
+      data_reference_p dra = datarefs_copy[i];
       stmt_vec_info stmtinfo_a = vinfo_for_stmt (DR_STMT (dra));
       stmt_vec_info lastinfo = NULL;
-      for (i = i + 1; i < datarefs.length (); ++i)
+      for (i = i + 1; i < datarefs_copy.length (); ++i)
 	{
-	  data_reference_p drb = datarefs[i];
+	  data_reference_p drb = datarefs_copy[i];
 	  stmt_vec_info stmtinfo_b = vinfo_for_stmt (DR_STMT (drb));
 
 	  /* ???  Imperfect sorting (non-compatible types, non-modulo
@@ -2570,7 +2575,7 @@ vect_analyze_data_ref_accesses (loop_vec_info loop_vinfo, bb_vec_info bb_vinfo)
 	}
     }
 
-  FOR_EACH_VEC_ELT (datarefs, i, dr)
+  FOR_EACH_VEC_ELT (datarefs_copy, i, dr)
     if (STMT_VINFO_VECTORIZABLE (vinfo_for_stmt (DR_STMT (dr))) 
         && !vect_analyze_data_ref_access (dr))
       {
@@ -2585,9 +2590,13 @@ vect_analyze_data_ref_accesses (loop_vec_info loop_vinfo, bb_vec_info bb_vinfo)
             continue;
           }
         else
-          return false;
+	  {
+	    datarefs_copy.release ();
+	    return false;
+	  }
       }
 
+  datarefs_copy.release ();
   return true;
 }
 

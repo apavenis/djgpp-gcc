@@ -764,11 +764,11 @@ static int thumb_call_reg_needed;
 #define FL_FOR_ARCH6M	(FL_FOR_ARCH6 & ~FL_NOTM)
 #define FL_FOR_ARCH7	((FL_FOR_ARCH6T2 & ~FL_NOTM) | FL_ARCH7)
 #define FL_FOR_ARCH7A	(FL_FOR_ARCH7 | FL_NOTM | FL_ARCH6K)
+#define FL_FOR_ARCH7VE	(FL_FOR_ARCH7A | FL_THUMB_DIV | FL_ARM_DIV)
 #define FL_FOR_ARCH7R	(FL_FOR_ARCH7A | FL_THUMB_DIV)
 #define FL_FOR_ARCH7M	(FL_FOR_ARCH7 | FL_THUMB_DIV)
 #define FL_FOR_ARCH7EM  (FL_FOR_ARCH7M | FL_ARCH7EM)
-#define FL_FOR_ARCH8A	(FL_FOR_ARCH7 | FL_ARCH6K | FL_ARCH8 | FL_THUMB_DIV \
-			 | FL_ARM_DIV | FL_NOTM)
+#define FL_FOR_ARCH8A	(FL_FOR_ARCH7VE | FL_ARCH8)
 
 /* The bits in this mask specify which
    instructions we are allowed to generate.  */
@@ -1696,7 +1696,7 @@ const struct tune_params arm_v7m_tune =
   &v7m_extra_costs,
   NULL,						/* Sched adj cost.  */
   1,						/* Constant limit.  */
-  5,						/* Max cond insns.  */
+  2,						/* Max cond insns.  */
   ARM_PREFETCH_NOT_BENEFICIAL,
   true,						/* Prefer constant pool.  */
   arm_cortex_m_branch_cost,
@@ -10390,7 +10390,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     const_int_cost:
       if (mode == SImode)
 	{
-	  *cost += 0;
 	  *cost += COSTS_N_INSNS (arm_gen_constant (outer_code, SImode, NULL,
 						    INTVAL (x), NULL, NULL,
 						    0, 0));
@@ -22138,11 +22137,11 @@ thumb2_final_prescan_insn (rtx insn)
   int mask;
   int max;
 
-  /* Maximum number of conditionally executed instructions in a block
-     is minimum of the two max values: maximum allowed in an IT block
-     and maximum that is beneficial according to the cost model and tune.  */
-  max = (max_insns_skipped < MAX_INSN_PER_IT_BLOCK) ?
-    max_insns_skipped : MAX_INSN_PER_IT_BLOCK;
+  /* max_insns_skipped in the tune was already taken into account in the
+     cost model of ifcvt pass when generating COND_EXEC insns.  At this stage
+     just emit the IT blocks as we can.  It does not make sense to split
+     the IT blocks.  */
+  max = MAX_INSN_PER_IT_BLOCK;
 
   /* Remove the previous insn from the count of insns to be output.  */
   if (arm_condexec_count)
@@ -27860,20 +27859,34 @@ arm_file_start (void)
       const char *fpu_name;
       if (arm_selected_arch)
         {
-          const char* pos = strchr (arm_selected_arch->name, '+');
-	  if (pos)
+	  /* armv7ve doesn't support any extensions.  */
+	  if (strcmp (arm_selected_arch->name, "armv7ve") == 0)
 	    {
-	      char buf[15];
-	      gcc_assert (strlen (arm_selected_arch->name)
-	                  <= sizeof (buf) / sizeof (*pos));
-	      strncpy (buf, arm_selected_arch->name,
-	                    (pos - arm_selected_arch->name) * sizeof (*pos));
-	      buf[pos - arm_selected_arch->name] = '\0';
-	      asm_fprintf (asm_out_file, "\t.arch %s\n", buf);
-	      asm_fprintf (asm_out_file, "\t.arch_extension %s\n", pos + 1);
+	      /* Keep backward compatability for assemblers
+		 which don't support armv7ve.  */
+	      asm_fprintf (asm_out_file, "\t.arch armv7-a\n");
+	      asm_fprintf (asm_out_file, "\t.arch_extension virt\n");
+	      asm_fprintf (asm_out_file, "\t.arch_extension idiv\n");
+	      asm_fprintf (asm_out_file, "\t.arch_extension sec\n");
+	      asm_fprintf (asm_out_file, "\t.arch_extension mp\n");
 	    }
 	  else
-	    asm_fprintf (asm_out_file, "\t.arch %s\n", arm_selected_arch->name);
+	    {
+	      const char* pos = strchr (arm_selected_arch->name, '+');
+	      if (pos)
+		{
+		  char buf[15];
+		  gcc_assert (strlen (arm_selected_arch->name)
+			      <= sizeof (buf) / sizeof (*pos));
+		  strncpy (buf, arm_selected_arch->name,
+				(pos - arm_selected_arch->name) * sizeof (*pos));
+		  buf[pos - arm_selected_arch->name] = '\0';
+		  asm_fprintf (asm_out_file, "\t.arch %s\n", buf);
+		  asm_fprintf (asm_out_file, "\t.arch_extension %s\n", pos + 1);
+		}
+	      else
+		asm_fprintf (asm_out_file, "\t.arch %s\n", arm_selected_arch->name);
+	    }
         }
       else if (strncmp (arm_selected_cpu->name, "generic", 7) == 0)
 	asm_fprintf (asm_out_file, "\t.arch %s\n", arm_selected_cpu->name + 8);
