@@ -1,3 +1,68 @@
+2014-02-08  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/57033
+	* gfortran.dg/default_initialization_7.f90: New test.
+
+2014-02-08  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/59906
+	* gfortran.dg/elemental_subroutine_9.f90 : New test
+
+2014-02-04  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2014-02-02  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/60017
+	* gcc.c-torture/execute/pr60017.c: New test.
+
+2014-02-03  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/59941
+	* gfortran.dg/typebound_proc_26.f90: New.
+
+2014-01-29  Markus Trippelsdorf  <markus@trippelsdorf.de>
+
+	Backport from mainline
+	2012-12-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR gcov-profile/55650
+	* g++.dg/other/pr55650.C: New test.
+	* g++.dg/other/pr55650.cc: New file.
+
+2014-01-26  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/58007
+	* gfortran.dg/unresolved_fixup_1.f90: New test.
+	* gfortran.dg/unresolved_fixup_2.f90: New test.
+
+2014-01-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/59839
+	* gcc.target/i386/pr59839.c: New test.
+
+	PR debug/54694
+	* gcc.target/i386/pr9771-1.c (main): Rename to...
+	(real_main): ... this.  Add __asm name "main".
+	(ASMNAME, ASMNAME2, STRING): Define.
+
+2014-01-16  Marek Polacek  <polacek@redhat.com>
+
+	Backport from mainline
+	2014-01-16  Marek Polacek  <polacek@redhat.com>
+
+	PR middle-end/59827
+	* gcc.dg/pr59827.c: New test.
+
+2014-01-10  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR rtl-optimization/54300
+	* gcc.target/arm/pr54300.C: New test.
+
+2014-01-03  Joseph Myers  <joseph@codesourcery.com>
+
+	* gcc.target/powerpc/rs6000-ldouble-3.c: New test.
+
 2013-12-12  Uros Bizjak  <ubizjak@gmail.com>
 
 	Backport from mainline
