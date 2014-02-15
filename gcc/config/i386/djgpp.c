@@ -27,17 +27,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "hard-reg-set.h"
 #include "output.h"
 #include "tree.h"
-#include "stringpool.h"
-#include "varasm.h"
 #include "flags.h"
 #include "tm_p.h"
 #include "diagnostic-core.h"
-#include "hash-table.h"
+#include "hashtab.h"
 #include "langhooks.h"
 #include "ggc.h"
 #include "target.h"
 #include "except.h"
-#include "gimple.h"
 #include "lto-streamer.h"
 
 void
@@ -45,6 +42,8 @@ i386_djgpp_asm_named_section(const char *name, unsigned int flags,
 			     tree decl)
 {
   char flagchars[8], *f = flagchars;
+
+(void)decl; /* silence warning. */
 
   if (flags & SECTION_WRITE)
     *f++ = 'w';
