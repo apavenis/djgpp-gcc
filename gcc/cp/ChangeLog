@@ -1,3 +1,34 @@
+2014-03-01  Adam Butcher  <adam@jessamine.co.uk>
+
+	PR c++/60377
+	* parser.c (cp_parser_parameter_declaration_clause): Unwind generic
+	function scope on parse error in function parameter list.
+
+2014-03-01  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* method.c (implicitly_declare_fn): Remove redundant
+	DECL_TEMPLATE_RESULT and STRIP_TEMPLATE uses.
+	* semantics.c (is_instantiation_of_constexpr): Likewise.
+	* error.c (dump_function_decl): Likewise.
+
+2014-03-01  Jason Merrill  <jason@redhat.com>
+
+	PR c++/60379
+	* semantics.c (begin_maybe_infinite_loop): Use
+	fold_non_dependent_expr_sfinae.
+
+2014-02-28  Jason Merrill  <jason@redhat.com>
+
+	PR c++/58845
+	* typeck.c (cp_build_binary_op): Sorry on vector&&vector.
+
+2014-02-28  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/58610
+	* cp-tree.h (DECL_DELETED_FN): Use LANG_DECL_FN_CHECK.
+	* call.c (print_z_candidate): Remove STRIP_TEMPLATE use.
+	* lambda.c (maybe_add_lambda_conv_op): Likewise.
+
 2014-02-27  Paolo Carlini  <paolo.carlini@oracle.com>
 
 	PR c++/60253

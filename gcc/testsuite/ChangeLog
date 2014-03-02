@@ -1,3 +1,38 @@
+2014-03-01  Edward Smith-Rowland  <3dw4rd@verizon.net>
+
+	PR c++/50025
+	* g++.dg/cpp0x/pr50025.C: New.
+
+2014-03-01  Adam Butcher  <adam@jessamine.co.uk>
+
+	PR c++/60377
+	* g++.dg/cpp1y/pr60377.C: New testcase.
+
+2014-03-01  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/60341
+	* gfortran.dg/str_comp_optimize_1.f90: New test.
+
+2014-03-01  Oleg Endo  <olegendo@gcc.gnu.org>
+
+	PR target/60071
+	* gcc.c-torture/compile/pr60071.c: New.
+
+2014-02-28  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/60359
+	* gfortran.dg/unlimited_polymorphic_16.f90: New.
+
+2014-02-28  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/58610
+	* g++.dg/cpp0x/constexpr-ice11.C: New.
+
+2014-02-28  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/60314
+	* g++.dg/cpp1y/auto-fn24.C: New.
+
 2014-02-28  Joey Ye  <joey.ye@arm.com>
 
 	PR target/PR60169
