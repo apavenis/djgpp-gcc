@@ -1,3 +1,161 @@
+2014-03-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/60568
+	* config/i386/i386.c (x86_output_mi_thunk): Surround UNSPEC_GOT
+	into CONST, put pic register as first operand of PLUS.  Use
+	gen_const_mem for both 32-bit and 64-bit PIC got loads.
+
+2014-03-19  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-dfa.c (get_ref_base_and_extent) <ARRAY_REF>: Remove space.
+
+2014-03-18  Kai Tietz  <ktietz@redhat.com>
+
+	PR rtl-optimization/56356
+	* sdbout.c (sdbout_parms): Verify that parms'
+	incoming argument is valid.
+	(sdbout_reg_parms): Likewise.
+
+2014-03-18  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2013-11-05  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/58941
+	* tree-dfa.c (get_ref_base_and_extent): Merge common code
+	in MEM_REF and TARGET_MEM_REF handling.  Make sure to
+	process trailing array detection before diving into the
+	view-converted object (and possibly apply some extra offset).
+
+	2012-05-07  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-dfa.c (get_ref_base_and_extent) <ARRAY_REF>: Do the offset
+	computation using the precision of the index type.
+
+	2012-05-31  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-dfa.c (get_ref_base_and_extent): Compute the offset using
+	double ints throughout.
+
+2014-03-18  Richard Biener  <rguenther@suse.de>
+ 
+	Backport from mainline
+	2013-08-27  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/57521
+	* tree-if-conv.c (if_convertible_bb_p): Verify that at least
+	one edge is non-critical.
+	(find_phi_replacement_condition): Make sure to use a non-critical
+	edge.  Cleanup and remove old bug workarounds.
+	(bb_postdominates_preds): Remove.
+	(if_convertible_loop_p_1): Do not compute post-dominators.
+	(combine_blocks): Do not free post-dominators.
+	(main_tree_if_conversion): Likewise.
+
+	2013-09-03  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/57656
+	* fold-const.c (negate_expr_p): Fix division case.
+	(negate_expr): Likewise.
+
+	2013-11-19  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/57517
+	* tree-predcom.c (combinable_refs_p): Verify the combination
+	is always executed when the refs are.
+
+2014-03-17  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2013-05-21  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/57303
+	* tree-ssa-sink.c (statement_sink_location): Properly handle
+	self-assignments.
+
+	2013-12-02  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/59139
+	* tree-ssa-loop-niter.c (chain_of_csts_start): Properly match
+	code in get_val_for.
+	(get_val_for): Use gcc_checking_asserts.
+
+	2014-02-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/60183
+	* tree-ssa-phiprop.c (propagate_with_phi): Avoid speculating
+	loads.
+	(tree_ssa_phiprop): Calculate and free post-dominators.
+
+2014-03-14  Georg-Johann Lay  <avr@gjlay.de>
+
+	Backport from 2014-03-14 trunk r208562.
+
+	PR target/59396
+	* config/avr/avr.c (avr_set_current_function): Pass function name
+	through default_strip_name_encoding before sanity checking instead
+	of skipping the first char of the assembler name.
+
+2014-02-24  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.c (pa_output_move_double): Don't valididate when
+	adjusting offsetable addresses.
+
+2014-02-21  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2014-02-21  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/i386/i386.c (ix86_expand_vec_perm): Use V8SImode
+	mode for mask of V8SFmode permutation.
+
+	Backport from 4.8 branch
+	2014-02-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/57896
+	* config/i386/i386.c (expand_vec_perm_interleave2): Don't call
+	gen_reg_rtx if d->testing_p.
+	(expand_vec_perm_pshufb2, expand_vec_perm_even_odd_1,
+	expand_vec_perm_broadcast_1): Return early if d->testing_p and
+	we will certainly return true.
+
+2014-02-20  Terry Guo  <terry.guo@arm.com>
+
+	Backport from mainline
+	2014-02-08  Terry Guo  <terry.guo@arm.com>
+
+	* doc/invoke.texi: Document ARM -march=armv7e-m.
+
+2014-02-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline
+	2014-02-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/60207
+	* config/i386/i386.c (construct_container): Remove TFmode check
+	for X86_64_INTEGER_CLASS.
+
+2014-02-18  Kai Tietz  <ktietz@redhat.com>
+
+	Backport from mainline
+	PR target/60193
+	* config/i386/i386.c (ix86_expand_prologue): Use
+	rax register as displacement for restoring %r10, %rax.
+	Additional fix wrong offset for restoring both-registers.
+
+2014-02-18  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* ipa-prop.c (compute_complex_ancestor_jump_func): Replace overzealous
+	assertion with conditional return.
+
+2014-02-18  Jakub Jelinek  <jakub@redhat.com>
+	    Uros Bizjak  <ubizjak@gmail.com>
+
+	PR driver/60233
+	* config/i386/driver-i386.c (host_detect_local_cpu): If
+	YMM state is not saved by the OS, also clear has_f16c.  Move
+	CPUID 0x80000001 handling before YMM state saving checking.
+
 2014-02-13  Uros Bizjak  <ubizjak@gmail.com>
 
 	Backport from mainline
