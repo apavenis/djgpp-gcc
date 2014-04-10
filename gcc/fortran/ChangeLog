@@ -1,3 +1,31 @@
+2014-04-10  Jakub Jelinek  <jakub@redhat.com>
+
+	Backport from mainline
+	2014-03-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/60603
+	* cpp.c (gfc_cpp_init): Restore cb_change_file call to
+	<built-in>.
+
+2014-03-29  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/60677
+	* trans-intrinsic.c (gfc_conv_intrinsic_ichar): Enlarge argument
+	list buffer.
+
+2014-03-28  Mikael Morin  <mikael@gcc.gnu.org>
+	    Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/60576
+	* trans-expr.c (gfc_conv_derived_to_class): Avoid
+	generation of out-of-bounds range expr.
+
+2014-03-28  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/60522
+	* frontend-passes.c (cfe_code):  Do not walk subtrees
+	for WHERE.
+
 2014-03-20  Tobias Burnus  <burnus@net-b.de>
 
 	PR fortran/60543
