@@ -61,8 +61,8 @@ Source6: ftp://ftp.gnu.org/gnu/automake/automake-%{automake_version}.tar.bz2
 
 Buildroot: %{_tmppath}/%{name}-%{version}-root
 BuildArch: i686 x86_64
-Requires: djcrx djcross-binutils >= 2.17
-BuildRequires: gcc gcc-gnat djcrx djcross-binutils >= 2.17
+Requires: djcrx djcross-binutils >= 2.22
+BuildRequires: gcc gcc-gnat djcrx djcross-binutils >= 2.22
 BuildRequires: zlib-devel glibc-devel texinfo-tex
 BuildRequires:  flex
 
@@ -457,6 +457,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri Apr 11 2014 Andris Pavenis <andris.pavenis@iki.fi>
+- Update for upcomming gcc-4.9.0 (after SVN branching)
+
 * Thu Nov 21 2013 Andris Pavenis <andris.pavenis@iki.fi>
 - Package also stdatomic.h
 
