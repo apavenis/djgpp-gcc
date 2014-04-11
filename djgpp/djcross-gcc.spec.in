@@ -214,6 +214,7 @@ done
 
 cd $RPM_BUILD_DIR/%{name}-%{version}/gmp-%{gmp_version}
 ./configure --build=${RPM_ARCH}-${RPM_OS} \
+            --enable-fat \
             --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
             --enable-static --disable-shared
 make %{_smp_mflags} all
@@ -223,7 +224,7 @@ make install
 cd $RPM_BUILD_DIR/%{name}-%{version}/mpfr-%{mpfr_version}
 ./configure --build=${RPM_ARCH}-${RPM_OS} \
             --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
-            --with-gmp-build=$RPM_BUILD_DIR/%{name}-%{version}/gmp-%{gmp_version} \
+            --with-gmp=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
             --enable-static --disable-shared
 make %{_smp_mflags} all
 make %{_smp_mflags} check
