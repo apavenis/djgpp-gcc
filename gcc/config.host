@@ -207,12 +207,17 @@ case ${host} in
   i[34567]86-pc-msdosdjgpp*)
     host_xm_file=i386/xm-djgpp.h
     host_exeext=.exe
+    host_xmake_file="${host_xmake_file} i386/x-djgpp"
     # Shorten $target_noncanonical for 8.3 filename conventions.
+    # Also update C++ include directory name
+    # due to the same restrictions
     case ${target} in
       *pc-msdosdjgpp*)
         target_noncanonical=djgpp
+	libstdcxx_incdir_base=cxx
         ;;
     esac
+	
     ;;
   i[34567]86-*-cygwin* | x86_64-*-cygwin*)
     host_xm_file=i386/xm-cygwin.h

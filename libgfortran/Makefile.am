@@ -41,14 +41,24 @@ libgfortran_la_LDFLAGS = -version-info `grep -v '^\#' $(srcdir)/libtool-version`
 	$(version_arg) -Wc,-shared-libgcc
 libgfortran_la_DEPENDENCIES = $(version_dep) libgfortran.spec $(LIBQUADLIB_DEP)
 
+if DJGPP
+myexeclib_LTLIBRARIES = libgf95begin.la
+else
 myexeclib_LTLIBRARIES = libgfortranbegin.la
-myexeclibdir = $(libdir)/gcc/$(target_alias)/$(gcc_version)$(MULTISUBDIR)
+endif
+myexeclibdir = $(libdir)/gcc/$(target_alias)/$(gcc_version_alias)$(MULTISUBDIR)
+if DJGPP
+libgf95begin_la_SOURCES = fmain.c
+libgf95begin_la_LDFLAGS = -static
+libgf95begin_la_LINK = $(LINK) $(libgf95begin_la_LDFLAGS)
+else
 libgfortranbegin_la_SOURCES = fmain.c
 libgfortranbegin_la_LDFLAGS = -static
 libgfortranbegin_la_LINK = $(LINK) $(libgfortranbegin_la_LDFLAGS)
+endif
 
 cafexeclib_LTLIBRARIES = libcaf_single.la
-cafexeclibdir = $(libdir)/gcc/$(target_alias)/$(gcc_version)$(MULTISUBDIR)
+cafexeclibdir = $(libdir)/gcc/$(target_alias)/$(gcc_version_alias)$(MULTISUBDIR)
 libcaf_single_la_SOURCES = caf/single.c
 libcaf_single_la_LDFLAGS = -static
 libcaf_single_la_DEPENDENCIES = caf/libcaf.h

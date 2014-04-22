@@ -132,11 +132,14 @@ no)	;;
 esac])
 
 # This logic must match libstdc++-v3/acinclude.m4:GLIBCXX_EXPORT_INSTALL_INFO.
+libstdcxx_incdir_base=c++
+AC_SUBST(libstdcxx_incdir_base)
+
 if test x${gcc_gxx_include_dir} = x; then
   if test x${enable_version_specific_runtime_libs} = xyes; then
-    gcc_gxx_include_dir='${libsubdir}/include/c++'
+    gcc_gxx_include_dir='${libsubdir}/include/$(libstdcxx_incdir_base)'
   else
-    libstdcxx_incdir='include/c++/$(version)'
+    libstdcxx_incdir='include/$(libstdcxx_incdir_base)/$(version)'
     if test x$host != x$target; then
        libstdcxx_incdir="$target_alias/$libstdcxx_incdir"
     fi

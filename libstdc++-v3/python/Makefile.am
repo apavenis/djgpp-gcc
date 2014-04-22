@@ -26,7 +26,7 @@ include $(top_srcdir)/fragment.am
 if ENABLE_PYTHONDIR
 pythondir = $(prefix)/$(python_mod_dir)
 else
-pythondir = $(datadir)/gcc-$(gcc_version)/python
+pythondir = $(datadir)/gcc-$(gcc_version_alias)/python
 endif
 
 all-local: gdb.py
@@ -35,6 +35,12 @@ nobase_python_DATA = \
     libstdcxx/v6/printers.py \
     libstdcxx/v6/__init__.py \
     libstdcxx/__init__.py
+
+if DJGPP
+name_base=libstdcxx
+else
+name_base=libstdc++
+endif
 
 gdb.py: hook.in Makefile
 	sed -e 's,@pythondir@,$(pythondir),' \
@@ -48,7 +54,7 @@ install-data-local: gdb.py
 ## fragile, but there does not seem to be a better option, because
 ## libtool hides the real names from us.
 	@here=`pwd`; cd $(DESTDIR)$(toolexeclibdir); \
-	  for file in libstdc++*; do \
+	  for file in $(name_base)*; do \
 	    case $$file in \
 	      *-gdb.py) ;; \
 	      *.la) ;; \

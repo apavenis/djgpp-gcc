@@ -26,7 +26,7 @@ along with GCC; see the file COPYING3.  If not see
 /* We override default /usr or /usr/local part with /dev/env/DJDIR which */
 /* points to actual DJGPP installation directory.  */
 
-/* Standard include directory */
+/* Native system include directory */
 #undef NATIVE_SYSTEM_HEADER_DIR
 #define NATIVE_SYSTEM_HEADER_DIR "/dev/env/DJDIR/include/"
 
