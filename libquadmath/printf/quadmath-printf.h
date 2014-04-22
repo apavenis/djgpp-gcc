@@ -29,7 +29,8 @@ Boston, MA 02110-1301, USA.  */
 #ifdef HAVE_CTYPE_H
 #include <ctype.h>
 #endif
-#ifdef HAVE_WCHAR_H
+#if defined(HAVE_WCHAR_H) && !defined(__DJGPP__)
+/* DJGPP wchar.h is not good enough */
 #include <wchar.h>
 #endif
 #ifdef HAVE_WCTYPE_H
@@ -44,7 +45,7 @@ Boston, MA 02110-1301, USA.  */
 #include "quadmath-imp.h"
 #include "gmp-impl.h"
 
-#ifdef HAVE_WCHAR_H
+#if defined(HAVE_WCHAR_H) && !defined(__DJGPP__)
 #define L_(x) L##x
 #else
 #define L_(x) x

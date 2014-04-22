@@ -82,6 +82,7 @@ relative prefix can be found, return @code{NULL}.
 #  define HAVE_DOS_BASED_FILE_SYSTEM
 #  define HAVE_HOST_EXECUTABLE_SUFFIX
 #  define HOST_EXECUTABLE_SUFFIX ".exe"
+#  define FILENAME_COMPARE strcasecmp
 #  ifndef DIR_SEPARATOR_2 
 #    define DIR_SEPARATOR_2 '\\'
 #  endif
@@ -95,6 +96,10 @@ relative prefix can be found, return @code{NULL}.
 #else
 #  define IS_DIR_SEPARATOR(ch) \
 	(((ch) == DIR_SEPARATOR) || ((ch) == DIR_SEPARATOR_2))
+#endif
+
+#ifndef FILENAME_COMPARE
+#  define FILENAME_COMPARE strcmp
 #endif
 
 #define DIR_UP ".."
@@ -334,7 +339,7 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
     {
       for (i = 0; i < bin_num; i++)
 	{
-	  if (strcmp (prog_dirs[i], bin_dirs[i]) != 0)
+	  if (FILENAME_COMPARE (prog_dirs[i], bin_dirs[i]) != 0)
 	    break;
 	}
 
@@ -350,7 +355,7 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
   n = (prefix_num < bin_num) ? prefix_num : bin_num;
   for (common = 0; common < n; common++)
     {
-      if (strcmp (bin_dirs[common], prefix_dirs[common]) != 0)
+      if (FILENAME_COMPARE (bin_dirs[common], prefix_dirs[common]) != 0)
 	break;
     }
 

@@ -1,0 +1,41 @@
+#
+# DSM for gcc @version@
+#
+
+dsm-file-version: 1.1
+dsm-name: ada@arcv@b@version_status@
+dsm-version: 0.5.0
+
+dsm-author: @porter@
+dsm-author-email: @e_mail@
+
+name: ada
+version: @version@
+manifest: ada@arcv@b@version_status@
+sources-dsm: gcc@arcv@s@version_status@
+type: binaries
+short-description: GNU Compiler Collection, Ada compiler
+organisation: Free Software Foundation
+license: GNU General Public License
+web-site: http://gcc.gnu.org
+
+porter: @porter@
+porter-email: @e_mail@
+
+simtelnet-path: v2gnu/
+zip: ada@arcv@b@version_status@.zip
+
+#
+# Dependencies
+#
+
+replaces: objc < @version@
+
+requires: DPMI
+requires: djdev @djreq@
+requires: binutils >= 2.162
+requires: gcc @version@
+conflicts-with: ada < @version@
+
+# For reading docs
+depends-on: info-reader

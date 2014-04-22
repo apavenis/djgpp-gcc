@@ -1,0 +1,48 @@
+#
+# DSM for gcc @version@
+#
+
+dsm-file-version: 1.1
+dsm-name: gcc@arcv@b@version_status@
+dsm-version: 0.5.0
+
+dsm-author: @porter@
+dsm-author-email: @e_mail@
+
+name: gcc
+version: @version@
+manifest: gcc@arcv@b@version_status@
+type: binaries
+sources-dsm: gcc@arcv@s@version_status@
+short-description: GNU Compiler Collection, C compiler
+organisation: Free Software Foundation
+license: GNU General Public License
+web-site: http://gcc.gnu.org
+
+porter: @porter@
+porter-email: @e_mail@
+
+simtelnet-path: v2gnu/
+zip: gcc@arcv@b@version_status@.zip
+
+pre-install-readme: gnu/gcc-@dver@@version_status@/readme.DJGPP
+
+#
+# Dependencies
+#
+
+replaces: gcc < @version@
+
+requires: DPMI
+requires: djdev @djreq@
+requires: binutils >= 2.16
+conflicts-with: gcc < @version@
+
+# For reading docs
+depends-on: info-reader
+
+# This updates the info/DIR menu
+builtin-post-install-script: command:\
+  install-info --info-dir=/dev/env/DJDIR/info /dev/env/DJDIR/info/gcc.info\n\
+  install-info --info-dir=/dev/env/DJDIR/info /dev/env/DJDIR/info/cpp.info\n\
+  install-info --info-dir=/dev/env/DJDIR/info /dev/env/DJDIR/info/cppinternals.info
