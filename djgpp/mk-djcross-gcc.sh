@@ -122,6 +122,7 @@ sed -e "s/@__GCCVER__@/$basever/g" \
     -e "s/@__AUTOCONF_VERSION__@/$autoconf_version/g" \
     -e "s/@__AUTOMAKE_VERSION__@/$automake_version/g" \
     -e "s/@__TARGET__@/$target/g" \
+    -e "s/@__GCC_SRC_EXT__@/$gcc_src_ext/g" \
     djcross-gcc.spec.in >$dest/djcross-gcc-$sver2.spec
 
 echo "#"
