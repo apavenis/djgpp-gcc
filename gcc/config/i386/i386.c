@@ -81,6 +81,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "context.h"
 #include "pass_manager.h"
 #include "target-globals.h"
+#include "tree-vectorizer.h"
 
 static rtx legitimize_dllimport_symbol (rtx, bool);
 static rtx legitimize_pe_coff_extern_decl (rtx, bool);
@@ -1738,7 +1739,7 @@ struct processor_costs slm_cost = {
   1,					/* scalar load_cost.  */
   1,					/* scalar_store_cost.  */
   1,					/* vec_stmt_cost.  */
-  1,					/* vec_to_scalar_cost.  */
+  4,					/* vec_to_scalar_cost.  */
   1,					/* scalar_to_vec_cost.  */
   1,					/* vec_align_load_cost.  */
   2,					/* vec_unalign_load_cost.  */
@@ -1815,7 +1816,7 @@ struct processor_costs intel_cost = {
   1,					/* scalar load_cost.  */
   1,					/* scalar_store_cost.  */
   1,					/* vec_stmt_cost.  */
-  1,					/* vec_to_scalar_cost.  */
+  4,					/* vec_to_scalar_cost.  */
   1,					/* scalar_to_vec_cost.  */
   1,					/* vec_align_load_cost.  */
   2,					/* vec_unalign_load_cost.  */
@@ -2493,12 +2494,6 @@ static const struct ptt processor_target_table[PROCESSOR_max] =
   {"btver2", &btver2_cost, 16, 10, 16, 7, 11}
 };
 
-static bool
-gate_insert_vzeroupper (void)
-{
-  return TARGET_AVX && !TARGET_AVX512F && TARGET_VZEROUPPER;
-}
-
 static unsigned int
 rest_of_handle_insert_vzeroupper (void)
 {
@@ -2525,7 +2520,6 @@ const pass_data pass_data_insert_vzeroupper =
   RTL_PASS, /* type */
   "vzeroupper", /* name */
   OPTGROUP_NONE, /* optinfo_flags */
-  true, /* has_gate */
   true, /* has_execute */
   TV_NONE, /* tv_id */
   0, /* properties_required */
@@ -2543,8 +2537,15 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate () { return gate_insert_vzeroupper (); }
-  unsigned int execute () { return rest_of_handle_insert_vzeroupper (); }
+  virtual bool gate (function *)
+    {
+      return TARGET_AVX && !TARGET_AVX512F && TARGET_VZEROUPPER;
+    }
+
+  virtual unsigned int execute (function *)
+    {
+      return rest_of_handle_insert_vzeroupper ();
+    }
 
 }; // class pass_insert_vzeroupper
 
@@ -16667,8 +16668,7 @@ ix86_expand_clear (rtx dest)
     dest = gen_rtx_REG (SImode, REGNO (dest));
   tmp = gen_rtx_SET (VOIDmode, dest, const0_rtx);
 
-  /* This predicate should match that for movsi_xor and movdi_xor_rex64.  */
-  if (!TARGET_USE_MOV0 || optimize_insn_for_speed_p ())
+  if (!TARGET_USE_MOV0 || optimize_insn_for_size_p ())
     {
       rtx clob = gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (CCmode, FLAGS_REG));
       tmp = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2, tmp, clob));
@@ -24384,7 +24384,8 @@ ix86_expand_set_or_movmem (rtx dst, rtx src, rtx count_exp, rtx val_exp,
 	  if (jump_around_label == NULL_RTX)
 	    jump_around_label = gen_label_rtx ();
 	  emit_cmp_and_jump_insns (count_exp, GEN_INT (dynamic_check - 1),
-				   LEU, 0, GET_MODE (count_exp), 1, hot_label);
+				   LEU, 0, counter_mode (count_exp),
+				   1, hot_label);
 	  predict_jump (REG_BR_PROB_BASE * 90 / 100);
 	  if (issetmem)
 	    set_storage_via_libcall (dst, count_exp, val_exp, false);
@@ -35400,7 +35401,8 @@ rdrand_step:
       else
 	op2 = gen_rtx_SUBREG (SImode, op0, 0);
 
-      if (target == 0)
+      if (target == 0
+	  || !register_operand (target, SImode))
 	target = gen_reg_rtx (SImode);
 
       pat = gen_rtx_GEU (VOIDmode, gen_rtx_REG (CCCmode, FLAGS_REG),
@@ -35442,7 +35444,8 @@ rdseed_step:
                          const0_rtx);
       emit_insn (gen_rtx_SET (VOIDmode, op2, pat));
 
-      if (target == 0)
+      if (target == 0
+	  || !register_operand (target, SImode))
         target = gen_reg_rtx (SImode);
 
       emit_insn (gen_zero_extendqisi2 (target, op2));
@@ -44026,7 +44029,7 @@ expand_vec_perm_even_odd_1 (struct expand_vec_perm_d *d, unsigned odd)
       gcc_unreachable ();
 
     case V8HImode:
-      if (TARGET_SSSE3)
+      if (TARGET_SSSE3 && !TARGET_SLOW_PSHUFB)
 	return expand_vec_perm_pshufb2 (d);
       else
 	{
@@ -44049,7 +44052,7 @@ expand_vec_perm_even_odd_1 (struct expand_vec_perm_d *d, unsigned odd)
       break;
 
     case V16QImode:
-      if (TARGET_SSSE3)
+      if (TARGET_SSSE3 && !TARGET_SLOW_PSHUFB)
 	return expand_vec_perm_pshufb2 (d);
       else
 	{
@@ -46329,6 +46332,18 @@ ix86_add_stmt_cost (void *data, int count, enum vect_cost_for_stmt kind,
     count *= 50;  /* FIXME.  */
 
   retval = (unsigned) (count * stmt_cost);
+
+  /* We need to multiply all vector stmt cost by 1.7 (estimated cost)
+     for Silvermont as it has out of order integer pipeline and can execute
+     2 scalar instruction per tick, but has in order SIMD pipeline.  */
+  if (TARGET_SILVERMONT || TARGET_INTEL)
+    if (stmt_info && stmt_info->stmt)
+      {
+	tree lhs_op = gimple_get_lhs (stmt_info->stmt);
+	if (lhs_op && TREE_CODE (TREE_TYPE (lhs_op)) == INTEGER_TYPE)
+	  retval = (retval * 17) / 10;
+      }
+
   cost[where] += retval;
 
   return retval;

@@ -431,8 +431,8 @@ static const struct default_options default_options_table[] =
     { OPT_LEVELS_1_PLUS, OPT_fguess_branch_probability, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fcprop_registers, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fforward_propagate, NULL, 1 },
-    { OPT_LEVELS_1_PLUS, OPT_fif_conversion, NULL, 1 },
-    { OPT_LEVELS_1_PLUS, OPT_fif_conversion2, NULL, 1 },
+    { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_fif_conversion, NULL, 1 },
+    { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_fif_conversion2, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fipa_pure_const, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fipa_reference, NULL, 1 },
     { OPT_LEVELS_1_PLUS, OPT_fipa_profile, NULL, 1 },
@@ -1732,7 +1732,7 @@ common_handle_option (struct gcc_options *opts,
       /* FIXME: Instrumentation we insert makes ipa-reference bitmaps
 	 quadratic.  Disable the pass until better memory representation
 	 is done.  */
-      if (!opts_set->x_flag_ipa_reference && opts->x_in_lto_p)
+      if (!opts_set->x_flag_ipa_reference)
         opts->x_flag_ipa_reference = false;
       break;
 

@@ -237,6 +237,12 @@ if [[ "${shared}" != "yes" ]]; then
 fi
 AC_SUBST(PICFLAG)
 
+NOASANFLAG=
+case " ${CFLAGS} " in
+  *\ -fsanitize=address\ *) NOASANFLAG=-fno-sanitize=address ;;
+esac
+AC_SUBST(NOASANFLAG)
+
 echo "# Warning: this fragment is automatically generated" > temp-frag
 
 if [[ -n "${frag}" ]] && [[ -f "${frag}" ]]; then
