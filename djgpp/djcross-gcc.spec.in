@@ -199,7 +199,7 @@ make install
 cd $RPM_BUILD_DIR/%{name}-%{version}/mpfr-%{mpfr_version}
 ./configure --build=${RPM_ARCH}-${RPM_OS} \
             --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
-            --with-gmp-build=$RPM_BUILD_DIR/%{name}-%{version}/gmp-%{gmp_version} \
+            --with-gmp=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
             --enable-static --disable-shared
 make %{_smp_mflags} all
 make %{_smp_mflags} check
@@ -420,6 +420,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri May 30 2014 Andris Pavenis <andris.pavenis@iki.fi>
+- Use GMP-6.0.0
+
 * Thu Sep 20 2012 Andris Pavenis <andris.pavenis@iki.fi>
 - Update for GCC-4.7.2
 - Use MPC-1.0.1
