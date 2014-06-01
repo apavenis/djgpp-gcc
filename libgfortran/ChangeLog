@@ -1,8 +1,33 @@
+2014-05-26  Janne Blomqvist  <jb@gcc.gnu.org>
+
+	Backport from mainline
+	PR libfortran/61310
+	* intrinsics/ctime.c (strctime): Rename to gf_ctime, use snprintf
+	instead of strftime.
+	(fdate): Use gf_ctime.
+	(fdate_sub): Likewise.
+	(ctime): Likewise.
+	(ctime_sub): Likewise.
+
+2014-05-16  Janne Blomqvist  <jb@gcc.gnu.org>
+
+	Backport from trunk:
+	PR libfortran/61187
+	* io/unix.c (raw_close): Check if s->fd is -1.
+	(fd_to_stream): Check return value of fstat(), handle error.
+
+2014-05-04  Janne Blomqvist  <jb@gcc.gnu.org>
+
+	Backport from 4.9
+	PR libfortran/56919
+	* intrinsics/system_clock.c (GF_CLOCK_MONOTONIC): Check
+	_POSIX_MONOTONIC_CLOCK as well.
+
 2014-04-12  Jerry DeLisle  <jvdelisle@gcc.gnu>
 
 	Backport from mainline
 	PR libfortran/60810
-	io/unit.c (is_trim_ok): If internal unit is array, do not trim.
+	* io/unit.c (is_trim_ok): If internal unit is array, do not trim.
 
 2014-03-15  Jerry DeLisle  <jvdelisle@gcc.gnu>
 
