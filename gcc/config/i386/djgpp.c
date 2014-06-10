@@ -38,7 +38,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-expr.h"
 #include "is-a.h"
 #include "gimple.h"
-#include "lto-streamer.h"
+#include "lto-section-names.h"
 
 void
 i386_djgpp_asm_named_section(const char *name, unsigned int flags,
