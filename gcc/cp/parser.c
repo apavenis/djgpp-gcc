@@ -5835,20 +5835,6 @@ cp_parser_postfix_expression (cp_parser *parser, bool address_p, bool cast_p,
 	  }
 	break;
       }
-      
-    case RID_CILK_SYNC:
-      if (flag_cilkplus)
-	{ 
-	  tree sync_expr = build_cilk_sync ();
-	  SET_EXPR_LOCATION (sync_expr, 
-			     cp_lexer_peek_token (parser->lexer)->location);
-	  finish_expr_stmt (sync_expr);
-	}
-      else
-	error_at (token->location, "-fcilkplus must be enabled to use" 
-		  " %<_Cilk_sync%>");
-      cp_lexer_consume_token (parser->lexer);
-      break;
 
     case RID_BUILTIN_SHUFFLE:
       {
@@ -9398,6 +9384,24 @@ cp_parser_statement (cp_parser* parser, tree in_statement_expr,
 	case RID_RETURN:
 	case RID_GOTO:
 	  statement = cp_parser_jump_statement (parser);
+	  break;
+
+	case RID_CILK_SYNC:
+	  cp_lexer_consume_token (parser->lexer);
+	  if (flag_cilkplus)
+	    {
+	      tree sync_expr = build_cilk_sync ();
+	      SET_EXPR_LOCATION (sync_expr,
+				 token->location);
+	      statement = finish_expr_stmt (sync_expr);
+	    }
+	  else
+	    {
+	      error_at (token->location, "-fcilkplus must be enabled to use"
+			" %<_Cilk_sync%>");
+	      statement = error_mark_node;
+	    }
+	  cp_parser_require (parser, CPP_SEMICOLON, RT_SEMICOLON);
 	  break;
 
 	  /* Objective-C++ exception-handling constructs.  */
@@ -28530,6 +28534,20 @@ cp_parser_omp_atomic (cp_parser *parser, cp_token *pragma_tok)
       tree id = cp_lexer_peek_token (parser->lexer)->u.value;
       const char *p = IDENTIFIER_POINTER (id);
 
+      if (!strcmp (p, "seq_cst"))
+	{
+	  seq_cst = true;
+	  cp_lexer_consume_token (parser->lexer);
+	  if (cp_lexer_next_token_is (parser->lexer, CPP_COMMA)
+	      && cp_lexer_peek_nth_token (parser->lexer, 2)->type == CPP_NAME)
+	    cp_lexer_consume_token (parser->lexer);
+	}
+    }
+  if (cp_lexer_next_token_is (parser->lexer, CPP_NAME))
+    {
+      tree id = cp_lexer_peek_token (parser->lexer)->u.value;
+      const char *p = IDENTIFIER_POINTER (id);
+
       if (!strcmp (p, "read"))
 	code = OMP_ATOMIC_READ;
       else if (!strcmp (p, "write"))
@@ -28543,16 +28561,22 @@ cp_parser_omp_atomic (cp_parser *parser, cp_token *pragma_tok)
       if (p)
 	cp_lexer_consume_token (parser->lexer);
     }
-
-  if (cp_lexer_next_token_is (parser->lexer, CPP_NAME))
+  if (!seq_cst)
     {
-      tree id = cp_lexer_peek_token (parser->lexer)->u.value;
-      const char *p = IDENTIFIER_POINTER (id);
+      if (cp_lexer_next_token_is (parser->lexer, CPP_COMMA)
+	  && cp_lexer_peek_nth_token (parser->lexer, 2)->type == CPP_NAME)
+	cp_lexer_consume_token (parser->lexer);
 
-      if (!strcmp (p, "seq_cst"))
+      if (cp_lexer_next_token_is (parser->lexer, CPP_NAME))
 	{
-	  seq_cst = true;
-	  cp_lexer_consume_token (parser->lexer);
+	  tree id = cp_lexer_peek_token (parser->lexer)->u.value;
+	  const char *p = IDENTIFIER_POINTER (id);
+
+	  if (!strcmp (p, "seq_cst"))
+	    {
+	      seq_cst = true;
+	      cp_lexer_consume_token (parser->lexer);
+	    }
 	}
     }
   cp_parser_require_pragma_eol (parser, pragma_tok);

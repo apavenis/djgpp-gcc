@@ -415,7 +415,9 @@ raw_close (unix_stream * s)
 {
   int retval;
   
-  if (s->fd != STDOUT_FILENO
+  if (s->fd == -1)
+    retval = -1;
+  else if (s->fd != STDOUT_FILENO
       && s->fd != STDERR_FILENO
       && s->fd != STDIN_FILENO)
     retval = close (s->fd);
@@ -1006,7 +1008,15 @@ fd_to_stream (int fd, bool unformatted)
 
   /* Get the current length of the file. */
 
-  fstat (fd, &statbuf);
+  if (fstat (fd, &statbuf) == -1)
+    {
+      s->st_dev = s->st_ino = -1;
+      s->file_length = 0;
+      if (errno == EBADF)
+	s->fd = -1;
+      raw_init (s);
+      return (stream *) s;
+    }
 
   s->st_dev = statbuf.st_dev;
   s->st_ino = statbuf.st_ino;
