@@ -1,3 +1,46 @@
+2014-06-09  Paul Thomas  <pault@gcc.gnu.org>
+
+	Backport from trunk.
+	PR fortran/61406
+	* trans-stmt.c (trans_associate_var): Check that array
+	constructors are constant for direct reference.
+
+2014-06-05  Richard Biener  <rguenther@suse.de>
+
+	PR fortran/61418
+	* gfortranspec.c (spec_file): Remove.
+	(find_spec_file): Likewise.
+	(lang_specific_driver): Do not look for specs file in -L
+	or append -specs command line argument.
+	(lang_specific_pre_link): Always %:include libgfortran.spec.
+
+2014-05-29  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/60834
+	Backport from mainline
+	* frontend-passes.c (in_assoc_list):  New variable.
+	(optimize_namespace):  Initialize in_assoc_list
+	(combine_array_constructor): Don't try to combine
+	assoc lists.
+	(gfc_code_walker):  Keep track of in_assoc_list.
+
+2014-05-26  Janne Blomqvist  <jb@gcc.gnu.org>
+
+	Backport from mainline
+	PR libfortran/61310
+	* intrinsics.texi (CTIME): Remove mention of locale-dependent
+	behavior.
+
+2014-04-22  Tobias Burnus  <burnus@net-b.de>
+
+	Backport from mainline
+	2014-04-11  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/58880
+	PR fortran/60495
+	* resolve.c (gfc_resolve_finalizers): Ensure that vtables
+	and finalization wrappers are generated.
+
 2014-04-22  Release Manager
 
 	* GCC 4.9.0 released.
