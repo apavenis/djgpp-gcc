@@ -406,8 +406,7 @@ copy_prop_visit_phi_node (gimple phi)
 	 ???  The value will be always loop invariant.
 	 In loop-closed SSA form do not copy-propagate through
 	 PHI nodes in blocks with a loop exit edge predecessor.  */
-      if (current_loops
-	  && TREE_CODE (arg_value) == SSA_NAME
+      if (TREE_CODE (arg_value) == SSA_NAME
 	  && (loop_depth_of_name (arg_value) > loop_depth_of_name (lhs)
 	      || (loops_state_satisfies_p (LOOP_CLOSED_SSA)
 		  && loop_exit_edge_p (e->src->loop_father, e))))
@@ -657,8 +656,7 @@ const pass_data pass_data_copy_prop =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_cleanup_cfg | TODO_verify_ssa
-    | TODO_update_ssa ), /* todo_flags_finish */
+  ( TODO_cleanup_cfg | TODO_update_ssa ), /* todo_flags_finish */
 };
 
 class pass_copy_prop : public gimple_opt_pass

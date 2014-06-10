@@ -82,7 +82,7 @@ add_stmt_to_eh_lp_fn (struct function *ifun, gimple t, int num)
 
   gcc_assert (num != 0);
 
-  n = ggc_alloc_throw_stmt_node ();
+  n = ggc_alloc<throw_stmt_node> ();
   n->stmt = t;
   n->lp_nr = num;
 
@@ -1550,6 +1550,8 @@ lower_try_finally_switch (struct leh_state *state, struct leh_tf_state *tf)
   /* Make sure that the last case is the default label, as one is required.
      Then sort the labels, which is also required in GIMPLE.  */
   CASE_LOW (last_case) = NULL;
+  tree tem = case_label_vec.pop ();
+  gcc_assert (tem == last_case);
   sort_case_labels (case_label_vec);
 
   /* Build the switch statement, setting last_case to be the default
@@ -2650,14 +2652,14 @@ tree_could_trap_p (tree expr)
       if (TREE_CODE (TREE_OPERAND (expr, 0)) == ADDR_EXPR)
 	{
 	  tree base = TREE_OPERAND (TREE_OPERAND (expr, 0), 0);
-	  double_int off = mem_ref_offset (expr);
-	  if (off.is_negative ())
+	  offset_int off = mem_ref_offset (expr);
+	  if (wi::neg_p (off, SIGNED))
 	    return true;
 	  if (TREE_CODE (base) == STRING_CST)
-	    return double_int::from_uhwi (TREE_STRING_LENGTH (base)).ule (off);
+	    return wi::leu_p (TREE_STRING_LENGTH (base), off);
 	  else if (DECL_SIZE_UNIT (base) == NULL_TREE
 		   || TREE_CODE (DECL_SIZE_UNIT (base)) != INTEGER_CST
-		   || tree_to_double_int (DECL_SIZE_UNIT (base)).ule (off))
+		   || wi::leu_p (wi::to_offset (DECL_SIZE_UNIT (base)), off))
 	    return true;
 	  /* Now we are sure the first byte of the access is inside
 	     the object.  */
@@ -3210,8 +3212,7 @@ lower_resx (basic_block bb, gimple stmt, struct pointer_map_t *mnt_map)
 	      gimple_stmt_iterator gsi2;
 
 	      new_bb = create_empty_bb (bb);
-	      if (current_loops)
-		add_bb_to_loop (new_bb, bb->loop_father);
+	      add_bb_to_loop (new_bb, bb->loop_father);
 	      lab = gimple_block_label (new_bb);
 	      gsi2 = gsi_start_bb (new_bb);
 
@@ -3314,7 +3315,7 @@ const pass_data pass_data_lower_resx =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  TODO_verify_flow, /* todo_flags_finish */
+  0, /* todo_flags_finish */
 };
 
 class pass_lower_resx : public gimple_opt_pass
@@ -3714,7 +3715,7 @@ const pass_data pass_data_lower_eh_dispatch =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  TODO_verify_flow, /* todo_flags_finish */
+  0, /* todo_flags_finish */
 };
 
 class pass_lower_eh_dispatch : public gimple_opt_pass
@@ -4208,8 +4209,7 @@ cleanup_empty_eh_merge_phis (basic_block new_bb, basic_block old_bb,
 	   we may have created a loop with multiple latches.
 	   All of this isn't easily fixed thus cancel the affected loop
 	   and mark the other loop as possibly having multiple latches.  */
-	if (current_loops
-	    && e->dest == e->dest->loop_father->header)
+	if (e->dest == e->dest->loop_father->header)
 	  {
 	    e->dest->loop_father->header = NULL;
 	    e->dest->loop_father->latch = NULL;
@@ -4573,7 +4573,7 @@ const pass_data pass_data_cleanup_eh =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  TODO_verify_ssa, /* todo_flags_finish */
+  0, /* todo_flags_finish */
 };
 
 class pass_cleanup_eh : public gimple_opt_pass

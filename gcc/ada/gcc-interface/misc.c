@@ -283,7 +283,7 @@ internal_error_function (diagnostic_context *context,
   text_info tinfo;
   char *buffer, *p, *loc;
   String_Template temp, temp_loc;
-  DECLARE_STRING_POINTER (sp, sp_loc);
+  String_Pointer sp, sp_loc;
   expanded_location xloc;
 
   /* Warn if plugins present.  */
@@ -325,7 +325,7 @@ internal_error_function (diagnostic_context *context,
   sp_loc.Array = loc;
 
   Current_Error_Node = error_gnat_node;
-  Compiler_Abort (sp, -1, sp_loc);
+  Compiler_Abort (sp, sp_loc, true);
 }
 
 /* Perform all the initialization steps that are language-specific.  */

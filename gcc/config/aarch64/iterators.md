@@ -150,6 +150,9 @@
 ;; Vector modes for H and S types.
 (define_mode_iterator VDQHS [V4HI V8HI V2SI V4SI])
 
+;; Vector modes for H, S and D types.
+(define_mode_iterator VDQHSD [V4HI V8HI V2SI V4SI V2DI])
+
 ;; Vector modes for Q, H and S types.
 (define_mode_iterator VDQQHS [V8QI V16QI V4HI V8HI V2SI V4SI])
 
@@ -267,6 +270,10 @@
     UNSPEC_UZP2		; Used in vector permute patterns.
     UNSPEC_TRN1		; Used in vector permute patterns.
     UNSPEC_TRN2		; Used in vector permute patterns.
+    UNSPEC_EXT		; Used in aarch64-simd.md.
+    UNSPEC_REV64	; Used in vector reverse patterns (permute).
+    UNSPEC_REV32	; Used in vector reverse patterns (permute).
+    UNSPEC_REV16	; Used in vector reverse patterns (permute).
     UNSPEC_AESE		; Used in aarch64-simd.md.
     UNSPEC_AESD         ; Used in aarch64-simd.md.
     UNSPEC_AESMC        ; Used in aarch64-simd.md.
@@ -355,6 +362,9 @@
                          (DI   "1d") (DF    "1d")
                          (V2DI "2d") (V2SF "2s")
 			 (V4SF "4s") (V2DF "2d")])
+
+(define_mode_attr Vrevsuff [(V4HI "16") (V8HI "16") (V2SI "32")
+                            (V4SI "32") (V2DI "64")])
 
 (define_mode_attr Vmtype [(V8QI ".8b") (V16QI ".16b")
 			 (V4HI ".4h") (V8HI  ".8h")
@@ -557,6 +567,32 @@
 			(V2DI "V8DI")  (V2DF "V8DF")])
 
 (define_mode_attr VSTRUCT_DREG [(OI "TI") (CI "EI") (XI "OI")])
+
+;; Mode of pair of elements for each vector mode, to define transfer
+;; size for structure lane/dup loads and stores.
+(define_mode_attr V_TWO_ELEM [(V8QI "HI")   (V16QI "HI")
+                              (V4HI "SI")   (V8HI "SI")
+                              (V2SI "V2SI") (V4SI "V2SI")
+                              (DI "V2DI")   (V2DI "V2DI")
+                              (V2SF "V2SF") (V4SF "V2SF")
+                              (DF "V2DI")   (V2DF "V2DI")])
+
+;; Similar, for three elements.
+(define_mode_attr V_THREE_ELEM [(V8QI "BLK") (V16QI "BLK")
+                                (V4HI "BLK") (V8HI "BLK")
+                                (V2SI "BLK") (V4SI "BLK")
+                                (DI "EI")    (V2DI "EI")
+                                (V2SF "BLK") (V4SF "BLK")
+                                (DF "EI")    (V2DF "EI")])
+
+;; Similar, for four elements.
+(define_mode_attr V_FOUR_ELEM [(V8QI "SI")   (V16QI "SI")
+                               (V4HI "V4HI") (V8HI "V4HI")
+                               (V2SI "V4SI") (V4SI "V4SI")
+                               (DI "OI")     (V2DI "OI")
+                               (V2SF "V4SF") (V4SF "V4SF")
+                               (DF "OI")     (V2DF "OI")])
+
 
 ;; Mode for atomic operation suffixes
 (define_mode_attr atomic_sfx
@@ -863,6 +899,8 @@
 			      UNSPEC_TRN1 UNSPEC_TRN2
 			      UNSPEC_UZP1 UNSPEC_UZP2])
 
+(define_int_iterator REVERSE [UNSPEC_REV64 UNSPEC_REV32 UNSPEC_REV16])
+
 (define_int_iterator FRINT [UNSPEC_FRINTZ UNSPEC_FRINTP UNSPEC_FRINTM
 			     UNSPEC_FRINTN UNSPEC_FRINTI UNSPEC_FRINTX
 			     UNSPEC_FRINTA])
@@ -989,6 +1027,10 @@
 (define_int_attr perm_insn [(UNSPEC_ZIP1 "zip") (UNSPEC_ZIP2 "zip")
 			    (UNSPEC_TRN1 "trn") (UNSPEC_TRN2 "trn")
 			    (UNSPEC_UZP1 "uzp") (UNSPEC_UZP2 "uzp")])
+
+; op code for REV instructions (size within which elements are reversed).
+(define_int_attr rev_op [(UNSPEC_REV64 "64") (UNSPEC_REV32 "32")
+			 (UNSPEC_REV16 "16")])
 
 (define_int_attr perm_hilo [(UNSPEC_ZIP1 "1") (UNSPEC_ZIP2 "2")
 			    (UNSPEC_TRN1 "1") (UNSPEC_TRN2 "2")

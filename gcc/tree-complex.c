@@ -831,12 +831,15 @@ expand_complex_move (gimple_stmt_iterator *gsi, tree type)
     {
       tree x;
       gimple t;
+      location_t loc;
 
+      loc = gimple_location (stmt);
       r = extract_component (gsi, rhs, 0, false);
       i = extract_component (gsi, rhs, 1, false);
 
       x = build1 (REALPART_EXPR, inner_type, unshare_expr (lhs));
       t = gimple_build_assign (x, r);
+      gimple_set_location (t, loc);
       gsi_insert_before (gsi, t, GSI_SAME_STMT);
 
       if (stmt == gsi_stmt (*gsi))
@@ -849,6 +852,7 @@ expand_complex_move (gimple_stmt_iterator *gsi, tree type)
 	{
 	  x = build1 (IMAGPART_EXPR, inner_type, unshare_expr (lhs));
 	  t = gimple_build_assign (x, i);
+	  gimple_set_location (t, loc);
 	  gsi_insert_before (gsi, t, GSI_SAME_STMT);
 
 	  stmt = gsi_stmt (*gsi);
@@ -1158,11 +1162,8 @@ expand_complex_div_wide (gimple_stmt_iterator *gsi, tree inner_type,
       make_edge (bb_cond, bb_false, EDGE_FALSE_VALUE);
       make_edge (bb_true, bb_join, EDGE_FALLTHRU);
       make_edge (bb_false, bb_join, EDGE_FALLTHRU);
-      if (current_loops)
-	{
-	  add_bb_to_loop (bb_true, bb_cond->loop_father);
-	  add_bb_to_loop (bb_false, bb_cond->loop_father);
-	}
+      add_bb_to_loop (bb_true, bb_cond->loop_father);
+      add_bb_to_loop (bb_false, bb_cond->loop_father);
 
       /* Update dominance info.  Note that bb_join's data was
          updated by split_block.  */
@@ -1668,7 +1669,7 @@ const pass_data pass_data_lower_complex =
   PROP_gimple_lcx, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_update_ssa | TODO_verify_stmts ), /* todo_flags_finish */
+  TODO_update_ssa, /* todo_flags_finish */
 };
 
 class pass_lower_complex : public gimple_opt_pass
@@ -1706,7 +1707,7 @@ const pass_data pass_data_lower_complex_O0 =
   PROP_gimple_lcx, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_update_ssa | TODO_verify_stmts ), /* todo_flags_finish */
+  TODO_update_ssa, /* todo_flags_finish */
 };
 
 class pass_lower_complex_O0 : public gimple_opt_pass

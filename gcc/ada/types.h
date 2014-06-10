@@ -77,13 +77,18 @@ typedef Char *Str;
 typedef Char *Str_Ptr;
 
 /* Types for the fat pointer used for strings and the template it points to.
-   On most platforms the fat pointer is naturally aligned but, on the rest,
-   it is given twice the natural alignment.  For maximum portability, we do
-   not overalign the type but only the objects.  */
+   The fat pointer is conceptually a couple of pointers, but it is wrapped
+   up in a special record type.  On the Ada side, the record is naturally
+   aligned (i.e. given pointer alignment) on regular platforms, but it is
+   given twice this alignment on strict-alignment platforms for performance
+   reasons.  On the C side, for the sake of portability and simplicity, we
+   overalign it on all platforms (so the machine mode is always the same as
+   on the Ada side) but arrange to pass it in an even scalar position as a
+   parameter to functions (so the scalar parameter alignment is always the
+   same as on the Ada side).  */
 typedef struct { int Low_Bound, High_Bound; } String_Template;
-typedef struct { const char *Array; String_Template *Bounds; } String_Pointer;
-#define DECLARE_STRING_POINTER(...) \
-  __attribute__ ((aligned (sizeof (char *) * 2))) String_Pointer __VA_ARGS__
+typedef struct { const char *Array; String_Template *Bounds; }
+	__attribute ((aligned (sizeof (char *) * 2))) String_Pointer;
 
 /* Types for Node/Entity Kinds:  */
 

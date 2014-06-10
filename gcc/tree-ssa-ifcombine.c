@@ -127,7 +127,11 @@ bb_no_side_effects_p (basic_block bb)
     {
       gimple stmt = gsi_stmt (gsi);
 
+      if (is_gimple_debug (stmt))
+	continue;
+
       if (gimple_has_side_effects (stmt)
+	  || gimple_could_trap_p (stmt)
 	  || gimple_vuse (stmt))
 	return false;
     }
@@ -736,7 +740,7 @@ const pass_data pass_data_tree_ifcombine =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_update_ssa | TODO_verify_ssa ), /* todo_flags_finish */
+  TODO_update_ssa, /* todo_flags_finish */
 };
 
 class pass_tree_ifcombine : public gimple_opt_pass

@@ -1177,8 +1177,7 @@ split_function (struct split_point *split_point)
       e = make_edge (new_return_bb, EXIT_BLOCK_PTR_FOR_FN (cfun), 0);
       e->probability = REG_BR_PROB_BASE;
       e->count = new_return_bb->count;
-      if (current_loops)
-	add_bb_to_loop (new_return_bb, current_loops->tree_root);
+      add_bb_to_loop (new_return_bb, current_loops->tree_root);
       bitmap_set_bit (split_point->split_bbs, new_return_bb->index);
     }
   /* When we pass around the value, use existing return block.  */
@@ -1659,7 +1658,7 @@ const pass_data pass_data_split_functions =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  TODO_verify_all, /* todo_flags_finish */
+  0, /* todo_flags_finish */
 };
 
 class pass_split_functions : public gimple_opt_pass
@@ -1719,7 +1718,7 @@ const pass_data pass_data_feedback_split_functions =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  TODO_verify_all, /* todo_flags_finish */
+  0, /* todo_flags_finish */
 };
 
 class pass_feedback_split_functions : public gimple_opt_pass

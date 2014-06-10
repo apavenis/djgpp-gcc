@@ -522,6 +522,14 @@ hashable_expr_equal_p (const struct hashable_expr *expr0,
                                  expr1->ops.call.args[i], 0))
             return false;
 
+	if (stmt_could_throw_p (expr0->ops.call.fn_from))
+	  {
+	    int lp0 = lookup_stmt_eh_lp (expr0->ops.call.fn_from);
+	    int lp1 = lookup_stmt_eh_lp (expr1->ops.call.fn_from);
+	    if ((lp0 > 0 || lp1 > 0) && lp0 != lp1)
+	      return false;
+	  }
+
         return true;
       }
 
@@ -845,9 +853,7 @@ const pass_data pass_data_dominator =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_cleanup_cfg | TODO_update_ssa
-    | TODO_verify_ssa
-    | TODO_verify_flow ), /* todo_flags_finish */
+  ( TODO_cleanup_cfg | TODO_update_ssa ), /* todo_flags_finish */
 };
 
 class pass_dominator : public gimple_opt_pass
@@ -3038,9 +3044,7 @@ const pass_data pass_data_phi_only_cprop =
   0, /* properties_provided */
   0, /* properties_destroyed */
   0, /* todo_flags_start */
-  ( TODO_cleanup_cfg | TODO_verify_ssa
-    | TODO_verify_stmts
-    | TODO_update_ssa ), /* todo_flags_finish */
+  ( TODO_cleanup_cfg | TODO_update_ssa ), /* todo_flags_finish */
 };
 
 class pass_phi_only_cprop : public gimple_opt_pass
@@ -3124,8 +3128,7 @@ pass_phi_only_cprop::execute (function *fun)
     {
       free_dominance_info (CDI_DOMINATORS);
       /* If we changed the CFG schedule loops for fixup by cfgcleanup.  */
-      if (current_loops)
-	loops_state_set (LOOPS_NEED_FIXUP);
+      loops_state_set (LOOPS_NEED_FIXUP);
     }
 
   /* Propagation of const and copies may make some EH edges dead.  Purge
