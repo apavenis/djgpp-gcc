@@ -420,6 +420,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri Jun 13 2014 Andris Pavenis <andris.pavenis@iki.fi>
+- Update for GCC-4.7.4
+
 * Fri May 30 2014 Andris Pavenis <andris.pavenis@iki.fi>
 - Use GMP-6.0.0
 
