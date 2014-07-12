@@ -216,7 +216,7 @@ am__objects_6 = go-append.lo go-assert.lo go-assert-interface.lo \
 	$(am__objects_2) mfixalloc.lo mgc0.lo mheap.lo msize.lo \
 	$(am__objects_3) panic.lo parfor.lo print.lo proc.lo \
 	runtime.lo signal_unix.lo thread.lo yield.lo $(am__objects_4) \
-	iface.lo malloc.lo map.lo mprof.lo netpoll.lo reflect.lo \
+	go-iface.lo malloc.lo map.lo mprof.lo netpoll.lo reflect.lo \
 	runtime1.lo sema.lo sigqueue.lo string.lo time.lo \
 	$(am__objects_5)
 am_libgo_la_OBJECTS = $(am__objects_6)
@@ -844,7 +844,7 @@ runtime_files = \
 	runtime/thread.c \
 	runtime/yield.c \
 	$(rtems_task_variable_add_file) \
-	iface.c \
+	go-iface.c \
 	malloc.c \
 	map.c \
 	mprof.c \
@@ -2066,6 +2066,7 @@ BUILDPACKAGE = \
 	$(LTGOCOMPILE) -I . -c -fgo-pkgpath=`echo $@ | sed -e 's/.lo$$//' -e 's/-go$$//'` -o $@ $$files
 
 GOTESTFLAGS = 
+GOBENCH = 
 
 # Check a package.
 CHECK = \
@@ -2085,6 +2086,8 @@ CHECK = \
 	rm -f $@-testsum $@-testlog; \
 	if test "$(USE_DEJAGNU)" = "yes"; then \
 	  $(SHELL) $(srcdir)/testsuite/gotest --dejagnu=yes --basedir=$(srcdir) --srcdir=$(srcdir)/go/$(@D) --pkgpath="$(@D)" --pkgfiles="$(go_$(subst /,_,$(@D))_files)" --testname="$(@D)" --goarch="$(GOARCH)" $(GOTESTFLAGS) $(go_$(subst /,_,$(@D))_test_files); \
+	elif test "$(GOBENCH)" != ""; then \
+	  $(SHELL) $(srcdir)/testsuite/gotest --basedir=$(srcdir) --srcdir=$(srcdir)/go/$(@D) --pkgpath="$(@D)" --pkgfiles="$(go_$(subst /,_,$(@D))_files)" --goarch="$(GOARCH)" --bench="$(GOBENCH)" $(GOTESTFLAGS) $(go_$(subst /,_,$(@D))_test_files); \
 	else \
 	  if $(SHELL) $(srcdir)/testsuite/gotest --basedir=$(srcdir) --srcdir=$(srcdir)/go/$(@D) --pkgpath="$(@D)" --pkgfiles="$(go_$(subst /,_,$(@D))_files)" --goarch="$(GOARCH)" $(GOTESTFLAGS) $(go_$(subst /,_,$(@D))_test_files) >>$@-testlog 2>&1; then \
 	    echo "PASS: $(@D)" >> $@-testlog; \
@@ -2426,6 +2429,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-eface-val-compare.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-fieldtrack.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-getgoroot.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-iface.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-int-array-to-string.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-int-to-string.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-interface-compare.Plo@am__quote@
@@ -2473,7 +2477,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-unsafe-pointer.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-unwind.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/go-varargs.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/iface.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lfstack.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lock_futex.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lock_sema.Plo@am__quote@
@@ -6082,6 +6085,9 @@ check-am:
 
 check-multi:
 	$(MULTIDO) $(AM_MAKEFLAGS) DO=check-am multi-do # $(MAKE)
+
+bench:
+	-@$(MAKE) -k $(TEST_PACKAGES) GOBENCH=.
 
 mostlyclean-local:
 	find . -name '*.lo' -print | xargs $(LIBTOOL) --mode=clean rm -f

@@ -35,6 +35,9 @@
       if (TARGET_SIMD)					\
 	builtin_define ("__ARM_NEON");			\
 							\
+      if (TARGET_CRC32)				\
+	builtin_define ("__ARM_FEATURE_CRC32");		\
+							\
       switch (aarch64_cmodel)				\
 	{						\
 	  case AARCH64_CMODEL_TINY:			\
@@ -187,6 +190,9 @@ extern unsigned long aarch64_tune_flags;
 
 /* Crypto is an optional extension to AdvSIMD.  */
 #define TARGET_CRYPTO (TARGET_SIMD && AARCH64_ISA_CRYPTO)
+
+/* CRC instructions that can be enabled through +crc arch extension.  */
+#define TARGET_CRC32 (AARCH64_ISA_CRC)
 
 /* Standard register usage.  */
 
@@ -872,6 +878,13 @@ extern enum aarch64_code_model aarch64_cmodel;
 
 #define ENDIAN_LANE_N(mode, n)  \
   (BYTES_BIG_ENDIAN ? GET_MODE_NUNITS (mode) - 1 - n : n)
+
+/* Support for a configure-time default CPU, etc.  We currently support
+   --with-arch and --with-cpu.  Both are ignored if either is specified
+   explicitly on the command line at run time.  */
+#define OPTION_DEFAULT_SPECS				\
+  {"arch", "%{!march=*:%{!mcpu=*:-march=%(VALUE)}}" },	\
+  {"cpu",  "%{!march=*:%{!mcpu=*:-mcpu=%(VALUE)}}" },
 
 #define BIG_LITTLE_SPEC \
    " %{mcpu=*:-mcpu=%:rewrite_mcpu(%{mcpu=*:%*})}"
