@@ -352,7 +352,7 @@ rm -fr %{buildroot}
 %defattr(-,root,root)
 %{_bindir}/%{target}-cpp
 %{_bindir}/%{target}-gcc*
-%{_bindir}/%{target}-gcov
+%{_bindir}/%{target}-gcov*
 # FIXME: why one haves empty directory here?
 %{_libdir}/gcc/%{target}/%{gcc_version}/include-fixed/*
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgcc.a
