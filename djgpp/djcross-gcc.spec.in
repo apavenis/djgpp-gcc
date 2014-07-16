@@ -459,6 +459,13 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Wed Jul 16 2014 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-4.9.1
+
+* Tue Apr 22 2014 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-4.9.0
+- Use GMP-6.0.0
+
 * Fri Apr 11 2014 Andris Pavenis <andris.pavenis@iki.fi>
 - Update for upcomming gcc-4.9.0 (after SVN branching)
 
