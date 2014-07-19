@@ -196,7 +196,6 @@ toolexeclibgodebugdir = $(toolexeclibgodir)/debug
 toolexeclibgodebug_DATA = \
 	debug/dwarf.gox \
 	debug/elf.gox \
-	debug/goobj.gox \
 	debug/gosym.gox \
 	debug/macho.gox \
 	debug/pe.gox \
@@ -446,7 +445,6 @@ runtime_files = \
 	runtime/go-eface-compare.c \
 	runtime/go-eface-val-compare.c \
 	runtime/go-fieldtrack.c \
-	runtime/go-getgoroot.c \
 	runtime/go-int-array-to-string.c \
 	runtime/go-int-to-string.c \
 	runtime/go-interface-compare.c \
@@ -487,16 +485,13 @@ runtime_files = \
 	runtime/go-type-interface.c \
 	runtime/go-type-string.c \
 	runtime/go-typedesc-equal.c \
-	runtime/go-typestring.c \
 	runtime/go-unsafe-new.c \
 	runtime/go-unsafe-newarray.c \
 	runtime/go-unsafe-pointer.c \
 	runtime/go-unwind.c \
 	runtime/go-varargs.c \
-	runtime/chan.c \
-	runtime/cpuprof.c \
 	runtime/env_posix.c \
-	runtime/lfstack.c \
+	runtime/heapdump.c \
 	$(runtime_lock_files) \
 	runtime/mcache.c \
 	runtime/mcentral.c \
@@ -515,11 +510,15 @@ runtime_files = \
 	runtime/thread.c \
 	runtime/yield.c \
 	$(rtems_task_variable_add_file) \
+	chan.c \
+	cpuprof.c \
 	go-iface.c \
+	lfstack.c \
 	malloc.c \
 	map.c \
 	mprof.c \
 	netpoll.c \
+	rdebug.c \
 	reflect.c \
 	runtime1.c \
 	sema.c \
@@ -690,8 +689,8 @@ else
 if LIBGO_IS_SOLARIS
 go_net_cgo_file = go/net/cgo_linux.go
 go_net_sock_file = go/net/sock_solaris.go
-go_net_sockopt_file = go/net/sockopt_bsd.go
-go_net_sockoptip_file = go/net/sockoptip_bsd.go go/net/sockoptip_posix.go
+go_net_sockopt_file = go/net/sockopt_solaris.go
+go_net_sockoptip_file = go/net/sockoptip_stub.go
 else
 if LIBGO_IS_FREEBSD
 go_net_cgo_file = go/net/cgo_bsd.go
@@ -756,9 +755,13 @@ if LIBGO_IS_DARWIN
 go_net_tcpsockopt_file = go/net/tcpsockopt_darwin.go
 else
 if LIBGO_IS_SOLARIS
-go_net_tcpsockopt_file = go/net/tcpsockopt_darwin.go
+go_net_tcpsockopt_file = go/net/tcpsockopt_solaris.go
 else
-go_net_tcpsockopt_file =  go/net/tcpsockopt_unix.go
+if LIBGO_IS_DRAGONFLY
+go_net_tcpsockopt_file = go/net/tcpsockopt_dragonfly.go
+else
+go_net_tcpsockopt_file = go/net/tcpsockopt_unix.go
+endif
 endif
 endif
 endif
@@ -851,6 +854,16 @@ endif
 endif
 endif
 
+if LIBGO_IS_FREEBSD
+go_os_cloexec_file = go/os/sys_freebsd.go
+else
+if LIBGO_IS_DARWIN
+go_os_cloexec_file = go/os/sys_darwin.go
+else
+go_os_cloexec_file = go/os/sys_unix.go
+endif
+endif
+
 if LIBGO_IS_SOLARIS
 go_os_stat_file = go/os/stat_solaris.go
 else
@@ -909,6 +922,7 @@ go_os_files = \
 	$(go_os_stat_file) \
 	go/os/str.go \
 	$(go_os_sys_file) \
+	$(go_os_cloexec_file) \
 	go/os/types.go \
 	go/os/types_notwin.go
 
@@ -943,6 +957,7 @@ go_reflect_files = \
 
 go_regexp_files = \
 	go/regexp/exec.go \
+	go/regexp/onepass.go \
 	go/regexp/regexp.go
 
 go_net_rpc_files = \
@@ -1215,8 +1230,6 @@ go_debug_dwarf_files = \
 go_debug_elf_files = \
 	go/debug/elf/elf.go \
 	go/debug/elf/file.go
-go_debug_goobj_files = \
-	go/debug/goobj/read.go
 go_debug_gosym_files = \
 	go/debug/gosym/pclntab.go \
 	go/debug/gosym/symtab.go
@@ -1745,7 +1758,9 @@ go_syscall_c_files = \
 
 go_syscall_test_files = \
 	$(syscall_creds_test_file) \
-	go/syscall/passfd_test.go
+	go/syscall/mmap_unix_test.go \
+	go/syscall/syscall_test.go \
+	go/syscall/syscall_unix_test.go
 
 libcalls.go: s-libcalls; @true
 s-libcalls: libcalls-list go/syscall/mksyscall.awk $(go_base_syscall_files)
@@ -1880,7 +1895,6 @@ libgo_go_objs = \
 	database/sql/driver.lo \
 	debug/dwarf.lo \
 	debug/elf.lo \
-	debug/goobj.lo \
 	debug/gosym.lo \
 	debug/macho.lo \
 	debug/pe.lo \
@@ -2611,15 +2625,6 @@ debug/elf.lo: $(go_debug_elf_files)
 debug/elf/check: $(CHECK_DEPS)
 	@$(CHECK)
 .PHONY: debug/elf/check
-
-@go_include@ debug/goobj.lo.dep
-debug/goobj.lo.dep: $(go_debug_goobj_files)
-	$(BUILDDEPS)
-debug/goobj.lo: $(go_debug_goobj_files)
-	$(BUILDPACKAGE)
-debug/goobj/check: $(CHECK_DEPS)
-	@$(CHECK)
-.PHONY: debug/goobj/check
 
 @go_include@ debug/gosym.lo.dep
 debug/gosym.lo.dep: $(go_debug_gosym_files)
@@ -3447,8 +3452,6 @@ database/sql/driver.gox: database/sql/driver.lo
 debug/dwarf.gox: debug/dwarf.lo
 	$(BUILDGOX)
 debug/elf.gox: debug/elf.lo
-	$(BUILDGOX)
-debug/goobj.gox: debug/goobj.lo
 	$(BUILDGOX)
 debug/gosym.gox: debug/gosym.lo
 	$(BUILDGOX)
