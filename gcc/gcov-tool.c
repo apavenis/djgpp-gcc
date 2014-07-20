@@ -51,11 +51,18 @@ static bool verbose;
 
 /* Remove file NAME if it has a gcda suffix. */
 
+#ifdef __DJGPP__
+static int
+unlink_gcda_file (const char *name,
+                  struct stat *status ATTRIBUTE_UNUSED,
+                  int type ATTRIBUTE_UNUSED)
+#else
 static int
 unlink_gcda_file (const char *name,
                   const struct stat *status ATTRIBUTE_UNUSED,
                   int type ATTRIBUTE_UNUSED,
                   struct FTW *ftwbuf ATTRIBUTE_UNUSED)
+#endif
 {
   int ret = 0;
   int len = strlen (name);
@@ -75,7 +82,11 @@ unlink_gcda_file (const char *name,
 static int
 unlink_profile_dir (const char *path)
 {
+#ifdef __DJGPP__
+    return ftw(path, unlink_gcda_file, 64);
+#else
     return nftw(path, unlink_gcda_file, 64, FTW_DEPTH | FTW_PHYS);
+#endif
 }
 
 /* Output GCOV_INFO lists PROFILE to directory OUT. Note that

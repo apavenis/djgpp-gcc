@@ -390,7 +390,11 @@ read_gcda_file (const char *filename)
 
 static int
 ftw_read_file (const char *filename,
+#ifdef __DJGPP__
+               struct stat *status ATTRIBUTE_UNUSED,
+#else
                const struct stat *status ATTRIBUTE_UNUSED,
+#endif
                int type)
 {
   int filename_len;
