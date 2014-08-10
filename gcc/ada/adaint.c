@@ -177,39 +177,6 @@ UINT CurrentCCSEncoding;
 
 #if defined(__DJGPP__) || defined (_WIN32)
 
-/* descrip.h doesn't have everything ... */
-typedef struct fibdef* __fibdef_ptr32 __attribute__ (( mode (SI) ));
-struct dsc$descriptor_fib
-{
-  unsigned int fib$l_len;
-  __fibdef_ptr32 fib$l_addr;
-};
-
-/* I/O Status Block.  */
-struct IOSB
-{
-  unsigned short status, count;
-  unsigned int devdep;
-};
-
-static char *tryfile;
-
-/* Variable length string.  */
-struct vstring
-{
-  short length;
-  char string[NAM$C_MAXRSS+1];
-};
-
-#define SYI$_ACTIVECPU_CNT 0x111e
-extern int LIB$GETSYI (int *, unsigned int *);
-extern unsigned int LIB$CALLG_64 (unsigned long long argument_list [],
-				  int (*user_procedure)(void));
-
-#else
-#include <utime.h>
-#endif
-
 #include <process.h>
 #include <dir.h>
 #include <windows.h>
@@ -463,7 +430,7 @@ __gnat_readlink (char *path ATTRIBUTE_UNUSED,
 #if defined (__DJGPP__) && (__DJGPP__>2 || (__DJGPP__==2 && __DJGPP_MINOR__>=4))
   /* Symbolic links are supported for DJGPP beginning with version 2.04pre */
   return readlink (path, buf, bufsiz);
-#if defined(__DJGPP__) || defined (_WIN32)		\
+#elif defined(__DJGPP__) || defined (_WIN32)		\
   || defined(__vxworks) || defined (__nucleus__) || defined (__PikeOS__)
   return -1;
 #else
@@ -482,7 +449,7 @@ __gnat_symlink (char *oldpath ATTRIBUTE_UNUSED,
 #if defined (__DJGPP__) && (__DJGPP__>2 || (__DJGPP__==2 && __DJGPP_MINOR__>=4))
   /* Symbolic links are supported for DJGPP beginning with version 2.04pre */
   return symlink (oldpath, newpath);
-#if defined(__DJGPP__) || defined (_WIN32) \
+#elif defined(__DJGPP__) || defined (_WIN32) \
   || defined(__vxworks) || defined (__nucleus__) || defined (__PikeOS__)
   return -1;
 #else
@@ -579,11 +546,7 @@ int
 __gnat_get_maximum_file_name_length (void)
 {
 #if defined(__DJGPP__)
-#if __DJGPP__ > 2 || (__DJGPP__ == 2 && __DJGPP_MINOR__ >= 4)
   return (_use_lfn(".")) ? -1 : 8;
-#else
-  return 8;
-#endif
 #else
   return -1;
 #endif
