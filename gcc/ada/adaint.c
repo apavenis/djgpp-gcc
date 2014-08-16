@@ -179,9 +179,13 @@ UINT CurrentCCSEncoding;
 
 #include <process.h>
 #include <dir.h>
+#if defined(__DJGPP__)
+#include <utime.h>
+#else
 #include <windows.h>
 #include <accctrl.h>
 #include <aclapi.h>
+#endif
 #undef DIR_SEPARATOR
 #define DIR_SEPARATOR '\\'
 
