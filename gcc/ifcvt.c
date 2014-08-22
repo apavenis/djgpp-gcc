@@ -476,10 +476,10 @@ cond_exec_process_if_block (ce_if_block * ce_info,
   rtx false_expr;		/* test for then block insns */
   int true_prob_val;		/* probability of else block */
   int false_prob_val;		/* probability of then block */
-  rtx then_last_head = NULL_RTX;	/* Last match at the head of THEN */
-  rtx else_last_head = NULL_RTX;	/* Last match at the head of ELSE */
-  rtx then_first_tail = NULL_RTX;	/* First match at the tail of THEN */
-  rtx else_first_tail = NULL_RTX;	/* First match at the tail of ELSE */
+  rtx_insn *then_last_head = NULL;	/* Last match at the head of THEN */
+  rtx_insn *else_last_head = NULL;	/* Last match at the head of ELSE */
+  rtx_insn *then_first_tail = NULL;	/* First match at the tail of THEN */
+  rtx_insn *else_first_tail = NULL;	/* First match at the tail of ELSE */
   int then_n_insns, else_n_insns, n_insns;
   enum rtx_code false_code;
   rtx note;
@@ -2618,7 +2618,7 @@ noce_process_if_block (struct noce_if_info *if_info)
 	  rtx note;
 
 	  if (else_bb && insn_b == BB_END (else_bb))
-	    BB_END (else_bb) = PREV_INSN (insn_b);
+	    SET_BB_END (else_bb) = PREV_INSN (insn_b);
 	  reorder_insns (insn_b, insn_b, PREV_INSN (jump));
 
 	  /* If there was a REG_EQUAL note, delete it since it may have been
@@ -4372,7 +4372,7 @@ dead_or_predicable (basic_block test_bb, basic_block merge_bb,
       rtx insn;
 
       if (end == BB_END (merge_bb))
-	BB_END (merge_bb) = PREV_INSN (head);
+	SET_BB_END (merge_bb) = PREV_INSN (head);
 
       /* PR 21767: when moving insns above a conditional branch, the REG_EQUAL
 	 notes being moved might become invalid.  */
