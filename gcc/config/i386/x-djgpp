@@ -38,7 +38,7 @@ BUILD_RTL += djgpp-stack-tools.o
 
 malloc.o: $(srcdir)/config/i386/nmalloc/nmalloc.c $(srcdir)/config/i386/nmalloc/memalign.c \
 		$(srcdir)/config/i386/nmalloc/sysquery.h
-	$(CC) -c -O2 -W -Wall -DMEMALIGN $< -o $@
+	$(CC) -c -O2 -Wextra -Wall -fno-builtin-malloc -DMEMALIGN $< -o $@
 
 djgpp-stack.o: $(srcdir)/config/i386/djgpp-stack.c
 	$(CC) -c -O2 -W -Wall $< -o $@
