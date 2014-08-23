@@ -1018,7 +1018,7 @@ void *ncalloc(size_t n, size_t s)
    size_t  sz;
 
    result = NULL;
-   if (!n || (((size_t)-1) / n) > s) {
+   if (n && s && (((size_t)-1) / n) > s) {
       sz = n * s;
       if ((result = nmalloc(sz))) memset(result, 0, sz);
       }
