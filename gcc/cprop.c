@@ -1285,7 +1285,7 @@ local_cprop_pass (void)
    but this would require some code reorganization.  */
 
 rtx
-fis_get_condition (rtx jump)
+fis_get_condition (rtx_insn *jump)
 {
   return get_condition (jump, NULL, false, true);
 }
@@ -1470,7 +1470,7 @@ find_bypass_set (int regno, int bb)
 static bool
 reg_killed_on_edge (const_rtx reg, const_edge e)
 {
-  rtx insn;
+  rtx_insn *insn;
 
   for (insn = e->insns.r; insn; insn = NEXT_INSN (insn))
     if (INSN_P (insn) && reg_set_p (reg, insn))
