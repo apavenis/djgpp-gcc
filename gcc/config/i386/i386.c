@@ -3975,6 +3975,13 @@ ix86_option_override_internal (bool main_args_p,
 	}
     }
 
+#ifndef NO_PROFILE_COUNTERS
+  if (flag_nop_mcount)
+    error ("-mnop-mcount is not compatible with this target");
+#endif
+  if (flag_nop_mcount && flag_pic)
+    error ("-mnop-mcount is not implemented for -fPIC");
+
   /* Accept -msseregparm only if at least SSE support is enabled.  */
   if (TARGET_SSEREGPARM_P (opts->x_target_flags)
       && ! TARGET_SSE_P (opts->x_ix86_isa_flags))
@@ -8992,7 +8999,7 @@ standard_sse_constant_p (rtx x)
    the constant X.  */
 
 const char *
-standard_sse_constant_opcode (rtx insn, rtx x)
+standard_sse_constant_opcode (rtx_insn *insn, rtx x)
 {
   switch (standard_sse_constant_p (x))
     {
@@ -16461,7 +16468,7 @@ ix86_emit_mode_set (int entity, int mode, int prev_mode ATTRIBUTE_UNUSED,
    operand may be [SDX]Fmode.  */
 
 const char *
-output_fix_trunc (rtx insn, rtx *operands, bool fisttp)
+output_fix_trunc (rtx_insn *insn, rtx *operands, bool fisttp)
 {
   int stack_top_dies = find_regno_note (insn, REG_DEAD, FIRST_STACK_REG) != 0;
   int dimode_p = GET_MODE (operands[0]) == DImode;
@@ -24865,9 +24872,7 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 		  rtx callarg2,
 		  rtx pop, bool sibcall)
 {
-  unsigned int const cregs_size
-    = ARRAY_SIZE (x86_64_ms_sysv_extra_clobbered_registers);
-  rtx vec[3 + cregs_size];
+  rtx vec[3];
   rtx use = NULL, call;
   unsigned int vec_len = 0;
 
@@ -24930,18 +24935,16 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
   if (TARGET_64BIT_MS_ABI
       && (!callarg2 || INTVAL (callarg2) != -2))
     {
-      unsigned i;
-
-      vec[vec_len++] = gen_rtx_UNSPEC (VOIDmode, gen_rtvec (1, const0_rtx),
-				       UNSPEC_MS_TO_SYSV_CALL);
+      int const cregs_size
+	= ARRAY_SIZE (x86_64_ms_sysv_extra_clobbered_registers);
+      int i;
 
       for (i = 0; i < cregs_size; i++)
 	{
 	  int regno = x86_64_ms_sysv_extra_clobbered_registers[i];
 	  enum machine_mode mode = SSE_REGNO_P (regno) ? TImode : DImode;
 
-	  vec[vec_len++]
-	    = gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (mode, regno));
+	  clobber_reg (&use, gen_rtx_REG (mode, regno));
 	}
     }
 
@@ -26374,7 +26377,7 @@ core2i7_dfa_post_advance_cycle (void)
   data->ifetch_block_n_insns = 0;
 }
 
-static int min_insn_size (rtx);
+static int min_insn_size (rtx_insn *);
 
 /* Filter out insns from ready_try that the core will not be able to issue
    on current cycle due to decoder.  */
@@ -26385,7 +26388,7 @@ core2i7_first_cycle_multipass_filter_ready_try
 {
   while (n_ready--)
     {
-      rtx insn;
+      rtx_insn *insn;
       int insn_size;
 
       if (ready_try[n_ready])
@@ -29965,8 +29968,8 @@ static const struct builtin_description bdesc_args[] =
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permv4df, "__builtin_ia32_permdf256", IX86_BUILTIN_VPERMDF256, UNKNOWN, (int) V4DF_FTYPE_V4DF_INT },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permv4di, "__builtin_ia32_permdi256", IX86_BUILTIN_VPERMDI256, UNKNOWN, (int) V4DI_FTYPE_V4DI_INT },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permv2ti, "__builtin_ia32_permti256", IX86_BUILTIN_VPERMTI256, UNKNOWN, (int) V4DI_FTYPE_V4DI_V4DI_INT },
-  { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_extracti128, "__builtin_ia32_extract128i256", IX86_BUILTIN_VEXTRACT128I256, UNKNOWN, (int) V2DI_FTYPE_V4DI_INT },
-  { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_inserti128, "__builtin_ia32_insert128i256", IX86_BUILTIN_VINSERT128I256, UNKNOWN, (int) V4DI_FTYPE_V4DI_V2DI_INT },
+  { OPTION_MASK_ISA_AVX2, CODE_FOR_avx_vextractf128v4di, "__builtin_ia32_extract128i256", IX86_BUILTIN_VEXTRACT128I256, UNKNOWN, (int) V2DI_FTYPE_V4DI_INT },
+  { OPTION_MASK_ISA_AVX2, CODE_FOR_avx_vinsertf128v4di, "__builtin_ia32_insert128i256", IX86_BUILTIN_VINSERT128I256, UNKNOWN, (int) V4DI_FTYPE_V4DI_V2DI_INT },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_ashlvv4di, "__builtin_ia32_psllv4di", IX86_BUILTIN_PSLLVV4DI, UNKNOWN, (int) V4DI_FTYPE_V4DI_V4DI },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_ashlvv2di, "__builtin_ia32_psllv2di", IX86_BUILTIN_PSLLVV2DI, UNKNOWN, (int) V2DI_FTYPE_V2DI_V2DI },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_ashlvv8si, "__builtin_ia32_psllv8si", IX86_BUILTIN_PSLLVV8SI, UNKNOWN, (int) V8SI_FTYPE_V8SI_V8SI },
@@ -30250,7 +30253,7 @@ static const struct builtin_description bdesc_round_args[] =
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_floatv16siv16sf2_mask_round, "__builtin_ia32_cvtdq2ps512_mask", IX86_BUILTIN_CVTDQ2PS512, UNKNOWN, (int) V16SF_FTYPE_V16SI_V16SF_HI_INT },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_cvtpd2dq512_mask_round, "__builtin_ia32_cvtpd2dq512_mask", IX86_BUILTIN_CVTPD2DQ512, UNKNOWN, (int) V8SI_FTYPE_V8DF_V8SI_QI_INT },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_cvtpd2ps512_mask_round,  "__builtin_ia32_cvtpd2ps512_mask", IX86_BUILTIN_CVTPD2PS512, UNKNOWN, (int) V8SF_FTYPE_V8DF_V8SF_QI_INT },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_ufix_notruncv8dfv8si_mask_round, "__builtin_ia32_cvtpd2udq512_mask", IX86_BUILTIN_CVTPD2UDQ512, UNKNOWN, (int) V8SI_FTYPE_V8DF_V8SI_QI_INT },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_ufix_notruncv8dfv8si2_mask_round, "__builtin_ia32_cvtpd2udq512_mask", IX86_BUILTIN_CVTPD2UDQ512, UNKNOWN, (int) V8SI_FTYPE_V8DF_V8SI_QI_INT },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_vcvtph2ps512_mask_round,  "__builtin_ia32_vcvtph2ps512_mask", IX86_BUILTIN_CVTPH2PS512, UNKNOWN, (int) V16SF_FTYPE_V16HI_V16SF_HI_INT },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_fix_notruncv16sfv16si_mask_round, "__builtin_ia32_cvtps2dq512_mask", IX86_BUILTIN_CVTPS2DQ512, UNKNOWN, (int) V16SI_FTYPE_V16SF_V16SI_HI_INT },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_cvtps2pd512_mask_round, "__builtin_ia32_cvtps2pd512_mask", IX86_BUILTIN_CVTPS2PD512, UNKNOWN, (int) V8DF_FTYPE_V8SF_V8DF_QI_INT },
@@ -34057,8 +34060,8 @@ ix86_expand_args_builtin (const struct builtin_description *d,
 	  if (!match)
 	    switch (icode)
 	      {
-	      case CODE_FOR_avx2_inserti128:
-	      case CODE_FOR_avx2_extracti128:
+	      case CODE_FOR_avx_vinsertf128v4di:
+	      case CODE_FOR_avx_vextractf128v4di:
 		error ("the last argument must be an 1-bit immediate");
 		return const0_rtx;
 
@@ -34111,6 +34114,12 @@ ix86_expand_args_builtin (const struct builtin_description *d,
 	      case CODE_FOR_avx512f_vinserti32x4_mask:
 	      case CODE_FOR_avx512f_vextractf32x4_mask:
 	      case CODE_FOR_avx512f_vextracti32x4_mask:
+	      case CODE_FOR_sse2_shufpd:
+	      case CODE_FOR_sse2_shufpd_mask:
+	      case CODE_FOR_avx512dq_shuf_f64x2_mask:
+	      case CODE_FOR_avx512dq_shuf_i64x2_mask:
+	      case CODE_FOR_avx512vl_shuf_i32x4_mask:
+	      case CODE_FOR_avx512vl_shuf_f32x4_mask:
 		error ("the last argument must be a 2-bit immediate");
 		return const0_rtx;
 
@@ -34124,6 +34133,12 @@ ix86_expand_args_builtin (const struct builtin_description *d,
 	      case CODE_FOR_avx512f_vinserti64x4_mask:
 	      case CODE_FOR_avx512f_vextractf64x4_mask:
 	      case CODE_FOR_avx512f_vextracti64x4_mask:
+	      case CODE_FOR_avx512dq_vinsertf32x8_mask:
+	      case CODE_FOR_avx512dq_vinserti32x8_mask:
+	      case CODE_FOR_avx512vl_vinsertv4df:
+	      case CODE_FOR_avx512vl_vinsertv4di:
+	      case CODE_FOR_avx512vl_vinsertv8sf:
+	      case CODE_FOR_avx512vl_vinsertv8si:
 		error ("the last argument must be a 1-bit immediate");
 		return const0_rtx;
 
@@ -37526,13 +37541,6 @@ ix86_cannot_change_mode_class (enum machine_mode from, enum machine_mode to,
 	 the vec_dupv4hi pattern.  */
       if (GET_MODE_SIZE (from) < 4)
 	return true;
-
-      /* Vector registers do not support subreg with nonzero offsets, which
-	 are otherwise valid for integer registers.  Since we can't see
-	 whether we have a nonzero offset from here, prohibit all
-         nonparadoxical subregs changing size.  */
-      if (GET_MODE_SIZE (to) < GET_MODE_SIZE (from))
-	return true;
     }
 
   return false;
@@ -39039,6 +39047,17 @@ x86_field_alignment (tree field, int computed)
   return computed;
 }
 
+/* Print call to TARGET to FILE.  */
+
+static void
+x86_print_call_or_nop (FILE *file, const char *target)
+{
+  if (flag_nop_mcount)
+    fprintf (file, "1:\tnopl 0x00(%%eax,%%eax,1)\n"); /* 5 byte nop.  */
+  else
+    fprintf (file, "1:\tcall\t%s\n", target);
+}
+
 /* Output assembler code to FILE to increment profiler label # LABELNO
    for profiling a function entry.  */
 void
@@ -39046,7 +39065,6 @@ x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
 {
   const char *mcount_name = (flag_fentry ? MCOUNT_NAME_BEFORE_PROLOGUE
 					 : MCOUNT_NAME);
-
   if (TARGET_64BIT)
     {
 #ifndef NO_PROFILE_COUNTERS
@@ -39054,9 +39072,9 @@ x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
 #endif
 
       if (!TARGET_PECOFF && flag_pic)
-	fprintf (file, "\tcall\t*%s@GOTPCREL(%%rip)\n", mcount_name);
+	fprintf (file, "1:\tcall\t*%s@GOTPCREL(%%rip)\n", mcount_name);
       else
-	fprintf (file, "\tcall\t%s\n", mcount_name);
+	x86_print_call_or_nop (file, mcount_name);
     }
   else if (flag_pic)
     {
@@ -39064,7 +39082,7 @@ x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
       fprintf (file, "\tleal\t%sP%d@GOTOFF(%%ebx),%%" PROFILE_COUNT_REGISTER "\n",
 	       LPREFIX, labelno);
 #endif
-      fprintf (file, "\tcall\t*%s@GOT(%%ebx)\n", mcount_name);
+      fprintf (file, "1:\tcall\t*%s@GOT(%%ebx)\n", mcount_name);
     }
   else
     {
@@ -39072,7 +39090,14 @@ x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
       fprintf (file, "\tmovl\t$%sP%d,%%" PROFILE_COUNT_REGISTER "\n",
 	       LPREFIX, labelno);
 #endif
-      fprintf (file, "\tcall\t%s\n", mcount_name);
+      x86_print_call_or_nop (file, mcount_name);
+    }
+
+  if (flag_record_mcount)
+    {
+      fprintf (file, "\t.section __mcount_loc, \"a\",@progbits\n");
+      fprintf (file, "\t.%s 1b\n", TARGET_64BIT ? "quad" : "long");
+      fprintf (file, "\t.previous\n");
     }
 }
 
@@ -39082,7 +39107,7 @@ x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
    99% of cases.  */
 
 static int
-min_insn_size (rtx insn)
+min_insn_size (rtx_insn *insn)
 {
   int l = 0, len;
 
@@ -40975,6 +41000,32 @@ ix86_expand_vector_extract (bool mmx_ok, rtx target, rtx vec, int elt)
 	  else
 	    emit_insn (gen_vec_extract_hi_v4di (tmp, vec));
 	  ix86_expand_vector_extract (false, target, tmp, elt & 1);
+	  return;
+	}
+      break;
+
+    case V32HImode:
+      if (TARGET_AVX512BW)
+	{
+	  tmp = gen_reg_rtx (V16HImode);
+	  if (elt < 16)
+	    emit_insn (gen_vec_extract_lo_v32hi (tmp, vec));
+	  else
+	    emit_insn (gen_vec_extract_hi_v32hi (tmp, vec));
+	  ix86_expand_vector_extract (false, target, tmp, elt & 15);
+	  return;
+	}
+      break;
+
+    case V64QImode:
+      if (TARGET_AVX512BW)
+	{
+	  tmp = gen_reg_rtx (V32QImode);
+	  if (elt < 32)
+	    emit_insn (gen_vec_extract_lo_v64qi (tmp, vec));
+	  else
+	    emit_insn (gen_vec_extract_hi_v64qi (tmp, vec));
+	  ix86_expand_vector_extract (false, target, tmp, elt & 31);
 	  return;
 	}
       break;
@@ -45836,7 +45887,7 @@ static dispatch_windows *dispatch_window_list1;
 /* Get dispatch group of insn.  */
 
 static enum dispatch_group
-get_mem_group (rtx insn)
+get_mem_group (rtx_insn *insn)
 {
   enum attr_memory memory;
 
@@ -45858,7 +45909,7 @@ get_mem_group (rtx insn)
 /* Return true if insn is a compare instruction.  */
 
 static bool
-is_cmp (rtx insn)
+is_cmp (rtx_insn *insn)
 {
   enum attr_type type;
 
@@ -46095,7 +46146,7 @@ has_immediate (rtx insn)
 /* Return single or double path for instructions.  */
 
 static enum insn_path
-get_insn_path (rtx insn)
+get_insn_path (rtx_insn *insn)
 {
   enum attr_amdfam10_decode path = get_attr_amdfam10_decode (insn);
 
@@ -46111,7 +46162,7 @@ get_insn_path (rtx insn)
 /* Return insn dispatch group.  */
 
 static enum dispatch_group
-get_insn_group (rtx insn)
+get_insn_group (rtx_insn *insn)
 {
   enum dispatch_group group = get_mem_group (insn);
   if (group)
@@ -46136,7 +46187,7 @@ get_insn_group (rtx insn)
    window WINDOW_LIST.  */
 
 static int
-count_num_restricted (rtx insn, dispatch_windows *window_list)
+count_num_restricted (rtx_insn *insn, dispatch_windows *window_list)
 {
   enum dispatch_group group = get_insn_group (insn);
   int imm_size;
@@ -46186,7 +46237,7 @@ count_num_restricted (rtx insn, dispatch_windows *window_list)
    last window scheduled.  */
 
 static bool
-fits_dispatch_window (rtx insn)
+fits_dispatch_window (rtx_insn *insn)
 {
   dispatch_windows *window_list = dispatch_window_list;
   dispatch_windows *window_list_next = dispatch_window_list->next;
@@ -46243,7 +46294,7 @@ fits_dispatch_window (rtx insn)
    dispatch window WINDOW_LIST.  */
 
 static void
-add_insn_window (rtx insn, dispatch_windows *window_list, int num_uops)
+add_insn_window (rtx_insn *insn, dispatch_windows *window_list, int num_uops)
 {
   int byte_len = min_insn_size (insn);
   int num_insn = window_list->num_insn;
@@ -46294,7 +46345,7 @@ add_insn_window (rtx insn, dispatch_windows *window_list, int num_uops)
    the window exceed allowable, it allocates a new window.  */
 
 static void
-add_to_dispatch_window (rtx insn)
+add_to_dispatch_window (rtx_insn *insn)
 {
   int byte_len;
   dispatch_windows *window_list;
@@ -46429,7 +46480,7 @@ debug_dispatch_window (int window_num)
 /* Print INSN dispatch information to FILE.  */
 
 DEBUG_FUNCTION static void
-debug_insn_dispatch_info_file (FILE *file, rtx insn)
+debug_insn_dispatch_info_file (FILE *file, rtx_insn *insn)
 {
   int byte_len;
   enum insn_path path;
