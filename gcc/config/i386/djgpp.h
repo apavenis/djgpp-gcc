@@ -154,11 +154,12 @@ along with GCC; see the file COPYING3.  If not see
 /* Default to pcc-struct-return.  */
 #define DEFAULT_PCC_STRUCT_RETURN 1
 
-/* Put all *tf routines in libgcc.  */
-#undef LIBGCC2_HAS_TF_MODE
-#define LIBGCC2_HAS_TF_MODE 1
-#define LIBGCC2_TF_CEXT q
-#define TF_SIZE 113
+//// One will perhaps have to recheck all as commented out macros are no more in use
+//// Put all *tf routines in libgcc.  */
+//#undef LIBGCC2_HAS_TF_MODE
+//#define LIBGCC2_HAS_TF_MODE 1
+//#define LIBGCC2_TF_CEXT q
+//#define TF_SIZE 113
 
 /* Ignore (with warning) -fPIC for DJGPP */
 #undef SUBTARGET_OVERRIDE_OPTIONS
@@ -184,3 +185,4 @@ along with GCC; see the file COPYING3.  If not see
 void
 i386_djgpp_asm_named_section(const char *name, unsigned int flags,
 			     tree decl);
+#define IX86_MAYBE_NO_LIBGCC_TFMODE

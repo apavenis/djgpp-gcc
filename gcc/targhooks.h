@@ -67,6 +67,7 @@ extern bool default_print_operand_punct_valid_p (unsigned char);
 extern tree default_mangle_assembler_name (const char *);
 
 extern bool default_scalar_mode_supported_p (enum machine_mode);
+extern bool default_libgcc_floating_mode_supported_p (enum machine_mode);
 extern bool targhook_words_big_endian (void);
 extern bool targhook_float_words_big_endian (void);
 extern bool default_float_exceptions_rounding_supported_p (void);
@@ -194,6 +195,7 @@ extern int default_label_align_max_skip (rtx);
 extern int default_jump_align_max_skip (rtx);
 extern section * default_function_section(tree decl, enum node_frequency freq,
 					  bool startup, bool exit);
+extern enum machine_mode default_dwarf_frame_reg_mode (int);
 extern enum machine_mode default_get_reg_raw_mode (int);
 extern bool default_keep_leaf_when_profiled ();
 
