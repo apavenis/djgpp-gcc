@@ -1,3 +1,73 @@
+2014-10-03  Yury Gribov  <y.gribov@samsung.com>
+
+	* asan.c (asan_finish_file): Disable __asan_init calls for KASan;
+	don't emit empty ctors.
+
+2014-10-03  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* convert.c (convert_to_integer): Do not introduce useless conversions
+	between integral types.
+
+2014-10-03  David Sherwood  <david.sherwood@arm.com>
+
+	* ira-int.h (ira_allocno): Mark hard_regno as signed.
+
+2014-10-03  Ilya Enkovich  <ilya.enkovich@intel.com>
+
+	* lra-constraints.c (inherit_in_ebb): Handle calls with
+	multiple return values.
+	* caller-save.c (save_call_clobbered_regs): Likewise.
+
+2014-10-03  Jakub Jelinek  <jakub@redhat.com>
+
+	* tree-vect-data-refs.c (vect_permute_load_chain,
+	vect_shift_permute_load_chain): Fix a typo in temporary var names,
+	suffle3 to shuffle3.
+
+	PR libgomp/61200
+	* omp-low.c (taskreg_contexts): New variable.
+	(scan_omp_parallel): Push newly created context into taskreg_contexts
+	vector and move record layout code to finish_taskreg_scan.
+	(scan_omp_task): Likewise.
+	(finish_taskreg_scan): New function.
+	(execute_lower_omp): Call finish_taskreg_scan on all taskreg_contexts
+	vector elements and release it.
+
+	PR target/62128
+	* config/i386/i386.c (expand_vec_perm_palignr): If op1, op0 order
+	of palignr arguments can't be used due to min 0 or max - min
+	too high, try also op0, op1 order of palignr arguments.
+
+2014-10-02  Jan Hubicka  <hubicka@ucw.cz>
+
+	* cgraph.h (ipa_polymorphic_call_context):
+	Turn bools into bitfields; add DYNAMIC; make MAKE_SPECULATIVE
+	private, add POSSIBLE_DYNAMIC_TYPE_CHANGE.
+	* ipa-polymorphic-call.c
+	(ipa_polymorphic_call_context::restrict_to_inner_class): Allow accesses
+	past end of dynamic types.
+	(ipa_polymorphic_call_context::stream_out,
+	speculative_outer_type): Stream dynamic flag.
+	(ipa_polymorphic_call_context::set_by_decl): Clear DYNAMIC.
+	(ipa_polymorphic_call_context::ipa_polymorphic_call_context):
+	Clear DYNAMIC.
+	(ipa_polymorphic_call_context::get_dynamic_type): Use DYNAMIC;
+	set it.
+	(ipa_polymorphic_call_context::combine_with): Propagate dynamic.
+	* ipa-prop.c (update_jump_functions_after_inlining,
+	try_make_edge_direct_virtual_call): Use possible_dynamic_type_change.
+
+2014-10-02  Teresa Johnson  <tejohnson@google.com>
+
+	* tree-ssa-threadupdate.c (freqs_to_counts_path): Scale frequencies
+	up when synthesizing counts to avoid rounding errors.
+
+2014-10-02  Teresa Johnson  <tejohnson@google.com>
+
+	PR middle-end/63422
+	* tree-ssa-threadupdate.c (freqs_to_counts_path): Remove
+	asserts to handle incoming insanities.
+
 2014-10-02  Martin Jambor  <mjambor@suse.cz>
 
 	PR tree-optimization/63375
