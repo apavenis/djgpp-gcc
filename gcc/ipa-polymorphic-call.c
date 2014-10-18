@@ -97,7 +97,7 @@ possible_placement_new (tree type, tree expected_type,
 	      || !tree_fits_shwi_p (TYPE_SIZE (type))
 	      || (cur_offset
 		  + (expected_type ? tree_to_uhwi (TYPE_SIZE (expected_type))
-		     : 1)
+		     : GET_MODE_BITSIZE (Pmode))
 		  <= tree_to_uhwi (TYPE_SIZE (type)))));
 }
 
@@ -278,6 +278,14 @@ ipa_polymorphic_call_context::restrict_to_inner_class (tree otr_type,
 	      pos = int_bit_position (fld);
 	      if (pos > (unsigned HOST_WIDE_INT)cur_offset)
 		continue;
+
+	      /* Do not consider vptr itself.  Not even for placement new.  */
+	      if (!pos && DECL_ARTIFICIAL (fld)
+		  && POINTER_TYPE_P (TREE_TYPE (fld))
+		  && TYPE_BINFO (type)
+		  && polymorphic_type_binfo_p (TYPE_BINFO (type)))
+		continue;
+
 	      if (!DECL_SIZE (fld) || !tree_fits_uhwi_p (DECL_SIZE (fld)))
 		goto no_useful_type_info;
 	      size = tree_to_uhwi (DECL_SIZE (fld));
@@ -475,6 +483,11 @@ contains_type_p (tree outer_type, HOST_WIDE_INT offset,
    (not dynamically allocated) and we want to disprove the fact
    that it may be in construction at invocation of CALL.
 
+   BASE represents memory location where instance is stored.
+   If BASE is NULL, it is assumed to be global memory.
+   OUTER_TYPE is known type of the instance or NULL if not
+   known.
+
    For the variable to be in construction we actually need to
    be in constructor of corresponding global variable or
    the inline stack of CALL must contain the constructor.
@@ -486,8 +499,9 @@ bool
 decl_maybe_in_construction_p (tree base, tree outer_type,
 			      gimple call, tree function)
 {
-  outer_type = TYPE_MAIN_VARIANT (outer_type);
-  gcc_assert (DECL_P (base));
+  if (outer_type)
+    outer_type = TYPE_MAIN_VARIANT (outer_type);
+  gcc_assert (!base || DECL_P (base));
 
   /* After inlining the code unification optimizations may invalidate
      inline stacks.  Also we need to give up on global variables after
@@ -498,7 +512,7 @@ decl_maybe_in_construction_p (tree base, tree outer_type,
 
   /* Pure functions can not do any changes on the dynamic type;
      that require writting to memory.  */
-  if (!auto_var_in_fn_p (base, function)
+  if ((!base || !auto_var_in_fn_p (base, function))
       && flags_from_decl_or_type (function) & (ECF_PURE | ECF_CONST))
     return false;
 
@@ -517,7 +531,7 @@ decl_maybe_in_construction_p (tree base, tree outer_type,
 	       argument (pointer to the instance).  */
 	    fn = DECL_ABSTRACT_ORIGIN (fn);
 	    if (!fn
-		|| !is_global_var (base)
+		|| (base && !is_global_var (base))
 	        || TREE_CODE (TREE_TYPE (fn)) != METHOD_TYPE
 		|| (!DECL_CXX_CONSTRUCTOR_P (fn)
 		    && !DECL_CXX_DESTRUCTOR_P (fn)))
@@ -526,17 +540,20 @@ decl_maybe_in_construction_p (tree base, tree outer_type,
 	if (flags_from_decl_or_type (fn) & (ECF_PURE | ECF_CONST))
 	  continue;
 
-	/* FIXME: this can go away once we have ODR types equivalency on
-	   LTO level.  */
-	if (in_lto_p && !polymorphic_type_binfo_p (TYPE_BINFO (outer_type)))
-	  return true;
 	tree type = TYPE_MAIN_VARIANT (method_class_type (TREE_TYPE (fn)));
-	if (types_same_for_odr (type, outer_type))
+
+	if (!outer_type || !types_odr_comparable (type, outer_type))
+	  {
+	    if (TREE_CODE (type) == RECORD_TYPE
+		&& TYPE_BINFO (type)
+		&& polymorphic_type_binfo_p (TYPE_BINFO (type)))
+	      return true;
+	  }
+ 	else if (types_same_for_odr (type, outer_type))
 	  return true;
       }
 
-  if (TREE_CODE (base) == VAR_DECL
-      && is_global_var (base))
+  if (!base || (TREE_CODE (base) == VAR_DECL && is_global_var (base)))
     {
       if (TREE_CODE (TREE_TYPE (function)) != METHOD_TYPE
 	  || (!DECL_CXX_CONSTRUCTOR_P (function)
@@ -553,12 +570,15 @@ decl_maybe_in_construction_p (tree base, tree outer_type,
 		  && !DECL_CXX_DESTRUCTOR_P (function)))
 	    return false;
 	}
-      /* FIXME: this can go away once we have ODR types equivalency on
-	 LTO level.  */
-      if (in_lto_p && !polymorphic_type_binfo_p (TYPE_BINFO (outer_type)))
-	return true;
       tree type = TYPE_MAIN_VARIANT (method_class_type (TREE_TYPE (function)));
-      if (types_same_for_odr (type, outer_type))
+      if (!outer_type || !types_odr_comparable (type, outer_type))
+	{
+	  if (TREE_CODE (type) == RECORD_TYPE
+	      && TYPE_BINFO (type)
+	      && polymorphic_type_binfo_p (TYPE_BINFO (type)))
+	    return true;
+	}
+      else if (types_same_for_odr (type, outer_type))
 	return true;
     }
   return false;
@@ -571,7 +591,7 @@ ipa_polymorphic_call_context::dump (FILE *f) const
 {
   fprintf (f, "    ");
   if (invalid)
-    fprintf (f, "Call is known to be undefined\n");
+    fprintf (f, "Call is known to be undefined");
   else
     {
       if (useless_p ())
@@ -739,22 +759,70 @@ ipa_polymorphic_call_context::set_by_invariant (tree cst,
 }
 
 /* See if OP is SSA name initialized as a copy or by single assignment.
-   If so, walk the SSA graph up.  */
+   If so, walk the SSA graph up.  Because simple PHI conditional is considered
+   copy, GLOBAL_VISITED may be used to avoid infinite loop walking the SSA
+   graph.  */
 
 static tree
-walk_ssa_copies (tree op)
+walk_ssa_copies (tree op, hash_set<tree> **global_visited = NULL)
 {
+  hash_set <tree> *visited = NULL;
   STRIP_NOPS (op);
   while (TREE_CODE (op) == SSA_NAME
 	 && !SSA_NAME_IS_DEFAULT_DEF (op)
 	 && SSA_NAME_DEF_STMT (op)
-	 && gimple_assign_single_p (SSA_NAME_DEF_STMT (op)))
+	 && (gimple_assign_single_p (SSA_NAME_DEF_STMT (op))
+	     || gimple_code (SSA_NAME_DEF_STMT (op)) == GIMPLE_PHI))
     {
-      if (gimple_assign_load_p (SSA_NAME_DEF_STMT (op)))
-	return op;
-      op = gimple_assign_rhs1 (SSA_NAME_DEF_STMT (op));
+      if (global_visited)
+	{
+	  if (!*global_visited)
+	    *global_visited = new hash_set<tree>;
+	  if ((*global_visited)->add (op))
+	    goto done;
+	}	
+      else
+	{
+	  if (!visited)
+	    visited = new hash_set<tree>;
+	  if (visited->add (op))
+	    goto done;
+	}
+      /* Special case
+	 if (ptr == 0)
+	   ptr = 0;
+	 else
+	   ptr = ptr.foo;
+	 This pattern is implicitly produced for casts to non-primary
+	 bases.  When doing context analysis, we do not really care
+	 about the case pointer is NULL, becuase the call will be
+	 undefined anyway.  */
+      if (gimple_code (SSA_NAME_DEF_STMT (op)) == GIMPLE_PHI)
+	{
+	  gimple phi = SSA_NAME_DEF_STMT (op);
+
+	  if (gimple_phi_num_args (phi) > 2)
+	    goto done;
+	  if (gimple_phi_num_args (phi) == 1)
+	    op = gimple_phi_arg_def (phi, 0);
+	  else if (integer_zerop (gimple_phi_arg_def (phi, 0)))
+	    op = gimple_phi_arg_def (phi, 1);
+	  else if (integer_zerop (gimple_phi_arg_def (phi, 1)))
+	    op = gimple_phi_arg_def (phi, 0);
+	  else
+	    goto done;
+	}
+      else
+	{
+	  if (gimple_assign_load_p (SSA_NAME_DEF_STMT (op)))
+	    goto done;
+	  op = gimple_assign_rhs1 (SSA_NAME_DEF_STMT (op));
+	}
       STRIP_NOPS (op);
     }
+done:
+  if (visited)
+    delete (visited);
   return op;
 }
 
@@ -782,6 +850,7 @@ ipa_polymorphic_call_context::ipa_polymorphic_call_context (tree fndecl,
 {
   tree otr_type = NULL;
   tree base_pointer;
+  hash_set <tree> *visited = NULL;
 
   if (TREE_CODE (ref) == OBJ_TYPE_REF)
     {
@@ -797,9 +866,9 @@ ipa_polymorphic_call_context::ipa_polymorphic_call_context (tree fndecl,
   invalid = false;
 
   /* Walk SSA for outer object.  */
-  do 
+  while (true)
     {
-      base_pointer = walk_ssa_copies (base_pointer);
+      base_pointer = walk_ssa_copies (base_pointer, &visited);
       if (TREE_CODE (base_pointer) == ADDR_EXPR)
 	{
 	  HOST_WIDE_INT size, max_size;
@@ -808,8 +877,7 @@ ipa_polymorphic_call_context::ipa_polymorphic_call_context (tree fndecl,
 					       &offset2, &size, &max_size);
 
 	  if (max_size != -1 && max_size == size)
-	    combine_speculation_with (TYPE_MAIN_VARIANT
-					(TREE_TYPE (TREE_TYPE (base_pointer))),
+	    combine_speculation_with (TYPE_MAIN_VARIANT (TREE_TYPE (base)),
 				      offset + offset2,
 				      true,
 				      NULL /* Do not change outer type.  */);
@@ -832,6 +900,8 @@ ipa_polymorphic_call_context::ipa_polymorphic_call_context (tree fndecl,
 		 is known.  */
 	      else if (DECL_P (base))
 		{
+		  if (visited)
+		    delete (visited);
 		  /* Only type inconsistent programs can have otr_type that is
 		     not part of outer type.  */
 		  if (otr_type
@@ -870,7 +940,9 @@ ipa_polymorphic_call_context::ipa_polymorphic_call_context (tree fndecl,
       else
 	break;
     }
-  while (true);
+
+  if (visited)
+    delete (visited);
 
   /* Try to determine type of the outer object.  */
   if (TREE_CODE (base_pointer) == SSA_NAME
@@ -1068,7 +1140,8 @@ noncall_stmt_may_be_vtbl_ptr_store (gimple stmt)
 
 /* If STMT can be proved to be an assignment to the virtual method table
    pointer of ANALYZED_OBJ and the type associated with the new table
-   identified, return the type.  Otherwise return NULL_TREE.  */
+   identified, return the type.  Otherwise return NULL_TREE if type changes
+   in unknown way or ERROR_MARK_NODE if type is unchanged.  */
 
 static tree
 extr_type_from_vtbl_ptr_store (gimple stmt, struct type_change_info *tci,
@@ -1095,15 +1168,6 @@ extr_type_from_vtbl_ptr_store (gimple stmt, struct type_change_info *tci,
   else
     {
       base = get_ref_base_and_extent (lhs, &offset, &size, &max_size);
-      if (offset != tci->offset
-	  || size != POINTER_SIZE
-	  || max_size != POINTER_SIZE)
-	{
-	  if (dump_file)
-	    fprintf (dump_file, "    wrong offset %i!=%i or size %i\n",
-		     (int)offset, (int)tci->offset, (int)size);
-	  return NULL_TREE;
-	}
       if (DECL_P (tci->instance))
 	{
 	  if (base != tci->instance)
@@ -1121,18 +1185,34 @@ extr_type_from_vtbl_ptr_store (gimple stmt, struct type_change_info *tci,
 	}
       else if (TREE_CODE (base) == MEM_REF)
 	{
-	  if (!operand_equal_p (tci->instance, TREE_OPERAND (base, 0), 0)
-	      || !integer_zerop (TREE_OPERAND (base, 1)))
+	  if (!operand_equal_p (tci->instance, TREE_OPERAND (base, 0), 0))
 	    {
 	      if (dump_file)
 		{
 		  fprintf (dump_file, "    base mem ref:");
 		  print_generic_expr (dump_file, base, TDF_SLIM);
-		  fprintf (dump_file, " has nonzero offset or does not match instance:");
+		  fprintf (dump_file, " does not match instance:");
 		  print_generic_expr (dump_file, tci->instance, TDF_SLIM);
 		  fprintf (dump_file, "\n");
 		}
 	      return NULL_TREE;
+	    }
+	  if (!integer_zerop (TREE_OPERAND (base, 1)))
+	    {
+	      if (!tree_fits_shwi_p (TREE_OPERAND (base, 1)))
+		{
+		  if (dump_file)
+		    {
+		      fprintf (dump_file, "    base mem ref:");
+		      print_generic_expr (dump_file, base, TDF_SLIM);
+		      fprintf (dump_file, " has non-representable offset:");
+		      print_generic_expr (dump_file, tci->instance, TDF_SLIM);
+		      fprintf (dump_file, "\n");
+		    }
+		  return NULL_TREE;
+		}
+	      else
+	        offset += tree_to_shwi (TREE_OPERAND (base, 1)) * BITS_PER_UNIT;
 	    }
 	}
       else if (!operand_equal_p (tci->instance, base, 0)
@@ -1146,7 +1226,19 @@ extr_type_from_vtbl_ptr_store (gimple stmt, struct type_change_info *tci,
 	      print_generic_expr (dump_file, tci->instance, TDF_SLIM);
 	      fprintf (dump_file, " with offset %i\n", (int)tci->offset);
 	    }
-	  return NULL_TREE;
+	  return tci->offset > GET_MODE_BITSIZE (Pmode) ? error_mark_node : NULL_TREE;
+	}
+      if (offset != tci->offset
+	  || size != POINTER_SIZE
+	  || max_size != POINTER_SIZE)
+	{
+	  if (dump_file)
+	    fprintf (dump_file, "    wrong offset %i!=%i or size %i\n",
+		     (int)offset, (int)tci->offset, (int)size);
+	  return offset + GET_MODE_BITSIZE (Pmode) <= tci->offset
+	         || (max_size != -1
+		     && tci->offset + GET_MODE_BITSIZE (Pmode) > offset + max_size)
+		 ? error_mark_node : NULL;
 	}
     }
 
@@ -1332,6 +1424,8 @@ check_stmt_for_type_change (ao_ref *ao ATTRIBUTE_UNUSED, tree vdef, void *data)
 	}
 
       type = extr_type_from_vtbl_ptr_store (stmt, tci, &offset);
+      if (type == error_mark_node)
+	return false;
       gcc_assert (!type || TYPE_MAIN_VARIANT (type) == type);
       if (!type)
 	{
@@ -1360,6 +1454,8 @@ check_stmt_for_type_change (ao_ref *ao ATTRIBUTE_UNUSED, tree vdef, void *data)
    is set), try to walk memory writes and find the actual construction of the
    instance.
 
+   Return true if memory is unchanged from function entry.
+
    We do not include this analysis in the context analysis itself, because
    it needs memory SSA to be fully built and the walk may be expensive.
    So it is not suitable for use withing fold_stmt and similar uses.  */
@@ -1379,12 +1475,13 @@ ipa_polymorphic_call_context::get_dynamic_type (tree instance,
      This is because we do not update INSTANCE when walking inwards.  */
   HOST_WIDE_INT instance_offset = offset;
 
-  otr_type = TYPE_MAIN_VARIANT (otr_type);
+  if (otr_type)
+    otr_type = TYPE_MAIN_VARIANT (otr_type);
 
   /* Walk into inner type. This may clear maybe_derived_type and save us
      from useless work.  It also makes later comparsions with static type
      easier.  */
-  if (outer_type)
+  if (outer_type && otr_type)
     {
       if (!restrict_to_inner_class (otr_type))
         return false;
@@ -1473,8 +1570,9 @@ ipa_polymorphic_call_context::get_dynamic_type (tree instance,
   /* We look for vtbl pointer read.  */
   ao.size = POINTER_SIZE;
   ao.max_size = ao.size;
-  ao.ref_alias_set
-    = get_deref_alias_set (TREE_TYPE (BINFO_VTABLE (TYPE_BINFO (otr_type))));
+  if (otr_type)
+    ao.ref_alias_set
+      = get_deref_alias_set (TREE_TYPE (BINFO_VTABLE (TYPE_BINFO (otr_type))));
 
   if (dump_file)
     {
@@ -1602,7 +1700,7 @@ ipa_polymorphic_call_context::get_dynamic_type (tree instance,
 	       function_entry_reached ? " (multiple types encountered)" : "");
     }
 
-  return true;
+  return false;
 }
 
 /* See if speculation given by SPEC_OUTER_TYPE, SPEC_OFFSET and SPEC_MAYBE_DERIVED_TYPE
@@ -1958,7 +2056,7 @@ ipa_polymorphic_call_context::combine_with (ipa_polymorphic_call_context ctx,
 
   updated |= combine_speculation_with (ctx.speculative_outer_type,
 				       ctx.speculative_offset,
-				       ctx.maybe_in_construction,
+				       ctx.speculative_maybe_derived_type,
 				       otr_type);
 
   if (updated && dump_file && (dump_flags & TDF_DETAILS))
@@ -2009,10 +2107,11 @@ ipa_polymorphic_call_context::make_speculative (tree otr_type)
    type change is not happening.  */
 
 void
-ipa_polymorphic_call_context::possible_dynamic_type_change (tree otr_type)
+ipa_polymorphic_call_context::possible_dynamic_type_change (bool in_poly_cdtor,
+							    tree otr_type)
 {
   if (dynamic)
     make_speculative (otr_type);
-  else
+  else if (in_poly_cdtor)
     maybe_in_construction = true;
 }

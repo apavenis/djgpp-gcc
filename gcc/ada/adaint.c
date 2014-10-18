@@ -771,10 +771,6 @@ __gnat_rmdir (char *path)
 #define HAS_TARGET_WCHAR_T
 #endif
 
-#if defined(__DJGPP__) && (__DJGPP__>2 || (__DJGPP__==2 && __DJGPP_MINOR__>=4))
-#define HAS_TARGET_WCHAR_T
-#endif
-
 #ifdef HAS_TARGET_WCHAR_T
 #include <wchar.h>
 #endif
