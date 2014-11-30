@@ -55,6 +55,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tree.h"
+#include "predict.h"
+#include "vec.h"
+#include "hashtab.h"
+#include "hash-set.h"
+#include "machmode.h"
+#include "tm.h"
+#include "hard-reg-set.h"
+#include "input.h"
+#include "function.h"
+#include "dominance.h"
+#include "cfg.h"
 #include "basic-block.h"
 #include "tree-ssa-alias.h"
 #include "internal-fn.h"
@@ -71,6 +82,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-dfa.h"
 #include "tree-pass.h"
 #include "gimple-pretty-print.h"
+#include "hash-map.h"
+#include "plugin-api.h"
+#include "ipa-ref.h"
+#include "cgraph.h"
+#include "alloc-pool.h"
+#include "ipa-prop.h"
 #include "ipa-inline.h"
 #include "cfgloop.h"
 #include "except.h"
@@ -174,6 +191,18 @@ sem_item::dump (void)
     }
 }
 
+/* Return true if target supports alias symbols.  */
+
+bool
+sem_item::target_supports_symbol_aliases_p (void)
+{
+#if !defined (ASM_OUTPUT_DEF) || (!defined(ASM_OUTPUT_WEAK_ALIAS) && !defined (ASM_WEAKEN_DECL))
+  return false;
+#else
+  return true;
+#endif
+}
+
 /* Semantic function constructor that uses STACK as bitmap memory stack.  */
 
 sem_function::sem_function (bitmap_obstack *stack): sem_item (FUNC, stack),
@@ -199,7 +228,7 @@ sem_function::sem_function (cgraph_node *node, hashval_t hash,
 sem_function::~sem_function ()
 {
   for (unsigned i = 0; i < bb_sorted.length (); i++)
-    free (bb_sorted[i]);
+    delete (bb_sorted[i]);
 
   arg_types.release ();
   bb_sizes.release ();
@@ -381,7 +410,6 @@ sem_function::equals_private (sem_item *item,
   basic_block bb1, bb2;
   edge e1, e2;
   edge_iterator ei1, ei2;
-  int *bb_dict = NULL;
   bool result = true;
   tree arg1, arg2;
 
@@ -457,12 +485,11 @@ sem_function::equals_private (sem_item *item,
 
   dump_message ("All BBs are equal\n");
 
+  auto_vec <int> bb_dict;
+
   /* Basic block edges check.  */
   for (unsigned i = 0; i < bb_sorted.length (); ++i)
     {
-      bb_dict = XNEWVEC (int, bb_sorted.length () + 2);
-      memset (bb_dict, -1, (bb_sorted.length () + 2) * sizeof (int));
-
       bb1 = bb_sorted[i]->bb;
       bb2 = m_compared_func->bb_sorted[i]->bb;
 
@@ -562,7 +589,8 @@ sem_function::merge (sem_item *alias_item)
       redirect_callers
 	= (!original_discardable
 	   && alias->get_availability () > AVAIL_INTERPOSABLE
-	   && original->get_availability () > AVAIL_INTERPOSABLE);
+	   && original->get_availability () > AVAIL_INTERPOSABLE
+	   && !alias->instrumented_version);
     }
   else
     {
@@ -571,7 +599,8 @@ sem_function::merge (sem_item *alias_item)
       redirect_callers = false;
     }
 
-  if (create_alias && DECL_COMDAT_GROUP (alias->decl))
+  if (create_alias && (DECL_COMDAT_GROUP (alias->decl)
+		       || !sem_item::target_supports_symbol_aliases_p ()))
     {
       create_alias = false;
       create_thunk = true;
@@ -586,6 +615,14 @@ sem_function::merge (sem_item *alias_item)
 		  == DECL_COMDAT_GROUP (alias->decl)))))
     local_original
       = dyn_cast <cgraph_node *> (original->noninterposable_alias ());
+
+    if (!local_original)
+      {
+	if (dump_file)
+	  fprintf (dump_file, "Noninterposable alias cannot be created.\n\n");
+
+	return false;
+      }
 
   if (redirect_callers)
     {
@@ -631,7 +668,7 @@ sem_function::merge (sem_item *alias_item)
       alias->resolve_alias (original);
 
       /* Workaround for PR63566 that forces equal calling convention
-	 to be used.  */
+       to be used.  */
       alias->local.local = false;
       original->local.local = false;
 
@@ -667,7 +704,7 @@ void
 sem_function::init (void)
 {
   if (in_lto_p)
-    get_node ()->get_body ();
+    get_node ()->get_untransformed_body ();
 
   tree fndecl = node->decl;
   function *func = DECL_STRUCT_FUNCTION (fndecl);
@@ -844,8 +881,8 @@ sem_function::parse_tree_args (void)
 bool
 sem_function::compare_phi_node (basic_block bb1, basic_block bb2)
 {
-  gimple_stmt_iterator si1, si2;
-  gimple phi1, phi2;
+  gphi_iterator si1, si2;
+  gphi *phi1, *phi2;
   unsigned size1, size2, i;
   tree t1, t2;
   edge e1, e2;
@@ -866,8 +903,14 @@ sem_function::compare_phi_node (basic_block bb1, basic_block bb2)
       if (gsi_end_p (si1) || gsi_end_p (si2))
 	return return_false();
 
-      phi1 = gsi_stmt (si1);
-      phi2 = gsi_stmt (si2);
+      phi1 = si1.phi ();
+      phi2 = si2.phi ();
+
+      tree phi_result1 = gimple_phi_result (phi1);
+      tree phi_result2 = gimple_phi_result (phi2);
+
+      if (!m_checker->compare_operand (phi_result1, phi_result2))
+	return return_false_with_msg ("PHI results are different");
 
       size1 = gimple_phi_num_args (phi1);
       size2 = gimple_phi_num_args (phi2);
@@ -912,9 +955,15 @@ sem_function::icf_handled_component_p (tree t)
    corresponds to TARGET.  */
 
 bool
-sem_function::bb_dict_test (int* bb_dict, int source, int target)
+sem_function::bb_dict_test (auto_vec<int> bb_dict, int source, int target)
 {
-  if (bb_dict[source] == -1)
+  source++;
+  target++;
+
+  if (bb_dict.length () <= (unsigned)source)
+    bb_dict.safe_grow_cleared (source + 1);
+
+  if (bb_dict[source] == 0)
     {
       bb_dict[source] = target;
       return true;
@@ -1131,6 +1180,13 @@ sem_variable::merge (sem_item *alias_item)
 {
   gcc_assert (alias_item->type == VAR);
 
+  if (!sem_item::target_supports_symbol_aliases_p ())
+    {
+      if (dump_file)
+	fprintf (dump_file, "Symbol aliases are not supported by target\n\n");
+      return false;
+    }
+
   sem_variable *alias_var = static_cast<sem_variable *> (alias_item);
 
   varpool_node *original = get_node ();
@@ -1177,6 +1233,7 @@ sem_variable::merge (sem_item *alias_item)
       alias->analyzed = false;
 
       DECL_INITIAL (alias->decl) = NULL;
+      alias->need_bounds_init = false;
       alias->remove_all_references ();
 
       varpool_node::create_alias (alias_var->decl, decl);
@@ -1269,6 +1326,7 @@ sem_item_optimizer::~sem_item_optimizer ()
 	delete (*it)->classes[i];
 
       (*it)->classes.release ();
+      free (*it);
     }
 
   m_items.release ();
@@ -1736,7 +1794,7 @@ sem_item_optimizer::parse_nonsingleton_classes (void)
 
   if (dump_file)
     fprintf (dump_file, "Init called for %u items (%.2f%%).\n", init_called_count,
-	     100.0f * init_called_count / m_items.length ());
+	     m_items.length () ? 100.0f * init_called_count / m_items.length (): 0.0f);
 }
 
 /* Equality function for semantic items is used to subdivide existing
@@ -2196,14 +2254,15 @@ sem_item_optimizer::merge_classes (unsigned int prev_class_count)
       fprintf (dump_file, "Congruent classes before: %u, after: %u\n",
 	       prev_class_count, class_count);
       fprintf (dump_file, "Average class size before: %.2f, after: %.2f\n",
-	       1.0f * item_count / prev_class_count,
-	       1.0f * item_count / class_count);
+	       prev_class_count ? 1.0f * item_count / prev_class_count : 0.0f,
+	       class_count ? 1.0f * item_count / class_count : 0.0f);
       fprintf (dump_file, "Average non-singular class size: %.2f, count: %u\n",
-	       1.0f * non_singular_classes_sum / non_singular_classes_count,
+	       non_singular_classes_count ? 1.0f * non_singular_classes_sum /
+	       non_singular_classes_count : 0.0f,
 	       non_singular_classes_count);
       fprintf (dump_file, "Equal symbols: %u\n", equal_items);
       fprintf (dump_file, "Fraction of visited symbols: %.2f%%\n\n",
-	       100.0f * equal_items / item_count);
+	       item_count ? 100.0f * equal_items / item_count : 0.0f);
     }
 
   for (hash_table<congruence_class_group_hash>::iterator it = m_classes.begin ();
@@ -2320,6 +2379,7 @@ ipa_icf_driver (void)
   optimizer->unregister_hooks ();
 
   delete optimizer;
+  optimizer = NULL;
 
   return 0;
 }

@@ -47,6 +47,10 @@ The Free Software Foundation is independent of Sun Microsystems, Inc.  */
 #include "input.h"
 #include "function.h"
 #include "ggc.h"
+#include "hash-map.h"
+#include "is-a.h"
+#include "plugin-api.h"
+#include "ipa-ref.h"
 #include "cgraph.h"
 #include "tree-iterator.h"
 #include "target.h"
@@ -1081,7 +1085,6 @@ build_classdollar_field (tree type)
 			TYPE_QUAL_CONST)));
       TREE_STATIC (decl) = 1;
       TREE_CONSTANT (decl) = 1;
-      TREE_READONLY (decl) = 1;
       TREE_PUBLIC (decl) = 1;
       java_hide_decl (decl);
       DECL_IGNORED_P (decl) = 1;

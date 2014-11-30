@@ -2444,20 +2444,13 @@ typedef struct
 
   int warn_aliasing;
   int warn_ampersand;
-  int gfc_warn_conversion;
-  int warn_c_binding_type;
-  int warn_conversion_extra;
   int warn_function_elimination;
   int warn_implicit_interface;
   int warn_implicit_procedure;
   int warn_line_truncation;
   int warn_surprising;
-  int warn_tabs;
   int warn_underflow;
   int warn_intrinsic_shadow;
-  int warn_use_without_only;
-  int warn_intrinsics_std;
-  int warn_character_truncation;
   int warn_array_temp;
   int warn_align_commons;
   int warn_real_q_constant;
@@ -2691,21 +2684,22 @@ typedef struct gfc_error_buf
 } gfc_error_buf;
 
 void gfc_error_init_1 (void);
-void gfc_diagnostics_init(void);
+void gfc_diagnostics_init (void);
+void gfc_diagnostics_finish (void);
 void gfc_buffer_error (int);
 
 const char *gfc_print_wide_char (gfc_char_t);
 
 void gfc_warning (const char *, ...) ATTRIBUTE_GCC_GFC(1,2);
-void gfc_warning_now (const char *, ...) ATTRIBUTE_GCC_GFC(1,2);
-bool gfc_warning_cmdline (const char *gmsgid, ...) ATTRIBUTE_GCC_GFC(1,2);
-bool gfc_warning_cmdline (int opt, const char *gmsgid, ...) ATTRIBUTE_GCC_GFC(2,3);
+void gfc_warning_now_1 (const char *, ...) ATTRIBUTE_GCC_GFC(1,2);
+bool gfc_warning_now (const char *, ...) ATTRIBUTE_GCC_GFC(1,2);
+bool gfc_warning_now (int opt, const char *, ...) ATTRIBUTE_GCC_GFC(2,3);
 
 void gfc_clear_warning (void);
 void gfc_warning_check (void);
 
 void gfc_error (const char *, ...) ATTRIBUTE_GCC_GFC(1,2);
-void gfc_error_cmdline (const char *gmsgid, ...) ATTRIBUTE_GCC_GFC(1,2);
+void gfc_error_now_1 (const char *, ...) ATTRIBUTE_GCC_GFC(1,2);
 void gfc_error_now (const char *, ...) ATTRIBUTE_GCC_GFC(1,2);
 void gfc_fatal_error (const char *, ...) ATTRIBUTE_NORETURN ATTRIBUTE_GCC_GFC(1,2);
 void gfc_internal_error (const char *, ...) ATTRIBUTE_NORETURN ATTRIBUTE_GCC_GFC(1,2);

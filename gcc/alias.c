@@ -40,11 +40,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "flags.h"
 #include "diagnostic-core.h"
 #include "cselib.h"
-#include "splay-tree.h"
+#include "hash-map.h"
 #include "langhooks.h"
 #include "timevar.h"
 #include "dumpfile.h"
 #include "target.h"
+#include "dominance.h"
+#include "cfg.h"
+#include "cfganal.h"
+#include "predict.h"
+#include "basic-block.h"
 #include "df.h"
 #include "tree-ssa-alias.h"
 #include "internal-fn.h"
@@ -134,6 +139,32 @@ along with GCC; see the file COPYING3.  If not see
    However, this is no actual entry for alias set zero.  It is an
    error to attempt to explicitly construct a subset of zero.  */
 
+struct alias_set_traits : default_hashmap_traits
+{
+  template<typename T>
+  static bool
+  is_empty (T &e)
+  {
+    return e.m_key == INT_MIN;
+  }
+
+  template<typename  T>
+  static bool
+  is_deleted (T &e)
+  {
+    return e.m_key == (INT_MIN + 1);
+  }
+
+  template<typename T> static void mark_empty (T &e) { e.m_key = INT_MIN; }
+
+  template<typename T>
+  static void
+  mark_deleted (T &e)
+  {
+    e.m_key = INT_MIN + 1;
+  }
+};
+
 struct GTY(()) alias_set_entry_d {
   /* The alias set number, as stored in MEM_ALIAS_SET.  */
   alias_set_type alias_set;
@@ -149,22 +180,21 @@ struct GTY(()) alias_set_entry_d {
 
      continuing our example above, the children here will be all of
      `int', `double', `float', and `struct S'.  */
-  splay_tree GTY((param1_is (int), param2_is (int))) children;
+  hash_map<int, int, alias_set_traits> *children;
 };
 typedef struct alias_set_entry_d *alias_set_entry;
 
 static int rtx_equal_for_memref_p (const_rtx, const_rtx);
 static int memrefs_conflict_p (int, rtx, int, rtx, HOST_WIDE_INT);
 static void record_set (rtx, const_rtx, void *);
-static int base_alias_check (rtx, rtx, rtx, rtx, enum machine_mode,
-			     enum machine_mode);
+static int base_alias_check (rtx, rtx, rtx, rtx, machine_mode,
+			     machine_mode);
 static rtx find_base_value (rtx);
 static int mems_in_disjoint_alias_sets_p (const_rtx, const_rtx);
-static int insert_subset_children (splay_tree_node, void*);
 static alias_set_entry get_alias_set_entry (alias_set_type);
 static tree decl_for_component_ref (tree);
 static int write_dependence_p (const_rtx,
-			       const_rtx, enum machine_mode, rtx,
+			       const_rtx, machine_mode, rtx,
 			       bool, bool, bool);
 
 static void memory_modified_1 (rtx, const_rtx, void *);
@@ -387,28 +417,9 @@ get_alias_set_entry (alias_set_type alias_set)
 static inline int
 mems_in_disjoint_alias_sets_p (const_rtx mem1, const_rtx mem2)
 {
-/* Perform a basic sanity check.  Namely, that there are no alias sets
-   if we're not using strict aliasing.  This helps to catch bugs
-   whereby someone uses PUT_CODE, but doesn't clear MEM_ALIAS_SET, or
-   where a MEM is allocated in some way other than by the use of
-   gen_rtx_MEM, and the MEM_ALIAS_SET is not cleared.  If we begin to
-   use alias sets to indicate that spilled registers cannot alias each
-   other, we might need to remove this check.  */
-  gcc_assert (flag_strict_aliasing
-	      || (!MEM_ALIAS_SET (mem1) && !MEM_ALIAS_SET (mem2)));
-
-  return ! alias_sets_conflict_p (MEM_ALIAS_SET (mem1), MEM_ALIAS_SET (mem2));
-}
-
-/* Insert the NODE into the splay tree given by DATA.  Used by
-   record_alias_subset via splay_tree_foreach.  */
-
-static int
-insert_subset_children (splay_tree_node node, void *data)
-{
-  splay_tree_insert ((splay_tree) data, node->key, node->value);
-
-  return 0;
+  return (flag_strict_aliasing
+	  && ! alias_sets_conflict_p (MEM_ALIAS_SET (mem1),
+				      MEM_ALIAS_SET (mem2)));
 }
 
 /* Return true if the first alias set is a subset of the second.  */
@@ -426,8 +437,7 @@ alias_set_subset_of (alias_set_type set1, alias_set_type set2)
   ase = get_alias_set_entry (set2);
   if (ase != 0
       && (ase->has_zero_child
-	  || splay_tree_lookup (ase->children,
-			        (splay_tree_key) set1)))
+	  || ase->children->get (set1)))
     return true;
   return false;
 }
@@ -447,16 +457,14 @@ alias_sets_conflict_p (alias_set_type set1, alias_set_type set2)
   ase = get_alias_set_entry (set1);
   if (ase != 0
       && (ase->has_zero_child
-	  || splay_tree_lookup (ase->children,
-				(splay_tree_key) set2)))
+	  || ase->children->get (set2)))
     return 1;
 
   /* Now do the same, but with the alias sets reversed.  */
   ase = get_alias_set_entry (set2);
   if (ase != 0
       && (ase->has_zero_child
-	  || splay_tree_lookup (ase->children,
-				(splay_tree_key) set1)))
+	  || ase->children->get (set1)))
     return 1;
 
   /* The two alias sets are distinct and neither one is the
@@ -951,9 +959,7 @@ record_alias_subset (alias_set_type superset, alias_set_type subset)
       superset_entry = ggc_cleared_alloc<alias_set_entry_d> ();
       superset_entry->alias_set = superset;
       superset_entry->children
-	= splay_tree_new_ggc (splay_tree_compare_ints,
-			      ggc_alloc_splay_tree_scalar_scalar_splay_tree_s,
-			      ggc_alloc_splay_tree_scalar_scalar_splay_tree_node_s);
+	= hash_map<int, int, alias_set_traits>::create_ggc (64);
       superset_entry->has_zero_child = 0;
       (*alias_sets)[superset] = superset_entry;
     }
@@ -970,13 +976,14 @@ record_alias_subset (alias_set_type superset, alias_set_type subset)
 	  if (subset_entry->has_zero_child)
 	    superset_entry->has_zero_child = 1;
 
-	  splay_tree_foreach (subset_entry->children, insert_subset_children,
-			      superset_entry->children);
+	  hash_map<int, int, alias_set_traits>::iterator iter
+	    = subset_entry->children->begin ();
+	  for (; iter != subset_entry->children->end (); ++iter)
+	    superset_entry->children->put ((*iter).first, (*iter).second);
 	}
 
       /* Enter the SUBSET itself as a child of the SUPERSET.  */
-      splay_tree_insert (superset_entry->children,
-			 (splay_tree_key) subset, 0);
+      superset_entry->children->put (subset, 0);
     }
 }
 
@@ -1741,11 +1748,11 @@ find_base_term (rtx x)
 	if (REG_P (tmp1) && REG_POINTER (tmp1))
 	  ;
 	else if (REG_P (tmp2) && REG_POINTER (tmp2))
-	  {
-	    rtx tem = tmp1;
-	    tmp1 = tmp2;
-	    tmp2 = tem;
-	  }
+	  std::swap (tmp1, tmp2);
+	/* If second argument is constant which has base term, prefer it
+	   over variable tmp1.  See PR64025.  */
+	else if (CONSTANT_P (tmp2) && !CONST_INT_P (tmp2))
+	  std::swap (tmp1, tmp2);
 
 	/* Go ahead and find the base term for both operands.  If either base
 	   term is from a pointer or is a named object or a special address
@@ -1797,7 +1804,7 @@ may_be_sp_based_p (rtx x)
 
 static int
 base_alias_check (rtx x, rtx x_base, rtx y, rtx y_base,
-		  enum machine_mode x_mode, enum machine_mode y_mode)
+		  machine_mode x_mode, machine_mode y_mode)
 {
   /* If the address itself has no known base see if a known equivalent
      value has one.  If either address still has no known base, nothing
@@ -2441,7 +2448,7 @@ nonoverlapping_memrefs_p (const_rtx x, const_rtx y, bool loop_invariant)
    Returns 1 if there is a true dependence, 0 otherwise.  */
 
 static int
-true_dependence_1 (const_rtx mem, enum machine_mode mem_mode, rtx mem_addr,
+true_dependence_1 (const_rtx mem, machine_mode mem_mode, rtx mem_addr,
 		   const_rtx x, rtx x_addr, bool mem_canonicalized)
 {
   rtx true_mem_addr;
@@ -2523,7 +2530,7 @@ true_dependence_1 (const_rtx mem, enum machine_mode mem_mode, rtx mem_addr,
 /* True dependence: X is read after store in MEM takes place.  */
 
 int
-true_dependence (const_rtx mem, enum machine_mode mem_mode, const_rtx x)
+true_dependence (const_rtx mem, machine_mode mem_mode, const_rtx x)
 {
   return true_dependence_1 (mem, mem_mode, NULL_RTX,
 			    x, NULL_RTX, /*mem_canonicalized=*/false);
@@ -2536,7 +2543,7 @@ true_dependence (const_rtx mem, enum machine_mode mem_mode, const_rtx x)
    this value prior to canonicalizing.  */
 
 int
-canon_true_dependence (const_rtx mem, enum machine_mode mem_mode, rtx mem_addr,
+canon_true_dependence (const_rtx mem, machine_mode mem_mode, rtx mem_addr,
 		       const_rtx x, rtx x_addr)
 {
   return true_dependence_1 (mem, mem_mode, mem_addr,
@@ -2551,7 +2558,7 @@ canon_true_dependence (const_rtx mem, enum machine_mode mem_mode, rtx mem_addr,
 
 static int
 write_dependence_p (const_rtx mem,
-		    const_rtx x, enum machine_mode x_mode, rtx x_addr,
+		    const_rtx x, machine_mode x_mode, rtx x_addr,
 		    bool mem_canonicalized, bool x_canonicalized, bool writep)
 {
   rtx mem_addr;
@@ -2646,7 +2653,7 @@ anti_dependence (const_rtx mem, const_rtx x)
 
 int
 canon_anti_dependence (const_rtx mem, bool mem_canonicalized,
-		       const_rtx x, enum machine_mode x_mode, rtx x_addr)
+		       const_rtx x, machine_mode x_mode, rtx x_addr)
 {
   return write_dependence_p (mem, x, x_mode, x_addr,
 			     mem_canonicalized, /*x_canonicalized=*/true,

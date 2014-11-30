@@ -38,6 +38,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "input.h"
 #include "function.h"
 #include "expr.h"
+#include "insn-codes.h"
 #include "optabs.h"
 #include "libfuncs.h"
 #include "regs.h"
@@ -52,6 +53,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimplify.h"
 #include "tree-pass.h"
 #include "predict.h"
+#include "dominance.h"
+#include "cfg.h"
+#include "cfgrtl.h"
+#include "basic-block.h"
 #include "df.h"
 #include "params.h"
 #include "bb-reorder.h"
@@ -243,6 +248,7 @@ move_insn_for_shrink_wrap (basic_block bb, rtx_insn *insn,
 		case SUBREG:
 		case STRICT_LOW_PART:
 		case PC:
+		case LO_SUM:
 		  /* Ok.  Continue.  */
 		  break;
 
