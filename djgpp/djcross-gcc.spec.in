@@ -353,7 +353,8 @@ rm -fr %{buildroot}
 %{_bindir}/%{target}-cpp
 %{_bindir}/%{target}-gcc*
 %{_bindir}/%{target}-gcov*
-# FIXME: why one haves empty directory here?
+%{_libdir}/libcc1.la
+%{_libdir}/libcc1.so*
 %{_libdir}/gcc/%{target}/%{gcc_version}/include-fixed/*
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgcc.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgcov.a
@@ -383,6 +384,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdint-gcc.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/quadmath*.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/plugin/gtype.state
+%{_libdir}/gcc/%{target}/%{gcc_version}/plugin/libcc1plugin.*
 %{_libdir}/gcc/%{target}/%{gcc_version}/plugin/include/*
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/collect2
