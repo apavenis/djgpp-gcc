@@ -1048,7 +1048,7 @@ restart:
 	}
 
       /* Check to see if the continuation line was truncated.  */
-      if (gfc_option.warn_line_truncation && gfc_current_locus.lb != NULL
+      if (warn_line_truncation && gfc_current_locus.lb != NULL
 	  && gfc_current_locus.lb->truncated)
 	{
 	  int maxlen = gfc_option.free_line_length;
@@ -1056,7 +1056,8 @@ restart:
 
 	  gfc_current_locus.lb->truncated = 0;
 	  gfc_current_locus.nextc =  gfc_current_locus.lb->line + maxlen;
-	  gfc_warning_now_1 ("Line truncated at %L", &gfc_current_locus);
+	  gfc_warning_now (OPT_Wline_truncation,
+			   "Line truncated at %L", &gfc_current_locus);
 	  gfc_current_locus.nextc = current_nextc;
 	}
 
@@ -1154,8 +1155,9 @@ restart:
 	  if (in_string)
 	    {
 	      gfc_current_locus.nextc--;
-	      if (gfc_option.warn_ampersand && in_string == INSTRING_WARN)
-		gfc_warning ("Missing '&' in continued character "
+	      if (warn_ampersand && in_string == INSTRING_WARN)
+		gfc_warning (OPT_Wampersand, 
+			     "Missing %<&%> in continued character "
 			     "constant at %C");
 	    }
 	  /* Both !$omp and !$ -fopenmp continuation lines have & on the
@@ -1190,11 +1192,12 @@ restart:
 	goto done;
 
       /* Check to see if the continuation line was truncated.  */
-      if (gfc_option.warn_line_truncation && gfc_current_locus.lb != NULL
+      if (warn_line_truncation && gfc_current_locus.lb != NULL
 	  && gfc_current_locus.lb->truncated)
 	{
 	  gfc_current_locus.lb->truncated = 0;
-	  gfc_warning_now_1 ("Line truncated at %L", &gfc_current_locus);
+	  gfc_warning_now (OPT_Wline_truncation,
+			   "Line truncated at %L", &gfc_current_locus);
 	}
 
       prev_openmp_flag = openmp_flag;
@@ -2042,8 +2045,15 @@ load_file (const char *realfilename, const char *displayedname, bool initial)
       b = XCNEWVAR (gfc_linebuf, gfc_linebuf_header_size
 		    + (len + 1) * sizeof (gfc_char_t));
 
+
       b->location
-	= linemap_line_start (line_table, current_file->line++, 120);
+	= linemap_line_start (line_table, current_file->line++, len);
+      /* ??? We add the location for the maximum column possible here,
+	 because otherwise if the next call creates a new line-map, it
+	 will not reserve space for any offset.  */
+      if (len > 0)
+	linemap_position_for_column (line_table, len);
+
       b->file = current_file;
       b->truncated = trunc;
       wide_strcpy (b->line, line);

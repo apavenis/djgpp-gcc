@@ -546,8 +546,9 @@ create_var (gfc_expr * e)
       result->ref->u.ar.where = e->where;
       result->ref->u.ar.as = symbol->ts.type == BT_CLASS
 			     ? CLASS_DATA (symbol)->as : symbol->as;
-      if (gfc_option.warn_array_temp)
-	gfc_warning ("Creating array temporary at %L", &(e->where));
+      if (warn_array_temporaries)
+	gfc_warning (OPT_Warray_temporaries,
+		     "Creating array temporary at %L", &(e->where));
     }
 
   /* Generate the new assignment.  */
@@ -565,15 +566,15 @@ create_var (gfc_expr * e)
 /* Warn about function elimination.  */
 
 static void
-warn_function_elimination (gfc_expr *e)
+do_warn_function_elimination (gfc_expr *e)
 {
   if (e->expr_type != EXPR_FUNCTION)
     return;
   if (e->value.function.esym)
-    gfc_warning ("Removing call to function '%s' at %L",
+    gfc_warning ("Removing call to function %qs at %L",
 		 e->value.function.esym->name, &(e->where));
   else if (e->value.function.isym)
-    gfc_warning ("Removing call to function '%s' at %L",
+    gfc_warning ("Removing call to function %qs at %L",
 		 e->value.function.isym->name, &(e->where));
 }
 /* Callback function for the code walker for doing common function
@@ -618,8 +619,8 @@ cfe_expr_0 (gfc_expr **e, int *walk_subtrees,
 	      if (newvar == NULL)
 		newvar = create_var (*ei);
 
-	      if (gfc_option.warn_function_elimination)
-		warn_function_elimination (*ej);
+	      if (warn_function_elimination)
+		do_warn_function_elimination (*ej);
 
 	      free (*ej);
 	      *ej = gfc_copy_expr (newvar);

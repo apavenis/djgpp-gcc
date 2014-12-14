@@ -1,3 +1,21 @@
+2014-12-09  Michael Haubenwallner <michael.haubenwallner@ssi-schaefer.com>
+
+	* Makefile.in (with_aix_soname): Define.
+	* config/rs6000/t-slibgcc-aix: Act upon --with-aix-soname option.
+	* configure.ac: Accept --with-aix-soname=aix|svr4|both option.
+	* configure: Recreate.
+
+2014-12-05  Olivier Hainque  <hainque@adacore.com>
+
+	* unwind-dw2.c (DWARF_REG_TO_UNWIND_COLUMN): Remove default def,
+	now provided by defaults.h.
+
+2014-11-30  Oleg Endo  <olegendo@gcc.gnu.org>
+
+	PR target/55351
+	* config/sh/lib1funcs.S: Check value of __SHMEDIA__ instead of checking
+	whether it's defined.
+
 2014-11-27  Ilya Tocar  <ilya.tocar@intel.com>
 
 	* config/i386/cpuinfo.c (processor_features): Add FEATURE_AVX512F.

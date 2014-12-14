@@ -3039,7 +3039,7 @@ omp_reduction_init (tree clause, tree type)
       if (SCALAR_FLOAT_TYPE_P (type))
 	{
 	  REAL_VALUE_TYPE max, min;
-	  if (HONOR_INFINITIES (TYPE_MODE (type)))
+	  if (HONOR_INFINITIES (type))
 	    {
 	      real_inf (&max);
 	      real_arithmetic (&min, NEGATE_EXPR, &max, NULL);
@@ -3058,7 +3058,7 @@ omp_reduction_init (tree clause, tree type)
       if (SCALAR_FLOAT_TYPE_P (type))
 	{
 	  REAL_VALUE_TYPE max;
-	  if (HONOR_INFINITIES (TYPE_MODE (type)))
+	  if (HONOR_INFINITIES (type))
 	    real_inf (&max);
 	  else
 	    real_maxval (&max, 0, TYPE_MODE (type));
@@ -3635,7 +3635,7 @@ lower_rec_input_clauses (tree clauses, gimple_seq *ilist, gimple_seq *dlist,
 			  enum tree_code code = PLUS_EXPR;
 			  if (POINTER_TYPE_P (TREE_TYPE (new_var)))
 			    code = POINTER_PLUS_EXPR;
-			  g = gimple_build_assign_with_ops (code, iv, iv, t);
+			  g = gimple_build_assign (iv, code, iv, t);
 			  gsi_insert_before_without_update (&gsi, g,
 							    GSI_SAME_STMT);
 			  break;
@@ -3845,8 +3845,8 @@ lower_rec_input_clauses (tree clauses, gimple_seq *ilist, gimple_seq *dlist,
       OMP_CLAUSE__SIMDUID__DECL (c) = uid;
       OMP_CLAUSE_CHAIN (c) = gimple_omp_for_clauses (ctx->stmt);
       gimple_omp_for_set_clauses (ctx->stmt, c);
-      g = gimple_build_assign_with_ops (INTEGER_CST, lane,
-					build_int_cst (unsigned_type_node, 0));
+      g = gimple_build_assign (lane, INTEGER_CST,
+			       build_int_cst (unsigned_type_node, 0));
       gimple_seq_add_stmt (ilist, g);
       for (int i = 0; i < 2; i++)
 	if (llist[i])
@@ -3857,7 +3857,7 @@ lower_rec_input_clauses (tree clauses, gimple_seq *ilist, gimple_seq *dlist,
 	    gimple_seq *seq = i == 0 ? ilist : dlist;
 	    gimple_seq_add_stmt (seq, g);
 	    tree t = build_int_cst (unsigned_type_node, 0);
-	    g = gimple_build_assign_with_ops (INTEGER_CST, idx, t);
+	    g = gimple_build_assign (idx, INTEGER_CST, t);
 	    gimple_seq_add_stmt (seq, g);
 	    tree body = create_artificial_label (UNKNOWN_LOCATION);
 	    tree header = create_artificial_label (UNKNOWN_LOCATION);
@@ -3866,7 +3866,7 @@ lower_rec_input_clauses (tree clauses, gimple_seq *ilist, gimple_seq *dlist,
 	    gimple_seq_add_stmt (seq, gimple_build_label (body));
 	    gimple_seq_add_seq (seq, llist[i]);
 	    t = build_int_cst (unsigned_type_node, 1);
-	    g = gimple_build_assign_with_ops (PLUS_EXPR, idx, idx, t);
+	    g = gimple_build_assign (idx, PLUS_EXPR, idx, t);
 	    gimple_seq_add_stmt (seq, g);
 	    gimple_seq_add_stmt (seq, gimple_build_label (header));
 	    g = gimple_build_cond (LT_EXPR, idx, vf, body, end);
@@ -5856,7 +5856,7 @@ expand_omp_for_generic (struct omp_region *region,
       if (useless_type_conversion_p (TREE_TYPE (fd->loop.v), TREE_TYPE (iend)))
 	assign_stmt = gimple_build_assign (fd->loop.v, iend);
       else
-	assign_stmt = gimple_build_assign_with_ops (NOP_EXPR, fd->loop.v, iend);
+	assign_stmt = gimple_build_assign (fd->loop.v, NOP_EXPR, iend);
       gsi_insert_after (&gsi, assign_stmt, GSI_CONTINUE_LINKING);
     }
   if (fd->collapse > 1)
@@ -6206,8 +6206,7 @@ expand_omp_for_static_nochunk (struct omp_region *region,
   gsi_insert_before (&gsi, gimple_build_assign (tt, build_int_cst (itype, 0)),
 		     GSI_SAME_STMT);
   gassign *assign_stmt
-    = gimple_build_assign_with_ops (PLUS_EXPR, q, q,
-				    build_int_cst (itype, 1));
+    = gimple_build_assign (q, PLUS_EXPR, q, build_int_cst (itype, 1));
   gsi_insert_before (&gsi, assign_stmt, GSI_SAME_STMT);
 
   third_bb = split_block (second_bb, assign_stmt)->dest;
@@ -6276,7 +6275,7 @@ expand_omp_for_static_nochunk (struct omp_region *region,
       if (useless_type_conversion_p (TREE_TYPE (fd->loop.v), TREE_TYPE (e)))
 	assign_stmt = gimple_build_assign (fd->loop.v, e);
       else
-	assign_stmt = gimple_build_assign_with_ops (NOP_EXPR, fd->loop.v, e);
+	assign_stmt = gimple_build_assign (fd->loop.v, NOP_EXPR, e);
       gsi_insert_after (&gsi, assign_stmt, GSI_CONTINUE_LINKING);
     }
   if (fd->collapse > 1)
@@ -6666,7 +6665,7 @@ expand_omp_for_static_chunk (struct omp_region *region,
       if (useless_type_conversion_p (TREE_TYPE (fd->loop.v), TREE_TYPE (e)))
 	assign_stmt = gimple_build_assign (fd->loop.v, e);
       else
-	assign_stmt = gimple_build_assign_with_ops (NOP_EXPR, fd->loop.v, e);
+	assign_stmt = gimple_build_assign (fd->loop.v, NOP_EXPR, e);
       gsi_insert_after (&gsi, assign_stmt, GSI_CONTINUE_LINKING);
     }
   if (fd->collapse > 1)
@@ -6934,8 +6933,8 @@ expand_cilk_for (struct omp_region *region, struct omp_for_data *fd)
       gsi = gsi_last_bb (cont_bb);
       stmt = gsi_stmt (gsi);
       gcc_assert (gimple_code (stmt) == GIMPLE_OMP_CONTINUE);
-      stmt = gimple_build_assign_with_ops (PLUS_EXPR, ind_var, ind_var,
-					   build_one_cst (type));
+      stmt = gimple_build_assign (ind_var, PLUS_EXPR, ind_var,
+				  build_one_cst (type));
 
       /* Replace GIMPLE_OMP_CONTINUE.  */
       gsi_replace (&gsi, stmt, true);
@@ -11591,24 +11590,24 @@ simd_clone_adjust_return_type (struct cgraph_node *node)
   if (orig_rettype == void_type_node)
     return NULL_TREE;
   TREE_TYPE (fndecl) = build_distinct_type_copy (TREE_TYPE (fndecl));
-  if (INTEGRAL_TYPE_P (TREE_TYPE (TREE_TYPE (fndecl)))
-      || POINTER_TYPE_P (TREE_TYPE (TREE_TYPE (fndecl))))
+  t = TREE_TYPE (TREE_TYPE (fndecl));
+  if (INTEGRAL_TYPE_P (t) || POINTER_TYPE_P (t))
     veclen = node->simdclone->vecsize_int;
   else
     veclen = node->simdclone->vecsize_float;
-  veclen /= GET_MODE_BITSIZE (TYPE_MODE (TREE_TYPE (TREE_TYPE (fndecl))));
+  veclen /= GET_MODE_BITSIZE (TYPE_MODE (t));
   if (veclen > node->simdclone->simdlen)
     veclen = node->simdclone->simdlen;
+  if (POINTER_TYPE_P (t))
+    t = pointer_sized_int_node;
   if (veclen == node->simdclone->simdlen)
-    TREE_TYPE (TREE_TYPE (fndecl))
-      = build_vector_type (TREE_TYPE (TREE_TYPE (fndecl)),
-			   node->simdclone->simdlen);
+    t = build_vector_type (t, node->simdclone->simdlen);
   else
     {
-      t = build_vector_type (TREE_TYPE (TREE_TYPE (fndecl)), veclen);
+      t = build_vector_type (t, veclen);
       t = build_array_type_nelts (t, node->simdclone->simdlen / veclen);
-      TREE_TYPE (TREE_TYPE (fndecl)) = t;
     }
+  TREE_TYPE (TREE_TYPE (fndecl)) = t;
   if (!node->definition)
     return NULL_TREE;
 
@@ -11697,7 +11696,10 @@ simd_clone_adjust_argument_types (struct cgraph_node *node)
 	  if (veclen > node->simdclone->simdlen)
 	    veclen = node->simdclone->simdlen;
 	  adj.arg_prefix = "simd";
-	  adj.type = build_vector_type (parm_type, veclen);
+	  if (POINTER_TYPE_P (parm_type))
+	    adj.type = build_vector_type (pointer_sized_int_node, veclen);
+	  else
+	    adj.type = build_vector_type (parm_type, veclen);
 	  node->simdclone->args[i].vector_type = adj.type;
 	  for (j = veclen; j < node->simdclone->simdlen; j += veclen)
 	    {
@@ -11738,7 +11740,10 @@ simd_clone_adjust_argument_types (struct cgraph_node *node)
       veclen /= GET_MODE_BITSIZE (TYPE_MODE (base_type));
       if (veclen > node->simdclone->simdlen)
 	veclen = node->simdclone->simdlen;
-      adj.type = build_vector_type (base_type, veclen);
+      if (POINTER_TYPE_P (base_type))
+	adj.type = build_vector_type (pointer_sized_int_node, veclen);
+      else
+	adj.type = build_vector_type (base_type, veclen);
       adjustments.safe_push (adj);
 
       for (j = veclen; j < node->simdclone->simdlen; j += veclen)
@@ -12121,9 +12126,8 @@ simd_clone_adjust (struct cgraph_node *node)
   edge e = make_edge (incr_bb, EXIT_BLOCK_PTR_FOR_FN (cfun), 0);
   e->probability = REG_BR_PROB_BASE;
   gsi = gsi_last_bb (incr_bb);
-  gimple g = gimple_build_assign_with_ops (PLUS_EXPR, iter2, iter1,
-					   build_int_cst (unsigned_type_node,
-							  1));
+  gimple g = gimple_build_assign (iter2, PLUS_EXPR, iter1,
+				  build_int_cst (unsigned_type_node, 1));
   gsi_insert_after (&gsi, g, GSI_CONTINUE_LINKING);
 
   /* Mostly annotate the loop for the vectorizer (the rest is done below).  */
@@ -12239,8 +12243,7 @@ simd_clone_adjust (struct cgraph_node *node)
 	    if (need_cvt)
 	      {
 		t = make_ssa_name (orig_arg);
-		g = gimple_build_assign_with_ops (NOP_EXPR, t,
-						  gimple_call_lhs (g));
+		g = gimple_build_assign (t, NOP_EXPR, gimple_call_lhs (g));
 		gimple_seq_add_stmt_without_update (&seq, g);
 	      }
 	    gsi_insert_seq_on_edge_immediate
@@ -12284,7 +12287,7 @@ simd_clone_adjust (struct cgraph_node *node)
 			   ? TREE_TYPE (orig_arg) : sizetype;
 	    tree addcst
 	      = build_int_cst (addtype, node->simdclone->args[i].linear_step);
-	    g = gimple_build_assign_with_ops (code, iter2, iter1, addcst);
+	    g = gimple_build_assign (iter2, code, iter1, addcst);
 	    gsi = gsi_last_bb (incr_bb);
 	    gsi_insert_before (&gsi, g, GSI_SAME_STMT);
 
