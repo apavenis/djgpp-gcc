@@ -224,7 +224,7 @@ make install
 cd $RPM_BUILD_DIR/%{name}-%{version}/mpfr-%{mpfr_version}
 ./configure --build=${RPM_ARCH}-${RPM_OS} \
             --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
-            --with-gmp-build=$RPM_BUILD_DIR/%{name}-%{version}/gmp-%{gmp_version} \
+            --with-gmp=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
             --enable-static --disable-shared
 make %{_smp_mflags} all
 make %{_smp_mflags} check
@@ -457,6 +457,13 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sun Dec 21 2014 Andris Pavenis <andris.pavenis@iki.fi> 4.8.4-1ap
+- Update to GCC-4.8.4
+
+* Thu May 22 2014 Andris Pavenis <andris.pavenis@iki.fi> 4.8.3-1ap
+- Update to GCC-4.8.3
+- Use GMP-6.0.0
+
 * Mon Jan  6 2014 Andris Pavenis <andris.pavenis@iki.fi> 4.8.2-3ap
 - Backport changes to enable LTO
 - Disable some optional configuration options for temporary native
