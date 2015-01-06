@@ -1,5 +1,5 @@
 /* CPP Library. (Directive handling.)
-   Copyright (C) 1986-2014 Free Software Foundation, Inc.
+   Copyright (C) 1986-2015 Free Software Foundation, Inc.
    Contributed by Per Bothner, 1994-95.
    Based on CCCP program by Paul Rubin, June 1986
    Adapted to ANSI C, Richard Stallman, Jan 1987
@@ -571,10 +571,6 @@ lex_macro_node (cpp_reader *pfile, bool is_def_or_undef)
 	     || node == pfile->spec_nodes.n__has_include_next__))
 	cpp_error (pfile, CPP_DL_ERROR,
 		   "\"__has_include__\" cannot be used as a macro name");
-      else if (is_def_or_undef
-	    && node == pfile->spec_nodes.n__has_attribute__)
-	cpp_error (pfile, CPP_DL_ERROR,
-		   "\"__has_attribute__\" cannot be used as a macro name");
       else if (! (node->flags & NODE_POISONED))
 	return node;
     }

@@ -1468,8 +1468,7 @@ package body Einfo is
 
    function Has_Independent_Components (Id : E) return B is
    begin
-      pragma Assert (Is_Array_Type (Id) or else Is_Record_Type (Id));
-      return Flag34 (Base_Type (Id));
+      return Flag34 (Implementation_Base_Type (Id));
    end Has_Independent_Components;
 
    function Has_Inheritable_Invariants (Id : E) return B is
@@ -2117,7 +2116,6 @@ package body Einfo is
 
    function Is_Independent (Id : E) return B is
    begin
-      pragma Assert (Ekind (Id) = E_Component);
       return Flag268 (Id);
    end Is_Independent;
 
@@ -4263,8 +4261,7 @@ package body Einfo is
 
    procedure Set_Has_Independent_Components (Id : E; V : B := True) is
    begin
-      pragma Assert ((Is_Array_Type (Id) or else Is_Record_Type (Id))
-        and then Is_Base_Type (Id));
+      pragma Assert (not Is_Type (Id) or else Is_Base_Type (Id));
       Set_Flag34 (Id, V);
    end Set_Has_Independent_Components;
 
@@ -4967,7 +4964,6 @@ package body Einfo is
 
    procedure Set_Is_Independent (Id : E; V : B := True) is
    begin
-      pragma Assert (Ekind_In (Id, E_Component, E_Void));
       Set_Flag268 (Id, V);
    end Set_Is_Independent;
 

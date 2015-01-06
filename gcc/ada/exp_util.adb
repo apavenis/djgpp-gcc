@@ -2961,9 +2961,9 @@ package body Exp_Util is
 
    begin
       --  If parser detected no address clause for the identifier in question,
-      --  then then answer is a quick NO, without the need for a search.
+      --  then the answer is a quick NO, without the need for a search.
 
-      if not Get_Name_Table_Boolean (Chars (Id)) then
+      if not Get_Name_Table_Boolean1 (Chars (Id)) then
          return Empty;
       end if;
 

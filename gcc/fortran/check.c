@@ -1,5 +1,5 @@
 /* Check functions
-   Copyright (C) 2002-2014 Free Software Foundation, Inc.
+   Copyright (C) 2002-2015 Free Software Foundation, Inc.
    Contributed by Andy Vaught & Katherine Holcomb
 
 This file is part of GCC.
@@ -1481,7 +1481,7 @@ check_co_collective (gfc_expr *a, gfc_expr *image_idx, gfc_expr *stat,
 	}
     }
 
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
       gfc_fatal_error ("Coarrays disabled at %L, use %<-fcoarray=%> to enable",
 		       &a->where);
@@ -2531,11 +2531,18 @@ gfc_check_kill_sub (gfc_expr *pid, gfc_expr *sig, gfc_expr *status)
 bool
 gfc_check_kind (gfc_expr *x)
 {
-  if (x->ts.type == BT_DERIVED)
+  if (x->ts.type == BT_DERIVED || x->ts.type == BT_CLASS)
     {
-      gfc_error ("%qs argument of %qs intrinsic at %L must be a "
-		 "non-derived type", gfc_current_intrinsic_arg[0]->name,
+      gfc_error ("%qs argument of %qs intrinsic at %L must be of "
+		 "intrinsic type", gfc_current_intrinsic_arg[0]->name,
 		 gfc_current_intrinsic, &x->where);
+      return false;
+    }
+  if (x->ts.type == BT_PROCEDURE)
+    {
+      gfc_error ("%qs argument of %qs intrinsic at %L must be a data entity",
+		 gfc_current_intrinsic_arg[0]->name, gfc_current_intrinsic,
+		 &x->where);
       return false;
     }
 
@@ -2569,7 +2576,7 @@ gfc_check_lbound (gfc_expr *array, gfc_expr *dim, gfc_expr *kind)
 bool
 gfc_check_lcobound (gfc_expr *coarray, gfc_expr *dim, gfc_expr *kind)
 {
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
       gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to enable");
       return false;
@@ -4847,7 +4854,7 @@ gfc_check_image_index (gfc_expr *coarray, gfc_expr *sub)
 {
   mpz_t nelems;
 
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
       gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to enable");
       return false;
@@ -4885,7 +4892,7 @@ gfc_check_image_index (gfc_expr *coarray, gfc_expr *sub)
 bool
 gfc_check_num_images (gfc_expr *distance, gfc_expr *failed)
 {
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
       gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to enable");
       return false;
@@ -4927,7 +4934,7 @@ gfc_check_num_images (gfc_expr *distance, gfc_expr *failed)
 bool
 gfc_check_this_image (gfc_expr *coarray, gfc_expr *dim, gfc_expr *distance)
 {
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
       gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to enable");
       return false;
@@ -5126,7 +5133,7 @@ gfc_check_ubound (gfc_expr *array, gfc_expr *dim, gfc_expr *kind)
 bool
 gfc_check_ucobound (gfc_expr *coarray, gfc_expr *dim, gfc_expr *kind)
 {
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
       gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to enable");
       return false;

@@ -2350,7 +2350,7 @@ static void SignalListChanged (void) {}
 #else
 
 CRITICAL_SECTION ProcListCS;
-HANDLE ProcListEvt;
+HANDLE ProcListEvt = NULL;
 
 static void EnterCS (void)
 {

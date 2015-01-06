@@ -1,5 +1,5 @@
 /* SCC value numbering for trees
-   Copyright (C) 2006-2014 Free Software Foundation, Inc.
+   Copyright (C) 2006-2015 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org>
 
 This file is part of GCC.
@@ -2161,7 +2161,7 @@ vn_reference_lookup_pieces (tree vuse, alias_set_type set, tree type,
 	  (vn_reference_t)walk_non_aliased_vuses (&r, vr1.vuse,
 						  vn_reference_lookup_2,
 						  vn_reference_lookup_3,
-						  vn_valueize, &vr1);
+						  vuse_ssa_val, &vr1);
       gcc_checking_assert (vr1.operands == shared_lookup_references);
     }
 
@@ -2214,7 +2214,7 @@ vn_reference_lookup (tree op, tree vuse, vn_lookup_kind kind,
 	(vn_reference_t)walk_non_aliased_vuses (&r, vr1.vuse,
 						vn_reference_lookup_2,
 						vn_reference_lookup_3,
-						vn_valueize, &vr1);
+						vuse_ssa_val, &vr1);
       gcc_checking_assert (vr1.operands == shared_lookup_references);
       if (wvnresult)
 	{

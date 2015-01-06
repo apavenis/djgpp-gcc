@@ -1,6 +1,6 @@
 ## Makefile for the GNU C++ Support library.
 ##
-## Copyright (C) 2000-2014 Free Software Foundation, Inc.
+## Copyright (C) 2000-2015 Free Software Foundation, Inc.
 ##
 ## Process this file with automake to produce Makefile.in.
 ##
@@ -55,8 +55,10 @@ sources = \
 	bad_typeid.cc \
 	class_type_info.cc \
 	del_op.cc \
+	del_ops.cc \
 	del_opnt.cc \
 	del_opv.cc \
+	del_opvs.cc \
 	del_opvnt.cc \
 	dyncast.cc \
 	eh_alloc.cc \

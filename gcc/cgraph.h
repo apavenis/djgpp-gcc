@@ -1,5 +1,5 @@
 /* Callgraph handling code.
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2015 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -1255,6 +1255,8 @@ public:
   int count_materialization_scale;
   /* Unique id of the node.  */
   int uid;
+  /* Summary unique id of the node.  */
+  int summary_uid;
   /* ID assigned by the profiling.  */
   unsigned int profile_id;
   /* Time profiler: first run of function.  */
@@ -1837,6 +1839,10 @@ public:
   friend class cgraph_node;
   friend class cgraph_edge;
 
+  symbol_table (): cgraph_max_summary_uid (1)
+  {
+  }
+
   /* Initialize callgraph dump file.  */
   void initialize (void);
 
@@ -2033,6 +2039,7 @@ public:
 
   int cgraph_count;
   int cgraph_max_uid;
+  int cgraph_max_summary_uid;
 
   int edges_count;
   int edges_max_uid;
@@ -2188,7 +2195,7 @@ void record_references_in_initializer (tree, bool);
 
 /* In ipa.c  */
 void cgraph_build_static_cdtor (char which, tree body, int priority);
-void ipa_discover_readonly_nonaddressable_vars (void);
+bool ipa_discover_readonly_nonaddressable_vars (void);
 
 /* In varpool.c  */
 tree ctor_for_folding (tree);
@@ -2361,6 +2368,7 @@ symbol_table::allocate_cgraph_symbol (void)
       node->uid = cgraph_max_uid++;
     }
 
+  node->summary_uid = cgraph_max_summary_uid++;
   return node;
 }
 

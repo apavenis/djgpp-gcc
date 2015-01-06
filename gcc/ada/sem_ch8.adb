@@ -3451,6 +3451,29 @@ package body Sem_Ch8 is
       Ada_Version := Save_AV;
       Ada_Version_Pragma := Save_AVP;
       Ada_Version_Explicit := Save_AV_Exp;
+
+      --  In GNATprove mode, the renamings of actual subprograms are replaced
+      --  with wrapper functions that make it easier to propagate axioms to the
+      --  points of call within an instance. Wrappers are generated if formal
+      --  subprogram is subject to axiomatization.
+
+      --  The types in the wrapper profiles are obtained from (instances of)
+      --  the types of the formal subprogram.
+
+      if Is_Actual
+        and then GNATprove_Mode
+        and then Present (Containing_Package_With_Ext_Axioms (Formal_Spec))
+        and then not Inside_A_Generic
+      then
+         if Ekind (Old_S) = E_Function then
+            Rewrite (N, Build_Function_Wrapper (Formal_Spec, Old_S));
+            Analyze (N);
+
+         elsif Ekind (Old_S) = E_Operator then
+            Rewrite (N, Build_Operator_Wrapper (Formal_Spec, Old_S));
+            Analyze (N);
+         end if;
+      end if;
    end Analyze_Subprogram_Renaming;
 
    -------------------------
@@ -3533,10 +3556,22 @@ package body Sem_Ch8 is
             if Ekind (Pack) /= E_Package and then Etype (Pack) /= Any_Type then
                if Ekind (Pack) = E_Generic_Package then
                   Error_Msg_N  -- CODEFIX
-                   ("a generic package is not allowed in a use clause",
-                      Pack_Name);
+                    ("a generic package is not allowed in a use clause",
+                     Pack_Name);
+
+               elsif Ekind_In (Pack, E_Generic_Function, E_Generic_Package)
+               then
+                  Error_Msg_N  -- CODEFIX
+                    ("a generic subprogram is not allowed in a use clause",
+                     Pack_Name);
+
+               elsif Ekind_In (Pack, E_Function, E_Procedure, E_Operator) then
+                  Error_Msg_N  -- CODEFIX
+                    ("a subprogram is not allowed in a use clause",
+                     Pack_Name);
+
                else
-                  Error_Msg_N ("& is not a usable package", Pack_Name);
+                  Error_Msg_N ("& is not allowed in a use clause", Pack_Name);
                end if;
 
             else

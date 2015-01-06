@@ -1,5 +1,5 @@
 /* Deal with I/O statements & related stuff.
-   Copyright (C) 2000-2014 Free Software Foundation, Inc.
+   Copyright (C) 2000-2015 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -157,7 +157,7 @@ next_char (gfc_instring in_string)
 	c = '\0';
     }
 
-  if (gfc_option.flag_backslash && c == '\\')
+  if (flag_backslash && c == '\\')
     {
       locus old_locus = gfc_current_locus;
 

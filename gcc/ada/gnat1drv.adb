@@ -182,6 +182,12 @@ procedure Gnat1drv is
 
       if CodePeer_Mode then
 
+         --  Turn off gnatprove mode (which can be set via e.g. -gnatd.F), not
+         --  compatible with CodePeer mode.
+
+         GNATprove_Mode := False;
+         Debug_Flag_Dot_FF := False;
+
          --  Turn off inlining, confuses CodePeer output and gains nothing
 
          Front_End_Inlining := False;
@@ -1271,6 +1277,13 @@ begin
          --  same as the object file produced for compilation.
 
          Write_ALI (Object => True);
+      end if;
+
+      --  Some back ends (for instance Gigi) are known to rely on SCOs for code
+      --  generation. Make sure they are available.
+
+      if Generate_SCO then
+         Par_SCO.SCO_Record_Filtered;
       end if;
 
       --  Back end needs to explicitly unlock tables it needs to touch

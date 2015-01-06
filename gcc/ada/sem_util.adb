@@ -2133,6 +2133,12 @@ package body Sem_Util is
                   begin
                      Id := Get_Function_Id (Call);
 
+                     --  In case of previous error, no check is possible
+
+                     if No (Id) then
+                        return Abandon;
+                     end if;
+
                      Formal := First_Formal (Id);
                      Actual := First_Actual (Call);
                      while Present (Actual) and then Present (Formal) loop
@@ -5059,23 +5065,22 @@ package body Sem_Util is
          end if;
       end Select_Node;
 
-   --  Start of processing for Designate_Next_Unit
+   --  Start of processing for Designate_Same_Unit
 
    begin
-      if (K1 = N_Identifier or else K1 = N_Defining_Identifier)
+      if Nkind_In (K1, N_Identifier, N_Defining_Identifier)
            and then
-         (K2 = N_Identifier or else K2 = N_Defining_Identifier)
+         Nkind_In (K2, N_Identifier, N_Defining_Identifier)
       then
          return Chars (Name1) = Chars (Name2);
 
-      elsif
-         (K1 = N_Expanded_Name      or else
-          K1 = N_Selected_Component or else
-          K1 = N_Defining_Program_Unit_Name)
-        and then
-         (K2 = N_Expanded_Name      or else
-          K2 = N_Selected_Component or else
-          K2 = N_Defining_Program_Unit_Name)
+      elsif Nkind_In (K1, N_Expanded_Name,
+                          N_Selected_Component,
+                          N_Defining_Program_Unit_Name)
+              and then
+            Nkind_In (K2, N_Expanded_Name,
+                          N_Selected_Component,
+                          N_Defining_Program_Unit_Name)
       then
          return
            (Chars (Select_Node (Name1)) = Chars (Select_Node (Name2)))
@@ -7247,7 +7252,7 @@ package body Sem_Util is
 
    function Get_Name_Entity_Id (Id : Name_Id) return Entity_Id is
    begin
-      return Entity_Id (Get_Name_Table_Info (Id));
+      return Entity_Id (Get_Name_Table_Int (Id));
    end Get_Name_Entity_Id;
 
    ------------------------------
@@ -11621,6 +11626,18 @@ package body Sem_Util is
       elsif Is_Variable (AV) then
          return True;
 
+      --  Generalized indexing operations are rewritten as explicit
+      --  dereferences, and it is only during resolution that we can
+      --  check whether the context requires an access_to_variable type.
+
+      elsif Nkind (AV) = N_Explicit_Dereference
+        and then Ada_Version >= Ada_2012
+        and then Nkind (Original_Node (AV)) = N_Indexed_Component
+        and then Present (Etype (Original_Node (AV)))
+        and then Has_Implicit_Dereference (Etype (Original_Node (AV)))
+      then
+         return not Is_Access_Constant (Etype (Prefix (AV)));
+
       --  Unchecked conversions are allowed only if they come from the
       --  generated code, which sometimes uses unchecked conversions for out
       --  parameters in cases where code generation is unaffected. We tell
@@ -12857,9 +12874,8 @@ package body Sem_Util is
         and then Present (Etype (Orig_Node))
         and then Ada_Version >= Ada_2012
         and then Has_Implicit_Dereference (Etype (Orig_Node))
-        and then not Is_Access_Constant (Etype (Prefix (N)))
       then
-         return True;
+         return not Is_Access_Constant (Etype (Prefix (N)));
 
       --  A function call is never a variable
 
@@ -17271,7 +17287,7 @@ package body Sem_Util is
 
    procedure Set_Name_Entity_Id (Id : Name_Id; Val : Entity_Id) is
    begin
-      Set_Name_Table_Info (Id, Int (Val));
+      Set_Name_Table_Int (Id, Int (Val));
    end Set_Name_Entity_Id;
 
    ---------------------

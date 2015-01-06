@@ -1855,7 +1855,7 @@ package body Sem_Ch10 is
                       In_Extended_Main_Source_Unit
                         (Cunit_Entity (Current_Sem_Unit))
                   then
-                     SCO_Record (Unum);
+                     SCO_Record_Raw (Unum);
                   end if;
 
                   --  Analyze the unit if semantics active
@@ -6494,6 +6494,11 @@ package body Sem_Ch10 is
          Item := First (Context_Items (Comp_Unit));
          while Present (Item) loop
             if Nkind (Item) = N_With_Clause
+
+              --  The following guard is needed to ensure that the name has
+              --  been properly analyzed before we go fetching its entity.
+
+              and then Is_Entity_Name (Name (Item))
               and then Entity (Name (Item)) = E
               and then not Private_Present (Item)
             then

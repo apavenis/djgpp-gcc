@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on IBM RS/6000.
-   Copyright (C) 1991-2014 Free Software Foundation, Inc.
+   Copyright (C) 1991-2015 Free Software Foundation, Inc.
    Contributed by Richard Kenner (kenner@vlsi1.ultra.nyu.edu)
 
    This file is part of GCC.
@@ -16087,8 +16087,7 @@ rs6000_output_load_multiple (rtx operands[3])
     return "lwz %2,0(%1)";
 
   for (i = 0; i < words; i++)
-    if (refers_to_regno_p (REGNO (operands[2]) + i,
-			   REGNO (operands[2]) + i + 1, operands[1], 0))
+    if (refers_to_regno_p (REGNO (operands[2]) + i, operands[1]))
       {
 	if (i == words-1)
 	  {
@@ -33166,6 +33165,10 @@ rs6000_split_logical_inner (rtx dest,
 
   if (complement_op2_p)
     op2 = gen_rtx_NOT (mode, op2);
+
+  /* For canonical RTL, if only one arm is inverted it is the first.  */
+  if (!complement_op1_p && complement_op2_p)
+    std::swap (op1, op2);
 
   bool_rtx = ((code == NOT)
 	      ? gen_rtx_NOT (mode, op1)

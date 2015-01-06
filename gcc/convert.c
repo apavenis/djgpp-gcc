@@ -1,5 +1,5 @@
 /* Utility routines for data type conversion for GCC.
-   Copyright (C) 1987-2014 Free Software Foundation, Inc.
+   Copyright (C) 1987-2015 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -890,7 +890,7 @@ convert_to_integer (tree type, tree expr)
 				DECL_ATTRIBUTES (current_function_decl)))
 	{
 	  expr = save_expr (expr);
-	  tree check = ubsan_instrument_float_cast (loc, type, expr);
+	  tree check = ubsan_instrument_float_cast (loc, type, expr, expr);
 	  expr = build1 (FIX_TRUNC_EXPR, type, expr);
 	  if (check == NULL)
 	    return expr;

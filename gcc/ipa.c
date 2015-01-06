@@ -1,5 +1,5 @@
 /* Basic IPA optimizations and utilities.
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2015 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -46,6 +46,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-iterator.h"
 #include "ipa-utils.h"
 #include "alloc-pool.h"
+#include "symbol-summary.h"
 #include "ipa-prop.h"
 #include "ipa-inline.h"
 #include "tree-inline.h"
@@ -128,8 +129,10 @@ process_references (symtab_node *snode,
       if (node->definition && !node->in_other_partition
 	  && ((!DECL_EXTERNAL (node->decl) || node->alias)
 	      || (((before_inlining_p
-		    && (TREE_CODE (node->decl) != FUNCTION_DECL
-			|| opt_for_fn (body->decl, optimize)
+		    && ((TREE_CODE (node->decl) != FUNCTION_DECL
+			 && optimize)
+			|| (TREE_CODE (node->decl) == FUNCTION_DECL
+			    && opt_for_fn (body->decl, optimize))
 		        || (symtab->state < IPA_SSA
 		            && lookup_attribute
 				 ("always_inline",
@@ -243,7 +246,7 @@ walk_polymorphic_call_targets (hash_set<void *> *reachable_call_targets,
                                target->order);
 	    }
 	  edge = edge->make_direct (target);
-	  if (inline_summary_vec)
+	  if (inline_summaries)
 	    inline_update_overall_summary (node);
 	  else if (edge->call_stmt)
 	    {
@@ -712,14 +715,18 @@ set_readonly_bit (varpool_node *vnode, void *data ATTRIBUTE_UNUSED)
 /* Set writeonly bit and clear the initalizer, since it will not be needed.  */
 
 bool
-set_writeonly_bit (varpool_node *vnode, void *data ATTRIBUTE_UNUSED)
+set_writeonly_bit (varpool_node *vnode, void *data)
 {
   vnode->writeonly = true;
   if (optimize)
     {
       DECL_INITIAL (vnode->decl) = NULL;
       if (!vnode->alias)
-	vnode->remove_all_references ();
+	{
+	  if (vnode->num_references ())
+	    *(bool *)data = true;
+	  vnode->remove_all_references ();
+	}
     }
   return false;
 }
@@ -737,15 +744,18 @@ clear_addressable_bit (varpool_node *vnode, void *data ATTRIBUTE_UNUSED)
 /* Discover variables that have no longer address taken or that are read only
    and update their flags.
 
+   Return true when unreachable symbol removan should be done.
+
    FIXME: This can not be done in between gimplify and omp_expand since
    readonly flag plays role on what is shared and what is not.  Currently we do
    this transformation as part of whole program visibility and re-do at
    ipa-reference pass (to take into account clonning), but it would
    make sense to do it before early optimizations.  */
 
-void
+bool
 ipa_discover_readonly_nonaddressable_vars (void)
 {
+  bool remove_p = false;
   varpool_node *vnode;
   if (dump_file)
     fprintf (dump_file, "Clearing variable flags:");
@@ -760,14 +770,16 @@ ipa_discover_readonly_nonaddressable_vars (void)
 	bool read = false;
 	bool explicit_refs = true;
 
-	process_references (vnode, &written, &address_taken, &read, &explicit_refs);
+	process_references (vnode, &written, &address_taken, &read,
+			    &explicit_refs);
 	if (!explicit_refs)
 	  continue;
 	if (!address_taken)
 	  {
 	    if (TREE_ADDRESSABLE (vnode->decl) && dump_file)
 	      fprintf (dump_file, " %s (non-addressable)", vnode->name ());
-	    vnode->call_for_node_and_aliases (clear_addressable_bit, NULL, true);
+	    vnode->call_for_node_and_aliases (clear_addressable_bit, NULL,
+					      true);
 	  }
 	if (!address_taken && !written
 	    /* Making variable in explicit section readonly can cause section
@@ -783,11 +795,13 @@ ipa_discover_readonly_nonaddressable_vars (void)
 	  {
 	    if (dump_file)
 	      fprintf (dump_file, " %s (write-only)", vnode->name ());
-	    vnode->call_for_node_and_aliases (set_writeonly_bit, NULL, true);
+	    vnode->call_for_node_and_aliases (set_writeonly_bit, &remove_p, 
+					     true);
 	  }
       }
   if (dump_file)
     fprintf (dump_file, "\n");
+  return remove_p;
 }
 
 /* Free inline summary.  */

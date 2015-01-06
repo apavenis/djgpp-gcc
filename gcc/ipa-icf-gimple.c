@@ -1,5 +1,5 @@
 /* Interprocedural Identical Code Folding pass
-   Copyright (C) 2014 Free Software Foundation, Inc.
+   Copyright (C) 2014-2015 Free Software Foundation, Inc.
 
    Contributed by Jan Hubicka <hubicka@ucw.cz> and Martin Liska <mliska@suse.cz>
 
@@ -185,6 +185,9 @@ bool func_checker::compatible_types_p (tree t1, tree t2,
   if (TREE_CODE (t1) != TREE_CODE (t2))
     return return_false_with_msg ("different tree types");
 
+  if (TYPE_RESTRICT (t1) != TYPE_RESTRICT (t2))
+    return return_false_with_msg ("restrict flags are different");
+
   if (!types_compatible_p (t1, t2))
     return return_false_with_msg ("types are not compatible");
 
@@ -229,6 +232,9 @@ func_checker::compare_operand (tree t1, tree t2)
 
   tree tt1 = TREE_TYPE (t1);
   tree tt2 = TREE_TYPE (t2);
+
+  if (TREE_THIS_VOLATILE (t1) != TREE_THIS_VOLATILE (t2))
+    return return_false_with_msg ("different operand volatility");
 
   if (!func_checker::compatible_types_p (tt1, tt2))
     return false;

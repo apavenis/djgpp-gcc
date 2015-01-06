@@ -1,5 +1,5 @@
 /* RTL dead store elimination.
-   Copyright (C) 2005-2014 Free Software Foundation, Inc.
+   Copyright (C) 2005-2015 Free Software Foundation, Inc.
 
    Contributed by Richard Sandiford <rsandifor@codesourcery.com>
    and Kenneth Zadeck <zadeck@naturalbridge.com>
@@ -2482,6 +2482,17 @@ scan_insn (bb_info_t bb_info, rtx_insn *insn)
       tree memset_call = NULL_TREE;
 
       insn_info->cannot_delete = true;
+
+      /* Arguments for a sibling call that are pushed to memory are passed
+	 using the incoming argument pointer of the current function.  These
+	 may or may not be frame related depending on the target.  Since
+	 argument pointer related stores are not currently tracked, we treat
+	 a sibling call as though it does a wild read.  */
+      if (SIBLING_CALL_P (insn))
+	{
+	  add_wild_read (bb_info);
+	  return;
+	}
 
       /* Const functions cannot do anything bad i.e. read memory,
 	 however, they can read their parameters which may have

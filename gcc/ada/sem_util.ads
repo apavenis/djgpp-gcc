@@ -469,7 +469,7 @@ package Sem_Util is
    --
    --  Iterator loops also have a defining entity, which holds the list of
    --  local entities declared during loop expansion. These entities need
-   --  debugging information, generated through QUalify_Entity_Names, and
+   --  debugging information, generated through Qualify_Entity_Names, and
    --  the loop declaration must be placed in the table Name_Qualify_Units.
 
    function Denotes_Discriminant
@@ -504,7 +504,7 @@ package Sem_Util is
    function Designate_Same_Unit
      (Name1 : Node_Id;
       Name2 : Node_Id) return  Boolean;
-   --  Return true if Name1 and Name2 designate the same unit name; each of
+   --  Returns True if Name1 and Name2 designate the same unit name; each of
    --  these names is supposed to be a selected component name, an expanded
    --  name, a defining program unit name or an identifier.
 

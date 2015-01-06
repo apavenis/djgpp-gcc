@@ -412,6 +412,26 @@ package body Freeze is
          Set_Body_To_Inline (Decl, Old_S);
       end if;
 
+      --  Check whether the return type is a limited view. If the subprogram
+      --  is already frozen the generated body may have a non-limited view
+      --  of the type, that must be used, because it is the one in the spec
+      --  of the renaming declaration.
+
+      if Ekind (Old_S) = E_Function
+        and then Is_Entity_Name (Result_Definition (Spec))
+      then
+         declare
+            Ret_Type : constant Entity_Id := Etype (Result_Definition (Spec));
+         begin
+            if Ekind (Ret_Type) = E_Incomplete_Type
+              and then Present (Non_Limited_View (Ret_Type))
+            then
+               Set_Result_Definition (Spec,
+                  New_Occurrence_Of (Non_Limited_View (Ret_Type), Loc));
+            end if;
+         end;
+      end if;
+
       --  The body generated for this renaming is an internal artifact, and
       --  does not  constitute a freeze point for the called entity.
 
@@ -2430,27 +2450,18 @@ package body Freeze is
                           Get_Attribute_Definition_Clause
                             (FS, Attribute_Component_Size);
 
-                        if Known_Static_Esize (Ctyp) then
-                           Error_Msg_N
-                             ("incorrect component size for "
-                              & T & " components", Clause);
-                           Error_Msg_Uint_1 := Esize (Ctyp);
-                           Error_Msg_N
-                             ("\only allowed value is^", Clause);
-
-                        else
-                           Error_Msg_N
-                             ("component size cannot be given for "
-                              & T & " components", Clause);
-                        end if;
+                        Error_Msg_N
+                          ("incorrect component size for "
+                           & T & " components", Clause);
+                        Error_Msg_Uint_1 := Esize (Ctyp);
+                        Error_Msg_N
+                          ("\only allowed value is^", Clause);
 
                      else
                         Error_Msg_N
                           ("cannot pack " & T & " components",
                            Get_Rep_Pragma (FS, Name_Pack));
                      end if;
-
-                     return;
                   end Complain_CS;
 
                   --  Start of processing for Alias_Atomic_Check
@@ -4180,9 +4191,11 @@ package body Freeze is
             --  generates the right visibility, and that is exactly what the
             --  calls to Copy_Separate_Tree give us.
 
-            --  Acquire copy of Inline pragma
+            --  Acquire copy of Inline pragma, and indicate that it does not
+            --  come from an aspect, as it applies to an internal entity.
 
             Iprag := Copy_Separate_Tree (Import_Pragma (E));
+            Set_From_Aspect_Specification (Iprag, False);
 
             --  Fix up spec to be not imported any more
 
@@ -6711,7 +6724,12 @@ package body Freeze is
       Hival : Ureal;
       Atype : Entity_Id;
 
+      Orig_Lo : Ureal;
+      Orig_Hi : Ureal;
+      --  Save original bounds (for shaving tests)
+
       Actual_Size : Nat;
+      --  Actual size chosen
 
       function Fsize (Lov, Hiv : Ureal) return Nat;
       --  Returns size of type with given bounds. Also leaves these
@@ -6761,6 +6779,9 @@ package body Freeze is
 
       Loval := Realval (Lo);
       Hival := Realval (Hi);
+
+      Orig_Lo := Loval;
+      Orig_Hi := Hival;
 
       --  Ordinary fixed-point case
 
@@ -7130,6 +7151,24 @@ package body Freeze is
             Set_RM_Size (Typ, Minsiz);
          end if;
       end;
+
+      --  Check for shaving
+
+      if Comes_From_Source (Typ) then
+         if Orig_Lo < Expr_Value_R (Lo) then
+            Error_Msg_N
+              ("declared low bound of type & is outside type range??", Typ);
+            Error_Msg_N
+              ("\low bound adjusted up by delta (RM 3.5.9(13))??", Typ);
+         end if;
+
+         if Orig_Hi > Expr_Value_R (Hi) then
+            Error_Msg_N
+              ("declared high bound of type & is outside type range??", Typ);
+            Error_Msg_N
+              ("\high bound adjusted down by delta (RM 3.5.9(13))??", Typ);
+         end if;
+      end if;
    end Freeze_Fixed_Point_Type;
 
    ------------------
@@ -7702,6 +7741,8 @@ package body Freeze is
    --------------------------
 
    procedure Set_SSO_From_Default (T : Entity_Id) is
+      Reversed : Boolean;
+
    begin
       --  Set default SSO for an array or record base type, except in case of
       --  a type extension (which always inherits the SSO of its parent type).
@@ -7712,31 +7753,35 @@ package body Freeze is
                              and then not (Is_Tagged_Type (T)
                                             and then Is_Derived_Type (T))))
       then
-         if ((Bytes_Big_Endian      and then SSO_Set_Low_By_Default  (T))
-                or else
-            ((not Bytes_Big_Endian) and then SSO_Set_High_By_Default (T)))
+         Reversed :=
+            (Bytes_Big_Endian     and then SSO_Set_Low_By_Default (T))
+              or else
+            (not Bytes_Big_Endian and then SSO_Set_High_By_Default (T));
 
-           --  For a record type, if native bit order is specified explicitly,
-           --  then never set reverse SSO from default.
+         if (SSO_Set_Low_By_Default (T) or else SSO_Set_High_By_Default (T))
+
+           --  For a record type, if bit order is specified explicitly, then
+           --  do not set SSO from default if not consistent.
 
            and then not
              (Is_Record_Type (T)
                and then Has_Rep_Item (T, Name_Bit_Order)
-               and then not Reverse_Bit_Order (T))
+               and then Reverse_Bit_Order (T) /= Reversed)
          then
             --  If flags cause reverse storage order, then set the result. Note
             --  that we would have ignored the pragma setting the non default
             --  storage order in any case, hence the assertion at this point.
 
-            pragma Assert (Support_Nondefault_SSO_On_Target);
-            Set_Reverse_Storage_Order (T);
+            pragma Assert
+              (not Reversed or else Support_Nondefault_SSO_On_Target);
 
-            --  For a record type, also set reversed bit order. Note that if
-            --  a bit order has been specified explicitly, then this is a
-            --  no-op, as per the guard above.
+            Set_Reverse_Storage_Order (T, Reversed);
+
+            --  For a record type, also set reversed bit order. Note: if a bit
+            --  order has been specified explicitly, then this is a no-op.
 
             if Is_Record_Type (T) then
-               Set_Reverse_Bit_Order (T);
+               Set_Reverse_Bit_Order (T, Reversed);
             end if;
          end if;
       end if;

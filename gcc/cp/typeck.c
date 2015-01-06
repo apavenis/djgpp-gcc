@@ -1,5 +1,5 @@
 /* Build expressions with type checking for C++ compiler.
-   Copyright (C) 1987-2014 Free Software Foundation, Inc.
+   Copyright (C) 1987-2015 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -3081,7 +3081,7 @@ cp_build_array_ref (location_t loc, tree array, tree idx,
     {
       tree rval, type;
 
-      warn_array_subscript_with_type_char (idx);
+      warn_array_subscript_with_type_char (loc, idx);
 
       if (!INTEGRAL_OR_UNSCOPED_ENUMERATION_TYPE_P (TREE_TYPE (idx)))
 	{
@@ -3191,7 +3191,7 @@ cp_build_array_ref (location_t loc, tree array, tree idx,
 	return error_mark_node;
       }
 
-    warn_array_subscript_with_type_char (idx);
+    warn_array_subscript_with_type_char (loc, idx);
 
     ret = cp_build_indirect_ref (cp_build_binary_op (input_location,
 						     PLUS_EXPR, ar, ind,
@@ -8945,6 +8945,12 @@ apply_memfn_quals (tree type, cp_cv_quals memfn_quals, cp_ref_qualifier rqual)
   /* This should really have a different TYPE_MAIN_VARIANT, but that gets
      complex.  */
   tree result = build_qualified_type (type, memfn_quals);
+  if (tree canon = TYPE_CANONICAL (result))
+    if (canon != result)
+      /* check_qualified_type doesn't check the ref-qualifier, so make sure
+	 TYPE_CANONICAL is correct.  */
+      TYPE_CANONICAL (result)
+	= build_ref_qualified_type (canon, type_memfn_rqual (result));
   result = build_exception_variant (result, TYPE_RAISES_EXCEPTIONS (type));
   return build_ref_qualified_type (result, rqual);
 }

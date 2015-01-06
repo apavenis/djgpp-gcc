@@ -1,5 +1,5 @@
 /* Matching subroutines in all sizes, shapes and colors.
-   Copyright (C) 2000-2014 Free Software Foundation, Inc.
+   Copyright (C) 2000-2015 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -530,7 +530,7 @@ gfc_match_name (char *buffer)
   gfc_gobble_whitespace ();
 
   c = gfc_next_ascii_char ();
-  if (!(ISALPHA (c) || (c == '_' && gfc_option.flag_allow_leading_underscore)))
+  if (!(ISALPHA (c) || (c == '_' && flag_allow_leading_underscore)))
     {
       if (!gfc_error_flag_test () && c != '(')
 	gfc_error ("Invalid character in name at %C");
@@ -553,9 +553,9 @@ gfc_match_name (char *buffer)
       old_loc = gfc_current_locus;
       c = gfc_next_ascii_char ();
     }
-  while (ISALNUM (c) || c == '_' || (gfc_option.flag_dollar_ok && c == '$'));
+  while (ISALNUM (c) || c == '_' || (flag_dollar_ok && c == '$'));
 
-  if (c == '$' && !gfc_option.flag_dollar_ok)
+  if (c == '$' && !flag_dollar_ok)
     {
       gfc_fatal_error ("Invalid character %<$%> at %L. Use %<-fdollar-ok%> to "
 		       "allow it as an extension", &old_loc);
@@ -1663,7 +1663,7 @@ gfc_match_critical (void)
   if (!gfc_notify_std (GFC_STD_F2008, "CRITICAL statement at %C"))
     return MATCH_ERROR;
 
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
        gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to "
 			"enable");
@@ -2557,7 +2557,8 @@ gfc_match_cycle (void)
 }
 
 
-/* Match a number or character constant after an (ALL) STOP or PAUSE statement.  */
+/* Match a number or character constant after an (ERROR) STOP or PAUSE
+   statement.  */
 
 static match
 gfc_match_stopcode (gfc_statement st)
@@ -2581,9 +2582,18 @@ gfc_match_stopcode (gfc_statement st)
 
   if (gfc_pure (NULL))
     {
-      gfc_error ("%s statement not allowed in PURE procedure at %C",
-		 gfc_ascii_statement (st));
-      goto cleanup;
+      if (st == ST_ERROR_STOP)
+	{
+	  if (!gfc_notify_std (GFC_STD_F2015, "%s statement at %C in PURE "
+			       "procedure", gfc_ascii_statement (st)))
+	    goto cleanup;
+	}
+      else
+	{
+	  gfc_error ("%s statement not allowed in PURE procedure at %C",
+		     gfc_ascii_statement (st));
+	  goto cleanup;
+	}
     }
 
   gfc_unset_implicit_pure (NULL);
@@ -2725,7 +2735,7 @@ lock_unlock_statement (gfc_statement st)
 
   gfc_unset_implicit_pure (NULL);
 
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
        gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to enable");
        return MATCH_ERROR;
@@ -2921,7 +2931,7 @@ sync_statement (gfc_statement st)
   if (!gfc_notify_std (GFC_STD_F2008, "SYNC statement at %C"))
     return MATCH_ERROR;
 
-  if (gfc_option.coarray == GFC_FCOARRAY_NONE)
+  if (flag_coarray == GFC_FCOARRAY_NONE)
     {
        gfc_fatal_error ("Coarrays disabled at %C, use %<-fcoarray=%> to "
 			"enable");

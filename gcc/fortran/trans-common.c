@@ -1,5 +1,5 @@
 /* Common block and equivalence list handling
-   Copyright (C) 2000-2014 Free Software Foundation, Inc.
+   Copyright (C) 2000-2015 Free Software Foundation, Inc.
    Contributed by Canqun Yang <canqun@nudt.edu.cn>
 
 This file is part of GCC.
@@ -254,10 +254,10 @@ gfc_sym_mangled_common_id (gfc_common_head *com)
   if (strcmp (name, BLANK_COMMON_NAME) == 0)
     return get_identifier (name);
 
-  if (gfc_option.flag_underscoring)
+  if (flag_underscoring)
     {
       has_underscore = strchr (name, '_') != 0;
-      if (gfc_option.flag_second_underscore && has_underscore)
+      if (flag_second_underscore && has_underscore)
         snprintf (mangled_name, sizeof mangled_name, "%s__", name);
       else
         snprintf (mangled_name, sizeof mangled_name, "%s_", name);
@@ -1125,7 +1125,7 @@ translate_common (gfc_common_head *common, gfc_symbol *var_list)
 		       "extension to COMMON %qs at %L", sym->name,
 		       common->name, &common->where);
 
-	  if (gfc_option.flag_align_commons)
+	  if (flag_align_commons)
 	    offset = align_segment (&align);
 
 	  if (offset)
