@@ -104,14 +104,19 @@ rm -rf $gcc_dir/fastjar
 rm -rf $gcc_dir/libffi
 rm -rf $gcc_dir/libjava
 rm -rf $gcc_dir/libchill
+rm -rf $gcc_dir/libsanitizer
 rm -rf $gcc_dir/zlib
 rm -rf $gcc_dir/libgomp
 rm -rf $gcc_dir/libgo
+rm -rf $gcc_dir/gotools
 rm -rf $gcc_dir/gcc/go
 rm -rf $gcc_dir/gcc/java
 rm -rf $gcc_dir/gcc/testsuite
 rm -rf $gcc_dir/gcc/treelang
 rm -rf $gcc_dir/libmudflap
+rm -rf $gcc_dir/libcilkrts
+rm -rf $gcc_dir/liboffloadmic
+rm -rf $gcc_dir/libvtv
 
 #
 #  List of directories in which we should run autoconf or/and automake
