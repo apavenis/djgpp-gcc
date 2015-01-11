@@ -22,15 +22,22 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "hash-set.h"
+#include "machmode.h"
+#include "vec.h"
+#include "double-int.h"
+#include "input.h"
+#include "alias.h"
+#include "symtab.h"
+#include "options.h"
+#include "wide-int.h"
+#include "inchash.h"
 #include "tree.h"
+#include "fold-const.h"
 #include "expr.h"
 #include "intl.h"
 #include "tm.h"
 #include "predict.h"
-#include "vec.h"
-#include "hashtab.h"
-#include "hash-set.h"
-#include "machmode.h"
 #include "hard-reg-set.h"
 #include "input.h"
 #include "function.h"
@@ -868,7 +875,9 @@ public:
   opt_pass * clone () { return new pass_tsan (m_ctxt); }
   virtual bool gate (function *)
 {
-  return (flag_sanitize & SANITIZE_THREAD) != 0;
+  return ((flag_sanitize & SANITIZE_THREAD) != 0
+	  && !lookup_attribute ("no_sanitize_thread",
+                                DECL_ATTRIBUTES (current_function_decl)));
 }
 
   virtual unsigned int execute (function *) { return tsan_pass (); }
@@ -908,7 +917,9 @@ public:
   /* opt_pass methods: */
   virtual bool gate (function *)
     {
-      return (flag_sanitize & SANITIZE_THREAD) != 0 && !optimize;
+      return ((flag_sanitize & SANITIZE_THREAD) != 0 && !optimize
+	      && !lookup_attribute ("no_sanitize_thread",
+				    DECL_ATTRIBUTES (current_function_decl)));
     }
 
   virtual unsigned int execute (function *) { return tsan_pass (); }
