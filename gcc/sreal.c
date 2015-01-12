@@ -53,6 +53,14 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "sreal.h"
 
+#ifdef __DJGPP__
+static double scalbln(double val, int exp_)
+{
+  val *= exp2(exp_);
+  return val;
+}
+#endif /* __DJGPP__ */
+
 /* Print the content of struct sreal.  */
 
 void
