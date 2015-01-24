@@ -117,7 +117,7 @@ extern "C" {
 #define ISALPHA isalpha
 #endif
 
-#elif defined (__MINGW32__)
+#elif defined (__MINGW32__) || defined (__CYGWIN__)
 
 #if defined (RTX)
 #include <windows.h>

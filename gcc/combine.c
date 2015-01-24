@@ -96,7 +96,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "regs.h"
 #include "hard-reg-set.h"
 #include "predict.h"
-#include "input.h"
 #include "function.h"
 #include "dominance.h"
 #include "cfg.h"
@@ -105,6 +104,17 @@ along with GCC; see the file COPYING3.  If not see
 #include "basic-block.h"
 #include "insn-config.h"
 /* Include expr.h after insn-config.h so we get HAVE_conditional_move.  */
+#include "hashtab.h"
+#include "statistics.h"
+#include "real.h"
+#include "fixed-value.h"
+#include "expmed.h"
+#include "dojump.h"
+#include "explow.h"
+#include "calls.h"
+#include "emit-rtl.h"
+#include "varasm.h"
+#include "stmt.h"
 #include "expr.h"
 #include "insn-attr.h"
 #include "recog.h"
@@ -123,8 +133,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "ipa-ref.h"
 #include "cgraph.h"
 #include "obstack.h"
-#include "statistics.h"
-#include "params.h"
 #include "rtl-iter.h"
 
 /* Number of attempts to combine instructions in this function.  */
@@ -13676,6 +13684,11 @@ distribute_notes (rtx notes, rtx_insn *from_insn, rtx_insn *i3, rtx_insn *i2,
 		       || rtx_equal_p (XEXP (note, 0), elim_i0))
 		break;
 	      tem_insn = i3;
+	      /* If the new I2 sets the same register that is marked dead
+		 in the note, the note now should not be put on I2, as the
+		 note refers to a previous incarnation of the reg.  */
+	      if (i2 != 0 && reg_set_p (XEXP (note, 0), PATTERN (i2)))
+		tem_insn = i2;
 	    }
 
 	  if (place == 0)

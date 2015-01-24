@@ -1780,8 +1780,8 @@ match_pointer_init (gfc_expr **init, int procptr)
       return MATCH_ERROR;
     }
 
-  if (!procptr)
-    gfc_resolve_expr (*init);
+  if (!procptr && !gfc_resolve_expr (*init))
+    return MATCH_ERROR;
 
   if (!gfc_notify_std (GFC_STD_F2008, "non-NULL pointer "
 		       "initialization at %C"))
@@ -6391,7 +6391,10 @@ attr_decl1 (void)
 {
   char name[GFC_MAX_SYMBOL_LEN + 1];
   gfc_array_spec *as;
-  gfc_symbol *sym;
+
+  /* Workaround -Wmaybe-uninitialized false positive during
+     profiledbootstrap by initializing them.  */
+  gfc_symbol *sym = NULL;
   locus var_locus;
   match m;
 
