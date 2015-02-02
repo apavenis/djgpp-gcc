@@ -260,7 +260,6 @@ loop infrastructure	Zdenek Dvorak		<ook@ucw.cz>
 OpenMP			Jakub Jelinek		<jakub@redhat.com>
 testsuite		Rainer Orth		<ro@CeBiTec.Uni-Bielefeld.DE>
 testsuite		Mike Stump		<mikestump@comcast.net>
-testsuite		Janis Johnson		<janisjo@codesourcery.com>
 register allocation	Vladimir Makarov	<vmakarov@redhat.com>
 gdbhooks.py		David Malcolm		<dmalcolm@redhat.com>
 SLSR			Bill Schmidt		<wschmidt@linux.vnet.ibm.com>
@@ -338,7 +337,7 @@ Peter Bergner					<bergner@vnet.ibm.com>
 Jan Beulich					<jbeulich@novell.com>
 David Billinghurst				<David.Billinghurst@riotinto.com>
 Tomas Bily					<tbily@suse.cz>
-Laurynas Biveinis                               <laurynas.biveinis@gmail.com>
+Laurynas Biveinis				<laurynas.biveinis@gmail.com>
 Eric Blake					<ericb@gcc.gnu.org>
 Phil Blundell					<pb@futuretv.com>
 Hans Boehm					<hboehm@gcc.gnu.org>
@@ -431,14 +430,14 @@ Andy Hutchinson					<hutchinsonandy@aim.com>
 Naveen H.S					<Naveen.Hurugalawadi@caviumnetworks.com>
 Meador Inge					<meadori@codesourcery.com>
 Bernardo Innocenti				<bernie@develer.com>
-Balaji V. Iyer                                  <bviyer@gmail.com>
+Balaji V. Iyer					<bviyer@gmail.com>
 Daniel Jacobowitz				<drow@false.org>
 Andreas Jaeger					<aj@suse.de>
 Harsha Jagasia					<harsha.jagasia@amd.com>
 Fariborz Jahanian				<fjahanian@apple.com>
 Martin Jambor					<mjambor@suse.cz>
 Andrew Jenner					<andrew@codesourcery.com>
-Janis Johnson					<janisjo@codesourcery.com>
+Janis Johnson					<janis.marie.johnson@gmail.com>
 Teresa Johnson					<tejohnson@google.com>
 Kean Johnston					<jkj@sco.com>
 Phillip Jordan					<phillip.m.jordan@gmail.com>
@@ -564,6 +563,7 @@ Graham Stott					<graham.stott@btinternet.com>
 Andrew Stubbs					<ams@codesourcery.com>
 Mike Stump					<mikestump@comcast.net>
 Jeff Sturm					<jsturm@gcc.gnu.org>
+Robert Suchanek					<robert.suchanek@imgtec.com>
 Andrew Sutton					<andrew.n.sutton@gmail.com>
 Gabriele Svelto					<gabriele.svelto@st.com>
 Sriraman Tallam					<tmsriram@google.com>
@@ -617,7 +617,7 @@ Jon Ziegler					<jonz@apple.com>
 Roman Zippel					<zippel@linux-m68k.org>
 Josef Zlomek					<josef.zlomek@email.cz>
 
-Bug database only accounts
+			Bug database only accounts
 
 James Dennett					<jdennett@acm.org>
 Christian Ehrhardt				<ehrhardt@mathematik.uni-ulm.de>
