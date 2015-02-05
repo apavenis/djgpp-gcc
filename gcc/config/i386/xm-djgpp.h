@@ -79,12 +79,12 @@ along with GCC; see the file COPYING3.  If not see
            to try and figure out what's wrong.  */ \
         char *djgpp = getenv ("DJGPP"); \
         if (djgpp == NULL) \
-          fatal_error ("environment variable DJGPP not defined"); \
+          fatal_error (UNKNOWN_LOCATION, "environment variable DJGPP not defined"); \
         else if (access (djgpp, R_OK) == 0) \
-          fatal_error ("environment variable DJGPP points to missing file '%s'", \
+          fatal_error (UNKNOWN_LOCATION, "environment variable DJGPP points to missing file '%s'", \
                  djgpp); \
         else \
-          fatal_error ("environment variable DJGPP points to corrupt file '%s'", \
+          fatal_error (UNKNOWN_LOCATION, "environment variable DJGPP points to corrupt file '%s'", \
                   djgpp); \
       } \
   } while (0)
