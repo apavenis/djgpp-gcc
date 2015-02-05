@@ -461,6 +461,11 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Mon Feb 02 2015 Andris Pavenis <andris.pavenis@iki.fi>
+- Use MPC-1.0.2 (already done time ago for gcc-4.8.X and 4.9.X)
+- Note that part of gcc-4.8 and gcc-4.9 related changelog entries
+  went to different branches and are not present here
+
 * Wed Jul 16 2014 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-4.9.1
 
