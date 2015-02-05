@@ -25,17 +25,14 @@ include $(top_srcdir)/fragment.am
 SUBDIRS = c++98 c++11
 
 # Cross compiler support.
-
+if VTV_CYGMIN
+toolexeclib_LTLIBRARIES = libvtv.la libstdc++.la
+else
 if DJGPP
 toolexeclib_LTLIBRARIES = libstdcxx.la
 else
 toolexeclib_LTLIBRARIES = libstdc++.la
 endif
-
-if VTV_CYGMIN
-toolexeclib_LTLIBRARIES = libvtv.la libstdc++.la
-else
-toolexeclib_LTLIBRARIES = libstdc++.la
 endif
 
 if VTV_CYGMIN
@@ -86,25 +83,13 @@ cxx11_sources = \
 
 if DJGPP
 libstdcxx_la_SOURCES = $(cxx98_sources) $(cxx11_sources)
-else
-libstdc___la_SOURCES = $(cxx98_sources) $(cxx11_sources)
-endif
 
-if DJGPP
 libstdcxx_la_LIBADD = \
 	$(GLIBCXX_LIBS) \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
 	$(top_builddir)/src/c++98/libc++98convenience.la \
 	$(top_builddir)/src/c++11/libc++11convenience.la
-else
-libstdc___la_LIBADD = \
-	$(GLIBCXX_LIBS) \
-	$(top_builddir)/libsupc++/libsupc++convenience.la \
-	$(top_builddir)/src/c++98/libc++98convenience.la \
-	$(top_builddir)/src/c++11/libc++11convenience.la
-endif
 
-if DJGPP
 libstdcxx_la_DEPENDENCIES = \
 	${version_dep} \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
@@ -116,6 +101,14 @@ libstdcxx_la_LDFLAGS = \
 
 libstdcxx_la_LINK = $(CXXLINK) $(libstdc___la_LDFLAGS)
 else
+libstdc___la_SOURCES = $(cxx98_sources) $(cxx11_sources)
+
+libstdc___la_LIBADD = \
+	$(GLIBCXX_LIBS) \
+	$(top_builddir)/libsupc++/libsupc++convenience.la \
+	$(top_builddir)/src/c++98/libc++98convenience.la \
+	$(top_builddir)/src/c++11/libc++11convenience.la
+
 libstdc___la_DEPENDENCIES = \
 	${version_dep} \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
