@@ -1,3 +1,36 @@
+2015-02-26  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* MAINTAINERS (Various Maintainers): Add self as docs co-maintainer.
+
+2015-02-26  Martin Sebor  <msebor@redhat.com>
+
+	* MAINTAINERS (Various Maintainers): Add self.
+
+2015-02-25  Uros Bizjak  <ubizjak@gmail.com>
+
+	Revert:
+	2014-07-26  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/47230
+	* configure.ac (alpha*-*-linux*): Use mh-alpha-linux.
+	* configure: Regenerate.
+
+2015-02-20  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* configure.ac [--enable-as-accelerator-for] (enable_languages):
+	Make sure it contains lto.
+	* configure: Regenerate.
+
+2015-02-18  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* configure: Regenerate.
+
+2015-02-06  Diego Novillo  <dnovillo@google.com>
+
+	* MAINTAINERS (Global Reviewers, Plugin, LTO, tree-ssa,
+	middle-end, docstring): Remove myself.
+	(Write After Approval): Add myself.
+
 2015-02-02  Janis Johnson  <janis.marie.johnson@gmail.com>
 
 	* MAINTAINERS (Various Maintainers: testsuite): Remove myself.

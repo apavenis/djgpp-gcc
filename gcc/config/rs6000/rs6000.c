@@ -2849,8 +2849,14 @@ rs6000_init_hard_regno_mode_ok (bool global_init_p)
 	  reg_addr[DDmode].reload_load     = CODE_FOR_reload_dd_di_load;
 	  reg_addr[SFmode].reload_store    = CODE_FOR_reload_sf_di_store;
 	  reg_addr[SFmode].reload_load     = CODE_FOR_reload_sf_di_load;
-	  reg_addr[SDmode].reload_store    = CODE_FOR_reload_sd_di_store;
-	  reg_addr[SDmode].reload_load     = CODE_FOR_reload_sd_di_load;
+
+	  /* Only provide a reload handler for SDmode if lfiwzx/stfiwx are
+	     available.  */
+	  if (TARGET_NO_SDMODE_STACK)
+	    {
+	      reg_addr[SDmode].reload_store = CODE_FOR_reload_sd_di_store;
+	      reg_addr[SDmode].reload_load  = CODE_FOR_reload_sd_di_load;
+	    }
 
 	  if (TARGET_VSX_TIMODE)
 	    {
@@ -2903,8 +2909,14 @@ rs6000_init_hard_regno_mode_ok (bool global_init_p)
 	  reg_addr[DDmode].reload_load     = CODE_FOR_reload_dd_si_load;
 	  reg_addr[SFmode].reload_store    = CODE_FOR_reload_sf_si_store;
 	  reg_addr[SFmode].reload_load     = CODE_FOR_reload_sf_si_load;
-	  reg_addr[SDmode].reload_store    = CODE_FOR_reload_sd_si_store;
-	  reg_addr[SDmode].reload_load     = CODE_FOR_reload_sd_si_load;
+
+	  /* Only provide a reload handler for SDmode if lfiwzx/stfiwx are
+	     available.  */
+	  if (TARGET_NO_SDMODE_STACK)
+	    {
+	      reg_addr[SDmode].reload_store = CODE_FOR_reload_sd_si_store;
+	      reg_addr[SDmode].reload_load  = CODE_FOR_reload_sd_si_load;
+	    }
 
 	  if (TARGET_VSX_TIMODE)
 	    {
@@ -24954,7 +24966,7 @@ rs6000_emit_epilogue (int sibcall)
 		  bool lr = !(strategy & REST_NOINLINE_FPRS_DOESNT_RESTORE_LR);
 		  int sel = SAVRES_FPR | (lr ? SAVRES_LR : 0);
 		  newptr_regno = ptr_regno_for_savres (sel);
-		  end_save = info->gp_save_offset + info->gp_size;
+		  end_save = info->fp_save_offset + info->fp_size;
 		}
 
 	      if (newptr_regno != 1 && REGNO (frame_reg_rtx) != newptr_regno)
@@ -24965,7 +24977,12 @@ rs6000_emit_epilogue (int sibcall)
 		  rtx offset = GEN_INT (end_save + ptr_off);
 
 		  frame_off = -end_save;
-		  emit_insn (gen_add3_insn (frame_reg_rtx, ptr_reg, offset));
+		  if (TARGET_32BIT)
+		    emit_insn (gen_addsi3_carry (frame_reg_rtx,
+						 ptr_reg, offset));
+		  else
+		    emit_insn (gen_adddi3_carry (frame_reg_rtx,
+						 ptr_reg, offset));
 		}
 	      else
 		{
@@ -25537,7 +25554,7 @@ rs6000_output_function_epilogue (FILE *file,
 	  || ! strcmp (language_string, "libgccjit"))
 	i = 0;
       else if (! strcmp (language_string, "GNU F77")
-	       || ! strcmp (language_string, "GNU Fortran"))
+	       || lang_GNU_Fortran ())
 	i = 1;
       else if (! strcmp (language_string, "GNU Pascal"))
 	i = 2;
@@ -26012,6 +26029,20 @@ rs6000_output_symbol_ref (FILE *file, rtx x)
      we emit the TOC reference to reference the symbol and not the
      section.  */
   const char *name = XSTR (x, 0);
+
+  tree decl = SYMBOL_REF_DECL (x);
+  if (decl /* sync condition with assemble_external () */
+      && DECL_P (decl) && DECL_EXTERNAL (decl) && TREE_PUBLIC (decl)
+      && (TREE_CODE (decl) == VAR_DECL
+	  || TREE_CODE (decl) == FUNCTION_DECL)
+      && name[strlen (name) - 1] != ']')
+    {
+      name = concat (name,
+		     (TREE_CODE (decl) == FUNCTION_DECL
+		      ? "[DS]" : "[UA]"),
+		     NULL);
+      XSTR (x, 0) = name;
+    }
 
   if (VTABLE_NAME_P (name))
     {
@@ -27141,25 +27172,21 @@ get_memref_parts (rtx mem, rtx *base, HOST_WIDE_INT *offset,
   else
     return false;
 
-  if (GET_CODE (XEXP (mem, 0)) == PRE_MODIFY)
-    addr_rtx = XEXP (XEXP (mem, 0), 1);
-  else
-    addr_rtx = (XEXP (mem, 0));
+  addr_rtx = (XEXP (mem, 0));
+  if (GET_CODE (addr_rtx) == PRE_MODIFY)
+    addr_rtx = XEXP (addr_rtx, 1);
 
-  if (GET_CODE (addr_rtx) == REG)
+  *offset = 0;
+  while (GET_CODE (addr_rtx) == PLUS
+	 && CONST_INT_P (XEXP (addr_rtx, 1)))
     {
-      *base = addr_rtx;
-      *offset = 0;
+      *offset += INTVAL (XEXP (addr_rtx, 1));
+      addr_rtx = XEXP (addr_rtx, 0);
     }
-  else if (GET_CODE (addr_rtx) == PLUS
-	   && CONST_INT_P (XEXP (addr_rtx, 1)))
-    {
-      *base = XEXP (addr_rtx, 0);
-      *offset = INTVAL (XEXP (addr_rtx, 1));
-    }
-  else
+  if (!REG_P (addr_rtx))
     return false;
 
+  *base = addr_rtx;
   return true;
 }
 
@@ -30064,8 +30091,10 @@ rs6000_declare_alias (struct symtab_node *n, void *d)
 	  RS6000_OUTPUT_BASENAME (data->file, buffer);
 	  putc ('\n', data->file);
 	}
+#ifdef ASM_WEAKEN_DECL
       else if (DECL_WEAK (n->decl) && !data->function_descriptor)
 	ASM_WEAKEN_DECL (data->file, n->decl, name, NULL);
+#endif
     }
   else
     {
@@ -32919,6 +32948,28 @@ rs6000_legitimate_constant_p (machine_mode mode, rtx x)
 }
 
 
+/* Return TRUE iff the sequence ending in LAST sets the static chain.  */
+
+static bool
+chain_already_loaded (rtx_insn *last)
+{
+  for (; last != NULL; last = PREV_INSN (last))
+    {
+      if (NONJUMP_INSN_P (last))
+	{
+	  rtx patt = PATTERN (last);
+
+	  if (GET_CODE (patt) == SET)
+	    {
+	      rtx lhs = XEXP (patt, 0);
+
+	      if (REG_P (lhs) && REGNO (lhs) == STATIC_CHAIN_REGNUM)
+		return true;
+	    }
+	}
+    }
+  return false;
+}
 
 /* Expand code to perform a call under the AIX or ELFv2 ABI.  */
 
@@ -33002,7 +33053,9 @@ rs6000_call_aix (rtx value, rtx func_desc, rtx flag, rtx cookie)
 	     originally direct, the 3rd word has not been written since no
 	     trampoline has been built, so we ought not to load it, lest we
 	     override a static chain value.  */
-	  if (!direct_call_p && TARGET_POINTERS_TO_NESTED_FUNCTIONS)
+	  if (!direct_call_p
+	      && TARGET_POINTERS_TO_NESTED_FUNCTIONS
+	      && !chain_already_loaded (crtl->emit.sequence_stack->last))
 	    {
 	      rtx sc_reg = gen_rtx_REG (Pmode, STATIC_CHAIN_REGNUM);
 	      rtx func_sc_offset = GEN_INT (2 * GET_MODE_SIZE (Pmode));
@@ -34728,7 +34781,7 @@ rs6000_analyze_swaps (function *fun)
 		    mode = V4SImode;
 		}
 
-	      if (VECTOR_MODE_P (mode))
+	      if (VECTOR_MODE_P (mode) || mode == TImode)
 		{
 		  insn_entry[uid].is_relevant = 1;
 		  if (mode == TImode || mode == V1TImode)
@@ -34755,7 +34808,7 @@ rs6000_analyze_swaps (function *fun)
 		  && VECTOR_MODE_P (GET_MODE (SET_DEST (insn))))
 		mode = GET_MODE (SET_DEST (insn));
 
-	      if (VECTOR_MODE_P (mode))
+	      if (VECTOR_MODE_P (mode) || mode == TImode)
 		{
 		  insn_entry[uid].is_relevant = 1;
 		  if (mode == TImode || mode == V1TImode)

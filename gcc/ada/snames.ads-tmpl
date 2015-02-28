@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2014, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -713,6 +713,7 @@ package Snames is
    Name_Gcc                            : constant Name_Id := N + $;
    Name_General                        : constant Name_Id := N + $;
    Name_Gnat                           : constant Name_Id := N + $;
+   Name_Gnatprove                      : constant Name_Id := N + $;
    Name_GPL                            : constant Name_Id := N + $;
    Name_High_Order_First               : constant Name_Id := N + $;
    Name_IEEE_Float                     : constant Name_Id := N + $;
@@ -1062,12 +1063,12 @@ package Snames is
    --  for FIFO_Within_Priorities). If new policy names are added, the first
    --  character must be distinct.
 
-   First_Task_Dispatching_Policy_Name    : constant Name_Id := N + $;
-   Name_EDF_Across_Priorities            : constant Name_Id := N + $;
-   Name_FIFO_Within_Priorities           : constant Name_Id := N + $;
-   Name_Non_Preemptive_Within_Priorities : constant Name_Id := N + $;
-   Name_Round_Robin_Within_Priorities    : constant Name_Id := N + $;
-   Last_Task_Dispatching_Policy_Name     : constant Name_Id := N + $;
+   First_Task_Dispatching_Policy_Name         : constant Name_Id := N + $;
+   Name_EDF_Across_Priorities                 : constant Name_Id := N + $;
+   Name_FIFO_Within_Priorities                : constant Name_Id := N + $;
+   Name_Non_Preemptive_FIFO_Within_Priorities : constant Name_Id := N + $;
+   Name_Round_Robin_Within_Priorities         : constant Name_Id := N + $;
+   Last_Task_Dispatching_Policy_Name          : constant Name_Id := N + $;
 
    --  Names of recognized partition elaboration policy identifiers
 

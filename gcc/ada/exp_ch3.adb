@@ -44,6 +44,7 @@ with Exp_Tss;  use Exp_Tss;
 with Exp_Util; use Exp_Util;
 with Freeze;   use Freeze;
 with Ghost;    use Ghost;
+with Inline;   use Inline;
 with Namet;    use Namet;
 with Nlists;   use Nlists;
 with Nmake;    use Nmake;
@@ -5321,11 +5322,20 @@ package body Exp_Ch3 is
                --       Abort_Undefer_Direct;
                --    end;
 
-               Abrt_HSS :=
-                 Make_Handled_Sequence_Of_Statements (Loc,
-                   Statements  => Fin_Stmts,
-                   At_End_Proc =>
-                     New_Occurrence_Of (RTE (RE_Abort_Undefer_Direct), Loc));
+               declare
+                  AUD : constant Entity_Id := RTE (RE_Abort_Undefer_Direct);
+
+               begin
+                  Abrt_HSS :=
+                    Make_Handled_Sequence_Of_Statements (Loc,
+                      Statements  => Fin_Stmts,
+                      At_End_Proc => New_Occurrence_Of (AUD, Loc));
+
+                  --  Present the Abort_Undefer_Direct function to the backend
+                  --  so that it can inline the call to the function.
+
+                  Add_Inlined_Body (AUD, N);
+               end;
 
                Abrt_Blk :=
                  Make_Block_Statement (Loc,
@@ -5356,8 +5366,15 @@ package body Exp_Ch3 is
          end if;
 
          --  Step 4: Insert the whole initialization sequence into the tree
+         --  If the object has a delayed freeze, as will be the case when
+         --  it has aspect specifications, the initialization sequence is
+         --  part of the freeze actions.
 
-         Insert_Actions_After (After, Abrt_Stmts);
+         if Has_Delayed_Freeze (Def_Id) then
+            Append_Freeze_Actions (Def_Id, Abrt_Stmts);
+         else
+            Insert_Actions_After (After, Abrt_Stmts);
+         end if;
       end Default_Initialize_Object;
 
       -------------------------
@@ -5503,10 +5520,13 @@ package body Exp_Ch3 is
                Ensure_Freeze_Node (Def_Id);
                Set_Has_Delayed_Freeze (Def_Id);
                Set_Is_Frozen (Def_Id, False);
-               Append_Freeze_Action (Def_Id,
-                 Make_Invariant_Call (New_Occurrence_Of (Def_Id, Loc)));
 
-            else
+               if not Partial_View_Has_Unknown_Discr (Typ) then
+                  Append_Freeze_Action (Def_Id,
+                    Make_Invariant_Call (New_Occurrence_Of (Def_Id, Loc)));
+               end if;
+
+            elsif not Partial_View_Has_Unknown_Discr (Typ) then
                Insert_After (N,
                  Make_Invariant_Call (New_Occurrence_Of (Def_Id, Loc)));
             end if;
@@ -9889,17 +9909,21 @@ package body Exp_Ch3 is
       New_Ref  : Node_Id;
 
    begin
+      --  This expansion activity is called during analysis, but cannot
+      --  be applied in ASIS mode when other expansion is disabled.
+
       if Is_Tagged_Type (Typ)
        and then not Is_Class_Wide_Type (Typ)
        and then not Is_CPP_Class (Typ)
        and then Tagged_Type_Expansion
        and then Nkind (Expr) /= N_Aggregate
+       and then not ASIS_Mode
        and then (Nkind (Expr) /= N_Qualified_Expression
                   or else Nkind (Expression (Expr)) /= N_Aggregate)
       then
          New_Ref :=
            Make_Selected_Component (Loc,
-              Prefix => New_Occurrence_Of (Def_If, Loc),
+              Prefix        => New_Occurrence_Of (Def_If, Loc),
               Selector_Name =>
                 New_Occurrence_Of (First_Tag_Component (Full_Typ), Loc));
          Set_Assignment_OK (New_Ref);

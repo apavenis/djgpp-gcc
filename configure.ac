@@ -1275,9 +1275,6 @@ case "${host}" in
   *-mingw*)
     host_makefile_frag="config/mh-mingw"
     ;;
-  alpha*-*-linux*)
-    host_makefile_frag="config/mh-alpha-linux"
-    ;;
   hppa*-hp-hpux10*)
     host_makefile_frag="config/mh-pa-hpux10"
     ;;
@@ -1916,6 +1913,14 @@ if test -d ${srcdir}/gcc; then
     if test "${build_lto_plugin}" = "yes" ; then
       configdirs="$configdirs lto-plugin"
     fi
+  fi
+
+  # If we're building an offloading compiler, add the LTO front end.
+  if test x"$enable_as_accelerator_for" != x ; then
+    case ,${enable_languages}, in
+      *,lto,*) ;;
+      *) enable_languages="${enable_languages},lto" ;;
+    esac
   fi
 
   missing_languages=`echo ",$enable_languages," | sed -e s/,all,/,/ -e s/,c,/,/ `

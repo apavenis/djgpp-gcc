@@ -541,7 +541,7 @@ typedef struct poly16x8x4_t
 
 #define __AARCH64_NUM_LANES(__v) (sizeof (__v) / sizeof (__v[0]))
 #define __AARCH64_LANE_CHECK(__vec, __idx)	\
-	__builtin_aarch64_im_lane_boundsi (__AARCH64_NUM_LANES (__vec), __idx)
+	__builtin_aarch64_im_lane_boundsi (sizeof(__vec), sizeof(__vec[0]), __idx)
 
 /* For big-endian, GCC's vector indices are the opposite way around
    to the architectural lane indices used by Neon intrinsics.  */
@@ -21994,7 +21994,7 @@ vsqrtq_f32 (float32x4_t a)
 __extension__ static __inline float64x1_t __attribute__ ((__always_inline__))
 vsqrt_f64 (float64x1_t a)
 {
-  return (float64x1_t) { __builtin_sqrt (a[0]) };
+  return (float64x1_t) { __builtin_aarch64_sqrtdf (a[0]) };
 }
 
 __extension__ static __inline float64x2_t __attribute__ ((__always_inline__))

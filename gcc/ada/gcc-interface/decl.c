@@ -4165,8 +4165,13 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, int definition)
 	      ? is_required
 	      : (Is_Inlined (gnat_entity) ? is_enabled : is_disabled);
 	bool public_flag = Is_Public (gnat_entity) || imported_p;
+	/* Subprograms marked both Intrinsic and Always_Inline need not
+	   have a body of their own.  */
 	bool extern_flag
-	  = (Is_Public (gnat_entity) && !definition) || imported_p;
+	  = ((Is_Public (gnat_entity) && !definition)
+	     || imported_p
+	     || (Convention (gnat_entity) == Convention_Intrinsic
+		 && Has_Pragma_Inline_Always (gnat_entity)));
 	bool artificial_flag = !Comes_From_Source (gnat_entity);
        /* The semantics of "pure" in Ada essentially matches that of "const"
           in the back-end.  In particular, both properties are orthogonal to
@@ -5138,7 +5143,9 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, int definition)
 	 to conflict with Comp2 and an alias set copy is required.
 
 	 The language rules ensure the parent type is already frozen here.  */
-      if (Is_Derived_Type (gnat_entity) && !type_annotate_only)
+      if (kind != E_Subprogram_Type
+	  && Is_Derived_Type (gnat_entity)
+	  && !type_annotate_only)
 	{
 	  Entity_Id gnat_parent_type = Underlying_Type (Etype (gnat_entity));
 	  /* For constrained packed array subtypes, the implementation type is
@@ -5446,16 +5453,17 @@ is_cplusplus_method (Entity_Id gnat_entity)
   if (Convention (gnat_entity) != Convention_CPP)
     return false;
 
-  /* This is the main case: C++ method imported as a primitive operation.  */
-  if (Is_Dispatching_Operation (gnat_entity))
+  /* This is the main case: C++ method imported as a primitive operation.
+     Note that a C++ class with no virtual functions can be imported as a
+     limited record type so the operation is not necessarily dispatching.  */
+  if (Is_Primitive (gnat_entity))
     return true;
 
   /* A thunk needs to be handled like its associated primitive operation.  */
   if (Is_Subprogram (gnat_entity) && Is_Thunk (gnat_entity))
     return true;
 
-  /* C++ classes with no virtual functions can be imported as limited
-     record types, but we need to return true for the constructors.  */
+  /* A constructor is a method on the C++ side.  */
   if (Is_Constructor (gnat_entity))
     return true;
 
@@ -5656,15 +5664,17 @@ gnat_to_gnu_param (Entity_Id gnat_param, Mechanism_Type mech,
     }
 
   /* If this is either a foreign function or if the underlying type won't
-     be passed by reference, strip off possible padding type.  */
+     be passed by reference and is as aligned as the original type, strip
+     off possible padding type.  */
   if (TYPE_IS_PADDING_P (gnu_param_type))
     {
       tree unpadded_type = TREE_TYPE (TYPE_FIELDS (gnu_param_type));
 
-      if (mech == By_Reference
-	  || foreign
+      if (foreign
 	  || (!must_pass_by_ref (unpadded_type)
-	      && (mech == By_Copy || !default_pass_by_ref (unpadded_type))))
+	      && mech != By_Reference
+	      && (mech == By_Copy || !default_pass_by_ref (unpadded_type))
+	      && TYPE_ALIGN (unpadded_type) >= TYPE_ALIGN (gnu_param_type)))
 	gnu_param_type = unpadded_type;
     }
 
@@ -6422,17 +6432,22 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
 		   bool definition, bool debug_info_p)
 {
   const Entity_Id gnat_field_type = Etype (gnat_field);
+  const bool is_aliased
+    = Is_Aliased (gnat_field);
+  const bool is_atomic
+    = (Is_Atomic (gnat_field) || Is_Atomic (gnat_field_type));
+  const bool is_independent
+    = (Is_Independent (gnat_field) || Is_Independent (gnat_field_type));
+  const bool is_volatile
+    = (Treat_As_Volatile (gnat_field) || Treat_As_Volatile (gnat_field_type));
+  const bool needs_strict_alignment
+    = (is_aliased
+       || is_independent
+       || is_volatile
+       || Strict_Alignment (gnat_field_type));
   tree gnu_field_type = gnat_to_gnu_type (gnat_field_type);
   tree gnu_field_id = get_entity_name (gnat_field);
   tree gnu_field, gnu_size, gnu_pos;
-  bool is_aliased
-    = Is_Aliased (gnat_field);
-  bool is_atomic
-    = (Is_Atomic (gnat_field) || Is_Atomic (gnat_field_type));
-  bool is_volatile
-    = (Treat_As_Volatile (gnat_field) || Treat_As_Volatile (gnat_field_type));
-  bool needs_strict_alignment
-    = (is_aliased || is_volatile || Strict_Alignment (gnat_field_type));
 
   /* If this field requires strict alignment, we cannot pack it because
      it would very likely be under-aligned in the record.  */
@@ -6550,6 +6565,8 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
 		s = "position of atomic field& must be multiple of ^ bits";
 	      else if (is_aliased)
 		s = "position of aliased field& must be multiple of ^ bits";
+	      else if (is_independent)
+		s = "position of independent field& must be multiple of ^ bits";
 	      else if (is_volatile)
 		s = "position of volatile field& must be multiple of ^ bits";
 	      else if (Strict_Alignment (gnat_field_type))
@@ -6578,6 +6595,8 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
 		    s = "size of atomic field& must be ^ bits";
 		  else if (is_aliased)
 		    s = "size of aliased field& must be ^ bits";
+		  else if (is_independent)
+		    s = "size of independent field& must be at least ^ bits";
 		  else if (is_volatile)
 		    s = "size of volatile field& must be at least ^ bits";
 		  else if (Strict_Alignment (gnat_field_type))
@@ -6597,7 +6616,10 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
 		{
 		  const char *s;
 
-		  if (is_volatile)
+		  if (is_independent)
+		    s = "size of independent field& must be multiple of"
+			" Storage_Unit";
+		  else if (is_volatile)
 		    s = "size of volatile field& must be multiple of"
 			" Storage_Unit";
 		  else if (Strict_Alignment (gnat_field_type))

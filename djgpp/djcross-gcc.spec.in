@@ -461,6 +461,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Feb 28 2015 Andris Pavenis <andris.pavenis@iki.fi>
+- Use MPC-1.0.3
+
 * Mon Feb 02 2015 Andris Pavenis <andris.pavenis@iki.fi>
 - Use MPC-1.0.2 (already done time ago for gcc-4.8.X and 4.9.X)
 - Note that part of gcc-4.8 and gcc-4.9 related changelog entries

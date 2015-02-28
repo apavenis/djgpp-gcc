@@ -686,9 +686,16 @@ package body Errout is
         ("illegal overriding of subprogram inherited from interface", E);
 
       Error_Msg_Sloc := Sloc (Iface_Prim);
-      Error_Msg_N
-        ("\first formal of & declared # must be of mode `OUT`, `IN OUT` " &
-         "or access-to-variable", E);
+
+      if Ekind (E) = E_Function then
+         Error_Msg_N
+           ("\first formal of & declared # must be of mode `IN` "
+            & "or access-to-constant", E);
+      else
+         Error_Msg_N
+           ("\first formal of & declared # must be of mode `OUT`, `IN OUT` "
+            & "or access-to-variable", E);
+      end if;
    end Error_Msg_PT;
 
    -----------------
@@ -753,12 +760,23 @@ package body Errout is
          end if;
 
          --  Set the fatal error flag in the unit table unless we are in
-         --  Try_Semantics mode. This stops the semantics from being performed
+         --  Try_Semantics mode (in which case we set ignored mode if not
+         --  currently set. This stops the semantics from being performed
          --  if we find a serious error. This is skipped if we are currently
          --  dealing with the configuration pragma file.
 
-         if not Try_Semantics and then Current_Source_Unit /= No_Unit then
-            Set_Fatal_Error (Get_Source_Unit (Sptr));
+         if Current_Source_Unit /= No_Unit then
+            declare
+               U : constant Unit_Number_Type := Get_Source_Unit (Sptr);
+            begin
+               if Try_Semantics then
+                  if Fatal_Error (U) = None then
+                     Set_Fatal_Error (U, Error_Ignored);
+                  end if;
+               else
+                  Set_Fatal_Error (U, Error_Detected);
+               end if;
+            end;
          end if;
       end Handle_Serious_Error;
 
@@ -1153,6 +1171,17 @@ package body Errout is
          if Errors.Table (Cur_Msg).Serious then
             Serious_Errors_Detected := Serious_Errors_Detected + 1;
             Handle_Serious_Error;
+
+         --  If not serious error, set Fatal_Error to indicate ignored error
+
+         else
+            declare
+               U : constant Unit_Number_Type := Get_Source_Unit (Sptr);
+            begin
+               if Fatal_Error (U) = None then
+                  Set_Fatal_Error (U, Error_Ignored);
+               end if;
+            end;
          end if;
       end if;
 
@@ -2763,18 +2792,29 @@ package body Errout is
          Nam := Pragma_Name (Node);
          Loc := Sloc (Node);
 
-      --  The other cases have Chars fields, and we want to test for possible
-      --  internal names, which generally represent something gone wrong. An
-      --  exception is the case of internal type names, where we try to find a
-      --  reasonable external representation for the external name
+      --  The other cases have Chars fields
+
+      --  First deal with internal names, which generally represent something
+      --  gone wrong. First attempt: if this is a rewritten node that rewrites
+      --  something with a Chars field that is not an internal name, use that.
+
+      elsif Is_Internal_Name (Chars (Node))
+        and then Nkind (Original_Node (Node)) in N_Has_Chars
+        and then not Is_Internal_Name (Chars (Original_Node (Node)))
+      then
+         Nam := Chars (Original_Node (Node));
+         Loc := Sloc (Original_Node (Node));
+
+      --  Another shot for internal names, in the case of internal type names,
+      --  we try to find a reasonable representation for the external name.
 
       elsif Is_Internal_Name (Chars (Node))
         and then
           ((Is_Entity_Name (Node)
-                          and then Present (Entity (Node))
-                          and then Is_Type (Entity (Node)))
-              or else
-           (Nkind (Node) = N_Defining_Identifier and then Is_Type (Node)))
+             and then Present (Entity (Node))
+             and then Is_Type (Entity (Node)))
+            or else
+             (Nkind (Node) = N_Defining_Identifier and then Is_Type (Node)))
       then
          if Nkind (Node) = N_Identifier then
             Ent := Entity (Node);
@@ -2797,7 +2837,8 @@ package body Errout is
             Nam := Chars (Ent);
          end if;
 
-      --  If not internal name, just use name in Chars field
+      --  If not internal name, or if we could not find a reasonable possible
+      --  substitution for the internal name, just use name in Chars field.
 
       else
          Nam := Chars (Node);
@@ -2825,6 +2866,12 @@ package body Errout is
          Kill_Message := True;
       end if;
 
+      --  If we still have an internal name, kill the message (will only
+      --  work if we already had errors!)
+
+      if Is_Internal_Name then
+         Kill_Message := True;
+      end if;
       --  Remaining step is to adjust casing and possibly add 'Class
 
       Adjust_Name_Case (Loc);

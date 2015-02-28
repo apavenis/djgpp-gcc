@@ -5167,7 +5167,16 @@ gfc_trans_allocate (gfc_code * code)
 	      se_sz.expr = gfc_evaluate_now (se_sz.expr, &se.pre);
 	      gfc_add_block_to_block (&se.pre, &se_sz.post);
 	      /* Store the string length.  */
-	      tmp = al->expr->ts.u.cl->backend_decl;
+	      if ((expr->symtree->n.sym->ts.type == BT_CLASS
+		  || expr->symtree->n.sym->ts.type == BT_DERIVED)
+		  && expr->ts.u.derived->attr.unlimited_polymorphic)
+		/* For unlimited polymorphic entities get the backend_decl of
+		   the _len component for that.  */
+		tmp = gfc_class_len_get (gfc_get_symbol_decl (
+					   expr->symtree->n.sym));
+	      else
+		/* Else use what is stored in the charlen->backend_decl.  */
+		tmp = al->expr->ts.u.cl->backend_decl;
 	      gfc_add_modify (&se.pre, tmp, fold_convert (TREE_TYPE (tmp),
 			      se_sz.expr));
               tmp = TREE_TYPE (gfc_typenode_for_spec (&code->ext.alloc.ts));
@@ -5566,11 +5575,13 @@ gfc_trans_deallocate (gfc_code *code)
 
       if (expr->rank || gfc_is_coarray (expr))
 	{
+	  gfc_ref *ref;
+
 	  if (expr->ts.type == BT_DERIVED && expr->ts.u.derived->attr.alloc_comp
 	      && !gfc_is_finalizable (expr->ts.u.derived, NULL))
 	    {
-	      gfc_ref *ref;
 	      gfc_ref *last = NULL;
+
 	      for (ref = expr->ref; ref; ref = ref->next)
 		if (ref->type == REF_COMPONENT)
 		  last = ref;
@@ -5581,13 +5592,45 @@ gfc_trans_deallocate (gfc_code *code)
 		    && !(!last && expr->symtree->n.sym->attr.pointer))
 		{
 		  tmp = gfc_deallocate_alloc_comp (expr->ts.u.derived, se.expr,
-						  expr->rank);
+						   expr->rank);
 		  gfc_add_expr_to_block (&se.pre, tmp);
 		}
 	    }
-	  tmp = gfc_array_deallocate (se.expr, pstat, errmsg, errlen,
-				      label_finish, expr);
-	  gfc_add_expr_to_block (&se.pre, tmp);
+
+	  if (GFC_DESCRIPTOR_TYPE_P (TREE_TYPE (se.expr)))
+	    {
+	      tmp = gfc_array_deallocate (se.expr, pstat, errmsg, errlen,
+				          label_finish, expr);
+	      gfc_add_expr_to_block (&se.pre, tmp);
+	    }
+	  else if (TREE_CODE (se.expr) == COMPONENT_REF
+		   && TREE_CODE (TREE_TYPE (se.expr)) == ARRAY_TYPE
+		   && TREE_CODE (TREE_TYPE (TREE_TYPE (se.expr)))
+			== RECORD_TYPE)
+	    {
+	      /* class.c(finalize_component) generates these, when a
+		 finalizable entity has a non-allocatable derived type array
+		 component, which has allocatable components. Obtain the
+		 derived type of the array and deallocate the allocatable
+		 components. */
+	      for (ref = expr->ref; ref; ref = ref->next)
+		{
+		  if (ref->u.c.component->attr.dimension
+		      && ref->u.c.component->ts.type == BT_DERIVED)
+		    break;
+		}
+
+	      if (ref && ref->u.c.component->ts.u.derived->attr.alloc_comp
+		  && !gfc_is_finalizable (ref->u.c.component->ts.u.derived,
+					  NULL))
+		{
+		  tmp = gfc_deallocate_alloc_comp
+				(ref->u.c.component->ts.u.derived,
+				 se.expr, expr->rank);
+		  gfc_add_expr_to_block (&se.pre, tmp);
+		}
+	    }
+
 	  if (al->expr->ts.type == BT_CLASS)
 	    gfc_reset_vptr (&se.pre, al->expr);
 	}
