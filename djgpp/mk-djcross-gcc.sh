@@ -3,7 +3,7 @@
 gcc_src_ext=bz2
 gmp_version=6.0.0
 mpfr_version=3.1.2
-mpc_version=1.0.2
+mpc_version=1.0.3
 autoconf_version=2.64
 automake_version=1.11.1
 

@@ -457,6 +457,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Feb 28 2015 Andris Pavenis <andris.pavenis@iki.fi> 4.8.4-1ap
+- Use MPC-1.0.3
+
 * Sun Dec 21 2014 Andris Pavenis <andris.pavenis@iki.fi> 4.8.4-1ap
 - Update to GCC-4.8.4
 
