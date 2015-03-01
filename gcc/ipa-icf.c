@@ -619,6 +619,30 @@ sem_function::equals_private (sem_item *item,
     if (!compare_phi_node (bb_sorted[i]->bb, m_compared_func->bb_sorted[i]->bb))
       return return_false_with_msg ("PHI node comparison returns false");
 
+  /* Compare special function DECL attributes.  */
+  if (DECL_FUNCTION_PERSONALITY (decl) != DECL_FUNCTION_PERSONALITY (item->decl))
+    return return_false_with_msg ("function personalities are different");
+
+  if (DECL_DISREGARD_INLINE_LIMITS (decl) != DECL_DISREGARD_INLINE_LIMITS (item->decl))
+    return return_false_with_msg ("DECL_DISREGARD_INLINE_LIMITS are different");
+
+  if (DECL_DECLARED_INLINE_P (decl) != DECL_DECLARED_INLINE_P (item->decl))
+    return return_false_with_msg ("inline attributes are different");
+
+  if (DECL_IS_OPERATOR_NEW (decl) != DECL_IS_OPERATOR_NEW (item->decl))
+    return return_false_with_msg ("operator new flags are different");
+
+  if (DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (decl)
+       != DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (item->decl))
+    return return_false_with_msg ("intrument function entry exit "
+				  "attributes are different");
+
+  if (DECL_NO_LIMIT_STACK (decl) != DECL_NO_LIMIT_STACK (item->decl))
+    return return_false_with_msg ("no stack limit attributes are different");
+
+  if (flags_from_decl_or_type (decl) != flags_from_decl_or_type (item->decl))
+    return return_false_with_msg ("decl_or_type flags are different");
+
   return result;
 }
 
@@ -632,13 +656,23 @@ set_local (cgraph_node *node, void *data)
   return false;
 }
 
-/* TREE_ADDRESSABLE of NODE to true if DATA is non-NULL.
+/* TREE_ADDRESSABLE of NODE to true.
    Helper for call_for_symbol_thunks_and_aliases.  */
 
 static bool
 set_addressable (varpool_node *node, void *)
 {
   TREE_ADDRESSABLE (node->decl) = 1;
+  return false;
+}
+
+/* Clear DECL_RTL of NODE. 
+   Helper for call_for_symbol_thunks_and_aliases.  */
+
+static bool
+clear_decl_rtl (symtab_node *node, void *)
+{
+  SET_DECL_RTL (node->decl, NULL);
   return false;
 }
 
@@ -699,6 +733,7 @@ sem_function::merge (sem_item *alias_item)
   bool remove = false;
 
   bool original_discardable = false;
+  bool original_discarded = false;
 
   bool original_address_matters = original->address_matters_p ();
   bool alias_address_matters = alias->address_matters_p ();
@@ -727,15 +762,16 @@ sem_function::merge (sem_item *alias_item)
     }
 
   /* See if original is in a section that can be discarded if the main
-     symbol is not used.
+     symbol is not used.  */
 
-     Also consider case where we have resolution info and we know that
+  if (original->can_be_discarded_p ())
+    original_discardable = true;
+  /* Also consider case where we have resolution info and we know that
      original's definition is not going to be used.  In this case we can not
      create alias to original.  */
-  if (original->can_be_discarded_p ()
-      || (node->resolution != LDPR_UNKNOWN
-	  && !decl_binds_to_current_def_p (node->decl)))
-    original_discardable = true;
+  if (node->resolution != LDPR_UNKNOWN
+      && !decl_binds_to_current_def_p (node->decl))
+    original_discardable = original_discarded = true;
 
   /* Creating a symtab alias is the optimal way to merge.
      It however can not be used in the following cases:
@@ -745,12 +781,18 @@ sem_function::merge (sem_item *alias_item)
 	it is an external functions where we can not create an alias
 	(ORIGINAL_DISCARDABLE)
      3) if target do not support symbol aliases.
+     4) original and alias lie in different comdat groups.
 
      If we can not produce alias, we will turn ALIAS into WRAPPER of ORIGINAL
      and/or redirect all callers from ALIAS to ORIGINAL.  */
   if ((original_address_matters && alias_address_matters)
-      || original_discardable
-      || !sem_item::target_supports_symbol_aliases_p ())
+      || (original_discardable
+	  && (!DECL_COMDAT_GROUP (alias->decl)
+	      || (DECL_COMDAT_GROUP (alias->decl)
+		  != DECL_COMDAT_GROUP (original->decl))))
+      || original_discarded
+      || !sem_item::target_supports_symbol_aliases_p ()
+      || DECL_COMDAT_GROUP (alias->decl) != DECL_COMDAT_GROUP (original->decl))
     {
       /* First see if we can produce wrapper.  */
 
@@ -758,7 +800,7 @@ sem_function::merge (sem_item *alias_item)
 	 comdat group. Other compiler producing the body of the
 	 another comdat group may make opossite decision and with unfortunate
 	 linker choices this may close a loop.  */
-      if (DECL_COMDAT_GROUP (alias->decl)
+      if (DECL_COMDAT_GROUP (original->decl) && DECL_COMDAT_GROUP (alias->decl)
 	  && (DECL_COMDAT_GROUP (alias->decl)
 	      != DECL_COMDAT_GROUP (original->decl)))
 	{
@@ -815,26 +857,27 @@ sem_function::merge (sem_item *alias_item)
 
       /* Work out the symbol the wrapper should call.
 	 If ORIGINAL is interposable, we need to call a local alias.
-	 Also produce local alias (if possible) as an optimization.  */
-      if (!original_discardable
-	  || (DECL_COMDAT_GROUP (original->decl)
-	      && (DECL_COMDAT_GROUP (original->decl)
-		  == DECL_COMDAT_GROUP (alias->decl))))
+	 Also produce local alias (if possible) as an optimization.
+
+	 Local aliases can not be created inside comdat groups because that
+	 prevents inlining.  */
+      if (!original_discardable && !original->get_comdat_group ())
 	{
 	  local_original
 	    = dyn_cast <cgraph_node *> (original->noninterposable_alias ());
 	  if (!local_original
 	      && original->get_availability () > AVAIL_INTERPOSABLE)
 	    local_original = original;
-	  /* If original is COMDAT local, we can not really redirect external
-	     callers to it.  */
-	  if (original->comdat_local_p ())
-	    redirect_callers = false;
 	}
       /* If we can not use local alias, fallback to the original
 	 when possible.  */
       else if (original->get_availability () > AVAIL_INTERPOSABLE)
 	local_original = original;
+
+      /* If original is COMDAT local, we can not really redirect calls outside
+	 of its comdat group to it.  */
+      if (original->comdat_local_p ())
+        redirect_callers = false;
       if (!local_original)
 	{
 	  if (dump_file)
@@ -893,6 +936,9 @@ sem_function::merge (sem_item *alias_item)
       ipa_merge_profiles (original, alias);
       alias->release_body (true);
       alias->reset ();
+      /* Notice global symbol possibly produced RTL.  */
+      ((symtab_node *)alias)->call_for_symbol_and_aliases (clear_decl_rtl,
+							   NULL, true);
 
       /* Create the alias.  */
       cgraph_node::create_alias (alias_func->decl, decl);
@@ -1280,6 +1326,17 @@ sem_variable::equals (sem_item *item,
   if (!ctor || !v->ctor)
     return return_false_with_msg ("ctor is missing for semantic variable");
 
+  if (DECL_IN_CONSTANT_POOL (decl)
+      && (DECL_IN_CONSTANT_POOL (item->decl)
+	  || item->node->address_matters_p ()))
+    return return_false_with_msg ("constant pool");
+
+  if (DECL_IN_TEXT_SECTION (decl) != DECL_IN_TEXT_SECTION (item->decl))
+    return return_false_with_msg ("text section");
+
+  if (DECL_TLS_MODEL (decl) || DECL_TLS_MODEL (item->decl))
+    return return_false_with_msg ("TLS model");
+
   return sem_variable::equals (ctor, v->ctor);
 }
 
@@ -1492,11 +1549,16 @@ sem_variable::merge (sem_item *alias_item)
 		 "adress of original and alias may be compared.\n\n");
       return false;
     }
+  if (DECL_COMDAT_GROUP (original->decl) != DECL_COMDAT_GROUP (alias->decl))
+    {
+      if (dump_file)
+	fprintf (dump_file, "Not unifying; alias cannot be created; "
+		 "across comdat group boundary\n\n");
 
-  if (original_discardable
-      && (!DECL_COMDAT_GROUP (original->decl)
-	  || (DECL_COMDAT_GROUP (original->decl)
-	      != DECL_COMDAT_GROUP (alias->decl))))
+      return false;
+    }
+
+  if (original_discardable)
     {
       if (dump_file)
 	fprintf (dump_file, "Not unifying; alias cannot be created; "
@@ -1512,6 +1574,8 @@ sem_variable::merge (sem_item *alias_item)
       alias->analyzed = false;
 
       DECL_INITIAL (alias->decl) = NULL;
+      ((symtab_node *)alias)->call_for_symbol_and_aliases (clear_decl_rtl,
+							   NULL, true);
       alias->need_bounds_init = false;
       alias->remove_all_references ();
       if (TREE_ADDRESSABLE (alias->decl))

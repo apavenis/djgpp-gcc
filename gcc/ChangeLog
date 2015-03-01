@@ -1,3 +1,46 @@
+2015-02-28  Jan Hubicka  <hubicka@ucw.cz>
+
+	* ipa-icf-gimple.c (func_checker::compare_operand): Fix handling
+	of OBJ_TYPE_REF.
+
+2015-02-28  Jan Hubicka  <hubicka@ucw.cz>
+
+	* ipa-icf.c (sem_function::merge): Fix handling of COMDAT.
+	(sem_variable::merge) Likewise.
+
+2015-02-28  Jan Hubicka  <hubicka@ucw.cz>
+
+	* ipa-inline.c (can_inline_edge_p): Match opt_for_fn on inline
+	target; also match flag_ipa_devirt.
+
+2015-03-01  Martin Liska  <mliska@suse.cz>
+	    Jan Hubicka   <hubicka@ucw.cz>
+
+	* ipa-icf-gimple.c (func_checker::compare_variable_decl):
+	Validate variable alignment.
+	* ipa-icf.c (sem_function::equals_private): Be more precise
+	about non-common function attributes.
+	(sem_variable::equals): Likewise.
+
+2015-02-28  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR ipa/65237
+	* ipa-icf.c (sem_function::merge): Do not attempt to produce alias
+	across COMDAT group boundary.
+
+2015-02-28  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR ipa/65232
+	* ipa-icf.c (clear_decl_rtl): New function.
+	(sem_function::merge): Clear RTL before forming alias.
+	(sem_variable::merge): Clear RTL before forming alias.
+
+2015-02-28  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR ipa/65236
+	* cgraphunit.c (cgraph_node::expand_thunk): Enable return slot
+	opt.
+
 2015-02-28  Xingxing Pan  <xxingpan@marvell.com>
 
 	* config/aarch64/aarch64.md: (mov<mode>_aarch64): Change type
