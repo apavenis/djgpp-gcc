@@ -53,6 +53,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #include "system.h"
+#include <list>
 #include "coretypes.h"
 #include "hash-set.h"
 #include "machmode.h"
@@ -119,9 +120,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "lto-streamer.h"
 #include "data-streamer.h"
 #include "ipa-utils.h"
-#include <list>
 #include "ipa-icf-gimple.h"
 #include "ipa-icf.h"
+#include "stor-layout.h"
 
 using namespace ipa_icf_gimple;
 
@@ -335,17 +336,40 @@ sem_function::get_hash (void)
 
 /* For a given symbol table nodes N1 and N2, we check that FUNCTION_DECLs
    point to a same function. Comparison can be skipped if IGNORED_NODES
-   contains these nodes.  */
+   contains these nodes.  ADDRESS indicate if address is taken.  */
 
 bool
-sem_function::compare_cgraph_references (hash_map <symtab_node *, sem_item *>
-    &ignored_nodes,
-    symtab_node *n1, symtab_node *n2)
+sem_item::compare_cgraph_references (
+    hash_map <symtab_node *, sem_item *> &ignored_nodes,
+    symtab_node *n1, symtab_node *n2, bool address)
 {
-  if (n1 == n2 || (ignored_nodes.get (n1) && ignored_nodes.get (n2)))
+  enum availability avail1, avail2;
+
+  if (n1 == n2)
     return true;
 
-  /* TODO: add more precise comparison for weakrefs, etc.  */
+  /* Merging two definitions with a reference to equivalent vtables, but
+     belonging to a different type may result in ipa-polymorphic-call analysis
+     giving a wrong answer about the dynamic type of instance.  */
+  if (is_a <varpool_node *> (n1)
+      && (DECL_VIRTUAL_P (n1->decl) || DECL_VIRTUAL_P (n2->decl))
+      && (DECL_VIRTUAL_P (n1->decl) != DECL_VIRTUAL_P (n2->decl)
+	  || !types_must_be_same_for_odr (DECL_CONTEXT (n1->decl),
+					  DECL_CONTEXT (n2->decl))))
+    return return_false_with_msg
+	     ("references to virtual tables can not be merged");
+
+  if (address && n1->equal_address_to (n2) == 1)
+    return true;
+  if (!address && n1->semantically_equivalent_p (n2))
+    return true;
+
+  n1 = n1->ultimate_alias_target (&avail1);
+  n2 = n2->ultimate_alias_target (&avail2);
+
+  if (avail1 >= AVAIL_INTERPOSABLE && ignored_nodes.get (n1)
+      && avail2 >= AVAIL_INTERPOSABLE && ignored_nodes.get (n2))
+    return true;
 
   return return_false_with_msg ("different references");
 }
@@ -382,21 +406,79 @@ sem_function::equals_wpa (sem_item *item,
   if (arg_types.length () != m_compared_func->arg_types.length ())
     return return_false_with_msg ("different number of arguments");
 
-  /* Checking types of arguments.  */
-  for (unsigned i = 0; i < arg_types.length (); i++)
+  /* Compare special function DECL attributes.  */
+  if (DECL_FUNCTION_PERSONALITY (decl)
+      != DECL_FUNCTION_PERSONALITY (item->decl))
+    return return_false_with_msg ("function personalities are different");
+
+  if (DECL_DISREGARD_INLINE_LIMITS (decl)
+      != DECL_DISREGARD_INLINE_LIMITS (item->decl))
+    return return_false_with_msg ("DECL_DISREGARD_INLINE_LIMITS are different");
+
+  if (DECL_DECLARED_INLINE_P (decl) != DECL_DECLARED_INLINE_P (item->decl))
+    return return_false_with_msg ("inline attributes are different");
+
+  if (DECL_IS_OPERATOR_NEW (decl) != DECL_IS_OPERATOR_NEW (item->decl))
+    return return_false_with_msg ("operator new flags are different");
+
+  if (DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (decl)
+       != DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (item->decl))
+    return return_false_with_msg ("intrument function entry exit "
+				  "attributes are different");
+
+  if (DECL_NO_LIMIT_STACK (decl) != DECL_NO_LIMIT_STACK (item->decl))
+    return return_false_with_msg ("no stack limit attributes are different");
+
+  if (DECL_CXX_CONSTRUCTOR_P (decl) != DECL_CXX_CONSTRUCTOR_P (item->decl))
+    return return_false_with_msg ("DELC_CXX_CONSTRUCTOR mismatch");
+
+  if (DECL_CXX_DESTRUCTOR_P (decl) != DECL_CXX_DESTRUCTOR_P (item->decl))
+    return return_false_with_msg ("DELC_CXX_DESTRUCTOR mismatch");
+
+  if (flags_from_decl_or_type (decl) != flags_from_decl_or_type (item->decl))
+    return return_false_with_msg ("decl_or_type flags are different");
+
+  /* Do not match polymorphic constructors of different types.  They calls
+     type memory location for ipa-polymorphic-call and we do not want
+     it to get confused by wrong type.  */
+  if (DECL_CXX_CONSTRUCTOR_P (decl)
+      && TREE_CODE (TREE_TYPE (decl)) == METHOD_TYPE)
     {
-      /* This guard is here for function pointer with attributes (pr59927.c).  */
-      if (!arg_types[i] || !m_compared_func->arg_types[i])
-	return return_false_with_msg ("NULL argument type");
+      if (TREE_CODE (TREE_TYPE (item->decl)) != METHOD_TYPE)
+        return return_false_with_msg ("DECL_CXX_CONSTURCTOR type mismatch");
+      else if (!func_checker::compatible_polymorphic_types_p
+		 (method_class_type (TREE_TYPE (decl)),
+		  method_class_type (TREE_TYPE (item->decl)), false))
+        return return_false_with_msg ("ctor polymorphic type mismatch");
+    }
 
-      /* Polymorphic comparison is executed just for non-leaf functions.  */
-      bool is_not_leaf = get_node ()->callees != NULL
-			 || get_node ()->indirect_calls != NULL;
+  /* Checking function TARGET and OPTIMIZATION flags.  */
+  cl_target_option *tar1 = target_opts_for_fn (decl);
+  cl_target_option *tar2 = target_opts_for_fn (item->decl);
 
-      if (!func_checker::compatible_types_p (arg_types[i],
-					     m_compared_func->arg_types[i],
-					     is_not_leaf, i == 0))
-	return return_false_with_msg ("argument type is different");
+  if (tar1 != tar2 && !cl_target_option_eq (tar1, tar2))
+    {
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "target flags difference");
+	  cl_target_option_print_diff (dump_file, 2, tar1, tar2);
+	}
+
+      return return_false_with_msg ("Target flags are different");
+    }
+
+  cl_optimization *opt1 = opts_for_fn (decl);
+  cl_optimization *opt2 = opts_for_fn (item->decl);
+
+  if (opt1 != opt2 && memcmp (opt1, opt2, sizeof(cl_optimization)))
+    {
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "optimization flags difference");
+	  cl_optimization_print_diff (dump_file, 2, opt1, opt2);
+	}
+
+      return return_false_with_msg ("optimization flags are different");
     }
 
   /* Result type checking.  */
@@ -404,15 +486,55 @@ sem_function::equals_wpa (sem_item *item,
 					 m_compared_func->result_type))
     return return_false_with_msg ("result types are different");
 
+  /* Checking types of arguments.  */
+  for (unsigned i = 0; i < arg_types.length (); i++)
+    {
+      /* This guard is here for function pointer with attributes (pr59927.c).  */
+      if (!arg_types[i] || !m_compared_func->arg_types[i])
+	return return_false_with_msg ("NULL argument type");
+
+      if (!func_checker::compatible_types_p (arg_types[i],
+					     m_compared_func->arg_types[i]))
+	return return_false_with_msg ("argument type is different");
+      if (POINTER_TYPE_P (arg_types[i])
+	  && (TYPE_RESTRICT (arg_types[i])
+	      != TYPE_RESTRICT (m_compared_func->arg_types[i])))
+	return return_false_with_msg ("argument restrict flag mismatch");
+    }
+
   if (node->num_references () != item->node->num_references ())
     return return_false_with_msg ("different number of references");
+
+  if (comp_type_attributes (TREE_TYPE (decl),
+			    TREE_TYPE (item->decl)) != 1)
+    return return_false_with_msg ("different type attributes");
+
+  /* The type of THIS pointer type memory location for
+     ipa-polymorphic-call-analysis.  */
+  if (opt_for_fn (decl, flag_devirtualize)
+      && (TREE_CODE (TREE_TYPE (decl)) == METHOD_TYPE
+          || TREE_CODE (TREE_TYPE (item->decl)) == METHOD_TYPE)
+      && (!flag_ipa_cp
+	  || ipa_is_param_used (IPA_NODE_REF (dyn_cast <cgraph_node *>(node)),
+				0))
+      && compare_polymorphic_p ())
+    {
+      if (TREE_CODE (TREE_TYPE (decl)) != TREE_CODE (TREE_TYPE (item->decl)))
+	return return_false_with_msg ("METHOD_TYPE and FUNCTION_TYPE mismatch");
+      if (!func_checker::compatible_polymorphic_types_p
+	   (method_class_type (TREE_TYPE (decl)),
+	    method_class_type (TREE_TYPE (item->decl)), false))
+	return return_false_with_msg ("THIS pointer ODR type mismatch");
+    }
 
   ipa_ref *ref = NULL, *ref2 = NULL;
   for (unsigned i = 0; node->iterate_reference (i, ref); i++)
     {
       item->node->iterate_reference (i, ref2);
 
-      if (!compare_cgraph_references (ignored_nodes, ref->referred, ref2->referred))
+      if (!compare_cgraph_references (ignored_nodes, ref->referred,
+				      ref2->referred,
+				      ref->address_matters_p ()))
 	return false;
     }
 
@@ -421,7 +543,8 @@ sem_function::equals_wpa (sem_item *item,
 
   while (e1 && e2)
     {
-      if (!compare_cgraph_references (ignored_nodes, e1->callee, e2->callee))
+      if (!compare_cgraph_references (ignored_nodes, e1->callee,
+				      e2->callee, false))
 	return false;
 
       e1 = e1->next_callee;
@@ -485,45 +608,6 @@ sem_function::equals_private (sem_item *item,
   if (!equals_wpa (item, ignored_nodes))
     return false;
 
-  /* Checking function TARGET and OPTIMIZATION flags.  */
-  cl_target_option *tar1 = target_opts_for_fn (decl);
-  cl_target_option *tar2 = target_opts_for_fn (m_compared_func->decl);
-
-  if (tar1 != NULL && tar2 != NULL)
-    {
-      if (!cl_target_option_eq (tar1, tar2))
-	{
-	  if (dump_file && (dump_flags & TDF_DETAILS))
-	    {
-	      fprintf (dump_file, "target flags difference");
-	      cl_target_option_print_diff (dump_file, 2, tar1, tar2);
-	    }
-
-	  return return_false_with_msg ("Target flags are different");
-	}
-    }
-  else if (tar1 != NULL || tar2 != NULL)
-    return return_false_with_msg ("Target flags are different");
-
-  cl_optimization *opt1 = opts_for_fn (decl);
-  cl_optimization *opt2 = opts_for_fn (m_compared_func->decl);
-
-  if (opt1 != NULL && opt2 != NULL)
-    {
-      if (memcmp (opt1, opt2, sizeof(cl_optimization)))
-	{
-	  if (dump_file && (dump_flags & TDF_DETAILS))
-	    {
-	      fprintf (dump_file, "optimization flags difference");
-	      cl_optimization_print_diff (dump_file, 2, opt1, opt2);
-	    }
-
-	  return return_false_with_msg ("optimization flags are different");
-	}
-    }
-  else if (opt1 != NULL || opt2 != NULL)
-    return return_false_with_msg ("optimization flags are different");
-
   /* Checking function arguments.  */
   tree decl1 = DECL_ATTRIBUTES (decl);
   tree decl2 = DECL_ATTRIBUTES (m_compared_func->decl);
@@ -562,7 +646,6 @@ sem_function::equals_private (sem_item *item,
 
   if (decl1 != decl2)
     return return_false();
-
 
   for (arg1 = DECL_ARGUMENTS (decl),
        arg2 = DECL_ARGUMENTS (m_compared_func->decl);
@@ -619,30 +702,6 @@ sem_function::equals_private (sem_item *item,
     if (!compare_phi_node (bb_sorted[i]->bb, m_compared_func->bb_sorted[i]->bb))
       return return_false_with_msg ("PHI node comparison returns false");
 
-  /* Compare special function DECL attributes.  */
-  if (DECL_FUNCTION_PERSONALITY (decl) != DECL_FUNCTION_PERSONALITY (item->decl))
-    return return_false_with_msg ("function personalities are different");
-
-  if (DECL_DISREGARD_INLINE_LIMITS (decl) != DECL_DISREGARD_INLINE_LIMITS (item->decl))
-    return return_false_with_msg ("DECL_DISREGARD_INLINE_LIMITS are different");
-
-  if (DECL_DECLARED_INLINE_P (decl) != DECL_DECLARED_INLINE_P (item->decl))
-    return return_false_with_msg ("inline attributes are different");
-
-  if (DECL_IS_OPERATOR_NEW (decl) != DECL_IS_OPERATOR_NEW (item->decl))
-    return return_false_with_msg ("operator new flags are different");
-
-  if (DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (decl)
-       != DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (item->decl))
-    return return_false_with_msg ("intrument function entry exit "
-				  "attributes are different");
-
-  if (DECL_NO_LIMIT_STACK (decl) != DECL_NO_LIMIT_STACK (item->decl))
-    return return_false_with_msg ("no stack limit attributes are different");
-
-  if (flags_from_decl_or_type (decl) != flags_from_decl_or_type (item->decl))
-    return return_false_with_msg ("decl_or_type flags are different");
-
   return result;
 }
 
@@ -684,12 +743,22 @@ redirect_all_callers (cgraph_node *n, cgraph_node *to)
 {
   int nredirected = 0;
   ipa_ref *ref;
+  cgraph_edge *e = n->callers;
 
-  while (n->callers)
+  while (e)
     {
-      cgraph_edge *e = n->callers;
-      e->redirect_callee (to);
-      nredirected++;
+      /* Redirecting thunks to interposable symbols or symbols in other sections
+	 may not be supported by target output code.  Play safe for now and
+	 punt on redirection.  */
+      if (!e->caller->thunk.thunk_p)
+	{
+	  struct cgraph_edge *nexte = e->next_caller;
+          e->redirect_callee (to);
+	  e = nexte;
+          nredirected++;
+	}
+      else
+	e = e->next_callee;
     }
   for (unsigned i = 0; n->iterate_direct_aliases (i, ref);)
     {
@@ -704,6 +773,8 @@ redirect_all_callers (cgraph_node *n, cgraph_node *to)
 	{
 	  nredirected += redirect_all_callers (n_alias, to);
 	  if (n_alias->can_remove_if_no_direct_calls_p ()
+	      && !n_alias->call_for_symbol_and_aliases (cgraph_node::has_thunk_p,
+							NULL, true)
 	      && !n_alias->has_aliases_p ())
 	    n_alias->remove ();
 	}
@@ -894,6 +965,8 @@ sem_function::merge (sem_item *alias_item)
 	  return false;
 	}
       if (!create_wrapper
+	  && !alias->call_for_symbol_and_aliases (cgraph_node::has_thunk_p,
+						  NULL, true)
 	  && !alias->can_remove_if_no_direct_calls_p ())
 	{
 	  if (dump_file)
@@ -962,7 +1035,10 @@ sem_function::merge (sem_item *alias_item)
       if (dump_file)
 	fprintf (dump_file, "Unified; Wrapper has been created.\n\n");
     }
-  gcc_assert (alias->icf_merged || remove);
+
+  /* It's possible that redirection can hit thunks that block
+     redirection opportunities.  */
+  gcc_assert (alias->icf_merged || remove || redirect_callers);
   original->icf_merged = true;
 
   /* Inform the inliner about cross-module merging.  */
@@ -1018,7 +1094,8 @@ sem_function::init (void)
     unsigned nondbg_stmt_count = 0;
 
     edge e;
-    for (edge_iterator ei = ei_start (bb->preds); ei_cond (ei, &e); ei_next (&ei))
+    for (edge_iterator ei = ei_start (bb->preds); ei_cond (ei, &e);
+	 ei_next (&ei))
       cfg_checksum = iterative_hash_host_wide_int (e->flags,
 		     cfg_checksum);
 
@@ -1027,9 +1104,10 @@ sem_function::init (void)
       {
 	gimple stmt = gsi_stmt (gsi);
 
-	if (gimple_code (stmt) != GIMPLE_DEBUG)
+	if (gimple_code (stmt) != GIMPLE_DEBUG
+	    && gimple_code (stmt) != GIMPLE_PREDICT)
 	  {
-	    hash_stmt (&hstate, stmt);
+	    hash_stmt (stmt, hstate);
 	    nondbg_stmt_count++;
 	  }
       }
@@ -1039,7 +1117,8 @@ sem_function::init (void)
 
     /* Inserting basic block to hash table.  */
     sem_bb *semantic_bb = new sem_bb (bb, nondbg_stmt_count,
-				      EDGE_COUNT (bb->preds) + EDGE_COUNT (bb->succs));
+				      EDGE_COUNT (bb->preds)
+				      + EDGE_COUNT (bb->succs));
 
     bb_sorted.safe_push (semantic_bb);
   }
@@ -1047,52 +1126,119 @@ sem_function::init (void)
   parse_tree_args ();
 }
 
+/* Accumulate to HSTATE a hash of expression EXP.
+   Identical to inchash::add_expr, but guaranteed to be stable across LTO
+   and DECL equality classes.  */
+
+void
+sem_item::add_expr (const_tree exp, inchash::hash &hstate)
+{
+  if (exp == NULL_TREE)
+    {
+      hstate.merge_hash (0);
+      return;
+    }
+
+  /* Handled component can be matched in a cureful way proving equivalence
+     even if they syntactically differ.  Just skip them.  */
+  STRIP_NOPS (exp);
+  while (handled_component_p (exp))
+    exp = TREE_OPERAND (exp, 0);
+
+  enum tree_code code = TREE_CODE (exp);
+  hstate.add_int (code);
+
+  switch (code)
+    {
+    /* Use inchash::add_expr for everything that is LTO stable.  */
+    case VOID_CST:
+    case INTEGER_CST:
+    case REAL_CST:
+    case FIXED_CST:
+    case STRING_CST:
+    case COMPLEX_CST:
+    case VECTOR_CST:
+      inchash::add_expr (exp, hstate);
+      break;
+    case CONSTRUCTOR:
+      {
+	unsigned HOST_WIDE_INT idx;
+	tree value;
+
+	hstate.add_wide_int (int_size_in_bytes (TREE_TYPE (exp)));
+
+	FOR_EACH_CONSTRUCTOR_VALUE (CONSTRUCTOR_ELTS (exp), idx, value)
+	  if (value)
+	    add_expr (value, hstate);
+	break;
+      }
+    case ADDR_EXPR:
+    case FDESC_EXPR:
+      add_expr (get_base_address (TREE_OPERAND (exp, 0)), hstate);
+      break;
+    case SSA_NAME:
+    case VAR_DECL:
+    case CONST_DECL:
+    case PARM_DECL:
+      hstate.add_wide_int (int_size_in_bytes (TREE_TYPE (exp)));
+      break;
+    case MEM_REF:
+    case POINTER_PLUS_EXPR:
+    case MINUS_EXPR:
+    case RANGE_EXPR:
+      add_expr (TREE_OPERAND (exp, 0), hstate);
+      add_expr (TREE_OPERAND (exp, 1), hstate);
+      break;
+    case PLUS_EXPR:
+      {
+	inchash::hash one, two;
+	add_expr (TREE_OPERAND (exp, 0), one);
+	add_expr (TREE_OPERAND (exp, 1), two);
+	hstate.add_commutative (one, two);
+      }
+      break;
+    CASE_CONVERT:
+      hstate.add_wide_int (int_size_in_bytes (TREE_TYPE (exp)));
+      return add_expr (TREE_OPERAND (exp, 0), hstate);
+    default:
+      break;
+    }
+}
+
 /* Improve accumulated hash for HSTATE based on a gimple statement STMT.  */
 
 void
-sem_function::hash_stmt (inchash::hash *hstate, gimple stmt)
+sem_function::hash_stmt (gimple stmt, inchash::hash &hstate)
 {
   enum gimple_code code = gimple_code (stmt);
 
-  hstate->add_int (code);
+  hstate.add_int (code);
 
-  if (code == GIMPLE_CALL)
+  switch (code)
     {
-      /* Checking of argument.  */
-      for (unsigned i = 0; i < gimple_call_num_args (stmt); ++i)
+    case GIMPLE_ASSIGN:
+      if (commutative_tree_code (gimple_assign_rhs_code (stmt))
+	  || commutative_ternary_tree_code (gimple_assign_rhs_code (stmt)))
 	{
-	  tree argument = gimple_call_arg (stmt, i);
+	  inchash::hash one, two;
 
-	  switch (TREE_CODE (argument))
-	    {
-	    case INTEGER_CST:
-	      if (tree_fits_shwi_p (argument))
-		hstate->add_wide_int (tree_to_shwi (argument));
-	      else if (tree_fits_uhwi_p (argument))
-		hstate->add_wide_int (tree_to_uhwi (argument));
-	      break;
-	    case REAL_CST:
-	      REAL_VALUE_TYPE c;
-	      HOST_WIDE_INT n;
-
-	      c = TREE_REAL_CST (argument);
-	      n = real_to_integer (&c);
-
-	      hstate->add_wide_int (n);
-	      break;
-	    case ADDR_EXPR:
-	      {
-		tree addr_operand = TREE_OPERAND (argument, 0);
-
-		if (TREE_CODE (addr_operand) == STRING_CST)
-		  hstate->add (TREE_STRING_POINTER (addr_operand),
-			       TREE_STRING_LENGTH (addr_operand));
-		break;
-	      }
-	    default:
-	      break;
-	    }
+	  add_expr (gimple_assign_rhs1 (stmt), one);
+	  add_expr (gimple_assign_rhs2 (stmt), two);
+	  hstate.add_commutative (one, two);
+	  add_expr (gimple_assign_lhs (stmt), hstate);
+	  break;
 	}
+      /* ... fall through ... */
+    case GIMPLE_CALL:
+    case GIMPLE_ASM:
+    case GIMPLE_COND:
+    case GIMPLE_GOTO:
+    case GIMPLE_RETURN:
+      /* All these statements are equivalent if their operands are.  */
+      for (unsigned i = 0; i < gimple_num_ops (stmt); ++i)
+	add_expr (gimple_op (stmt, i), hstate);
+    default:
+      break;
     }
 }
 
@@ -1102,10 +1248,20 @@ sem_function::hash_stmt (inchash::hash *hstate, gimple stmt)
 bool
 sem_function::compare_polymorphic_p (void)
 {
-  return get_node ()->callees != NULL
-	 || get_node ()->indirect_calls != NULL
-	 || m_compared_func->get_node ()->callees != NULL
-	 || m_compared_func->get_node ()->indirect_calls != NULL;
+  struct cgraph_edge *e;
+
+  if (!opt_for_fn (decl, flag_devirtualize))
+    return false;
+  if (get_node ()->indirect_calls != NULL
+      || m_compared_func->get_node ()->indirect_calls != NULL)
+    return true;
+  /* TODO: We can do simple propagation determining what calls may lead to
+     a polymorphic call.  */
+  for (e = m_compared_func->get_node ()->callees; e; e = e->next_callee)
+    if (e->callee->definition
+	&& opt_for_fn (e->callee->decl, flag_devirtualize))
+      return true;
+  return false;
 }
 
 /* For a given call graph NODE, the function constructs new
@@ -1117,7 +1273,7 @@ sem_function::parse (cgraph_node *node, bitmap_obstack *stack)
   tree fndecl = node->decl;
   function *func = DECL_STRUCT_FUNCTION (fndecl);
 
-  /* TODO: add support for thunks and aliases.  */
+  /* TODO: add support for thunks.  */
 
   if (!func || !node->has_gimple_body_p ())
     return NULL;
@@ -1260,41 +1416,6 @@ sem_function::bb_dict_test (vec<int> *bb_dict, int source, int target)
     return (*bb_dict)[source] == target;
 }
 
-/* Iterates all tree types in T1 and T2 and returns true if all types
-   are compatible. If COMPARE_POLYMORPHIC is set to true,
-   more strict comparison is executed.  */
-
-bool
-sem_function::compare_type_list (tree t1, tree t2, bool compare_polymorphic)
-{
-  tree tv1, tv2;
-  tree_code tc1, tc2;
-
-  if (!t1 && !t2)
-    return true;
-
-  while (t1 != NULL && t2 != NULL)
-    {
-      tv1 = TREE_VALUE (t1);
-      tv2 = TREE_VALUE (t2);
-
-      tc1 = TREE_CODE (tv1);
-      tc2 = TREE_CODE (tv2);
-
-      if (tc1 == NOP_EXPR && tc2 == NOP_EXPR)
-	{}
-      else if (tc1 == NOP_EXPR || tc2 == NOP_EXPR)
-	return false;
-      else if (!func_checker::compatible_types_p (tv1, tv2, compare_polymorphic))
-	return false;
-
-      t1 = TREE_CHAIN (t1);
-      t2 = TREE_CHAIN (t2);
-    }
-
-  return !(t1 || t2);
-}
-
 
 /* Semantic variable constructor that uses STACK as bitmap memory stack.  */
 
@@ -1313,31 +1434,98 @@ sem_variable::sem_variable (varpool_node *node, hashval_t _hash,
   gcc_checking_assert (get_node ());
 }
 
-/* Returns true if the item equals to ITEM given as argument.  */
+/* Fast equality function based on knowledge known in WPA.  */
 
 bool
-sem_variable::equals (sem_item *item,
-		      hash_map <symtab_node *, sem_item *> & ARG_UNUSED (ignored_nodes))
+sem_variable::equals_wpa (sem_item *item,
+			  hash_map <symtab_node *, sem_item *> &ignored_nodes)
 {
   gcc_assert (item->type == VAR);
 
-  sem_variable *v = static_cast<sem_variable *>(item);
-
-  if (!ctor || !v->ctor)
-    return return_false_with_msg ("ctor is missing for semantic variable");
-
-  if (DECL_IN_CONSTANT_POOL (decl)
-      && (DECL_IN_CONSTANT_POOL (item->decl)
-	  || item->node->address_matters_p ()))
-    return return_false_with_msg ("constant pool");
-
-  if (DECL_IN_TEXT_SECTION (decl) != DECL_IN_TEXT_SECTION (item->decl))
-    return return_false_with_msg ("text section");
+  if (node->num_references () != item->node->num_references ())
+    return return_false_with_msg ("different number of references");
 
   if (DECL_TLS_MODEL (decl) || DECL_TLS_MODEL (item->decl))
     return return_false_with_msg ("TLS model");
 
-  return sem_variable::equals (ctor, v->ctor);
+  if (DECL_ALIGN (decl) != DECL_ALIGN (item->decl))
+    return return_false_with_msg ("alignment mismatch");
+
+  if (DECL_VIRTUAL_P (decl) != DECL_VIRTUAL_P (item->decl))
+    return return_false_with_msg ("Virtual flag mismatch");
+
+  if (DECL_SIZE (decl) != DECL_SIZE (item->decl)
+      && ((!DECL_SIZE (decl) || !DECL_SIZE (item->decl))
+	  || !operand_equal_p (DECL_SIZE (decl),
+			       DECL_SIZE (item->decl), OEP_ONLY_CONST)))
+    return return_false_with_msg ("size mismatch");
+
+  /* Do not attempt to mix data from different user sections;
+     we do not know what user intends with those.  */
+  if (((DECL_SECTION_NAME (decl) && !node->implicit_section)
+       || (DECL_SECTION_NAME (item->decl) && !item->node->implicit_section))
+      && DECL_SECTION_NAME (decl) != DECL_SECTION_NAME (item->decl))
+    return return_false_with_msg ("user section mismatch");
+
+  if (DECL_IN_TEXT_SECTION (decl) != DECL_IN_TEXT_SECTION (item->decl))
+    return return_false_with_msg ("text section");
+
+  ipa_ref *ref = NULL, *ref2 = NULL;
+  for (unsigned i = 0; node->iterate_reference (i, ref); i++)
+    {
+      item->node->iterate_reference (i, ref2);
+
+      if (!compare_cgraph_references (ignored_nodes,
+				      ref->referred, ref2->referred,
+				      ref->address_matters_p ()))
+	return false;
+
+      /* DECL_FINAL_P flag on methods referred by virtual tables is used
+	 to decide on completeness possible_polymorphic_call_targets lists
+	 and therefore it must match.  */
+      if ((DECL_VIRTUAL_P (decl) || DECL_VIRTUAL_P (item->decl))
+	  && (DECL_VIRTUAL_P (ref->referred->decl)
+	      || DECL_VIRTUAL_P (ref2->referred->decl))
+	  && ((DECL_VIRTUAL_P (ref->referred->decl)
+	       != DECL_VIRTUAL_P (ref2->referred->decl))
+	      || (DECL_FINAL_P (ref->referred->decl)
+		  != DECL_FINAL_P (ref2->referred->decl))))
+        return return_false_with_msg ("virtual or final flag mismatch");
+    }
+
+  return true;
+}
+
+/* Returns true if the item equals to ITEM given as argument.  */
+
+/* Returns true if the item equals to ITEM given as argument.  */
+
+bool
+sem_variable::equals (sem_item *item,
+		      hash_map <symtab_node *, sem_item *> &)
+{
+  gcc_assert (item->type == VAR);
+  bool ret;
+
+  if (DECL_INITIAL (decl) == error_mark_node && in_lto_p)
+    dyn_cast <varpool_node *>(node)->get_constructor ();
+  if (DECL_INITIAL (item->decl) == error_mark_node && in_lto_p)
+    dyn_cast <varpool_node *>(item->node)->get_constructor ();
+
+  /* As seen in PR ipa/65303 we have to compare variables types.  */
+  if (!func_checker::compatible_types_p (TREE_TYPE (decl),
+					 TREE_TYPE (item->decl)))
+    return return_false_with_msg ("variables types are different");
+
+  ret = sem_variable::equals (DECL_INITIAL (decl),
+			      DECL_INITIAL (item->node->decl));
+  if (dump_file && (dump_flags & TDF_DETAILS))
+    fprintf (dump_file,
+	     "Equals called for vars:%s:%s (%u:%u) (%s:%s) with result: %s\n\n",
+	     name(), item->name (), node->order, item->node->order, asm_name (),
+	     item->asm_name (), ret ? "true" : "false");
+
+  return ret;
 }
 
 /* Compares trees T1 and T2 for semantic equality.  */
@@ -1345,28 +1533,57 @@ sem_variable::equals (sem_item *item,
 bool
 sem_variable::equals (tree t1, tree t2)
 {
+  if (!t1 || !t2)
+    return return_with_debug (t1 == t2);
+  if (t1 == t2)
+    return true;
   tree_code tc1 = TREE_CODE (t1);
   tree_code tc2 = TREE_CODE (t2);
 
   if (tc1 != tc2)
-    return false;
+    return return_false_with_msg ("TREE_CODE mismatch");
 
   switch (tc1)
     {
     case CONSTRUCTOR:
       {
-	unsigned len1 = vec_safe_length (CONSTRUCTOR_ELTS (t1));
-	unsigned len2 = vec_safe_length (CONSTRUCTOR_ELTS (t2));
+	vec<constructor_elt, va_gc> *v1, *v2;
+	unsigned HOST_WIDE_INT idx;
 
-	if (len1 != len2)
-	  return false;
+	enum tree_code typecode = TREE_CODE (TREE_TYPE (t1));
+	if (typecode != TREE_CODE (TREE_TYPE (t2)))
+	  return return_false_with_msg ("constructor type mismatch");
 
-	for (unsigned i = 0; i < len1; i++)
-	  if (!sem_variable::equals (CONSTRUCTOR_ELT (t1, i)->value,
-				     CONSTRUCTOR_ELT (t2, i)->value)
-	      || CONSTRUCTOR_ELT (t1, i)->index != CONSTRUCTOR_ELT (t2, i)->index)
-	    return false;
+	if (typecode == ARRAY_TYPE)
+	  {
+	    HOST_WIDE_INT size_1 = int_size_in_bytes (TREE_TYPE (t1));
+	    /* For arrays, check that the sizes all match.  */
+	    if (TYPE_MODE (TREE_TYPE (t1)) != TYPE_MODE (TREE_TYPE (t2))
+		|| size_1 == -1
+		|| size_1 != int_size_in_bytes (TREE_TYPE (t2)))
+	      return return_false_with_msg ("constructor array size mismatch");
+	  }
+	else if (!func_checker::compatible_types_p (TREE_TYPE (t1),
+						    TREE_TYPE (t2)))
+	  return return_false_with_msg ("constructor type incompatible");
 
+	v1 = CONSTRUCTOR_ELTS (t1);
+	v2 = CONSTRUCTOR_ELTS (t2);
+	if (vec_safe_length (v1) != vec_safe_length (v2))
+	  return return_false_with_msg ("constructor number of elts mismatch");
+
+	for (idx = 0; idx < vec_safe_length (v1); ++idx)
+	  {
+	    constructor_elt *c1 = &(*v1)[idx];
+	    constructor_elt *c2 = &(*v2)[idx];
+
+	    /* Check that each value is the same...  */
+	    if (!sem_variable::equals (c1->value, c2->value))
+	      return false;
+	    /* ... and that they apply to the same fields!  */
+	    if (!sem_variable::equals (c1->index, c2->index))
+	      return false;
+	  }
 	return true;
       }
     case MEM_REF:
@@ -1376,37 +1593,104 @@ sem_variable::equals (tree t1, tree t2)
 	tree y1 = TREE_OPERAND (t1, 1);
 	tree y2 = TREE_OPERAND (t2, 1);
 
-	if (!func_checker::compatible_types_p (TREE_TYPE (x1), TREE_TYPE (x2),
-					       true))
+	if (!func_checker::compatible_types_p (TREE_TYPE (x1), TREE_TYPE (x2)))
 	  return return_false ();
 
 	/* Type of the offset on MEM_REF does not matter.  */
-	return sem_variable::equals (x1, x2)
-	       && wi::to_offset  (y1) == wi::to_offset  (y2);
+	return return_with_debug (sem_variable::equals (x1, x2)
+			          && wi::to_offset  (y1)
+				     == wi::to_offset  (y2));
       }
-    case NOP_EXPR:
     case ADDR_EXPR:
+    case FDESC_EXPR:
       {
 	tree op1 = TREE_OPERAND (t1, 0);
 	tree op2 = TREE_OPERAND (t2, 0);
 	return sem_variable::equals (op1, op2);
       }
+    /* References to other vars/decls are compared using ipa-ref.  */
     case FUNCTION_DECL:
     case VAR_DECL:
+      if (decl_in_symtab_p (t1) && decl_in_symtab_p (t2))
+	return true;
+      return return_false_with_msg ("Declaration mismatch");
+    case CONST_DECL:
+      /* TODO: We can check CONST_DECL by its DECL_INITIAL, but for that we
+	 need to process its VAR/FUNCTION references without relying on ipa-ref
+	 compare.  */
     case FIELD_DECL:
     case LABEL_DECL:
-      return t1 == t2;
+      return return_false_with_msg ("Declaration mismatch");
     case INTEGER_CST:
-      return func_checker::compatible_types_p (TREE_TYPE (t1), TREE_TYPE (t2),
-	     true)
-	     && wi::to_offset (t1) == wi::to_offset (t2);
+      /* Integer constants are the same only if the same width of type.  */
+      if (TYPE_PRECISION (TREE_TYPE (t1)) != TYPE_PRECISION (TREE_TYPE (t2)))
+        return return_false_with_msg ("INTEGER_CST precision mismatch");
+      if (TYPE_MODE (TREE_TYPE (t1)) != TYPE_MODE (TREE_TYPE (t2)))
+        return return_false_with_msg ("INTEGER_CST mode mismatch");
+      return return_with_debug (tree_int_cst_equal (t1, t2));
     case STRING_CST:
-    case REAL_CST:
+      if (TYPE_MODE (TREE_TYPE (t1)) != TYPE_MODE (TREE_TYPE (t2)))
+        return return_false_with_msg ("STRING_CST mode mismatch");
+      if (TREE_STRING_LENGTH (t1) != TREE_STRING_LENGTH (t2))
+	return return_false_with_msg ("STRING_CST length mismatch");
+      if (memcmp (TREE_STRING_POINTER (t1), TREE_STRING_POINTER (t2),
+		    TREE_STRING_LENGTH (t1)))
+	return return_false_with_msg ("STRING_CST mismatch");
+      return true;
+    case FIXED_CST:
+      /* Fixed constants are the same only if the same width of type.  */
+      if (TYPE_PRECISION (TREE_TYPE (t1)) != TYPE_PRECISION (TREE_TYPE (t2)))
+        return return_false_with_msg ("FIXED_CST precision mismatch");
+
+      return return_with_debug (FIXED_VALUES_IDENTICAL (TREE_FIXED_CST (t1),
+							TREE_FIXED_CST (t2)));
     case COMPLEX_CST:
-      return operand_equal_p (t1, t2, OEP_ONLY_CONST);
-    case COMPONENT_REF:
+      return (sem_variable::equals (TREE_REALPART (t1), TREE_REALPART (t2))
+	      && sem_variable::equals (TREE_IMAGPART (t1), TREE_IMAGPART (t2)));
+    case REAL_CST:
+      /* Real constants are the same only if the same width of type.  */
+      if (TYPE_PRECISION (TREE_TYPE (t1)) != TYPE_PRECISION (TREE_TYPE (t2)))
+        return return_false_with_msg ("REAL_CST precision mismatch");
+      return return_with_debug (REAL_VALUES_IDENTICAL (TREE_REAL_CST (t1),
+						       TREE_REAL_CST (t2)));
+    case VECTOR_CST:
+      {
+	unsigned i;
+
+        if (VECTOR_CST_NELTS (t1) != VECTOR_CST_NELTS (t2))
+          return return_false_with_msg ("VECTOR_CST nelts mismatch");
+
+	for (i = 0; i < VECTOR_CST_NELTS (t1); ++i)
+	  if (!sem_variable::equals (VECTOR_CST_ELT (t1, i),
+				     VECTOR_CST_ELT (t2, i)))
+	    return 0;
+
+	return 1;
+      }
     case ARRAY_REF:
+    case ARRAY_RANGE_REF:
+      {
+	tree x1 = TREE_OPERAND (t1, 0);
+	tree x2 = TREE_OPERAND (t2, 0);
+	tree y1 = TREE_OPERAND (t1, 1);
+	tree y2 = TREE_OPERAND (t2, 1);
+
+	if (!sem_variable::equals (x1, x2) || !sem_variable::equals (y1, y2))
+	  return false;
+	if (!sem_variable::equals (array_ref_low_bound (t1),
+				   array_ref_low_bound (t2)))
+	  return false;
+        if (!sem_variable::equals (array_ref_element_size (t1),
+			           array_ref_element_size (t2)))
+	  return false;
+	return true;
+      }
+     
+    case COMPONENT_REF:
     case POINTER_PLUS_EXPR:
+    case PLUS_EXPR:
+    case MINUS_EXPR:
+    case RANGE_EXPR:
       {
 	tree x1 = TREE_OPERAND (t1, 0);
 	tree x2 = TREE_OPERAND (t2, 0);
@@ -1415,6 +1699,12 @@ sem_variable::equals (tree t1, tree t2)
 
 	return sem_variable::equals (x1, x2) && sem_variable::equals (y1, y2);
       }
+
+    CASE_CONVERT:
+    case VIEW_CONVERT_EXPR:
+      if (!func_checker::compatible_types_p (TREE_TYPE (t1), TREE_TYPE (t2)))
+	  return return_false ();
+      return sem_variable::equals (TREE_OPERAND (t1, 0), TREE_OPERAND (t2, 0));
     case ERROR_MARK:
       return return_false_with_msg ("ERROR_MARK");
     default:
@@ -1427,21 +1717,8 @@ sem_variable::equals (tree t1, tree t2)
 sem_variable *
 sem_variable::parse (varpool_node *node, bitmap_obstack *stack)
 {
-  tree decl = node->decl;
-
-  bool readonly = TYPE_P (decl) ? TYPE_READONLY (decl) : TREE_READONLY (decl);
-  if (!readonly)
-    return NULL;
-
-  bool can_handle = DECL_VIRTUAL_P (decl)
-		    || flag_merge_constants >= 2
-		    || (!TREE_ADDRESSABLE (decl) && !node->externally_visible);
-
-  if (!can_handle || DECL_EXTERNAL (decl))
-    return NULL;
-
-  tree ctor = ctor_for_folding (decl);
-  if (!ctor)
+  if (TREE_THIS_VOLATILE (node->decl) || DECL_HARD_REGISTER (node->decl)
+      || node->alias)
     return NULL;
 
   sem_variable *v = new sem_variable (node, 0, stack);
@@ -1457,19 +1734,19 @@ hashval_t
 sem_variable::get_hash (void)
 {
   if (hash)
-    return hash;
 
+    return hash;
+  /* All WPA streamed in symbols should have their hashes computed at compile
+     time.  At this point, the constructor may not be in memory at all.
+     DECL_INITIAL (decl) would be error_mark_node in that case.  */
+  gcc_assert (!node->lto_file_data);
+  tree ctor = DECL_INITIAL (decl);
   inchash::hash hstate;
 
   hstate.add_int (456346417);
-  hstate.add_int (TREE_CODE (ctor));
-
-  if (TREE_CODE (ctor) == CONSTRUCTOR)
-    {
-      unsigned length = vec_safe_length (CONSTRUCTOR_ELTS (ctor));
-      hstate.add_int (length);
-    }
-
+  if (DECL_SIZE (decl) && tree_fits_shwi_p (DECL_SIZE (decl)))
+    hstate.add_wide_int (tree_to_shwi (DECL_SIZE (decl)));
+  add_expr (ctor, hstate);
   hash = hstate.end ();
 
   return hash;
@@ -1600,40 +1877,6 @@ sem_variable::dump_to_file (FILE *file)
 
   print_node (file, "", decl, 0);
   fprintf (file, "\n\n");
-}
-
-/* Iterates though a constructor and identifies tree references
-   we are interested in semantic function equality.  */
-
-void
-sem_variable::parse_tree_refs (tree t)
-{
-  switch (TREE_CODE (t))
-    {
-    case CONSTRUCTOR:
-      {
-	unsigned length = vec_safe_length (CONSTRUCTOR_ELTS (t));
-
-	for (unsigned i = 0; i < length; i++)
-	  parse_tree_refs(CONSTRUCTOR_ELT (t, i)->value);
-
-	break;
-      }
-    case NOP_EXPR:
-    case ADDR_EXPR:
-      {
-	tree op = TREE_OPERAND (t, 0);
-	parse_tree_refs (op);
-	break;
-      }
-    case FUNCTION_DECL:
-      {
-	tree_refs.safe_push (t);
-	break;
-      }
-    default:
-      break;
-    }
 }
 
 unsigned int sem_item_optimizer::class_id = 0;
@@ -1913,10 +2156,7 @@ sem_item_optimizer::filter_removed_items (void)
         {
 	  cgraph_node *cnode = static_cast <sem_function *>(item)->get_node ();
 
-	  bool no_body_function = in_lto_p && (cnode->alias || cnode->body_removed);
-	  if (no_body_function || !opt_for_fn (item->decl, flag_ipa_icf_functions)
-	      || DECL_CXX_CONSTRUCTOR_P (item->decl)
-	      || DECL_CXX_DESTRUCTOR_P (item->decl))
+	  if (in_lto_p && (cnode->alias || cnode->body_removed))
 	    remove_item (item);
 	  else
 	    filtered.safe_push (item);
@@ -1926,7 +2166,14 @@ sem_item_optimizer::filter_removed_items (void)
 	  if (!flag_ipa_icf_variables)
 	    remove_item (item);
 	  else
-	    filtered.safe_push (item);
+	    {
+	      /* Filter out non-readonly variables.  */
+	      tree decl = item->decl;
+	      if (TREE_READONLY (decl))
+		filtered.safe_push (item);
+	      else
+		remove_item (item);
+	    }
         }
     }
 
@@ -1937,9 +2184,11 @@ sem_item_optimizer::filter_removed_items (void)
     m_items.safe_push (filtered[i]);
 }
 
-/* Optimizer entry point.  */
+/* Optimizer entry point which returns true in case it processes
+   a merge operation. True is returned if there's a merge operation
+   processed.  */
 
-void
+bool
 sem_item_optimizer::execute (void)
 {
   filter_removed_items ();
@@ -1984,10 +2233,12 @@ sem_item_optimizer::execute (void)
   process_cong_reduction ();
   dump_cong_classes ();
   verify_classes ();
-  merge_classes (prev_class_count);
+  bool merged_p = merge_classes (prev_class_count);
 
   if (dump_file && (dump_flags & TDF_DETAILS))
     symtab_node::dump_table (dump_file);
+
+  return merged_p;
 }
 
 /* Function responsible for visiting all potential functions and
@@ -2086,7 +2337,8 @@ sem_item_optimizer::build_graph (void)
 	  cgraph_edge *e = cnode->callees;
 	  while (e)
 	    {
-	      sem_item **slot = m_symtab_node_map.get (e->callee);
+	      sem_item **slot = m_symtab_node_map.get
+		(e->callee->ultimate_alias_target ());
 	      if (slot)
 		item->add_reference (*slot);
 
@@ -2097,7 +2349,8 @@ sem_item_optimizer::build_graph (void)
       ipa_ref *ref = NULL;
       for (unsigned i = 0; item->node->iterate_reference (i, ref); i++)
 	{
-	  sem_item **slot = m_symtab_node_map.get (ref->referred);
+	  sem_item **slot = m_symtab_node_map.get
+	    (ref->referred->ultimate_alias_target ());
 	  if (slot)
 	    item->add_reference (*slot);
 	}
@@ -2638,9 +2891,10 @@ sem_item_optimizer::dump_cong_classes (void)
 
 /* After reduction is done, we can declare all items in a group
    to be equal. PREV_CLASS_COUNT is start number of classes
-   before reduction.  */
+   before reduction. True is returned if there's a merge operation
+   processed. */
 
-void
+bool
 sem_item_optimizer::merge_classes (unsigned int prev_class_count)
 {
   unsigned int item_count = m_items.length ();
@@ -2649,6 +2903,8 @@ sem_item_optimizer::merge_classes (unsigned int prev_class_count)
 
   unsigned int non_singular_classes_count = 0;
   unsigned int non_singular_classes_sum = 0;
+
+  bool merged_p = false;
 
   for (hash_table<congruence_class_group_hash>::iterator it = m_classes.begin ();
        it != m_classes.end (); ++it)
@@ -2720,9 +2976,11 @@ sem_item_optimizer::merge_classes (unsigned int prev_class_count)
 		alias->dump_to_file (dump_file);
 	      }
 
-	    source->merge (alias);
+	    merged_p |= source->merge (alias);
 	  }
       }
+
+  return merged_p;
 }
 
 /* Dump function prints all class members to a FILE with an INDENT.  */
@@ -2799,12 +3057,12 @@ ipa_icf_driver (void)
 {
   gcc_assert (optimizer);
 
-  optimizer->execute ();
+  bool merged_p = optimizer->execute ();
 
   delete optimizer;
   optimizer = NULL;
 
-  return 0;
+  return merged_p ? TODO_remove_functions : 0;
 }
 
 const pass_data pass_data_ipa_icf =
