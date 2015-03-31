@@ -1,10 +1,7 @@
-2015-02-25  Uros Bizjak  <ubizjak@gmail.com>
+2015-03-25  Uros Bizjak  <ubizjak@gmail.com>
 
-	Revert:
-	2014-07-26  Uros Bizjak  <ubizjak@gmail.com>
-
-	PR target/47230
-	* mh-alpha-linux: New file.
+	PR bootstrap/65537
+	* bootstrap-lto-noplugin.mk: New build configuration.
 
 2015-02-18  Thomas Schwinge  <thomas@codesourcery.com>
 
@@ -24,6 +21,10 @@
 2014-11-13  Kirill Yukhin  <kirill.yukhin@intel.com>
 
 	* target-posix: New file.
+
+2014-11-11  Tobias Burnus  <burnus@net-b.de>
+
+	* cloog.m4: Remove.
 
 2014-10-27  Tom Tromey  <tromey@redhat.com>
 
