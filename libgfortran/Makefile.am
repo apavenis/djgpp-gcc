@@ -65,7 +65,7 @@ libcaf_single_la_DEPENDENCIES = caf/libcaf.h
 libcaf_single_la_LINK = $(LINK) $(libcaf_single_la_LDFLAGS)
 
 if IEEE_SUPPORT
-fincludedir = $(libdir)/gcc/$(target_alias)/$(gcc_version)$(MULTISUBDIR)/finclude
+fincludedir = $(libdir)/gcc/$(target_alias)/$(gcc_version_alias)$(MULTISUBDIR)/finclude
 nodist_finclude_HEADERS = ieee_arithmetic.mod ieee_exceptions.mod ieee_features.mod
 endif
 
