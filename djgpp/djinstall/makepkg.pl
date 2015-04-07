@@ -35,9 +35,11 @@ my @cpp_rename = (
 "bits/locale_facets_nonio.h:locfcnio.h",
 "bits/locale_facets.tcc:locfacets.tcc",
 "bits/locale_facets_nonio.tcc:locfacnio.tcc",
+"bits/locale_conv.h:locale_conv.h2",
 "bits/shared_ptr_base.h:shared_ptr_base.h1",
 "bits/regex_compiler.h:_regcomp.h",
 "bits/regex_constants.h:_regconst.h",
+"bits/shared_ptr_atomic.h:shared_ptr_atomic.h2",
 "bits/stl_algo.h:stlalgo.h",
 "bits/stl_algobase.h:stlalgobase.h",
 "bits/stl_iterator.h:stl_iterator.h",
@@ -121,7 +123,10 @@ my @cpp_rename = (
 );
 
 my @c_inc_rename = (
-#"mmintrin-common.h:mmintcommon.h"
+"avx512ifmavlintrin.h:avx512ifmavlintrin.h2",
+"avx512vbmivlintrin.h:avx512vbmivlintrin.h2",
+"avx512vldqintrin.h:avx512vldqintrin.h2",
+"avx512vlintrin.h:avx512vlintrin.h3"
 );
 
 my @rename_list = (
@@ -663,7 +668,12 @@ sub update_dsm
 sub mk_manifest
 {
     my @ignore = (
-        '/adainclude/s-stratt-xdr.adb'
+        '/adainclude/s-stratt-xdr.adb',
+	'dsmsrc/(?:ada|gcc|gfor|gpp|objc)b\.dsi$',
+        'share/info/dir$',
+        'share/man/man(?:1|7)/',
+        'bin/djgpp-gcc-',
+        'bin/djgpp-gfortran\.exe$'
         );
 
     my @cxxfiles = (
@@ -675,7 +685,8 @@ sub mk_manifest
     my @gforfiles = (
         'bin/gfortran\.exe', 'info/gfortran.info',
         '/libgf', '/f951\.exe', 'manifest/gfor',
-	'/libcaf_single.a',
+        '/finclude/ieee_',
+	'/libcaf_single.(?:a|la)',
         '/cat1/gfortran'
     );
 
@@ -687,7 +698,7 @@ sub mk_manifest
 
     my @gccfiles = (
         'bin/gcc\.exe', 'bin/cpp\.exe', 'bin/gcov\.exe', 'bin/gccbug',
-        'bin/gcc-(?:ar|nm|ranlib)\.exe',
+        'bin/gcc-(?:ar|nm|ranlib)\.exe', 'bin/gcov-tool\.exe',
         'include/ssp/', 'info/(?:cpp|gcc|libquadmath)', '/djgpp\.ver$',
         '/include/(?:am|bm|em|m|nm|pm|sm|tm|xm)mintrin',
         '/include/(?:cpuid|float|iso646|mm_malloc|mm3dnow|mmintcommon)\.h$',
@@ -701,12 +712,13 @@ sub mk_manifest
         '/include-fixed/readme$',
         '/include/(?:abm|fma4|ia32|lwp|popcnt|xop|xtest)intrin.h$',
 	'/include/(?:adx|fxsr|prfchw|rdseed|rtm|xsave|xsaveopt)intrin.h$',
+        '/include/(?:clflushopt|clwb|pcommit|xsavec|xsaves|)intrin.(?:h|h2|h3)$',
         '/include/cross-stdarg.h$',
         '/include/stdint(?:|-gcc).h$',
-        '/include/avx512[^\.]*.h$',
+        '/include/avx512[^\.]*.(?:h|h2|h3)$',
         '/include/shaintrin\.h$',
         '/install-tools/', '/libgcc\.a', '/libgcov\.a', '/libssp*',
-        '/libquadmath.a',
+        '/libquadmath.(?:la|a)',
         '/cc1\.exe',
         '/lto1\.exe',
         '/collect2\.exe',
