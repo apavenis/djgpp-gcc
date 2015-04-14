@@ -1,3 +1,44 @@
+2015-04-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/65695
+	* cvt.c (cp_fold_convert): Avoid wrapping PTRMEM_CST in NOP_EXPR.
+
+	PR c++/65721
+	* name-lookup.c (do_class_using_decl): Complain about specifying
+	the current class even if there are dependent bases.
+
+2015-04-14  David Krauss  <david_work@me.com>
+
+	PR c++/59766
+	* decl.c (grokdeclarator): Do not flag friends with deduced return.
+
+2015-04-14  Momchil Velikov  <momchil.velikov@gmail.com>
+	    Jason Merrill  <jason@redhat.com>
+
+	PR c++/60994
+	* parser.c (cp_parser_class_name): Add enum_ok parameter.
+	(cp_parser_qualifying_entity): Use it instead of cp_parser_type_name.
+	(cp_parser_diagnose_invalid_type_name): Don't assume a template is
+	a class template.
+
+2015-04-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/65736
+	* constexpr.c (cxx_eval_pointer_plus_expression): Don't fold for VLAs,
+	don't fold if op01 isn't divisible by TYPE_SIZE_UNIT.  Convert
+	the expression to the original type at the end.
+
+2015-04-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/65690
+	* tree.c (cp_build_qualified_type_real): Copy TYPE_ALIGN and
+	TYPE_USER_ALIGN.
+
+	PR c++/65690
+	* tree.c (build_cplus_array_type): Layout type before variants are
+	set, but copy over TYPE_SIZE and TYPE_SIZE_UNIT from the main
+	variant.
+
 2015-04-03  Paolo Carlini  <paolo.carlini@oracle.com>
 
 	PR c++/64085
