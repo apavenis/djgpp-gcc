@@ -461,6 +461,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Tue Apr 14 2015 Andris Pavenis <andris.pavenis@iki.fi>
+- Change to gcc-5-branch (and derived DJGPP related branches)
+
 * Sat Feb 28 2015 Andris Pavenis <andris.pavenis@iki.fi>
 - Use MPC-1.0.3
 
