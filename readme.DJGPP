@@ -22,10 +22,10 @@ want to recreate GCC source archive for DJGPP. If You are using this
 archive and original sources of gcc-@GCCVER@.tar.gz, then You don't
 need gcc@GCCVER3@s.zip. Running these scripts under DJGPP has not been
 tested for a long time and is unlikely to succeed.
-    
+
 The source archive gcc@GCCVER3@s.zip contains all the sources to build
 all compilers (C, C++, Objective C, Objective C++, GNU Fortran) and also C++
-and Fortran libraries (libstdcxx.a, libgpp.a and libg2c.a). 
+and Fortran libraries (libstdcxx.a, libgpp.a and libg2c.a).
 
 Most users don't need source archives at all.
 
@@ -37,11 +37,11 @@ Binary archives are split into 5 parts:
   gcc@GCCVER3@b.zip  : The gcc.exe driver program and the C compiler.
                  It also contains the documentation.
 
-  gpp@GCCVER3@b.zip  : The C++ compiler and libstdcxx.a together 
+  gpp@GCCVER3@b.zip  : The C++ compiler and libstdcxx.a together
                  with needed header files. Please note that one must
 		 recompile all C++ sources built with any earlier GCC version
 
-  objc@GCCVER3@b.zip : The Objective C and Objective C++ compilers and 
+  objc@GCCVER3@b.zip : The Objective C and Objective C++ compilers and
 		 libobjc.a and the needed header files.
 
   gfor@GCCVER3@b.zip  : GNU Fortran compiler
@@ -50,8 +50,8 @@ Binary archives are split into 5 parts:
 The archive gcc@GCCVER3@b.zip is required by all other binary packages
 
 Binary packages includes following documentation files:
-  
-  Archive gcc@GCCVER3@b.zip:  
+
+  Archive gcc@GCCVER3@b.zip:
 	info/gcc.info - the use and the internals of the GNU compiler
 	info/cpp.info - documentation of the GNU C preprocessor.
 	info/cppinternals.info  - internals of the GNU C Preprocessor.
@@ -76,10 +76,10 @@ Make sure You don't have following files from earlier versions
 	bin/cc1.exe		(from gcc272b.zip or gcc2721b.zip)
 	bin/cc1plus.exe		(from gpp272b.zip or gpp2721b.zip)
 	lib/libgcc.a		(from gcc272b.zip or gcc2721b.zip)
-	lib/libobjc.a		
-	lib/specs		(from djdev201.zip or djdev202.zip) 
-	lib/libstdcxx.a		
-	lib/libgpp.a		
+	lib/libobjc.a
+	lib/specs		(from djdev201.zip or djdev202.zip)
+	lib/libstdcxx.a
+	lib/libgpp.a
 
 Following packages are required for binaries:
 	binutils-2.16 or above. Linker script is no more included in DJGPP
@@ -112,7 +112,7 @@ or
 	unzip386 @DJDEV@
 
 
-NOTE:   For debugging GDB version 6.3 or above is recommended. 
+NOTE:   For debugging GDB version 6.3 or above is recommended.
         (gdb-6.3 is not released for DJGPP yet though).
 
 
@@ -127,7 +127,7 @@ stored in the zip archive.
 
 Unzip the binaries with an unzip program which doesn't know about long
 filenames, or if your unzipper knows about them, please follow first
-the steps described in the DJGPP FAQ in the section 
+the steps described in the DJGPP FAQ in the section
 about setting the NameNumericTail to 0 __BEFORE__!!! unzipping the archives.
 
 3. Long and short filenames at the same time
@@ -145,7 +145,7 @@ earlier): Member functions tellp(), tellg(), seekp() and seekg()
 are broken when stream is opened not in binary mode. If You are going
 to use any similar functions You should open stream in binary mode.
 
-Don't ask me when it will be fixed as I don't know that. I'm also 
+Don't ask me when it will be fixed as I don't know that. I'm also
 not sure I'll spend much time trying to fix that.
 
 
@@ -194,19 +194,19 @@ Requirements
 	recent MPC versions (versions 1.0.0 or newer are OK)
 	Zlib-1.2.5 or above (Warning configure does not check for presence
 	     one only gets build error later)
-	working GNU C compiler (perhaps not earlier than gcc-4.1). 
+	working GNU C compiler (perhaps not earlier than gcc-4.1).
 
 -  one may need to increase DOS transfer buffer size to 24 KB or
    32 KB for some executables (GNU Make and ld) to optimize lower
    memory use as having to allocate additional lower memory block
    for long parameter lists when invoking child process wastes
    much of memory. I had transfer buffer size increased to 24 KB
-   for GNU Make only 
+   for GNU Make only
 
--  INFO-ZIP binary (compiled with DJGPP v2!!!) is needed for using build.sh 
-   to create binary distribution archives. There is no problems to compile 
+-  INFO-ZIP binary (compiled with DJGPP v2!!!) is needed for using build.sh
+   to create binary distribution archives. There is no problems to compile
    it. See http://www.info-zip.org for additional information
-   about INFO-ZIP. You can find DJGPP compiled binary there. 
+   about INFO-ZIP. You can find DJGPP compiled binary there.
 
 -  Working DJGPP installation of course:
    -  recent CVS version of DJGPP-2.04 is required
@@ -215,18 +215,18 @@ Requirements
 
 Earlier requirement to have rebuilt stubify.exe with default stack size
 increased to 1.5 MB or more is no more required as the stack size
-reserving is now done using _stklen where required. 
+reserving is now done using _stklen where required.
 
 If You modify some source files You may also need
 	autoconf-2.64
 	automake-1.11
 	(No ports available for DJGPP yet. I did all patching GCC sources
 	and updating autoconf and automake related stuff in Linux)
-	
+
    NOTE: Building GCC-@GCCVER@ using DJGPP v2.03 patchlevel 2 requires rebuilding
    several DJGPP packets before building GCC.
 
--  You should have sh.exe in DJGPP bin directory as symbolic link to  
+-  You should have sh.exe in DJGPP bin directory as symbolic link to
    bash.exe (type 'ln -s bash.exe sh.exe' in that directory)
 
 
@@ -246,15 +246,15 @@ Compiling gcc
 
 Directory gnu/gcc-@GCCVER2@ contains all sources of gcc-@GCCVER@
 
-Sources are NOT configured. 
-	
+Sources are NOT configured.
+
 Change to directory gnu/build.gcc and configure sources
-by running script djconfig.sh. 
+by running script djconfig.sh.
 
 	sh djconfig.sh
 
 When this is done You can build gcc-@GCCVER@ by running script djmake.sh
-Under Win9X You'll have to restart it some times when it will crash 
+Under Win9X You'll have to restart it some times when it will crash
 due to Win9X DPMI descriptor leaks. You may use redir to get output in file.
 
 	sh djmake.sh bootstrap
@@ -269,7 +269,7 @@ to create binary distribution packages
 Installing newly compiled gcc
 -----------------------------
 
-It's recommended to install binary packages which are generated 
+It's recommended to install binary packages which are generated
 by makepkg.sh
 
 
@@ -285,22 +285,22 @@ gcc:		  http://gcc.gnu.org
 Reporting bugs
 ==============
 
-If you found a bug in gcc-@GCCVER@ (gcc, gfortran, libstdc++, etc) please report it to 
+If you found a bug in gcc-@GCCVER@ (gcc, gfortran, libstdc++, etc) please report it to
 the GCC bug addresses and to the DJGPP mailing list (djgpp@delorie.com). We may not
 notice bug reports sent to GCC bug reporting system only due to large amount of
-other bugs there. 
+other bugs there.
 
-But if you think you found a bug in the DJGPP related things, then please 
-report it in comp.os.msdos.djgpp (the news group) or mail it to 
+But if you think you found a bug in the DJGPP related things, then please
+report it in comp.os.msdos.djgpp (the news group) or mail it to
 djgpp@delorie.com, which is the gateway to the news group.
 
 Some possible situations:
   - gcc says 'Internal compiler error' (or something similar)
-       more likely it is error of gcc if it is reproducible. It would 
-       be nice to test on some other system (e.g. Linux) and also with 
-       different version of compiler if possible and submit report to 
-       gcc bug address. 
-  - gcc crashes or freezes. 
+       more likely it is error of gcc if it is reproducible. It would
+       be nice to test on some other system (e.g. Linux) and also with
+       different version of compiler if possible and submit report to
+       gcc bug address.
+  - gcc crashes or freezes.
        In this situation it's hard to guess where is the problem. It may be
        problem with gcc itself but it may be also DJGPP specific one.
 
@@ -312,7 +312,7 @@ Thanks to
 =========
 
 To all who have contributed new features, test results, bug-fixes to GCC
-(see http://gcc.gnu.org/thanks.html) and also who helped with DJGPP port of 
+(see http://gcc.gnu.org/thanks.html) and also who helped with DJGPP port of
 gcc-@GCCVER@
 
 
