@@ -32,7 +32,7 @@ Most users don't need source archives at all.
 Binary archives
 ================
 
-Binary archives are split into 5 parts:
+Binary archives are split into 4 parts:
 
   gcc@GCCVER3@b.zip  : The gcc.exe driver program and the C compiler.
                  It also contains the documentation.
@@ -46,6 +46,8 @@ Binary archives are split into 5 parts:
 
   gfor@GCCVER3@b.zip  : GNU Fortran compiler
 
+  Unforunately native Ada compiler is not included (built gnatmake.exe does not
+  work and as result an attempt to bootstrap also Ada compiler fails).
 
 The archive gcc@GCCVER3@b.zip is required by all other binary packages
 
