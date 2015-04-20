@@ -345,6 +345,8 @@ if $create_gccnnns_zip; then
             -and -not -name '.cvsignore' \
             -and -not -name '*~*' \
             -and -not -name '*.orig' \
+            -and -not -name 'zh_CN.po' \
+            -and -not -name 'zh_TW.po' \
             -and -not -name '.brik' ;
         find manifest -type f;
     ) | grep -v 'autom4te\.cache' | sort >$top/manifest/${arcprefix}s.mft
