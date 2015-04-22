@@ -1,5 +1,5 @@
 # Specs file to building RPM of Linux to DJGPP cross-compiler
-# Tested on CentOS-5.6, Fedora 14 and Fedora 15 beta. One may need
+# Tested on CentOS-5.6, Fedora 21. One may need
 # to modify this file for other RPM based Linux distribution
 
 %define gcc_version @__GCCVER__@
