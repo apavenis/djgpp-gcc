@@ -461,7 +461,7 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
-- Wed Apr 22 2015 Andris Pavenis <andris.pavenis@iki.fi>
+* Wed Apr 22 2015 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to gcc-5.1.0
 
 * Tue Apr 14 2015 Andris Pavenis <andris.pavenis@iki.fi>
