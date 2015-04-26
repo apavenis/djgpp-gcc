@@ -399,8 +399,10 @@ sub c_inc_rename_proc
         my $dir_name = dirname($orig_path);
         my $orig_name = basename($orig_path);
 
-        my $n1 = "$c_inc_dir/$dir_name/$orig_name";
-        my $n2 = "$c_inc_dir/$dir_name/$new_name";
+        $dir_name = $dir_name eq "." ? "" : "$dir_name/";
+
+        my $n1 = "$c_inc_dir/$dir_name$orig_name";
+        my $n2 = "$c_inc_dir/$dir_name$new_name";
 
         if ( -f $n1 )
         {
@@ -425,7 +427,7 @@ sub c_inc_rename_proc
         if (! /^djgpp\//)
         {
             $header_gcc{"header.gcc"} = $header_gcc{"header.gcc"} .
-                "$d2/$orig_name $d2/$new_name\n";
+                "$d2$orig_name $d2$new_name\n";
             #print "Write: $d2/$orig_name $d2/$new_name >>header.gcc\n";
         }
         do
