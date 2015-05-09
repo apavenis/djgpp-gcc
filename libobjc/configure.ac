@@ -279,6 +279,8 @@ AC_MSG_RESULT($ac_exception_model_name)
 esac]
 AC_SUBST(gcc_version_dir)
 
+gt_BITFIELD_TYPE_MATTERS
+
 # ------
 # Output
 # ------

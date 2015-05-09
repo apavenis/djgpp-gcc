@@ -2424,7 +2424,7 @@ check_explicit_specialization (tree declarator,
   switch (tsk)
     {
     case tsk_none:
-      if (processing_specialization)
+      if (processing_specialization && TREE_CODE (decl) != VAR_DECL)
 	{
 	  specialization = 1;
 	  SET_DECL_TEMPLATE_SPECIALIZATION (decl);
@@ -3338,9 +3338,9 @@ make_pack_expansion (tree arg)
   if (!arg || arg == error_mark_node)
     return arg;
 
-  if (TREE_CODE (arg) == TREE_LIST)
+  if (TREE_CODE (arg) == TREE_LIST && TREE_PURPOSE (arg))
     {
-      /* The only time we will see a TREE_LIST here is for a base
+      /* A TREE_LIST with a non-null TREE_PURPOSE is for a base
          class initializer.  In this case, the TREE_PURPOSE will be a
          _TYPE node (representing the base class expansion we're
          initializing) and the TREE_VALUE will be a TREE_LIST
@@ -6493,20 +6493,14 @@ template_template_parm_bindings_ok_p (tree tparms, tree targs)
 static tree
 canonicalize_type_argument (tree arg, tsubst_flags_t complain)
 {
-  tree mv;
   if (!arg || arg == error_mark_node || arg == TYPE_CANONICAL (arg))
     return arg;
-  mv = TYPE_MAIN_VARIANT (arg);
-  arg = strip_typedefs (arg);
-  if (TYPE_ALIGN (arg) != TYPE_ALIGN (mv)
-      || TYPE_ATTRIBUTES (arg) != TYPE_ATTRIBUTES (mv))
-    {
-      if (complain & tf_warning)
-	warning (0, "ignoring attributes on template argument %qT", arg);
-      arg = build_aligned_type (arg, TYPE_ALIGN (mv));
-      arg = cp_build_type_attribute_variant (arg, TYPE_ATTRIBUTES (mv));
-    }
-  return arg;
+  bool removed_attributes = false;
+  tree canon = strip_typedefs (arg, &removed_attributes);
+  if (removed_attributes
+      && (complain & tf_warning))
+    warning (0, "ignoring attributes on template argument %qT", arg);
+  return canon;
 }
 
 /* Convert the indicated template ARG as necessary to match the
@@ -6743,7 +6737,10 @@ convert_template_argument (tree parm,
 	   argument specification is valid.  */
 	val = convert_nontype_argument (t, orig_arg, complain);
       else
-	val = strip_typedefs_expr (orig_arg);
+	{
+	  bool removed_attr = false;
+	  val = strip_typedefs_expr (orig_arg, &removed_attr);
+	}
 
       if (val == NULL_TREE)
 	val = error_mark_node;
@@ -9014,6 +9011,21 @@ apply_late_template_attributes (tree *decl_p, tree attributes, int attr_flags,
 		    TREE_VALUE (t)
 		      = tree_cons (NULL_TREE, TREE_VALUE (TREE_VALUE (t)),
 				   chain);
+		}
+	      else if (TREE_VALUE (t) && PACK_EXPANSION_P (TREE_VALUE (t)))
+		{
+		  /* An attribute pack expansion.  */
+		  tree purp = TREE_PURPOSE (t);
+		  tree pack = (tsubst_pack_expansion
+			       (TREE_VALUE (t), args, complain, in_decl));
+		  int len = TREE_VEC_LENGTH (pack);
+		  for (int i = 0; i < len; ++i)
+		    {
+		      tree elt = TREE_VEC_ELT (pack, i);
+		      *q = build_tree_list (purp, elt);
+		      q = &TREE_CHAIN (*q);
+		    }
+		  continue;
 		}
 	      else
 		TREE_VALUE (t)
@@ -14206,7 +14218,7 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
       tmp = tsubst_omp_clauses (OMP_TARGET_UPDATE_CLAUSES (t), false,
 				args, complain, in_decl);
       t = copy_node (t);
-      OMP_CLAUSES (t) = tmp;
+      OMP_TARGET_UPDATE_CLAUSES (t) = tmp;
       add_stmt (t);
       break;
 
@@ -18202,7 +18214,10 @@ unify (tree tparms, tree targs, tree parm, tree arg, int strict,
 	  && !TEMPLATE_PARM_PARAMETER_PACK (parm))
 	return unify_parameter_pack_mismatch (explain_p, parm, arg);
 
-      arg = strip_typedefs_expr (arg);
+      {
+	bool removed_attr = false;
+	arg = strip_typedefs_expr (arg, &removed_attr);
+      }
       TREE_VEC_ELT (INNERMOST_TEMPLATE_ARGS (targs), idx) = arg;
       return unify_success (explain_p);
 

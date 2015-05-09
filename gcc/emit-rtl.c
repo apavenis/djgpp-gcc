@@ -715,11 +715,11 @@ gen_rtx_REG (machine_mode mode, unsigned int regno)
       if (regno == FRAME_POINTER_REGNUM
 	  && (!reload_completed || frame_pointer_needed))
 	return frame_pointer_rtx;
-#if !HARD_FRAME_POINTER_IS_FRAME_POINTER
-      if (regno == HARD_FRAME_POINTER_REGNUM
+
+      if (!HARD_FRAME_POINTER_IS_FRAME_POINTER
+	  && regno == HARD_FRAME_POINTER_REGNUM
 	  && (!reload_completed || frame_pointer_needed))
 	return hard_frame_pointer_rtx;
-#endif
 #if FRAME_POINTER_REGNUM != ARG_POINTER_REGNUM && !HARD_FRAME_POINTER_IS_ARG_POINTER
       if (regno == ARG_POINTER_REGNUM)
 	return arg_pointer_rtx;
@@ -3539,7 +3539,6 @@ prev_active_insn (rtx uncast_insn)
   return insn;
 }
 
-#ifdef HAVE_cc0
 /* Return the next insn that uses CC0 after INSN, which is assumed to
    set it.  This is the inverse of prev_cc0_setter (i.e., prev_cc0_setter
    applied to the result of this function should yield INSN).
@@ -3573,10 +3572,8 @@ next_cc0_user (rtx uncast_insn)
    note, it is the previous insn.  */
 
 rtx_insn *
-prev_cc0_setter (rtx uncast_insn)
+prev_cc0_setter (rtx_insn *insn)
 {
-  rtx_insn *insn = safe_as_a <rtx_insn *> (uncast_insn);
-
   rtx note = find_reg_note (insn, REG_CC_SETTER, NULL_RTX);
 
   if (note)
@@ -3587,7 +3584,6 @@ prev_cc0_setter (rtx uncast_insn)
 
   return insn;
 }
-#endif
 
 #ifdef AUTO_INC_DEC
 /* Find a RTX_AUTOINC class rtx which matches DATA.  */
@@ -4635,9 +4631,8 @@ note_outside_basic_block_p (enum insn_note subtype, bool on_bb_boundary_p)
 /* Emit a note of subtype SUBTYPE after the insn AFTER.  */
 
 rtx_note *
-emit_note_after (enum insn_note subtype, rtx uncast_after)
+emit_note_after (enum insn_note subtype, rtx_insn *after)
 {
-  rtx_insn *after = as_a <rtx_insn *> (uncast_after);
   rtx_note *note = make_note_raw (subtype);
   basic_block bb = BARRIER_P (after) ? NULL : BLOCK_FOR_INSN (after);
   bool on_bb_boundary_p = (bb != NULL && BB_END (bb) == after);
@@ -4652,9 +4647,8 @@ emit_note_after (enum insn_note subtype, rtx uncast_after)
 /* Emit a note of subtype SUBTYPE before the insn BEFORE.  */
 
 rtx_note *
-emit_note_before (enum insn_note subtype, rtx uncast_before)
+emit_note_before (enum insn_note subtype, rtx_insn *before)
 {
-  rtx_insn *before = as_a <rtx_insn *> (uncast_before);
   rtx_note *note = make_note_raw (subtype);
   basic_block bb = BARRIER_P (before) ? NULL : BLOCK_FOR_INSN (before);
   bool on_bb_boundary_p = (bb != NULL && BB_HEAD (bb) == before);
@@ -4886,7 +4880,7 @@ emit_debug_insn_before_setloc (rtx pattern, rtx before, int loc)
 /* Like emit_debug_insn_before_noloc,
    but set insn_location according to BEFORE.  */
 rtx_insn *
-emit_debug_insn_before (rtx pattern, rtx before)
+emit_debug_insn_before (rtx pattern, rtx_insn *before)
 {
   return emit_pattern_before (pattern, before, false, false,
 			      make_debug_insn_raw);

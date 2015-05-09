@@ -2886,7 +2886,7 @@ expand_asm_operands (tree string, tree outputs, tree inputs,
   else if (noutputs == 1 && nclobbers == 0)
     {
       ASM_OPERANDS_OUTPUT_CONSTRAINT (body) = ggc_strdup (constraints[0]);
-      emit_insn (gen_rtx_SET (VOIDmode, output_rtx[0], body));
+      emit_insn (gen_rtx_SET (output_rtx[0], body));
     }
   else
     {
@@ -2902,8 +2902,7 @@ expand_asm_operands (tree string, tree outputs, tree inputs,
       for (i = 0, tail = outputs; tail; tail = TREE_CHAIN (tail), i++)
 	{
 	  XVECEXP (body, 0, i)
-	    = gen_rtx_SET (VOIDmode,
-			   output_rtx[i],
+	    = gen_rtx_SET (output_rtx[i],
 			   gen_rtx_ASM_OPERANDS
 			   (GET_MODE (output_rtx[i]),
 			    ggc_strdup (TREE_STRING_POINTER (string)),
@@ -3413,7 +3412,7 @@ expand_gimple_stmt_1 (gimple stmt)
 
 	    ops.code = gimple_assign_rhs_code (assign_stmt);
 	    ops.type = TREE_TYPE (lhs);
-	    switch (get_gimple_rhs_class (gimple_expr_code (stmt)))
+	    switch (get_gimple_rhs_class (ops.code))
 	      {
 		case GIMPLE_TERNARY_RHS:
 		  ops.op2 = gimple_assign_rhs3 (assign_stmt);

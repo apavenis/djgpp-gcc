@@ -174,12 +174,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "cfgloop.h"
 #include "builtins.h"
 
-/* Provide defaults for stuff that may not be defined when using
-   sjlj exceptions.  */
-#ifndef EH_RETURN_DATA_REGNO
-#define EH_RETURN_DATA_REGNO(N) INVALID_REGNUM
-#endif
-
 static GTY(()) int call_site_base;
 
 struct tree_hash_traits : default_hashmap_traits
@@ -655,7 +649,7 @@ duplicate_eh_regions (struct function *ifun,
   data.label_map_data = map_data;
   data.eh_map = new hash_map<void *, void *>;
 
-  outer_region = get_eh_region_from_lp_number (outer_lp);
+  outer_region = get_eh_region_from_lp_number_fn (cfun, outer_lp);
 
   /* Copy all the regions in the subtree.  */
   if (copy_region)
@@ -1700,7 +1694,7 @@ for_each_eh_label (void (*callback) (rtx))
   direct call cases) and just pull the data out of the trees.  */
 
 void
-make_reg_eh_region_note (rtx insn, int ecf_flags, int lp_nr)
+make_reg_eh_region_note (rtx_insn *insn, int ecf_flags, int lp_nr)
 {
   rtx value;
   if (ecf_flags & ECF_NOTHROW)
@@ -1717,7 +1711,7 @@ make_reg_eh_region_note (rtx insn, int ecf_flags, int lp_nr)
    already exists.  */
 
 void
-make_reg_eh_region_note_nothrow_nononlocal (rtx insn)
+make_reg_eh_region_note_nothrow_nononlocal (rtx_insn *insn)
 {
   rtx note = find_reg_note (insn, REG_EH_REGION, NULL_RTX);
   rtx intmin = GEN_INT (INT_MIN);
@@ -1947,7 +1941,7 @@ insn_nothrow_p (const_rtx insn)
 /* ??? This test is here in this file because it (ab)uses REG_EH_REGION.  */
 
 bool
-can_nonlocal_goto (const_rtx insn)
+can_nonlocal_goto (const rtx_insn *insn)
 {
   if (nonlocal_goto_handler_labels && CALL_P (insn))
     {
@@ -2191,14 +2185,13 @@ expand_builtin_extract_return_addr (tree addr_tree)
     }
 
   /* First mask out any unwanted bits.  */
-#ifdef MASK_RETURN_ADDR
-  expand_and (Pmode, addr, MASK_RETURN_ADDR, addr);
-#endif
+  rtx mask = MASK_RETURN_ADDR;
+  if (mask)
+    expand_and (Pmode, addr, mask, addr);
 
   /* Then adjust to find the real return address.  */
-#if defined (RETURN_ADDR_OFFSET)
-  addr = plus_constant (Pmode, addr, RETURN_ADDR_OFFSET);
-#endif
+  if (RETURN_ADDR_OFFSET)
+    addr = plus_constant (Pmode, addr, RETURN_ADDR_OFFSET);
 
   return addr;
 }
@@ -2214,10 +2207,11 @@ expand_builtin_frob_return_addr (tree addr_tree)
 
   addr = convert_memory_address (Pmode, addr);
 
-#ifdef RETURN_ADDR_OFFSET
-  addr = force_reg (Pmode, addr);
-  addr = plus_constant (Pmode, addr, -RETURN_ADDR_OFFSET);
-#endif
+  if (RETURN_ADDR_OFFSET)
+    {
+      addr = force_reg (Pmode, addr);
+      addr = plus_constant (Pmode, addr, -RETURN_ADDR_OFFSET);
+    }
 
   return addr;
 }

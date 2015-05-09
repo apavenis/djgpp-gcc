@@ -266,12 +266,13 @@ Objective-C and Objective-C++ Dialects}.
 -Wmissing-field-initializers -Wmissing-include-dirs @gol
 -Wno-multichar  -Wnonnull  -Wnormalized=@r{[}none@r{|}id@r{|}nfc@r{|}nfkc@r{]} @gol
 -Wodr  -Wno-overflow  -Wopenmp-simd @gol
+-Woverride-init-side-effects @gol
 -Woverlength-strings  -Wpacked  -Wpacked-bitfield-compat  -Wpadded @gol
 -Wparentheses  -Wpedantic-ms-format -Wno-pedantic-ms-format @gol
 -Wpointer-arith  -Wno-pointer-to-int-cast @gol
 -Wredundant-decls  -Wno-return-local-addr @gol
 -Wreturn-type  -Wsequence-point  -Wshadow  -Wno-shadow-ivar @gol
--Wshift-count-negative -Wshift-count-overflow @gol
+-Wshift-count-negative -Wshift-count-overflow -Wshift-negative-value @gol
 -Wsign-compare  -Wsign-conversion -Wfloat-conversion @gol
 -Wsizeof-pointer-memaccess  -Wsizeof-array-argument @gol
 -Wstack-protector -Wstack-usage=@var{len} -Wstrict-aliasing @gol
@@ -512,6 +513,7 @@ Objective-C and Objective-C++ Dialects}.
 -momit-leaf-frame-pointer  -mno-omit-leaf-frame-pointer @gol
 -mtls-dialect=desc  -mtls-dialect=traditional @gol
 -mfix-cortex-a53-835769  -mno-fix-cortex-a53-835769 @gol
+-mfix-cortex-a53-843419  -mno-fix-cortex-a53-843419 @gol
 -march=@var{name}  -mcpu=@var{name}  -mtune=@var{name}}
 
 @emph{Adapteva Epiphany Options}
@@ -667,7 +669,7 @@ Objective-C and Objective-C++ Dialects}.
 -mcpu=@var{cpu}}
 
 @emph{GNU/Linux Options}
-@gccoptlist{-mglibc -muclibc -mbionic -mandroid @gol
+@gccoptlist{-mglibc -muclibc -mmusl -mbionic -mandroid @gol
 -tno-android-cc -tno-android-ld}
 
 @emph{H8/300 Options}
@@ -826,6 +828,7 @@ Objective-C and Objective-C++ Dialects}.
 
 @emph{MSP430 Options}
 @gccoptlist{-msim -masm-hex -mmcu= -mcpu= -mlarge -msmall -mrelax @gol
+-mcode-region= -mdata-region= @gol
 -mhwmult= -minrt}
 
 @emph{NDS32 Options}
@@ -2686,7 +2689,7 @@ For example:
 
 int main() @{
   int64_t i64 = 123;
-  printf("My int64: %"PRId64"\n", i64);
+  printf("My int64: %" PRId64"\n", i64);
 @}
 @end smallexample
 
@@ -2706,10 +2709,10 @@ int i = @{ 2.2 @}; // error: narrowing from double to int
 
 This flag is included in @option{-Wall} and @option{-Wc++11-compat}.
 
-With @option{-std=c++11}, @option{-Wno-narrowing} suppresses for
-non-constants the diagnostic required by the standard.  Note that this
-does not affect the meaning of well-formed code; narrowing conversions
-are still considered ill-formed in SFINAE context.
+With @option{-std=c++11}, @option{-Wno-narrowing} suppresses the diagnostic
+required by the standard.  Note that this does not affect the meaning
+of well-formed code; narrowing conversions are still considered
+ill-formed in SFINAE context.
 
 @item -Wnoexcept @r{(C++ and Objective-C++ only)}
 @opindex Wnoexcept
@@ -2880,6 +2883,12 @@ Warn when overload resolution chooses a promotion from unsigned or
 enumerated type to a signed type, over a conversion to an unsigned type of
 the same size.  Previous versions of G++ tried to preserve
 unsignedness, but the standard mandates the current behavior.
+
+@item -Wno-terminate @r{(C++ and Objective-C++ only)}
+@opindex Wterminate
+@opindex Wno-terminate
+Disable the warning about a throw-expression that will immediately
+result in a call to @code{terminate}.
 @end table
 
 @node Objective-C and Objective-C++ Dialect Options
@@ -3481,6 +3490,7 @@ name is still supported, but the newer name is more descriptive.)
 -Wsign-compare  @gol
 -Wtype-limits  @gol
 -Wuninitialized  @gol
+-Wshift-negative-value  @gol
 -Wunused-parameter @r{(only with} @option{-Wunused} @r{or} @option{-Wall}@r{)} @gol
 -Wunused-but-set-parameter @r{(only with} @option{-Wunused} @r{or} @option{-Wall}@r{)}  @gol
 }
@@ -3913,6 +3923,12 @@ Warn if shift count is negative. This warning is enabled by default.
 @opindex Wshift-count-overflow
 @opindex Wno-shift-count-overflow
 Warn if shift count >= width of type. This warning is enabled by default.
+
+@item -Wshift-negative-value
+@opindex Wshift-negative-value
+@opindex Wno-shift-negative-value
+Warn if left shifting a negative value.  This warning is enabled by
+@option{-Wextra} in C99 and C++11 modes (and newer).
 
 @item -Wswitch
 @opindex Wswitch
@@ -4936,7 +4952,12 @@ programmer intended to use @code{strcmp}.  This warning is enabled by
 @opindex Wno-logical-op
 Warn about suspicious uses of logical operators in expressions.
 This includes using logical operators in contexts where a
-bit-wise operator is likely to be expected.
+bit-wise operator is likely to be expected.  Also warns when
+the operands of a logical operator are the same:
+@smallexample
+extern int a;
+if (a < 0 && a < 0) @{ @dots{} @}
+@end smallexample
 
 @item -Wlogical-not-parentheses
 @opindex Wlogical-not-parentheses
@@ -5176,6 +5197,13 @@ Initializers}).
 This warning is included in @option{-Wextra}.  To get other
 @option{-Wextra} warnings without this one, use @option{-Wextra
 -Wno-override-init}.
+
+@item -Woverride-init-side-effects @r{(C and Objective-C only)}
+@opindex Woverride-init-side-effects
+@opindex Wno-override-init-side-effects
+Warn if an initialized field with side effects is overridden when
+using designated initializers (@pxref{Designated Inits, , Designated
+Initializers}).  This warning is enabled by default.
 
 @item -Wpacked
 @opindex Wpacked
@@ -5723,6 +5751,13 @@ This option enables instrumentation of array bounds.  Various out of bounds
 accesses are detected.  Flexible array members, flexible array member-like
 arrays, and initializers of variables with static storage are not instrumented.
 
+@item -fsanitize=bounds-strict
+@opindex fsanitize=bounds-strict
+This option enables strict instrumentation of array bounds.  Most out of bounds
+accesses are detected, including flexible array members and flexible array
+member-like arrays.  Initializers of variables with static storage are not
+instrumented.
+
 @item -fsanitize=alignment
 @opindex fsanitize=alignment
 
@@ -5806,7 +5841,8 @@ Kernel AddressSanitizer.
 
 @item -fsanitize-sections=@var{s1,s2,...}
 @opindex fsanitize-sections
-Sanitize global variables in selected user-defined sections.
+Sanitize global variables in selected user-defined sections.  @var{si} may
+contain wildcards.
 
 @item -fsanitize-recover@r{[}=@var{opts}@r{]}
 @opindex fsanitize-recover
@@ -8008,10 +8044,12 @@ Enabled by @option{-Os}.
 @item -fdelete-null-pointer-checks
 @opindex fdelete-null-pointer-checks
 Assume that programs cannot safely dereference null pointers, and that
-no code or data element resides there.  This enables simple constant
+no code or data element resides at address zero.
+This option enables simple constant
 folding optimizations at all optimization levels.  In addition, other
 optimization passes in GCC use this flag to control global dataflow
 analyses that eliminate useless checks for null pointers; these assume
+that a memory access to address zero always results in a trap, so
 that if a pointer is checked after it has already been dereferenced,
 it cannot be null.
 
@@ -8019,9 +8057,10 @@ Note however that in some environments this assumption is not true.
 Use @option{-fno-delete-null-pointer-checks} to disable this optimization
 for programs that depend on that behavior.
 
-Some targets, especially embedded ones, disable this option at all levels.
-Otherwise it is enabled at all levels: @option{-O0}, @option{-O1},
-@option{-O2}, @option{-O3}, @option{-Os}.  Passes that use the information
+This option is enabled by default on most targets.  On Nios II ELF, it
+defaults to off.  On AVR and CR16, this option is completely disabled.  
+
+Passes that use the dataflow information
 are enabled independently at different optimization levels.
 
 @item -fdevirtualize
@@ -8504,7 +8543,8 @@ This flag is enabled by default at @option{-O2} and @option{-Os}.
 Detect paths that trigger erroneous or undefined behavior due to
 dereferencing a null pointer.  Isolate those paths from the main control
 flow and turn the statement with erroneous or undefined behavior into a trap.
-This flag is enabled by default at @option{-O2} and higher.
+This flag is enabled by default at @option{-O2} and higher and depends on
+@option{-fdelete-null-pointer-checks} also being enabled.
 
 @item -fisolate-erroneous-paths-attribute
 @opindex fisolate-erroneous-paths-attribute
@@ -12318,13 +12358,25 @@ Enable or disable the workaround for the ARM Cortex-A53 erratum number 835769.
 This involves inserting a NOP instruction between memory instructions and
 64-bit integer multiply-accumulate instructions.
 
+@item -mfix-cortex-a53-843419
+@itemx -mno-fix-cortex-a53-843419
+@opindex mfix-cortex-a53-843419
+@opindex mno-fix-cortex-a53-843419
+Enable or disable the workaround for the ARM Cortex-A53 erratum number 843419.
+This erratum workaround is made at link time and this will only pass the
+corresponding flag to the linker.
+
 @item -march=@var{name}
 @opindex march
 Specify the name of the target architecture, optionally suffixed by one or
 more feature modifiers.  This option has the form
 @option{-march=@var{arch}@r{@{}+@r{[}no@r{]}@var{feature}@r{@}*}}, where the
-only permissible value for @var{arch} is @samp{armv8-a}.  The permissible
-values for @var{feature} are documented in the sub-section below.
+only permissible value for @var{arch} is @samp{armv8-a}.
+The permissible values for @var{feature} are documented in the sub-section
+below.  Additionally on native AArch64 GNU/Linux systems the value
+@samp{native} is available.  This option causes the compiler to pick the
+architecture of the host system.  If the compiler is unable to recognize the
+architecture of the host system this option has no effect.
 
 Where conflicting feature modifiers are specified, the right-most feature is
 used.
@@ -12348,6 +12400,13 @@ Additionally, this option can specify that GCC should tune the performance
 of the code for a big.LITTLE system.  Permissible values for this
 option are: @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53}.
 
+Additionally on native AArch64 GNU/Linux systems the value @samp{native}
+is available.
+This option causes the compiler to pick the architecture of and tune the
+performance of the code for the processor of the host system.
+If the compiler is unable to recognize the processor of the host system
+this option has no effect.
+
 Where none of @option{-mtune=}, @option{-mcpu=} or @option{-march=}
 are specified, the code is tuned to perform well across a range
 of target processors.
@@ -12360,7 +12419,11 @@ Specify the name of the target processor, optionally suffixed by one or more
 feature modifiers.  This option has the form
 @option{-mcpu=@var{cpu}@r{@{}+@r{[}no@r{]}@var{feature}@r{@}*}}, where the
 permissible values for @var{cpu} are the same as those available for
-@option{-mtune}.
+@option{-mtune}.  Additionally on native AArch64 GNU/Linux systems the
+value @samp{native} is available.
+This option causes the compiler to tune the performance of the code for the
+processor of the host system.  If the compiler is unable to recognize the
+processor of the host system this option has no effect.
 
 The permissible values for @var{feature} are documented in the sub-section
 below.
@@ -15321,12 +15384,18 @@ These @samp{-m} options are defined for GNU/Linux targets:
 @item -mglibc
 @opindex mglibc
 Use the GNU C library.  This is the default except
-on @samp{*-*-linux-*uclibc*} and @samp{*-*-linux-*android*} targets.
+on @samp{*-*-linux-*uclibc*}, @samp{*-*-linux-*musl*} and
+@samp{*-*-linux-*android*} targets.
 
 @item -muclibc
 @opindex muclibc
 Use uClibc C library.  This is the default on
 @samp{*-*-linux-*uclibc*} targets.
+
+@item -mmusl
+@opindex mmusl
+Use the musl C library.  This is the default on
+@samp{*-*-linux-*musl*} targets.
 
 @item -mbionic
 @opindex mbionic
@@ -18129,6 +18198,19 @@ Enable the use of a minimum runtime environment - no static
 initializers or constructors.  This is intended for memory-constrained
 devices.  The compiler includes special symbols in some objects
 that tell the linker and runtime which code fragments are required.
+
+@item -mcode-region=
+@itemx -mdata-region=
+@opindex mcode-region
+@opindex mdata-region
+These options tell the compiler where to place functions and data that
+do not have one of the @code{lower}, @code{upper}, @code{either} or
+@code{section} attributes.  Possible values are @code{lower},
+@code{upper}, @code{either} or @code{any}.  The first three behave
+like the corresponding attribute.  The fourth possible value -
+@code{any} - is the default.  It leaves placement entirely up to the
+linker script and how it assigns the standard sections (.text, .data
+etc) to the memory regions.
 
 @end table
 

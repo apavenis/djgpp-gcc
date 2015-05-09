@@ -46,7 +46,7 @@ tree gfc_trans_dealloc_allocated (tree, bool, gfc_expr *);
 
 tree gfc_full_array_size (stmtblock_t *, tree, int);
 
-tree gfc_duplicate_allocatable (tree dest, tree src, tree type, int rank);
+tree gfc_duplicate_allocatable (tree, tree, tree, int, tree);
 
 tree gfc_copy_allocatable_data (tree dest, tree src, tree type, int rank);
 
@@ -63,8 +63,6 @@ tree gfc_copy_alloc_comp (gfc_symbol *, tree, tree, int);
 tree gfc_copy_only_alloc_comp (gfc_symbol *, tree, tree, int);
 
 tree gfc_alloc_allocatable_for_assignment (gfc_loopinfo*, gfc_expr*, gfc_expr*);
-
-bool gfc_is_reallocatable_lhs (gfc_expr *);
 
 /* Add initialization for deferred arrays.  */
 void gfc_trans_deferred_array (gfc_symbol *, gfc_wrapped_block *);
