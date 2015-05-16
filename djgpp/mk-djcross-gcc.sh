@@ -5,7 +5,7 @@ gmp_version=6.0.0
 mpfr_version=3.1.2
 mpc_version=1.0.3
 autoconf_version=2.64
-automake_version=1.11.1
+automake_version=1.11.6
 
 target=i586-pc-msdosdjgpp
 

@@ -593,6 +593,9 @@ compile_file (void)
   timevar_pop (TV_PARSE_GLOBAL);
   timevar_stop (TV_PHASE_PARSING);
 
+  if (flag_dump_locations)
+    dump_location_info (stderr);
+
   /* Compilation is now finished except for writing
      what's left of the symbol table output.  */
 
@@ -2095,8 +2098,11 @@ toplev::toplev (bool use_TV_TOTAL, bool init_signals)
 
 toplev::~toplev ()
 {
-  timevar_stop (TV_TOTAL);
-  timevar_print (stderr);
+  if (g_timer)
+    {
+      g_timer->stop (TV_TOTAL);
+      g_timer->print (stderr);
+    }
 }
 
 void
