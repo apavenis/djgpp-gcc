@@ -126,7 +126,7 @@ automake_list=
 aclocal_list=
 
 #
-#  Apply DJGPP related diffs and copy files 
+#  Apply DJGPP related diffs and copy files
 #
 
 #
@@ -157,8 +157,8 @@ for copy_instr in $file_copy_list_1 $file_copy_list_2 ; do
         patching_ok=false
     fi
     cp -Pv $gcc_dir/$orig_fn $gcc_dir/$new_fn
-done 
-    
+done
+
 if ! $patching_ok ; then
     exit 1
 fi
@@ -176,7 +176,7 @@ if $create_gccnnns_zip; then
 else
     patch_instr_list_2=;
 fi
-   
+
 for x in $patch_instr_list_1 $patch_instr_list_2; do
     patch_src=$x
     case $x in
@@ -190,7 +190,7 @@ for x in $patch_instr_list_1 $patch_instr_list_2; do
 
     x=$(echo $x | sed -e 's:diffs2*/source/::')
 
-    case $x in 
+    case $x in
        *.diff | *.diff.in)
            cd $top
            diff=`pwd`/$x;
@@ -198,12 +198,12 @@ for x in $patch_instr_list_1 $patch_instr_list_2; do
 
            echo "Applying patch to gcc/$fname ..."
            if [ -f $gcc_dir/$fname ] ; then
-              cp -f $gcc_dir/$fname $gcc_dir/${fname}~1 
+              cp -f $gcc_dir/$fname $gcc_dir/${fname}~1
               if ! patch --verbose --suffix=$backup_name $gcc_dir/$fname <$patch_src ; then
                   echo "Failed to apply patch for $gcc_dir/$fname"
 		  patching_ok=false
               fi
-              case $fname in 
+              case $fname in
                   */acinclude.m4)
                      dir=`echo $gcc_dir/$fname | sed -e 's/\/acinclude.m4//g'`
                       aclocal_list="$aclocal_list $dir"
@@ -233,7 +233,7 @@ for x in $patch_instr_list_1 $patch_instr_list_2; do
                echo "ERROR: File gcc_dir/$x already exists"
                exit 1
            fi
-	   mkdir -p $(dirname $gcc_dir/$x)		   	
+	   mkdir -p $(dirname $gcc_dir/$x)
            if ! cp -fv $patch_src $gcc_dir/$x ; then
               echo "Failed to copy $patch_src to $gcc_dir/$x"
    	      patching_ok=false
@@ -300,7 +300,7 @@ for c in `find $gcc_dir -name 'configure.ac'`; do
    d=`dirname $c`
    n=`basename $c`
    if cd $d ; then
-      if ! autoconf -I $gcc_dir/config; then 
+      if ! autoconf -I $gcc_dir/config; then
           echo "autoconf failed in directory `pwd`"
           cd $top
           exit 1
