@@ -23,15 +23,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm.h"
 #include "rtl.h"
 #include "hard-reg-set.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "fold-const.h"
 #include "stringpool.h"
@@ -41,7 +35,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "print-tree.h"
 #include "tm_p.h"
 #include "predict.h"
-#include "hashtab.h"
 #include "function.h"
 #include "dominance.h"
 #include "cfg.h"
@@ -53,9 +46,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "insn-codes.h"
 #include "optabs.h"
 #include "flags.h"
-#include "statistics.h"
-#include "real.h"
-#include "fixed-value.h"
 #include "insn-config.h"
 #include "expmed.h"
 #include "dojump.h"
@@ -74,7 +64,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-iterator.h"
 #include "gimple-walk.h"
 #include "gimple-ssa.h"
-#include "hash-map.h"
 #include "plugin-api.h"
 #include "ipa-ref.h"
 #include "cgraph.h"
@@ -2051,7 +2040,7 @@ static hash_map<basic_block, rtx_code_label *> *lab_rtx_for_bb;
 
 /* Returns the label_rtx expression for a label starting basic block BB.  */
 
-static rtx
+static rtx_code_label *
 label_rtx_for_bb (basic_block bb ATTRIBUTE_UNUSED)
 {
   gimple_stmt_iterator gsi;
@@ -2078,7 +2067,7 @@ label_rtx_for_bb (basic_block bb ATTRIBUTE_UNUSED)
       if (DECL_NONLOCAL (lab))
 	break;
 
-      return label_rtx (lab);
+      return jump_target_rtx (lab);
     }
 
   rtx_code_label *l = gen_label_rtx ();
@@ -2905,7 +2894,7 @@ expand_asm_stmt (gasm *stmt)
       for (i = 0; i < nlabels; ++i)
 	{
 	  tree label = TREE_VALUE (gimple_asm_label_op (stmt, i));
-	  rtx r;
+	  rtx_insn *r;
 	  /* If asm goto has any labels in the fallthru basic block, use
 	     a label that we emit immediately after the asm goto.  Expansion
 	     may insert further instructions into the same basic block after
@@ -3048,7 +3037,7 @@ expand_goto (tree label)
   gcc_assert (!context || context == current_function_decl);
 #endif
 
-  emit_jump (label_rtx (label));
+  emit_jump (jump_target_rtx (label));
 }
 
 /* Output a return with no value.  */
@@ -4039,7 +4028,7 @@ expand_debug_expr (tree exp)
 	  op0 = simplify_gen_subreg (mode, op0, inner_mode,
 				     subreg_lowpart_offset (mode,
 							    inner_mode));
-	else if (TREE_CODE_CLASS (TREE_CODE (exp)) == tcc_unary
+	else if (UNARY_CLASS_P (exp)
 		 ? TYPE_UNSIGNED (TREE_TYPE (TREE_OPERAND (exp, 0)))
 		 : unsignedp)
 	  op0 = simplify_gen_unary (ZERO_EXTEND, mode, op0, inner_mode);
@@ -5507,7 +5496,7 @@ construct_init_block (void)
     {
       tree label = gimple_block_label (e->dest);
 
-      emit_jump (label_rtx (label));
+      emit_jump (jump_target_rtx (label));
       flags = 0;
     }
   else

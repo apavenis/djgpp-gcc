@@ -28,10 +28,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "hard-reg-set.h"
 #include "recog.h"
 #include "predict.h"
-#include "vec.h"
-#include "hashtab.h"
-#include "hash-set.h"
-#include "machmode.h"
 #include "input.h"
 #include "function.h"
 #include "dominance.h"
@@ -40,13 +36,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "df.h"
 #include "reload.h"
 #include "symtab.h"
-#include "statistics.h"
-#include "double-int.h"
-#include "real.h"
-#include "fixed-value.h"
 #include "alias.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "expmed.h"
 #include "dojump.h"
@@ -59,7 +49,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "diagnostic-core.h"
 #include "tm_p.h"
 #include "addresses.h"
-#include "ggc.h"
 #include "dumpfile.h"
 #include "rtl-iter.h"
 
@@ -150,8 +139,7 @@ reg_save_code (int reg, machine_mode mode)
 
   /* Update the register number and modes of the register
      and memory operand.  */
-  SET_REGNO_RAW (test_reg, reg);
-  PUT_MODE (test_reg, mode);
+  set_mode_and_regno (test_reg, mode, reg);
   PUT_MODE (test_mem, mode);
 
   /* Force re-recognition of the modified insns.  */
@@ -287,8 +275,8 @@ init_caller_save (void)
      To avoid lots of unnecessary RTL allocation, we construct all the RTL
      once, then modify the memory and register operands in-place.  */
 
-  test_reg = gen_rtx_REG (VOIDmode, 0);
-  test_mem = gen_rtx_MEM (VOIDmode, address);
+  test_reg = gen_rtx_REG (word_mode, LAST_VIRTUAL_REGISTER + 1);
+  test_mem = gen_rtx_MEM (word_mode, address);
   savepat = gen_rtx_SET (test_mem, test_reg);
   restpat = gen_rtx_SET (test_reg, test_mem);
 
@@ -993,7 +981,7 @@ mark_set_regs (rtx reg, const_rtx setter ATTRIBUTE_UNUSED, void *data)
 	   && REGNO (reg) < FIRST_PSEUDO_REGISTER)
     {
       regno = REGNO (reg);
-      endregno = END_HARD_REGNO (reg);
+      endregno = END_REGNO (reg);
     }
   else
     return;

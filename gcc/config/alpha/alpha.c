@@ -24,15 +24,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "rtl.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "fold-const.h"
 #include "stor-layout.h"
@@ -46,11 +40,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "insn-attr.h"
 #include "flags.h"
 #include "recog.h"
-#include "hashtab.h"
 #include "function.h"
-#include "statistics.h"
-#include "real.h"
-#include "fixed-value.h"
 #include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
@@ -63,15 +53,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "obstack.h"
 #include "except.h"
 #include "diagnostic-core.h"
-#include "ggc.h"
 #include "tm_p.h"
 #include "target.h"
 #include "target-def.h"
 #include "common/common-target.h"
 #include "debug.h"
 #include "langhooks.h"
-#include "hash-map.h"
-#include "hash-table.h"
 #include "predict.h"
 #include "dominance.h"
 #include "cfg.h"
@@ -1352,7 +1339,7 @@ alpha_legitimize_reload_address (rtx x,
       && REG_P (XEXP (x, 0))
       && REGNO (XEXP (x, 0)) < FIRST_PSEUDO_REGISTER
       && REGNO_OK_FOR_BASE_P (REGNO (XEXP (x, 0)))
-      && GET_CODE (XEXP (x, 1)) == CONST_INT)
+      && CONST_INT_P (XEXP (x, 1)))
     {
       HOST_WIDE_INT val = INTVAL (XEXP (x, 1));
       HOST_WIDE_INT low = ((val & 0xffff) ^ 0x8000) - 0x8000;
@@ -1556,8 +1543,7 @@ get_aligned_mem (rtx ref, rtx *paligned_mem, rtx *pbitnum)
 
   gcc_assert (MEM_P (ref));
 
-  if (reload_in_progress
-      && ! memory_address_p (GET_MODE (ref), XEXP (ref, 0)))
+  if (reload_in_progress)
     {
       base = find_replacement (&XEXP (ref, 0));
       gcc_assert (memory_address_p (GET_MODE (ref), base));
@@ -1602,11 +1588,9 @@ get_unaligned_address (rtx ref)
 
   gcc_assert (MEM_P (ref));
 
-  if (reload_in_progress
-      && ! memory_address_p (GET_MODE (ref), XEXP (ref, 0)))
+  if (reload_in_progress)
     {
       base = find_replacement (&XEXP (ref, 0));
-
       gcc_assert (memory_address_p (GET_MODE (ref), base));
     }
   else
@@ -1647,9 +1631,8 @@ alpha_preferred_reload_class(rtx x, enum reg_class rclass)
     return rclass;
 
   /* These sorts of constants we can easily drop to memory.  */
-  if (CONST_INT_P (x)
-      || GET_CODE (x) == CONST_WIDE_INT
-      || GET_CODE (x) == CONST_DOUBLE
+  if (CONST_SCALAR_INT_P (x)
+      || CONST_DOUBLE_P (x)
       || GET_CODE (x) == CONST_VECTOR)
     {
       if (rclass == FLOAT_REGS)
@@ -2136,7 +2119,7 @@ alpha_legitimate_constant_p (machine_mode mode, rtx x)
 
     case CONST:
       if (GET_CODE (XEXP (x, 0)) == PLUS
-	  && GET_CODE (XEXP (XEXP (x, 0), 1)) == CONST_INT)
+	  && CONST_INT_P (XEXP (XEXP (x, 0), 1)))
 	x = XEXP (XEXP (x, 0), 0);
       else
 	return true;
@@ -3286,8 +3269,7 @@ alpha_split_tmode_pair (rtx operands[4], machine_mode mode,
       operands[2] = adjust_address (operands[1], DImode, 0);
       break;
 
-    case CONST_INT:
-    case CONST_WIDE_INT:
+    CASE_CONST_SCALAR_INT:
     case CONST_DOUBLE:
       gcc_assert (operands[1] == CONST0_RTX (mode));
       operands[2] = operands[3] = const0_rtx;
@@ -5260,9 +5242,7 @@ print_operand (FILE *file, rtx x, int code)
 
     case 'M':
       /* 'b', 'w', 'l', or 'q' as the value of the constant.  */
-      if (!CONST_INT_P (x)
-	  || (INTVAL (x) != 8 && INTVAL (x) != 16
-	      && INTVAL (x) != 32 && INTVAL (x) != 64))
+      if (!mode_width_operand (x, VOIDmode))
 	output_operand_lossage ("invalid %%M value");
 
       fprintf (file, "%s",
@@ -9993,12 +9973,6 @@ alpha_atomic_assign_expand_fenv (tree *hold, tree *clear, tree *update)
 
 #undef TARGET_EXPAND_BUILTIN_VA_START
 #define TARGET_EXPAND_BUILTIN_VA_START alpha_va_start
-
-/* The Alpha architecture does not require sequential consistency.  See
-   http://www.cs.umd.edu/~pugh/java/memoryModel/AlphaReordering.html
-   for an example of how it can be violated in practice.  */
-#undef TARGET_RELAXED_ORDERING
-#define TARGET_RELAXED_ORDERING true
 
 #undef TARGET_OPTION_OVERRIDE
 #define TARGET_OPTION_OVERRIDE alpha_option_override

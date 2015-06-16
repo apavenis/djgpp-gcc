@@ -27,16 +27,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "hash-set.h"
-#include "vec.h"
 #include "symtab.h"
 #include "input.h"
 #include "alias.h"
-#include "double-int.h"
-#include "machmode.h"
-#include "inchash.h"
-#include "real.h"
-#include "fixed-value.h"
 #include "tree.h"
 #include "fold-const.h"
 #include "stor-layout.h"
@@ -52,10 +45,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-iterator.h"
 #include "bitmap.h"
 #include "predict.h"
-#include "vec.h"
-#include "hashtab.h"
-#include "hash-set.h"
-#include "machmode.h"
 #include "hard-reg-set.h"
 #include "input.h"
 #include "function.h"
@@ -67,7 +56,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "c-family/c-common.h"
 #include "c-family/c-ubsan.h"
 #include "cilk.h"
-#include "wide-int.h"
 #include "gomp-constants.h"
 
 /* Possible cases of implicit bad conversions.  Used to select
@@ -2474,7 +2462,6 @@ build_array_ref (location_t loc, tree array, tree index)
       /* Allow vector[index] but not index[vector].  */
       && TREE_CODE (TREE_TYPE (array)) != VECTOR_TYPE)
     {
-      tree temp;
       if (TREE_CODE (TREE_TYPE (index)) != ARRAY_TYPE
 	  && TREE_CODE (TREE_TYPE (index)) != POINTER_TYPE)
 	{
@@ -2483,9 +2470,7 @@ build_array_ref (location_t loc, tree array, tree index)
 
 	  return error_mark_node;
 	}
-      temp = array;
-      array = index;
-      index = temp;
+      std::swap (array, index);
       swapped = true;
     }
 
@@ -2675,9 +2660,8 @@ build_external_ref (location_t loc, tree id, int fun, tree *type)
     }
   else if (current_function_decl != 0
 	   && !DECL_FILE_SCOPE_P (current_function_decl)
-	   && (TREE_CODE (ref) == VAR_DECL
-	       || TREE_CODE (ref) == PARM_DECL
-	       || TREE_CODE (ref) == FUNCTION_DECL))
+	   && (VAR_OR_FUNCTION_DECL_P (ref)
+	       || TREE_CODE (ref) == PARM_DECL))
     {
       tree context = decl_function_context (ref);
 
@@ -2857,9 +2841,10 @@ build_function_call (location_t loc, tree function, tree params)
 
 /* Give a note about the location of the declaration of DECL.  */
 
-static void inform_declaration (tree decl)
+static void
+inform_declaration (tree decl)
 {
-  if (decl && (TREE_CODE (decl) != FUNCTION_DECL || !DECL_BUILT_IN (decl)))
+  if (decl && (TREE_CODE (decl) != FUNCTION_DECL || !DECL_IS_BUILTIN (decl)))
     inform (DECL_SOURCE_LOCATION (decl), "declared here");
 }
 
@@ -5198,7 +5183,7 @@ build_c_cast (location_t loc, tree type, tree expr)
     }
 
   /* Don't let a cast be an lvalue.  */
-  if (value == expr)
+  if (lvalue_p (value))
     value = non_lvalue_loc (loc, value);
 
   /* Don't allow the results of casting to floating-point or complex
@@ -7129,10 +7114,7 @@ start_init (tree decl, tree asmspec_tree ATTRIBUTE_UNUSED, int top_level)
 	= ((TREE_STATIC (decl) || (pedantic && !flag_isoc99))
 	   /* For a scalar, you can always use any value to initialize,
 	      even within braces.  */
-	   && (TREE_CODE (TREE_TYPE (decl)) == ARRAY_TYPE
-	       || TREE_CODE (TREE_TYPE (decl)) == RECORD_TYPE
-	       || TREE_CODE (TREE_TYPE (decl)) == UNION_TYPE
-	       || TREE_CODE (TREE_TYPE (decl)) == QUAL_UNION_TYPE));
+	   && AGGREGATE_TYPE_P (TREE_TYPE (decl)));
       locus = identifier_to_locale (IDENTIFIER_POINTER (DECL_NAME (decl)));
     }
   else

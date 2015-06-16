@@ -21,15 +21,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "stringpool.h"
 #include "stor-layout.h"
@@ -43,7 +37,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "splay-tree.h"
 #include "debug.h"
 #include "target.h"
-#include "wide-int.h"
 
 #include "attribs.h"
 
@@ -201,7 +194,7 @@ cb_line_change (cpp_reader * ARG_UNUSED (pfile), const cpp_token *token,
 }
 
 void
-fe_file_change (const struct line_map *new_map)
+fe_file_change (const line_map_ordinary *new_map)
 {
   if (new_map == NULL)
     return;
@@ -281,7 +274,7 @@ static void
 cb_define (cpp_reader *pfile, source_location loc, cpp_hashnode *node)
 {
   const struct line_map *map = linemap_lookup (line_table, loc);
-  (*debug_hooks->define) (SOURCE_LINE (map, loc),
+  (*debug_hooks->define) (SOURCE_LINE (linemap_check_ordinary (map), loc),
 			  (const char *) cpp_macro_definition (pfile, node));
 }
 
@@ -291,7 +284,7 @@ cb_undef (cpp_reader * ARG_UNUSED (pfile), source_location loc,
 	  cpp_hashnode *node)
 {
   const struct line_map *map = linemap_lookup (line_table, loc);
-  (*debug_hooks->undef) (SOURCE_LINE (map, loc),
+  (*debug_hooks->undef) (SOURCE_LINE (linemap_check_ordinary (map), loc),
 			 (const char *) NODE_NAME (node));
 }
 

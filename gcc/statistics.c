@@ -23,12 +23,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tree-pass.h"
 #include "tree-dump.h"
-#include "statistics.h"
-#include "hash-table.h"
-#include "hashtab.h"
-#include "hash-set.h"
-#include "vec.h"
-#include "machmode.h"
 #include "tm.h"
 #include "hard-reg-set.h"
 #include "input.h"
@@ -201,7 +195,7 @@ statistics_fini_pass (void)
       && dump_flags & TDF_STATS)
     {
       fprintf (dump_file, "\n");
-      fprintf (dump_file, "Pass statistics:\n");
+      fprintf (dump_file, "Pass statistics of \"%s\": ", current_pass->name);
       fprintf (dump_file, "----------------\n");
       curr_statistics_hash ()
 	->traverse_noresize <void *, statistics_fini_pass_1> (NULL);

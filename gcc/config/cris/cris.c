@@ -29,26 +29,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "conditions.h"
 #include "insn-attr.h"
 #include "flags.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "fold-const.h"
 #include "varasm.h"
 #include "stor-layout.h"
 #include "calls.h"
 #include "stmt.h"
-#include "hashtab.h"
 #include "function.h"
-#include "statistics.h"
-#include "real.h"
-#include "fixed-value.h"
 #include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
@@ -64,7 +54,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tm-constrs.h"
 #include "target.h"
 #include "target-def.h"
-#include "ggc.h"
 #include "insn-codes.h"
 #include "optabs.h"
 #include "dominance.h"
@@ -78,7 +67,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "basic-block.h"
 #include "df.h"
 #include "opts.h"
-#include "hash-map.h"
 #include "is-a.h"
 #include "plugin-api.h"
 #include "ipa-ref.h"
@@ -3138,7 +3126,7 @@ cris_expand_prologue (void)
 
 	  mem = gen_rtx_MEM (SImode, stack_pointer_rtx);
 	  set_mem_alias_set (mem, get_varargs_alias_set ());
-	  insn = emit_move_insn (mem, gen_rtx_raw_REG (SImode, regno));
+	  insn = emit_move_insn (mem, gen_raw_REG (SImode, regno));
 
 	  /* Note the absence of RTX_FRAME_RELATED_P on the above insn:
 	     the value isn't restored, so we don't want to tell dwarf2
@@ -3162,7 +3150,7 @@ cris_expand_prologue (void)
 
       mem = gen_rtx_MEM (SImode, stack_pointer_rtx);
       set_mem_alias_set (mem, get_frame_alias_set ());
-      insn = emit_move_insn (mem, gen_rtx_raw_REG (SImode, CRIS_SRP_REGNUM));
+      insn = emit_move_insn (mem, gen_raw_REG (SImode, CRIS_SRP_REGNUM));
       RTX_FRAME_RELATED_P (insn) = 1;
       framesize += 4;
     }
@@ -3260,7 +3248,7 @@ cris_expand_prologue (void)
 
 	      mem = gen_rtx_MEM (SImode, stack_pointer_rtx);
 	      set_mem_alias_set (mem, get_frame_alias_set ());
-	      insn = emit_move_insn (mem, gen_rtx_raw_REG (SImode, regno));
+	      insn = emit_move_insn (mem, gen_raw_REG (SImode, regno));
 	      RTX_FRAME_RELATED_P (insn) = 1;
 
 	      framesize += 4 + size;
@@ -3426,7 +3414,7 @@ cris_expand_epilogue (void)
 	mem = gen_rtx_MEM (SImode, gen_rtx_POST_INC (SImode,
 						     stack_pointer_rtx));
 	set_mem_alias_set (mem, get_frame_alias_set ());
-	insn = emit_move_insn (gen_rtx_raw_REG (SImode, regno), mem);
+	insn = emit_move_insn (gen_raw_REG (SImode, regno), mem);
 
 	/* Whenever we emit insns with post-incremented addresses
 	   ourselves, we must add a post-inc note manually.  */
@@ -3512,7 +3500,7 @@ cris_expand_epilogue (void)
 	{
 	  rtx mem;
 	  rtx insn;
-	  rtx srpreg = gen_rtx_raw_REG (SImode, CRIS_SRP_REGNUM);
+	  rtx srpreg = gen_raw_REG (SImode, CRIS_SRP_REGNUM);
 	  mem = gen_rtx_MEM (SImode,
 			     gen_rtx_POST_INC (SImode,
 					       stack_pointer_rtx));
@@ -3527,8 +3515,7 @@ cris_expand_epilogue (void)
 	  if (crtl->calls_eh_return)
 	    emit_insn (gen_addsi3 (stack_pointer_rtx,
 				   stack_pointer_rtx,
-				   gen_rtx_raw_REG (SImode,
-						    CRIS_STACKADJ_REG)));
+				   gen_raw_REG (SImode, CRIS_STACKADJ_REG)));
 	  cris_expand_return (false);
 	}
       else
@@ -3545,7 +3532,7 @@ cris_expand_epilogue (void)
       if (return_address_on_stack)
 	{
 	  rtx mem;
-	  rtx srpreg = gen_rtx_raw_REG (SImode, CRIS_SRP_REGNUM);
+	  rtx srpreg = gen_raw_REG (SImode, CRIS_SRP_REGNUM);
 	  rtx insn;
 
 	  mem = gen_rtx_MEM (SImode,
@@ -3569,8 +3556,7 @@ cris_expand_epilogue (void)
   if (crtl->calls_eh_return)
     emit_insn (gen_addsi3 (stack_pointer_rtx,
 			   stack_pointer_rtx,
-			   gen_rtx_raw_REG (SImode,
-					    CRIS_STACKADJ_REG)));
+			   gen_raw_REG (SImode, CRIS_STACKADJ_REG)));
   cris_expand_return (false);
 }
 

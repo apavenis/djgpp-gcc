@@ -22,15 +22,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "fold-const.h"
 #include "flags.h"
@@ -544,11 +538,8 @@ simplify_control_stmt_condition (edge e,
 	 miss threading opportunities.  */
       if (tree_swap_operands_p (op0, op1, false))
 	{
-	  tree tmp;
 	  cond_code = swap_tree_comparison (cond_code);
-	  tmp = op0;
-	  op0 = op1;
-	  op1 = tmp;
+	  std::swap (op0, op1);
 	}
 
       /* Stuff the operator and operands into our dummy conditional

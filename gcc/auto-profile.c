@@ -26,25 +26,15 @@ along with GCC; see the file COPYING3.  If not see
 #include <set>
 
 #include "coretypes.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
 #include "options.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "fold-const.h"
 #include "tree-pass.h"
 #include "flags.h"
 #include "predict.h"
-#include "vec.h"
-#include "hashtab.h"
-#include "hash-set.h"
-#include "machmode.h"
 #include "tm.h"
 #include "hard-reg-set.h"
 #include "input.h"
@@ -70,7 +60,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple.h"
 #include "gimple-iterator.h"
 #include "gimple-ssa.h"
-#include "hash-map.h"
 #include "plugin-api.h"
 #include "ipa-ref.h"
 #include "cgraph.h"
@@ -1365,8 +1354,13 @@ afdo_calculate_branch_prob (bb_set *annotated_bb, edge_set *annotated_edge)
   bool has_sample = false;
 
   FOR_EACH_BB_FN (bb, cfun)
-  if (bb->count > 0)
-    has_sample = true;
+  {
+    if (bb->count > 0)
+      {
+	has_sample = true;
+	break;
+      }
+  }
 
   if (!has_sample)
     return;

@@ -28,15 +28,9 @@ along with GCC; see the file COPYING3.  If not see
    is properly defined.  */
 #include "insn-config.h"
 #include "rtl.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "tree-hasher.h"
 #include "stor-layout.h"
@@ -47,10 +41,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "hard-reg-set.h"
 #include "function.h"
 #include "except.h"
-#include "hashtab.h"
-#include "statistics.h"
-#include "real.h"
-#include "fixed-value.h"
 #include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
@@ -63,7 +53,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "libfuncs.h"
 #include "recog.h"
 #include "reload.h"
-#include "ggc.h"
 #include "predict.h"
 #include "dominance.h"
 #include "cfg.h"
@@ -929,7 +918,6 @@ expand_subword_shift (machine_mode op1_mode, optab binoptab,
 }
 
 
-#ifdef HAVE_conditional_move
 /* Try implementing expand_doubleword_shift using conditional moves.
    The shift is by < BITS_PER_WORD if (CMP_CODE CMP1 CMP2) is true,
    otherwise it is by >= BITS_PER_WORD.  SUBWORD_OP1 and SUPERWORD_OP1
@@ -989,7 +977,6 @@ expand_doubleword_shift_condmove (machine_mode op1_mode, optab binoptab,
 
   return true;
 }
-#endif
 
 /* Expand a doubleword shift (ashl, ashr or lshr) using word-mode shifts.
    OUTOF_INPUT and INTO_INPUT are the two word-sized halves of the first
@@ -1096,20 +1083,19 @@ expand_doubleword_shift (machine_mode op1_mode, optab binoptab,
 				     unsignedp, methods, shift_mask);
     }
 
-#ifdef HAVE_conditional_move
   /* Try using conditional moves to generate straight-line code.  */
-  {
-    rtx_insn *start = get_last_insn ();
-    if (expand_doubleword_shift_condmove (op1_mode, binoptab,
-					  cmp_code, cmp1, cmp2,
-					  outof_input, into_input,
-					  op1, superword_op1,
-					  outof_target, into_target,
-					  unsignedp, methods, shift_mask))
-      return true;
-    delete_insns_since (start);
-  }
-#endif
+  if (HAVE_conditional_move)
+    {
+      rtx_insn *start = get_last_insn ();
+      if (expand_doubleword_shift_condmove (op1_mode, binoptab,
+					    cmp_code, cmp1, cmp2,
+					    outof_input, into_input,
+					    op1, superword_op1,
+					    outof_target, into_target,
+					    unsignedp, methods, shift_mask))
+	return true;
+      delete_insns_since (start);
+    }
 
   /* As a last resort, use branches to select the correct alternative.  */
   rtx_code_label *subword_label = gen_label_rtx ();
@@ -1416,9 +1402,8 @@ expand_binop_directly (machine_mode mode, optab binoptab,
   machine_mode mode0, mode1, tmp_mode;
   struct expand_operand ops[3];
   bool commutative_p;
-  rtx pat;
+  rtx_insn *pat;
   rtx xop0 = op0, xop1 = op1;
-  rtx swap;
 
   /* If it is a commutative operator and the modes would match
      if we would swap the operands, we can save the conversions.  */
@@ -1426,11 +1411,7 @@ expand_binop_directly (machine_mode mode, optab binoptab,
   if (commutative_p
       && GET_MODE (xop0) != xmode0 && GET_MODE (xop1) != xmode1
       && GET_MODE (xop0) == xmode1 && GET_MODE (xop1) == xmode1)
-    {
-      swap = xop0;
-      xop0 = xop1;
-      xop1 = swap;
-    }
+    std::swap (xop0, xop1);
 
   /* If we are optimizing, force expensive constants into a register.  */
   xop0 = avoid_expensive_constant (xmode0, binoptab, 0, xop0, unsignedp);
@@ -1463,11 +1444,7 @@ expand_binop_directly (machine_mode mode, optab binoptab,
      Also try to make the last operand a constant.  */
   if (commutative_p
       && swap_commutative_operands_with_target (target, xop0, xop1))
-    {
-      swap = xop1;
-      xop1 = xop0;
-      xop0 = swap;
-    }
+    std::swap (xop0, xop1);
 
   /* Now, if insn's predicates don't allow our operands, put them into
      pseudo regs.  */
@@ -1499,8 +1476,8 @@ expand_binop_directly (machine_mode mode, optab binoptab,
       /* If PAT is composed of more than one insn, try to add an appropriate
 	 REG_EQUAL note to it.  If we can't because TEMP conflicts with an
 	 operand, call expand_binop again, this time without a target.  */
-      if (INSN_P (pat) && NEXT_INSN (as_a <rtx_insn *> (pat)) != NULL_RTX
-	  && ! add_equal_note (as_a <rtx_insn *> (pat), ops[0].value,
+      if (INSN_P (pat) && NEXT_INSN (pat) != NULL_RTX
+	  && ! add_equal_note (pat, ops[0].value,
 			       optab_to_code (binoptab),
 			       ops[1].value, ops[2].value))
 	{
@@ -1722,11 +1699,7 @@ expand_binop (machine_mode mode, optab binoptab, rtx op0, rtx op1,
      Also try to make the last operand a constant.  */
   if (commutative_optab_p (binoptab)
       && swap_commutative_operands_with_target (target, op0, op1))
-    {
-      temp = op1;
-      op1 = op0;
-      op0 = temp;
-    }
+    std::swap (op0, op1);
 
   /* These can be done a word at a time.  */
   if ((binoptab == and_optab || binoptab == ior_optab || binoptab == xor_optab)
@@ -2069,7 +2042,7 @@ expand_binop (machine_mode mode, optab binoptab, rtx op0, rtx op1,
 	  if (optab_handler (mov_optab, mode) != CODE_FOR_nothing
 	      || ! rtx_equal_p (target, xtarget))
 	    {
-	      rtx temp = emit_move_insn (target, xtarget);
+	      rtx_insn *temp = emit_move_insn (target, xtarget);
 
 	      set_dst_reg_note (temp, REG_EQUAL,
 				gen_rtx_fmt_ee (optab_to_code (binoptab),
@@ -3016,15 +2989,15 @@ expand_unop_direct (machine_mode mode, optab unoptab, rtx op0, rtx target,
       struct expand_operand ops[2];
       enum insn_code icode = optab_handler (unoptab, mode);
       rtx_insn *last = get_last_insn ();
-      rtx pat;
+      rtx_insn *pat;
 
       create_output_operand (&ops[0], target, mode);
       create_convert_operand_from (&ops[1], op0, mode, unsignedp);
       pat = maybe_gen_insn (icode, 2, ops);
       if (pat)
 	{
-	  if (INSN_P (pat) && NEXT_INSN (as_a <rtx_insn *> (pat)) != NULL_RTX
-	      && ! add_equal_note (as_a <rtx_insn *> (pat), ops[0].value,
+	  if (INSN_P (pat) && NEXT_INSN (pat) != NULL_RTX
+	      && ! add_equal_note (pat, ops[0].value,
 				   optab_to_code (unoptab),
 				   ops[1].value, NULL_RTX))
 	    {
@@ -3508,7 +3481,7 @@ expand_abs (machine_mode mode, rtx op0, rtx target,
   NO_DEFER_POP;
 
   do_compare_rtx_and_jump (target, CONST0_RTX (mode), GE, 0, mode,
-			   NULL_RTX, NULL_RTX, op1, -1);
+			   NULL_RTX, NULL, op1, -1);
 
   op0 = expand_unop (mode, result_unsignedp ? neg_optab : negv_optab,
                      target, target, 0);
@@ -3817,7 +3790,7 @@ maybe_emit_unop_insn (enum insn_code icode, rtx target, rtx op0,
 		      enum rtx_code code)
 {
   struct expand_operand ops[2];
-  rtx pat;
+  rtx_insn *pat;
 
   create_output_operand (&ops[0], target, GET_MODE (target));
   create_input_operand (&ops[1], op0, GET_MODE (op0));
@@ -3825,10 +3798,9 @@ maybe_emit_unop_insn (enum insn_code icode, rtx target, rtx op0,
   if (!pat)
     return false;
 
-  if (INSN_P (pat) && NEXT_INSN (as_a <rtx_insn *> (pat)) != NULL_RTX
+  if (INSN_P (pat) && NEXT_INSN (pat) != NULL_RTX
       && code != UNKNOWN)
-    add_equal_note (as_a <rtx_insn *> (pat), ops[0].value, code, ops[1].value,
-		    NULL_RTX);
+    add_equal_note (pat, ops[0].value, code, ops[1].value, NULL_RTX);
 
   emit_insn (pat);
 
@@ -4532,7 +4504,6 @@ emit_indirect_jump (rtx loc ATTRIBUTE_UNUSED)
 #endif
 }
 
-#ifdef HAVE_conditional_move
 
 /* Emit a conditional move instruction if the machine supports one for that
    condition and machine mode.
@@ -4553,7 +4524,7 @@ emit_conditional_move (rtx target, enum rtx_code code, rtx op0, rtx op1,
 		       machine_mode cmode, rtx op2, rtx op3,
 		       machine_mode mode, int unsignedp)
 {
-  rtx tem, comparison;
+  rtx comparison;
   rtx_insn *last;
   enum insn_code icode;
   enum rtx_code reversed;
@@ -4563,9 +4534,7 @@ emit_conditional_move (rtx target, enum rtx_code code, rtx op0, rtx op1,
 
   if (swap_commutative_operands_p (op0, op1))
     {
-      tem = op0;
-      op0 = op1;
-      op1 = tem;
+      std::swap (op0, op1);
       code = swap_condition (code);
     }
 
@@ -4584,9 +4553,7 @@ emit_conditional_move (rtx target, enum rtx_code code, rtx op0, rtx op1,
       && ((reversed = reversed_comparison_code_parts (code, op0, op1, NULL))
           != UNKNOWN))
     {
-      tem = op2;
-      op2 = op3;
-      op3 = tem;
+      std::swap (op2, op3);
       code = reversed;
     }
 
@@ -4654,8 +4621,6 @@ can_conditionally_move_p (machine_mode mode)
   return 0;
 }
 
-#endif /* HAVE_conditional_move */
-
 /* Emit a conditional addition instruction if the machine supports one for that
    condition and machine mode.
 
@@ -4675,7 +4640,7 @@ emit_conditional_add (rtx target, enum rtx_code code, rtx op0, rtx op1,
 		      machine_mode cmode, rtx op2, rtx op3,
 		      machine_mode mode, int unsignedp)
 {
-  rtx tem, comparison;
+  rtx comparison;
   rtx_insn *last;
   enum insn_code icode;
 
@@ -4684,9 +4649,7 @@ emit_conditional_add (rtx target, enum rtx_code code, rtx op0, rtx op1,
 
   if (swap_commutative_operands_p (op0, op1))
     {
-      tem = op0;
-      op0 = op1;
-      op1 = tem;
+      std::swap (op0, op1);
       code = swap_condition (code);
     }
 
@@ -4751,7 +4714,7 @@ emit_conditional_add (rtx target, enum rtx_code code, rtx op0, rtx op1,
 
 /* Generate and return an insn body to add Y to X.  */
 
-rtx
+rtx_insn *
 gen_add2_insn (rtx x, rtx y)
 {
   enum insn_code icode = optab_handler (add_optab, GET_MODE (x));
@@ -4766,7 +4729,7 @@ gen_add2_insn (rtx x, rtx y)
 /* Generate and return an insn body to add r1 and c,
    storing the result in r0.  */
 
-rtx
+rtx_insn *
 gen_add3_insn (rtx r0, rtx r1, rtx c)
 {
   enum insn_code icode = optab_handler (add_optab, GET_MODE (r0));
@@ -4775,7 +4738,7 @@ gen_add3_insn (rtx r0, rtx r1, rtx c)
       || !insn_operand_matches (icode, 0, r0)
       || !insn_operand_matches (icode, 1, r1)
       || !insn_operand_matches (icode, 2, c))
-    return NULL_RTX;
+    return NULL;
 
   return GEN_FCN (icode) (r0, r1, c);
 }
@@ -4802,7 +4765,7 @@ have_add2_insn (rtx x, rtx y)
 
 /* Generate and return an insn body to add Y to X.  */
 
-rtx
+rtx_insn *
 gen_addptr3_insn (rtx x, rtx y, rtx z)
 {
   enum insn_code icode = optab_handler (addptr3_optab, GET_MODE (x));
@@ -4839,7 +4802,7 @@ have_addptr3_insn (rtx x, rtx y, rtx z)
 
 /* Generate and return an insn body to subtract Y from X.  */
 
-rtx
+rtx_insn *
 gen_sub2_insn (rtx x, rtx y)
 {
   enum insn_code icode = optab_handler (sub_optab, GET_MODE (x));
@@ -4854,7 +4817,7 @@ gen_sub2_insn (rtx x, rtx y)
 /* Generate and return an insn body to subtract r1 and c,
    storing the result in r0.  */
 
-rtx
+rtx_insn *
 gen_sub3_insn (rtx r0, rtx r1, rtx c)
 {
   enum insn_code icode = optab_handler (sub_optab, GET_MODE (r0));
@@ -4863,7 +4826,7 @@ gen_sub3_insn (rtx r0, rtx r1, rtx c)
       || !insn_operand_matches (icode, 0, r0)
       || !insn_operand_matches (icode, 1, r1)
       || !insn_operand_matches (icode, 2, c))
-    return NULL_RTX;
+    return NULL;
 
   return GEN_FCN (icode) (r0, r1, c);
 }
@@ -4909,7 +4872,7 @@ can_extend_p (machine_mode to_mode, machine_mode from_mode,
 /* Generate the body of an insn to extend Y (with mode MFROM)
    into X (with mode MTO).  Do zero-extension if UNSIGNEDP is nonzero.  */
 
-rtx
+rtx_insn *
 gen_extend_insn (rtx x, rtx y, machine_mode mto,
 		 machine_mode mfrom, int unsignedp)
 {
@@ -6426,12 +6389,12 @@ debug_optab_libfuncs (void)
 /* Generate insns to trap with code TCODE if OP1 and OP2 satisfy condition
    CODE.  Return 0 on failure.  */
 
-rtx
+rtx_insn *
 gen_cond_trap (enum rtx_code code, rtx op1, rtx op2, rtx tcode)
 {
   machine_mode mode = GET_MODE (op1);
   enum insn_code icode;
-  rtx insn;
+  rtx_insn *insn;
   rtx trap_rtx;
 
   if (mode == VOIDmode)
@@ -6450,7 +6413,7 @@ gen_cond_trap (enum rtx_code code, rtx op1, rtx op2, rtx tcode)
   prepare_cmp_insn (op1, op2, code, NULL_RTX, false, OPTAB_DIRECT,
 		    &trap_rtx, &mode);
   if (!trap_rtx)
-    insn = NULL_RTX;
+    insn = NULL;
   else
     insn = GEN_FCN (icode) (trap_rtx, XEXP (trap_rtx, 0), XEXP (trap_rtx, 1),
 			    tcode);
@@ -6796,11 +6759,11 @@ expand_vec_perm (machine_mode mode, rtx v0, rtx v1, rtx sel, rtx target)
       machine_mode selmode = GET_MODE (sel);
       if (u == 2)
 	sel = expand_simple_binop (selmode, PLUS, sel, sel,
-				   sel, 0, OPTAB_DIRECT);
+				   NULL, 0, OPTAB_DIRECT);
       else
 	sel = expand_simple_binop (selmode, ASHIFT, sel,
 				   GEN_INT (exact_log2 (u)),
-				   sel, 0, OPTAB_DIRECT);
+				   NULL, 0, OPTAB_DIRECT);
       gcc_assert (sel != NULL);
 
       /* Broadcast the low byte each element into each of its bytes.  */
@@ -7615,15 +7578,6 @@ expand_asm_memory_barrier (void)
 /* This routine will either emit the mem_thread_fence pattern or issue a 
    sync_synchronize to generate a fence for memory model MEMMODEL.  */
 
-#ifndef HAVE_mem_thread_fence
-# define HAVE_mem_thread_fence 0
-# define gen_mem_thread_fence(x) (gcc_unreachable (), NULL_RTX)
-#endif
-#ifndef HAVE_memory_barrier
-# define HAVE_memory_barrier 0
-# define gen_memory_barrier()  (gcc_unreachable (), NULL_RTX)
-#endif
-
 void
 expand_mem_thread_fence (enum memmodel model)
 {
@@ -7642,11 +7596,6 @@ expand_mem_thread_fence (enum memmodel model)
 
 /* This routine will either emit the mem_signal_fence pattern or issue a 
    sync_synchronize to generate a fence for memory model MEMMODEL.  */
-
-#ifndef HAVE_mem_signal_fence
-# define HAVE_mem_signal_fence 0
-# define gen_mem_signal_fence(x) (gcc_unreachable (), NULL_RTX)
-#endif
 
 void
 expand_mem_signal_fence (enum memmodel model)
@@ -8379,13 +8328,13 @@ maybe_legitimize_operands (enum insn_code icode, unsigned int opno,
    and emit any necessary set-up code.  Return null and emit no
    code on failure.  */
 
-rtx
+rtx_insn *
 maybe_gen_insn (enum insn_code icode, unsigned int nops,
 		struct expand_operand *ops)
 {
   gcc_assert (nops == (unsigned int) insn_data[(int) icode].n_generator_args);
   if (!maybe_legitimize_operands (icode, 0, nops, ops))
-    return NULL_RTX;
+    return NULL;
 
   switch (nops)
     {
@@ -8427,7 +8376,7 @@ bool
 maybe_expand_insn (enum insn_code icode, unsigned int nops,
 		   struct expand_operand *ops)
 {
-  rtx pat = maybe_gen_insn (icode, nops, ops);
+  rtx_insn *pat = maybe_gen_insn (icode, nops, ops);
   if (pat)
     {
       emit_insn (pat);
@@ -8442,7 +8391,7 @@ bool
 maybe_expand_jump_insn (enum insn_code icode, unsigned int nops,
 			struct expand_operand *ops)
 {
-  rtx pat = maybe_gen_insn (icode, nops, ops);
+  rtx_insn *pat = maybe_gen_insn (icode, nops, ops);
   if (pat)
     {
       emit_jump_insn (pat);

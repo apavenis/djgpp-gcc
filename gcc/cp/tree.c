@@ -22,15 +22,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "hash-set.h"
-#include "machmode.h"
-#include "vec.h"
-#include "double-int.h"
 #include "input.h"
 #include "alias.h"
 #include "symtab.h"
-#include "wide-int.h"
-#include "inchash.h"
 #include "tree.h"
 #include "fold-const.h"
 #include "tree-hasher.h"
@@ -42,7 +36,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-inline.h"
 #include "debug.h"
 #include "convert.h"
-#include "hash-map.h"
 #include "is-a.h"
 #include "plugin-api.h"
 #include "hard-reg-set.h"
@@ -51,10 +44,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "ipa-ref.h"
 #include "cgraph.h"
 #include "splay-tree.h"
-#include "hash-table.h"
 #include "gimple-expr.h"
 #include "gimplify.h"
-#include "wide-int.h"
 #include "attribs.h"
 
 static tree bot_manip (tree *, int *, void *);
@@ -1265,6 +1256,7 @@ strip_typedefs (tree t, bool *remove_attributes)
     {
       bool changed = false;
       vec<tree,va_gc> *vec = make_tree_vector ();
+      tree r = t;
       for (; t; t = TREE_CHAIN (t))
 	{
 	  gcc_assert (!TREE_PURPOSE (t));
@@ -1273,7 +1265,6 @@ strip_typedefs (tree t, bool *remove_attributes)
 	    changed = true;
 	  vec_safe_push (vec, elt);
 	}
-      tree r = t;
       if (changed)
 	r = build_tree_list_vec (vec);
       release_tree_vector (vec);
@@ -1411,7 +1402,7 @@ strip_typedefs (tree t, bool *remove_attributes)
       result = strip_typedefs_expr (DECLTYPE_TYPE_EXPR (t),
 				    remove_attributes);
       if (result == DECLTYPE_TYPE_EXPR (t))
-	return t;
+	result = NULL_TREE;
       else
 	result = (finish_decltype_type
 		  (result,
@@ -1496,8 +1487,8 @@ strip_typedefs_expr (tree t, bool *remove_attributes)
 	    && type2 == TRAIT_EXPR_TYPE2 (t))
 	  return t;
 	r = copy_node (t);
-	TRAIT_EXPR_TYPE1 (t) = type1;
-	TRAIT_EXPR_TYPE2 (t) = type2;
+	TRAIT_EXPR_TYPE1 (r) = type1;
+	TRAIT_EXPR_TYPE2 (r) = type2;
 	return r;
       }
 
@@ -2561,15 +2552,15 @@ replace_placeholders_r (tree* t, int* walk_subtrees, void* data_)
   switch (TREE_CODE (*t))
     {
     case PLACEHOLDER_EXPR:
-      gcc_assert (same_type_ignoring_top_level_qualifiers_p
-		  (TREE_TYPE (*t), TREE_TYPE (obj)));
-      *t = obj;
-      *walk_subtrees = false;
-      break;
-
-    case TARGET_EXPR:
-      /* Don't mess with placeholders in an unrelated object.  */
-      *walk_subtrees = false;
+      {
+	tree x = obj;
+	for (; !(same_type_ignoring_top_level_qualifiers_p
+		 (TREE_TYPE (*t), TREE_TYPE (x)));
+	     x = TREE_OPERAND (x, 0))
+	  gcc_assert (TREE_CODE (x) == COMPONENT_REF);
+	*t = x;
+	*walk_subtrees = false;
+      }
       break;
 
     case CONSTRUCTOR:

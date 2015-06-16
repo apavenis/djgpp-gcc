@@ -63,14 +63,15 @@ possible_polymorphic_call_targets (tree, HOST_WIDE_INT,
 				   void **cache_token = NULL,
 				   bool speuclative = false);
 odr_type get_odr_type (tree, bool insert = false);
-bool odr_type_p (const_tree t);
+bool type_in_anonymous_namespace_p (const_tree);
+bool type_with_linkage_p (const_tree);
+bool odr_type_p (const_tree);
 bool possible_polymorphic_call_target_p (tree ref, gimple stmt, struct cgraph_node *n);
 void dump_possible_polymorphic_call_targets (FILE *, tree, HOST_WIDE_INT,
 					     const ipa_polymorphic_call_context &);
 bool possible_polymorphic_call_target_p (tree, HOST_WIDE_INT,
 				         const ipa_polymorphic_call_context &,
 					 struct cgraph_node *);
-tree method_class_type (const_tree);
 tree inlined_polymorphic_ctor_dtor_block_p (tree, bool);
 bool decl_maybe_in_construction_p (tree, tree, gimple, tree);
 tree vtable_pointer_value_to_binfo (const_tree);
@@ -78,13 +79,17 @@ bool vtable_pointer_value_to_vtable (const_tree, tree *, unsigned HOST_WIDE_INT 
 tree subbinfo_with_vtable_at_offset (tree, unsigned HOST_WIDE_INT, tree);
 void compare_virtual_tables (varpool_node *, varpool_node *);
 bool type_all_derivations_known_p (const_tree);
-bool type_known_to_have_no_deriavations_p (tree);
+bool type_known_to_have_no_derivations_p (tree);
 bool contains_polymorphic_type_p (const_tree);
 void register_odr_type (tree);
 bool types_must_be_same_for_odr (tree, tree);
 bool types_odr_comparable (tree, tree, bool strict = false);
 cgraph_node *try_speculative_devirtualization (tree, HOST_WIDE_INT,
 					       ipa_polymorphic_call_context);
+void warn_types_mismatch (tree t1, tree t2, location_t loc1 = UNKNOWN_LOCATION,
+			  location_t loc2 = UNKNOWN_LOCATION);
+bool odr_or_derived_type_p (const_tree t);
+bool odr_types_equivalent_p (tree type1, tree type2);
 
 /* Return vector containing possible targets of polymorphic call E.
    If COMPLETEP is non-NULL, store true if the list is complete. 
