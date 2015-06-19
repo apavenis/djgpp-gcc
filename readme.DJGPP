@@ -44,8 +44,9 @@ Binary archives are split into 5 parts:
   objc@GCCVER3@b.zip : The Objective C and Objective C++ compilers and 
                  libobjc.a and the needed header files.
 
-  gfor@GCCVER3@b.zip  : GNU Fortran compiler
+  gfor@GCCVER3@b.zip : GNU Fortran compiler
 
+  ada@GCCVER3@b.zip  : GNU Ada compiler
 
 The archive gcc@GCCVER3@b.zip is required by all other binary packages
 
@@ -65,30 +66,6 @@ Binary packages includes following documentation files:
         info/gfortran.info - documentation of the GNU Fortran compiler
 
 
-Before you install gcc-@GCCVER@ binaries
-======================================
-
-You should remove previous installation of gcc or egcs completely
-(unless You really know what You are doing).
-
-Make sure You don't have following files from earlier versions
-(relative paths against to DJGPP directory are given):
-        bin/cc1.exe             (from gcc272b.zip or gcc2721b.zip)
-        bin/cc1plus.exe         (from gpp272b.zip or gpp2721b.zip)
-        lib/libgcc.a            (from gcc272b.zip or gcc2721b.zip)
-        lib/libobjc.a           
-        lib/specs               (from djdev201.zip or djdev202.zip) 
-        lib/libstdcxx.a         
-        lib/libgpp.a            
-
-Following packages are required for binaries:
-        binutils-2.16 or above. Linker script is no more included in DJGPP
-            release of GCC and all earlier binutils releases for DJGPP
-            had incompatible scripts. SO PLEASE UPGRADE.
-
-        DJGPP-@DJVER@ (djdev203.zip)
-
-
 Installing binaries of gcc-@GCCVER@
 =================================
 
@@ -101,7 +78,11 @@ Needed archives for different programming languages
 
         Objective C             : gcc@GCCVER3@b.zip, objc@GCCVER3@b.zip
 
-Of course for ALL languages You also need at least binutils (bnu216b.zip
+        Objective C++           : gcc@GCCVER3@b.zip, objc@GCCVER3@b.zip
+
+        Ada                     : gcc@GCCVER3@b.zip, ada@GCCVER3@b.zip
+
+Of course for ALL languages You also need at least binutils (bnu222b.zip
 or newer) and @DJDEV@.zip (or newer when it will be released)
 
 Unzip all the zip files from that directory, preserving the
@@ -112,7 +93,7 @@ or
         unzip386 @DJDEV@
 
 
-NOTE:   For debugging GDB version 6.3 or above is recommended. 
+NOTE:   For debugging GDB version 7.7.1 or newer is recommended. 
         (gdb-6.3 is not released for DJGPP yet though).
 
 
@@ -157,8 +138,7 @@ Requirements
 
 -  Long filename support. I built it in DOS session under Windows Vista
    Business SP3. Other 32 bit Windows versions beginning with Win95
-   should be hopefully OK. I have not however tested myself whether
-   it can be build under Win98, Win2k or Win2K.
+   should be hopefully OK. I have not however tested that myself.
 
 -  plenty of physical RAM available. I guess that 1 GB should
    be enough (I had more on build machine)
@@ -172,7 +152,7 @@ Requirements
 -  On windows Vista (and perhaps later versions) a registry hack to
    allow DPMI clients to use more that 32 MB of memory must be used
 
--  recent CVS version DJGPP v2.04
+-  DJGPP version v2.05 or above
 
 -  many GNU utilities and libraries (the list may be incomplete)
 
@@ -209,9 +189,7 @@ Requirements
    about INFO-ZIP. You can find DJGPP compiled binary there. 
 
 -  Working DJGPP installation of course:
-   -  recent CVS version of DJGPP-2.04 is required
-   -  the beta version from ftp://ftp.delorie.com/pub/djgpp/beta/v2
-      is too old.
+   -  DJGPP v2.05 require
 
 Earlier requirement to have rebuilt stubify.exe with default stack size
 increased to 1.5 MB or more is no more required as the stack size
@@ -223,8 +201,8 @@ If You modify some source files You may also need
         (No ports available for DJGPP yet. I did all patching GCC sources
         and updating autoconf and automake related stuff in Linux)
         
-   NOTE: Building GCC-@GCCVER@ using DJGPP v2.03 patchlevel 2 requires rebuilding
-   several DJGPP packets before building GCC.
+Building using using DJGPP v2.03 patchlevel 2 is not supported and is expected
+to fail.
 
 -  You should have sh.exe in DJGPP bin directory as symbolic link to  
    bash.exe (type 'ln -s bash.exe sh.exe' in that directory)
