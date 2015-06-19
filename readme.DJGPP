@@ -39,10 +39,10 @@ Binary archives are split into 5 parts:
 
   gpp@GCCVER3@b.zip  : The C++ compiler and libstdcxx.a together 
                  with needed header files. Please note that one must
-		 recompile all C++ sources built with any earlier GCC version
+                 recompile all C++ sources built with any earlier GCC version
 
   objc@GCCVER3@b.zip : The Objective C and Objective C++ compilers and 
-		 libobjc.a and the needed header files.
+                 libobjc.a and the needed header files.
 
   gfor@GCCVER3@b.zip  : GNU Fortran compiler
 
@@ -52,17 +52,17 @@ The archive gcc@GCCVER3@b.zip is required by all other binary packages
 Binary packages includes following documentation files:
   
   Archive gcc@GCCVER3@b.zip:  
-	info/gcc.info - the use and the internals of the GNU compiler
-	info/cpp.info - documentation of the GNU C preprocessor.
-	info/cppinternals.info  - internals of the GNU C Preprocessor.
+        info/gcc.info - the use and the internals of the GNU compiler
+        info/cpp.info - documentation of the GNU C preprocessor.
+        info/cppinternals.info  - internals of the GNU C Preprocessor.
         info/gccinstall.info
-	info/gccint.info
-		(NEW: use install-info to add it to info/dir)
+        info/gccint.info
+                (NEW: use install-info to add it to info/dir)
   Archive gpp@GCCVER3@b.zip:
         gnu/gcc-@GCCVER2@/libstdcxx/* - some documentation of libstdc++-v3
-		(HTML and text formats)
+                (HTML and text formats)
   Archive gfor@GCCVER3@b.zip:
-	info/gfortran.info - documentation of the GNU Fortran compiler
+        info/gfortran.info - documentation of the GNU Fortran compiler
 
 
 Before you install gcc-@GCCVER@ binaries
@@ -73,33 +73,33 @@ You should remove previous installation of gcc or egcs completely
 
 Make sure You don't have following files from earlier versions
 (relative paths against to DJGPP directory are given):
-	bin/cc1.exe		(from gcc272b.zip or gcc2721b.zip)
-	bin/cc1plus.exe		(from gpp272b.zip or gpp2721b.zip)
-	lib/libgcc.a		(from gcc272b.zip or gcc2721b.zip)
-	lib/libobjc.a		
-	lib/specs		(from djdev201.zip or djdev202.zip) 
-	lib/libstdcxx.a		
-	lib/libgpp.a		
+        bin/cc1.exe             (from gcc272b.zip or gcc2721b.zip)
+        bin/cc1plus.exe         (from gpp272b.zip or gpp2721b.zip)
+        lib/libgcc.a            (from gcc272b.zip or gcc2721b.zip)
+        lib/libobjc.a           
+        lib/specs               (from djdev201.zip or djdev202.zip) 
+        lib/libstdcxx.a         
+        lib/libgpp.a            
 
 Following packages are required for binaries:
-	binutils-2.16 or above. Linker script is no more included in DJGPP
-	    release of GCC and all earlier binutils releases for DJGPP
-	    had incompatible scripts. SO PLEASE UPGRADE.
+        binutils-2.16 or above. Linker script is no more included in DJGPP
+            release of GCC and all earlier binutils releases for DJGPP
+            had incompatible scripts. SO PLEASE UPGRADE.
 
-	DJGPP-@DJVER@ (djdev203.zip)
+        DJGPP-@DJVER@ (djdev203.zip)
 
 
 Installing binaries of gcc-@GCCVER@
 =================================
 
 Needed archives for different programming languages
-	C 			: gcc@GCCVER3@b.zip
+        C                       : gcc@GCCVER3@b.zip
 
-	C++			: gcc@GCCVER3@b.zip, gpp@GCCVER3@b.zip
+        C++                     : gcc@GCCVER3@b.zip, gpp@GCCVER3@b.zip
 
-	Fortran	95              : gcc@GCCVER3@b.zip, gfor@GCCVER3@b.zip
+        Fortran 95              : gcc@GCCVER3@b.zip, gfor@GCCVER3@b.zip
 
-	Objective C		: gcc@GCCVER3@b.zip, objc@GCCVER3@b.zip
+        Objective C             : gcc@GCCVER3@b.zip, objc@GCCVER3@b.zip
 
 Of course for ALL languages You also need at least binutils (bnu216b.zip
 or newer) and @DJDEV@.zip (or newer when it will be released)
@@ -107,9 +107,9 @@ or newer) and @DJDEV@.zip (or newer when it will be released)
 Unzip all the zip files from that directory, preserving the
 directory structure.  For example:
 
-	pkunzip -d @DJDEV@
+        pkunzip -d @DJDEV@
 or
-	unzip386 @DJDEV@
+        unzip386 @DJDEV@
 
 
 NOTE:   For debugging GDB version 6.3 or above is recommended. 
@@ -176,25 +176,25 @@ Requirements
 
 -  many GNU utilities and libraries (the list may be incomplete)
 
-	last version of DJGPP port of bash-2.0.5b
-	GNU Diffutils 2.8 or above
-	GNU Fileutils-4.1
-	GNU Find 4.1.7 or above
-	GNU grep 2.5.1 or above
-	GNU Awk 3.1.1 or above
-	GNU Make 3.80 or above
-	GNU Sed 4.0.7 or above
-	GNU shell utils 2.0.11
-	GNU Textutils 2.0
-	GNU Texinfo 4.8 or above
-	GNU tar 1.1.2 or above
-	GNU binutils 2.22 (required, older versions cannot be used!!!)
-	recent GNU GMP 5.0.1 version (versions 5.0.X or newer are OK)
+        last version of DJGPP port of bash-2.0.5b
+        GNU Diffutils 2.8 or above
+        GNU Fileutils-4.1
+        GNU Find 4.1.7 or above
+        GNU grep 2.5.1 or above
+        GNU Awk 3.1.1 or above
+        GNU Make 3.80 or above
+        GNU Sed 4.0.7 or above
+        GNU shell utils 2.0.11
+        GNU Textutils 2.0
+        GNU Texinfo 4.8 or above
+        GNU tar 1.1.2 or above
+        GNU binutils 2.22 (required, older versions cannot be used!!!)
+        recent GNU GMP 5.0.1 version (versions 5.0.X or newer are OK)
         recent MPFR versions (versions 3.0.0 or newer are OK)
-	recent MPC versions (versions 1.0.0 or newer are OK)
-	Zlib-1.2.5 or above (Warning configure does not check for presence
-	     one only gets build error later)
-	working GNU C compiler (perhaps not earlier than gcc-4.1). 
+        recent MPC versions (versions 1.0.0 or newer are OK)
+        Zlib-1.2.5 or above (Warning configure does not check for presence
+             one only gets build error later)
+        working GNU C compiler (perhaps not earlier than gcc-4.1). 
 
 -  one may need to increase DOS transfer buffer size to 24 KB or
    32 KB for some executables (GNU Make and ld) to optimize lower
@@ -218,11 +218,11 @@ increased to 1.5 MB or more is no more required as the stack size
 reserving is now done using _stklen where required. 
 
 If You modify some source files You may also need
-	autoconf-2.64
-	automake-1.11
-	(No ports available for DJGPP yet. I did all patching GCC sources
-	and updating autoconf and automake related stuff in Linux)
-	
+        autoconf-2.64
+        automake-1.11
+        (No ports available for DJGPP yet. I did all patching GCC sources
+        and updating autoconf and automake related stuff in Linux)
+        
    NOTE: Building GCC-@GCCVER@ using DJGPP v2.03 patchlevel 2 requires rebuilding
    several DJGPP packets before building GCC.
 
@@ -247,17 +247,17 @@ Compiling gcc
 Directory gnu/gcc-@GCCVER2@ contains all sources of gcc-@GCCVER@
 
 Sources are NOT configured. 
-	
+        
 Change to directory gnu/build.gcc and configure sources
 by running script djconfig.sh. 
 
-	sh djconfig.sh
+        sh djconfig.sh
 
 When this is done You can build gcc-@GCCVER@ by running script djmake.sh
 Under Win9X You'll have to restart it some times when it will crash 
 due to Win9X DPMI descriptor leaks. You may use redir to get output in file.
 
-	sh djmake.sh bootstrap
+        sh djmake.sh bootstrap
 
 When this successfully ends run script djinsttmp.sh which installs
 all into directory gnu/install.gcc
@@ -278,7 +278,7 @@ Available resources
 ===================
 
 See following URL for additional information:
-gcc:		  http://gcc.gnu.org
+gcc:              http://gcc.gnu.org
 
 
 
