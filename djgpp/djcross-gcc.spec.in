@@ -62,8 +62,8 @@ Source6: ftp://ftp.gnu.org/gnu/automake/automake-%{automake_version}.tar.bz2
 
 Buildroot: %{_tmppath}/%{name}-%{version}-root
 BuildArch: i686 x86_64
-Requires: djcrx djcross-binutils >= 2.17
-BuildRequires: gcc gcc-gnat djcrx djcross-binutils >= 2.17
+Requires: djcrx djcross-binutils >= 2.22
+BuildRequires: gcc gcc-gnat djcrx djcross-binutils >= 2.22
 BuildRequires: zlib-devel glibc-devel texinfo-tex
 BuildRequires:  flex
 
