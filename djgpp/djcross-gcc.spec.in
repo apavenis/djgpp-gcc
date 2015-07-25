@@ -409,8 +409,6 @@ rm -fr %{buildroot}
 %files gfortran
 %defattr(-,root,root)
 %{_bindir}/%{target}-gfortran
-%{_libdir}/gcc/%{target}/%{gcc_version}/libgfortranbegin.a
-%{_libdir}/gcc/%{target}/%{gcc_version}/libgfortranbegin.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgfortran.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgfortran.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgfortran.spec
