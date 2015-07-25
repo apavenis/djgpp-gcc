@@ -24,43 +24,24 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
+#include "tree.h"
 #include "rtl.h"
+#include "df.h"
 #include "tm_p.h"
 #include "insn-config.h"
 #include "recog.h"
-#include "input.h"
 #include "alias.h"
-#include "symtab.h"
-#include "hard-reg-set.h"
-#include "input.h"
-#include "function.h"
 #include "regs.h"
 #include "alloc-pool.h"
 #include "flags.h"
-#include "predict.h"
-#include "dominance.h"
-#include "cfg.h"
-#include "basic-block.h"
-#include "sbitmap.h"
-#include "bitmap.h"
 #include "dumpfile.h"
-#include "tree.h"
 #include "target.h"
-#include "target-def.h"
-#include "df.h"
 #include "emit-rtl.h"  /* FIXME: Can go away once crtl is moved to rtl.h.  */
 
 
 typedef struct df_mw_hardreg *df_mw_hardreg_ptr;
 
-
-#ifndef HAVE_prologue
-#define HAVE_prologue 0
-#endif
-#ifndef HAVE_sibcall_epilogue
-#define HAVE_sibcall_epilogue 0
-#endif
 
 /* The set of hard registers in eliminables[i].from. */
 
@@ -157,12 +138,12 @@ static const unsigned int copy_all = copy_defs | copy_uses | copy_eq_uses
 /* Problem data for the scanning dataflow function.  */
 struct df_scan_problem_data
 {
-  pool_allocator<df_base_ref> *ref_base_pool;
-  pool_allocator<df_artificial_ref> *ref_artificial_pool;
-  pool_allocator<df_regular_ref> *ref_regular_pool;
-  pool_allocator<df_insn_info> *insn_pool;
-  pool_allocator<df_reg_info> *reg_pool;
-  pool_allocator<df_mw_hardreg> *mw_reg_pool;
+  object_allocator<df_base_ref> *ref_base_pool;
+  object_allocator<df_artificial_ref> *ref_artificial_pool;
+  object_allocator<df_regular_ref> *ref_regular_pool;
+  object_allocator<df_insn_info> *insn_pool;
+  object_allocator<df_reg_info> *reg_pool;
+  object_allocator<df_mw_hardreg> *mw_reg_pool;
 
   bitmap_obstack reg_bitmaps;
   bitmap_obstack insn_bitmaps;
@@ -271,17 +252,17 @@ df_scan_alloc (bitmap all_blocks ATTRIBUTE_UNUSED)
   df_scan->problem_data = problem_data;
   df_scan->computed = true;
 
-  problem_data->ref_base_pool = new pool_allocator<df_base_ref>
+  problem_data->ref_base_pool = new object_allocator<df_base_ref>
     ("df_scan ref base", SCAN_PROBLEM_DATA_BLOCK_SIZE);
-  problem_data->ref_artificial_pool = new pool_allocator<df_artificial_ref>
+  problem_data->ref_artificial_pool = new object_allocator<df_artificial_ref>
     ("df_scan ref artificial", SCAN_PROBLEM_DATA_BLOCK_SIZE);
-  problem_data->ref_regular_pool = new pool_allocator<df_regular_ref>
+  problem_data->ref_regular_pool = new object_allocator<df_regular_ref>
     ("df_scan ref regular", SCAN_PROBLEM_DATA_BLOCK_SIZE);
-  problem_data->insn_pool = new pool_allocator<df_insn_info>
+  problem_data->insn_pool = new object_allocator<df_insn_info>
     ("df_scan insn", SCAN_PROBLEM_DATA_BLOCK_SIZE);
-  problem_data->reg_pool = new pool_allocator<df_reg_info>
+  problem_data->reg_pool = new object_allocator<df_reg_info>
     ("df_scan reg", SCAN_PROBLEM_DATA_BLOCK_SIZE);
-  problem_data->mw_reg_pool = new pool_allocator<df_mw_hardreg>
+  problem_data->mw_reg_pool = new object_allocator<df_mw_hardreg>
     ("df_scan mw_reg", SCAN_PROBLEM_DATA_BLOCK_SIZE / 16);
 
   bitmap_obstack_initialize (&problem_data->reg_bitmaps);
@@ -2135,14 +2116,6 @@ df_ref_ptr_compare (const void *r1, const void *r2)
   return df_ref_compare (*(const df_ref *) r1, *(const df_ref *) r2);
 }
 
-static void
-df_swap_refs (vec<df_ref, va_heap> *ref_vec, int i, int j)
-{
-  df_ref tmp = (*ref_vec)[i];
-  (*ref_vec)[i] = (*ref_vec)[j];
-  (*ref_vec)[j] = tmp;
-}
-
 /* Sort and compress a set of refs.  */
 
 static void
@@ -2162,7 +2135,7 @@ df_sort_and_compress_refs (vec<df_ref, va_heap> *ref_vec)
       df_ref r0 = (*ref_vec)[0];
       df_ref r1 = (*ref_vec)[1];
       if (df_ref_compare (r0, r1) > 0)
-        df_swap_refs (ref_vec, 0, 1);
+	std::swap ((*ref_vec)[0], (*ref_vec)[1]);
     }
   else
     {
@@ -3534,7 +3507,7 @@ df_get_entry_block_def_set (bitmap entry_block_defs)
 
   /* Once the prologue has been generated, all of these registers
      should just show up in the first regular block.  */
-  if (HAVE_prologue && epilogue_completed)
+  if (targetm.have_prologue () && epilogue_completed)
     {
       /* Defs for the callee saved registers are inserted so that the
 	 pushes have some defining location.  */
@@ -3712,7 +3685,7 @@ df_get_exit_block_use_set (bitmap exit_block_uses)
     if (global_regs[i] || EPILOGUE_USES (i))
       bitmap_set_bit (exit_block_uses, i);
 
-  if (HAVE_epilogue && epilogue_completed)
+  if (targetm.have_epilogue () && epilogue_completed)
     {
       /* Mark all call-saved registers that we actually used.  */
       for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
@@ -3732,7 +3705,7 @@ df_get_exit_block_use_set (bitmap exit_block_uses)
       }
 
 #ifdef EH_RETURN_STACKADJ_RTX
-  if ((!HAVE_epilogue || ! epilogue_completed)
+  if ((!targetm.have_epilogue () || ! epilogue_completed)
       && crtl->calls_eh_return)
     {
       rtx tmp = EH_RETURN_STACKADJ_RTX;
@@ -3742,7 +3715,7 @@ df_get_exit_block_use_set (bitmap exit_block_uses)
 #endif
 
 #ifdef EH_RETURN_HANDLER_RTX
-  if ((!HAVE_epilogue || ! epilogue_completed)
+  if ((!targetm.have_epilogue () || ! epilogue_completed)
       && crtl->calls_eh_return)
     {
       rtx tmp = EH_RETURN_HANDLER_RTX;

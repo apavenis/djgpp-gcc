@@ -212,10 +212,8 @@ typedef struct _vect_peel_extended_info
 
 /* Peeling hashtable helpers.  */
 
-struct peel_info_hasher : typed_free_remove <_vect_peel_info>
+struct peel_info_hasher : free_ptr_hash <_vect_peel_info>
 {
-  typedef _vect_peel_info *value_type;
-  typedef _vect_peel_info *compare_type;
   static inline hashval_t hash (const _vect_peel_info *);
   static inline bool equal (const _vect_peel_info *, const _vect_peel_info *);
 };
@@ -328,6 +326,12 @@ typedef struct _loop_vec_info {
   /* Hash table used to choose the best peeling option.  */
   hash_table<peel_info_hasher> *peeling_htab;
 
+  /* Cost vector for a single scalar iteration.  */
+  vec<stmt_info_for_cost> scalar_cost_vec;
+
+  /* Cost of a single scalar iteration.  */
+  int single_scalar_iteration_cost;
+
   /* Cost data used by the target cost model.  */
   void *target_cost_data;
 
@@ -406,6 +410,8 @@ typedef struct _loop_vec_info {
 #define LOOP_VINFO_PEELING_FOR_NITER(L)    (L)->peeling_for_niter
 #define LOOP_VINFO_NO_DATA_DEPENDENCIES(L) (L)->no_data_dependencies
 #define LOOP_VINFO_SCALAR_LOOP(L)	   (L)->scalar_loop
+#define LOOP_VINFO_SCALAR_ITERATION_COST(L) (L)->scalar_cost_vec
+#define LOOP_VINFO_SINGLE_SCALAR_ITERATION_COST(L) (L)->single_scalar_iteration_cost
 
 #define LOOP_REQUIRES_VERSIONING_FOR_ALIGNMENT(L) \
   ((L)->may_misalign_stmts.length () > 0)
@@ -1084,7 +1090,8 @@ extern tree vect_create_addr_base_for_vector_ref (gimple, gimple_seq *,
 /* In tree-vect-loop.c.  */
 /* FORNOW: Used in tree-parloops.c.  */
 extern void destroy_loop_vec_info (loop_vec_info, bool);
-extern gimple vect_force_simple_reduction (loop_vec_info, gimple, bool, bool *);
+extern gimple vect_force_simple_reduction (loop_vec_info, gimple, bool, bool *,
+					   bool);
 /* Drive for loop analysis stage.  */
 extern loop_vec_info vect_analyze_loop (struct loop *);
 /* Drive for loop transformation stage.  */
@@ -1101,8 +1108,6 @@ extern int vect_get_known_peeling_cost (loop_vec_info, int, int *,
 					stmt_vector_for_cost *,
 					stmt_vector_for_cost *,
 					stmt_vector_for_cost *);
-extern int vect_get_single_scalar_iteration_cost (loop_vec_info,
-						  stmt_vector_for_cost *);
 
 /* In tree-vect-slp.c.  */
 extern void vect_free_slp_instance (slp_instance);

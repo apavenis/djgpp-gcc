@@ -1,3 +1,4 @@
+
 /* Target code for NVPTX.
    Copyright (C) 2014-2015 Free Software Foundation, Inc.
    Contributed by Bernd Schmidt <bernds@codesourcery.com>
@@ -22,18 +23,16 @@
 #include <sstream>
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "rtl.h"
-#include "input.h"
-#include "alias.h"
-#include "symtab.h"
+#include "backend.h"
+#include "cfghooks.h"
 #include "tree.h"
+#include "rtl.h"
+#include "df.h"
+#include "alias.h"
 #include "insn-flags.h"
 #include "output.h"
 #include "insn-attr.h"
 #include "insn-codes.h"
-#include "hard-reg-set.h"
-#include "function.h"
 #include "flags.h"
 #include "insn-config.h"
 #include "expmed.h"
@@ -54,20 +53,19 @@
 #include "langhooks.h"
 #include "dbxout.h"
 #include "target.h"
-#include "target-def.h"
 #include "diagnostic.h"
-#include "predict.h"
-#include "basic-block.h"
 #include "cfgrtl.h"
 #include "stor-layout.h"
-#include "df.h"
 #include "builtins.h"
+
+/* This file should be included last.  */
+#include "target-def.h"
 
 /* Record the function decls we've written, and the libfuncs and function
    decls corresponding to them.  */
 static std::stringstream func_decls;
 
-struct declared_libfunc_hasher : ggc_cache_hasher<rtx>
+struct declared_libfunc_hasher : ggc_cache_ptr_hash<rtx_def>
 {
   static hashval_t hash (rtx x) { return htab_hash_pointer (x); }
   static bool equal (rtx a, rtx b) { return a == b; }
@@ -76,7 +74,7 @@ struct declared_libfunc_hasher : ggc_cache_hasher<rtx>
 static GTY((cache))
   hash_table<declared_libfunc_hasher> *declared_libfuncs_htab;
 
-  struct tree_hasher : ggc_cache_hasher<tree>
+struct tree_hasher : ggc_cache_ptr_hash<tree_node>
 {
   static hashval_t hash (tree t) { return htab_hash_pointer (t); }
   static bool equal (tree a, tree b) { return a == b; }
@@ -268,7 +266,9 @@ write_as_kernel (tree attrs)
 	  || lookup_attribute ("omp target entrypoint", attrs) != NULL_TREE);
 }
 
-/* Write a function decl for DECL to S, where NAME is the name to be used.  */
+/* Write a function decl for DECL to S, where NAME is the name to be used.
+   This includes ptx .visible or .extern specifiers, .func or .kernel, and
+   argument and return types.  */
 
 static void
 nvptx_write_function_decl (std::stringstream &s, const char *name, const_tree decl)
@@ -758,7 +758,11 @@ nvptx_end_call_args (void)
   free_EXPR_LIST_list (&cfun->machine->call_args);
 }
 
-/* Emit the sequence for a call.  */
+/* Emit the sequence for a call to ADDRESS, setting RETVAL.  Keep
+   track of whether calls involving static chains or varargs were seen
+   in the current function.
+   For libcalls, maintain a hash table of decls we have seen, and
+   record a function decl for later when encountering a new one.  */
 
 void
 nvptx_expand_call (rtx retval, rtx address)
@@ -817,6 +821,8 @@ nvptx_expand_call (rtx retval, rtx address)
       XVECEXP (pat, 0, nargs + 1) = gen_rtx_USE (VOIDmode, this_arg);
     }
 
+  /* Construct the call insn, including a USE for each argument pseudo
+     register.  These will be used when printing the insn.  */
   int i;
   rtx arg;
   for (i = 1, arg = cfun->machine->call_args; arg; arg = XEXP (arg, 1), i++)
@@ -834,6 +840,11 @@ nvptx_expand_call (rtx retval, rtx address)
       t = gen_rtx_SET (tmp_retval, t);
     }
   XVECEXP (pat, 0, 0) = t;
+
+  /* If this is a libcall, decl_type is NULL. For a call to a non-libcall
+     undeclared function, we'll have an external decl without arg types.
+     In either case we have to try to construct a ptx declaration from one of
+     the calls to the function.  */
   if (!REG_P (callee)
       && (decl_type == NULL_TREE
 	  || (external_decl && TYPE_ARG_TYPES (decl_type) == NULL_TREE)))
@@ -1196,7 +1207,10 @@ nvptx_addr_space_from_address (rtx addr)
   return ADDR_SPACE_GLOBAL;
 }
 
-/* Machinery to output constant initializers.  */
+/* Machinery to output constant initializers.  When beginning an initializer,
+   we decide on a chunk size (which is visible in ptx in the type used), and
+   then all initializer data is buffered until a chunk is filled and ready to
+   be written out.  */
 
 /* Used when assembling integers to ensure data is emitted in
    pieces whose size matches the declaration we printed.  */
@@ -1466,7 +1480,8 @@ nvptx_assemble_undefined_decl (FILE *file, const char *name, const_tree decl)
 }
 
 /* Output INSN, which is a call to CALLEE with result RESULT.  For ptx, this
-   involves writing .param declarations and in/out copies into them.  */
+   involves writing .param declarations and in/out copies into them.  For
+   indirect calls, also write the .callprototype.  */
 
 const char *
 nvptx_output_call_insn (rtx_insn *insn, rtx result, rtx callee)
@@ -1486,6 +1501,7 @@ nvptx_output_call_insn (rtx_insn *insn, rtx result, rtx callee)
 					 false));
     }
 
+  /* Ensure we have a ptx declaration in the output if necessary.  */
   if (GET_CODE (callee) == SYMBOL_REF)
     {
       decl = SYMBOL_REF_DECL (callee);
@@ -1876,19 +1892,10 @@ get_replacement (struct reg_replace *r)
    conversion copyin/copyout instructions.  */
 
 static void
-nvptx_reorg (void)
+nvptx_reorg_subreg (void)
 {
   struct reg_replace qiregs, hiregs, siregs, diregs;
   rtx_insn *insn, *next;
-
-  /* We are freeing block_for_insn in the toplev to keep compatibility
-     with old MDEP_REORGS that are not CFG based.  Recompute it now.  */
-  compute_bb_for_insn ();
-
-  df_clear_flags (DF_LR_RUN_DCE);
-  df_analyze ();
-
-  thread_prologue_and_epilogue_insns ();
 
   qiregs.n_allocated = 0;
   hiregs.n_allocated = 0;
@@ -1965,14 +1972,41 @@ nvptx_reorg (void)
 	  validate_change (insn, recog_data.operand_loc[i], new_reg, false);
 	}
     }
+}
 
-  int maxregs = max_reg_num ();
+/* PTX-specific reorganization
+   1) mark now-unused registers, so function begin doesn't declare
+   unused registers.
+   2) replace subregs with suitable sequences.
+*/
+
+static void
+nvptx_reorg (void)
+{
+  /* We are freeing block_for_insn in the toplev to keep compatibility
+     with old MDEP_REORGS that are not CFG based.  Recompute it now.  */
+  compute_bb_for_insn ();
+
+  thread_prologue_and_epilogue_insns ();
+
+  df_clear_flags (DF_LR_RUN_DCE);
+  df_set_flags (DF_NO_INSN_RESCAN | DF_NO_HARD_REGS);
+  df_analyze ();
   regstat_init_n_sets_and_refs ();
 
-  for (int i = LAST_VIRTUAL_REGISTER + 1; i < maxregs; i++)
+  int max_regs = max_reg_num ();
+
+  /* Mark unused regs as unused.  */
+  for (int i = LAST_VIRTUAL_REGISTER + 1; i < max_regs; i++)
     if (REG_N_SETS (i) == 0 && REG_N_REFS (i) == 0)
       regno_reg_rtx[i] = const0_rtx;
+
+  /* Replace subregs.  */
+  nvptx_reorg_subreg ();
+
   regstat_free_n_sets_and_refs ();
+
+  df_finish_pass (true);
 }
 
 /* Handle a "kernel" attribute; arguments as in
@@ -2041,7 +2075,8 @@ nvptx_file_start (void)
   fputs ("// END PREAMBLE\n", asm_out_file);
 }
 
-/* Write out the function declarations we've collected.  */
+/* Write out the function declarations we've collected and declare storage
+   for the broadcast buffer.  */
 
 static void
 nvptx_file_end (void)

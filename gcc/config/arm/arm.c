@@ -23,27 +23,24 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "rtl.h"
-#include "input.h"
-#include "alias.h"
-#include "symtab.h"
+#include "backend.h"
+#include "cfghooks.h"
 #include "tree.h"
+#include "rtl.h"
+#include "df.h"
+#include "alias.h"
 #include "fold-const.h"
 #include "stringpool.h"
 #include "stor-layout.h"
 #include "calls.h"
 #include "varasm.h"
-#include "obstack.h"
 #include "regs.h"
-#include "hard-reg-set.h"
 #include "insn-config.h"
 #include "conditions.h"
 #include "output.h"
 #include "insn-attr.h"
 #include "flags.h"
 #include "reload.h"
-#include "function.h"
 #include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
@@ -54,27 +51,18 @@
 #include "optabs.h"
 #include "diagnostic-core.h"
 #include "recog.h"
-#include "predict.h"
-#include "dominance.h"
-#include "cfg.h"
 #include "cfgrtl.h"
 #include "cfganal.h"
 #include "lcm.h"
 #include "cfgbuild.h"
 #include "cfgcleanup.h"
-#include "basic-block.h"
-#include "is-a.h"
-#include "plugin-api.h"
-#include "ipa-ref.h"
 #include "cgraph.h"
 #include "except.h"
 #include "tm_p.h"
 #include "target.h"
 #include "sched-int.h"
-#include "target-def.h"
 #include "debug.h"
 #include "langhooks.h"
-#include "df.h"
 #include "intl.h"
 #include "libfuncs.h"
 #include "params.h"
@@ -85,7 +73,9 @@
 #include "builtins.h"
 #include "tm-constrs.h"
 #include "rtl-iter.h"
-#include "sched-int.h"
+
+/* This file should be included last.  */
+#include "target-def.h"
 
 /* Forward definitions of types.  */
 typedef struct minipool_node    Mnode;
@@ -191,7 +181,7 @@ static bool arm_slowmul_rtx_costs (rtx, enum rtx_code, enum rtx_code, int *, boo
 static bool arm_fastmul_rtx_costs (rtx, enum rtx_code, enum rtx_code, int *, bool);
 static bool arm_xscale_rtx_costs (rtx, enum rtx_code, enum rtx_code, int *, bool);
 static bool arm_9e_rtx_costs (rtx, enum rtx_code, enum rtx_code, int *, bool);
-static bool arm_rtx_costs (rtx, int, int, int, int *, bool);
+static bool arm_rtx_costs (rtx, machine_mode, int, int, int *, bool);
 static int arm_address_cost (rtx, machine_mode, addr_space_t, bool);
 static int arm_register_move_cost (machine_mode, reg_class_t, reg_class_t);
 static int arm_memory_move_cost (machine_mode, reg_class_t, bool);
@@ -220,6 +210,7 @@ static void arm_encode_section_info (tree, rtx, int);
 
 static void arm_file_end (void);
 static void arm_file_start (void);
+static void arm_insert_attributes (tree, tree *);
 
 static void arm_setup_incoming_varargs (cumulative_args_t, machine_mode,
 					tree, int *, int);
@@ -377,6 +368,9 @@ static const struct attribute_spec arm_attribute_table[] =
 
 #undef  TARGET_ATTRIBUTE_TABLE
 #define TARGET_ATTRIBUTE_TABLE arm_attribute_table
+
+#undef  TARGET_INSERT_ATTRIBUTES
+#define TARGET_INSERT_ATTRIBUTES arm_insert_attributes
 
 #undef TARGET_ASM_FILE_START
 #define TARGET_ASM_FILE_START arm_file_start
@@ -1703,8 +1697,8 @@ const struct tune_params arm_slowmul_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1726,8 +1720,8 @@ const struct tune_params arm_fastmul_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1752,8 +1746,8 @@ const struct tune_params arm_strongarm_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1775,8 +1769,8 @@ const struct tune_params arm_xscale_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1798,8 +1792,8 @@ const struct tune_params arm_9e_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1821,8 +1815,8 @@ const struct tune_params arm_marvell_pj4_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1844,8 +1838,8 @@ const struct tune_params arm_v6t2_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1869,8 +1863,8 @@ const struct tune_params arm_cortex_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -1892,8 +1886,8 @@ const struct tune_params arm_cortex_a8_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
@@ -1915,8 +1909,8 @@ const struct tune_params arm_cortex_a7_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
@@ -1938,8 +1932,8 @@ const struct tune_params arm_cortex_a15_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_TRUE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_ALL,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
@@ -1961,8 +1955,8 @@ const struct tune_params arm_cortex_a53_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
@@ -1984,8 +1978,8 @@ const struct tune_params arm_cortex_a57_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_TRUE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_ALL,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
@@ -2007,8 +2001,8 @@ const struct tune_params arm_xgene1_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_TRUE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_ALL,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -2033,8 +2027,8 @@ const struct tune_params arm_cortex_a5_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_FALSE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_FALSE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_FALSE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_FALSE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
@@ -2056,8 +2050,8 @@ const struct tune_params arm_cortex_a9_tune =
   ARM_PREFETCH_BENEFICIAL(4,32,32),
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -2079,8 +2073,8 @@ const struct tune_params arm_cortex_a12_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_TRUE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_ALL,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_TRUE,
@@ -2109,8 +2103,8 @@ const struct tune_params arm_v7m_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_FALSE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_FALSE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_FALSE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_FALSE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -2134,8 +2128,8 @@ const struct tune_params arm_cortex_m7_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -2159,8 +2153,8 @@ const struct tune_params arm_v6m_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_FALSE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_FALSE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_FALSE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_FALSE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_FALSE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -2182,8 +2176,8 @@ const struct tune_params arm_fa726te_tune =
   ARM_PREFETCH_NOT_BENEFICIAL,
   tune_params::PREF_CONST_POOL_TRUE,
   tune_params::PREF_LDRD_FALSE,
-  tune_params::LOG_OP_NON_SC_TRUE,		/* Thumb.  */
-  tune_params::LOG_OP_NON_SC_TRUE,		/* ARM.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* Thumb.  */
+  tune_params::LOG_OP_NON_SHORT_CIRCUIT_TRUE,		/* ARM.  */
   tune_params::DISPARAGE_FLAGS_NEITHER,
   tune_params::PREF_NEON_64_FALSE,
   tune_params::PREF_NEON_STRINGOPS_FALSE,
@@ -2794,6 +2788,10 @@ arm_option_params_internal (struct gcc_options *opts)
          ? 1 : current_tune->max_insns_skipped;
 }
 
+/* True if -mflip-thumb should next add an attribute for the default
+   mode, false if it should next add an attribute for the opposite mode.  */
+static GTY(()) bool thumb_flipper;
+
 /* Options after initial target override.  */
 static GTY(()) tree init_optimize;
 
@@ -3371,6 +3369,9 @@ arm_option_override (void)
      options.  */
   target_option_default_node = target_option_current_node
     = build_target_option_node (&global_options);
+
+  /* Init initial mode for testing.  */
+  thumb_flipper = TARGET_THUMB;
 }
 
 static void
@@ -5028,10 +5029,8 @@ arm_function_value(const_tree type, const_tree func,
 
 /* libcall hashtable helpers.  */
 
-struct libcall_hasher : typed_noop_remove <rtx_def>
+struct libcall_hasher : nofree_ptr_hash <const rtx_def>
 {
-  typedef const rtx_def *value_type;
-  typedef const rtx_def *compare_type;
   static inline hashval_t hash (const rtx_def *);
   static inline bool equal (const rtx_def *, const rtx_def *);
   static inline void remove (rtx_def *);
@@ -6153,8 +6152,23 @@ arm_init_cumulative_args (CUMULATIVE_ARGS *pcum, tree fntype,
 static bool
 arm_needs_doubleword_align (machine_mode mode, const_tree type)
 {
-  return (GET_MODE_ALIGNMENT (mode) > PARM_BOUNDARY
-	  || (type && TYPE_ALIGN (type) > PARM_BOUNDARY));
+  if (!type)
+    return PARM_BOUNDARY < GET_MODE_ALIGNMENT (mode);
+
+  /* Scalar and vector types: Use natural alignment, i.e. of base type.  */
+  if (!AGGREGATE_TYPE_P (type))
+    return TYPE_ALIGN (TYPE_MAIN_VARIANT (type)) > PARM_BOUNDARY;
+
+  /* Array types: Use member alignment of element type.  */
+  if (TREE_CODE (type) == ARRAY_TYPE)
+    return TYPE_ALIGN (TREE_TYPE (type)) > PARM_BOUNDARY;
+
+  /* Record/aggregate types: Use greatest member alignment of any member.  */ 
+  for (tree field = TYPE_FIELDS (type); field; field = DECL_CHAIN (field))
+    if (DECL_ALIGN (field) > PARM_BOUNDARY)
+      return true;
+
+  return false;
 }
 
 
@@ -8304,7 +8318,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if (REG_P (XEXP (x, 1)))
 	*total = COSTS_N_INSNS (1); /* Need to subtract from 32 */
       else if (!CONST_INT_P (XEXP (x, 1)))
-	*total = rtx_cost (XEXP (x, 1), code, 1, speed);
+	*total = rtx_cost (XEXP (x, 1), mode, code, 1, speed);
 
       /* Fall through */
     case ROTATERT:
@@ -8316,7 +8330,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 
       /* Fall through */
     case ASHIFT: case LSHIFTRT: case ASHIFTRT:
-      *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+      *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
       if (mode == DImode)
 	{
 	  *total += COSTS_N_INSNS (3);
@@ -8339,14 +8353,14 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	  if (CONST_INT_P (XEXP (x, 0))
 	      && const_ok_for_arm (INTVAL (XEXP (x, 0))))
 	    {
-	      *total += rtx_cost (XEXP (x, 1), code, 1, speed);
+	      *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
 	      return true;
 	    }
 
 	  if (CONST_INT_P (XEXP (x, 1))
 	      && const_ok_for_arm (INTVAL (XEXP (x, 1))))
 	    {
-	      *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+	      *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
 	      return true;
 	    }
 
@@ -8363,14 +8377,14 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	      if (CONST_DOUBLE_P (XEXP (x, 0))
 		  && arm_const_double_rtx (XEXP (x, 0)))
 		{
-		  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
+		  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
 		  return true;
 		}
 
 	      if (CONST_DOUBLE_P (XEXP (x, 1))
 		  && arm_const_double_rtx (XEXP (x, 1)))
 		{
-		  *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+		  *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
 		  return true;
 		}
 
@@ -8384,7 +8398,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if (CONST_INT_P (XEXP (x, 0))
 	  && const_ok_for_arm (INTVAL (XEXP (x, 0))))
 	{
-	  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
 	  return true;
 	}
 
@@ -8393,8 +8407,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	  || subcode == LSHIFTRT
 	  || subcode == ROTATE || subcode == ROTATERT)
 	{
-	  *total += rtx_cost (XEXP (x, 0), code, 0, speed);
-	  *total += rtx_cost (XEXP (XEXP (x, 1), 0), subcode, 0, speed);
+	  *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 1), 0), mode, subcode, 0, speed);
 	  return true;
 	}
 
@@ -8402,23 +8416,24 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if (GET_CODE (XEXP (x, 0)) == MULT
 	  && power_of_two_operand (XEXP (XEXP (x, 0), 1), SImode))
 	{
-	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), code, 0, speed);
-	  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), mode, code, 0, speed);
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
 	  return true;
 	}
 
       if (subcode == MULT
 	  && power_of_two_operand (XEXP (XEXP (x, 1), 1), SImode))
 	{
-	  *total += rtx_cost (XEXP (x, 0), code, 0, speed);
-	  *total += rtx_cost (XEXP (XEXP (x, 1), 0), subcode, 0, speed);
+	  *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 1), 0), mode, subcode, 0, speed);
 	  return true;
 	}
 
       if (GET_RTX_CLASS (GET_CODE (XEXP (x, 1))) == RTX_COMPARE
 	  || GET_RTX_CLASS (GET_CODE (XEXP (x, 1))) == RTX_COMM_COMPARE)
 	{
-	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), code, 0, speed);
+	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), mode, code,
+						 0, speed);
 	  if (REG_P (XEXP (XEXP (x, 1), 0))
 	      && REGNO (XEXP (XEXP (x, 1), 0)) != CC_REGNUM)
 	    *total += COSTS_N_INSNS (1);
@@ -8434,9 +8449,9 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	      || GET_CODE (XEXP (x, 0)) == SIGN_EXTEND))
 	{
 	  *total = COSTS_N_INSNS (1);
-	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), GET_CODE (XEXP (x, 0)),
-			      0, speed);
-	  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), VOIDmode,
+			      GET_CODE (XEXP (x, 0)), 0, speed);
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
 	  return true;
 	}
 
@@ -8460,7 +8475,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	      if (CONST_DOUBLE_P (XEXP (x, 1))
 		  && arm_const_double_rtx (XEXP (x, 1)))
 		{
-		  *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+		  *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
 		  return true;
 		}
 
@@ -8474,7 +8489,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if (GET_RTX_CLASS (GET_CODE (XEXP (x, 0))) == RTX_COMPARE
 	  || GET_RTX_CLASS (GET_CODE (XEXP (x, 0))) == RTX_COMM_COMPARE)
 	{
-	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 1), code, 1, speed);
+	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 1), mode, code,
+						 1, speed);
 	  if (REG_P (XEXP (XEXP (x, 0), 0))
 	      && REGNO (XEXP (XEXP (x, 0), 0)) != CC_REGNUM)
 	    *total += COSTS_N_INSNS (1);
@@ -8501,7 +8517,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	  if (CONST_INT_P (XEXP (x, 1))
 	      && const_ok_for_op (INTVAL (XEXP (x, 1)), code))
 	    {
-	      *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+	      *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
 	      return true;
 	    }
 
@@ -8512,7 +8528,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if (CONST_INT_P (XEXP (x, 1))
 	  && const_ok_for_op (INTVAL (XEXP (x, 1)), code))
 	{
-	  *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+	  *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
 	  return true;
 	}
       subcode = GET_CODE (XEXP (x, 0));
@@ -8520,16 +8536,16 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	  || subcode == LSHIFTRT
 	  || subcode == ROTATE || subcode == ROTATERT)
 	{
-	  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
-	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), subcode, 0, speed);
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), mode, subcode, 0, speed);
 	  return true;
 	}
 
       if (subcode == MULT
 	  && power_of_two_operand (XEXP (XEXP (x, 0), 1), SImode))
 	{
-	  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
-	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), subcode, 0, speed);
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), mode, subcode, 0, speed);
 	  return true;
 	}
 
@@ -8555,7 +8571,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	  && (GET_CODE (XEXP (XEXP (XEXP (x, 0), 0), 0)) == ZERO_EXTEND
 	      || GET_CODE (XEXP (XEXP (XEXP (x, 0), 0), 0)) == SIGN_EXTEND))
 	{
-	  *total = rtx_cost (XEXP (XEXP (x, 0), 0), LSHIFTRT, 0, speed);
+	  *total = rtx_cost (XEXP (XEXP (x, 0), 0), VOIDmode, LSHIFTRT,
+			     0, speed);
 	  return true;
 	}
       *total = COSTS_N_INSNS (2); /* Plus the cost of the MULT */
@@ -8587,11 +8604,13 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	      || (subcode == MULT
 		  && power_of_two_operand (XEXP (XEXP (x, 0), 1), SImode)))
 	    {
-	      *total += rtx_cost (XEXP (XEXP (x, 0), 0), subcode, 0, speed);
+	      *total += rtx_cost (XEXP (XEXP (x, 0), 0), mode, subcode,
+				  0, speed);
 	      /* Register shifts cost an extra cycle.  */
 	      if (!CONST_INT_P (XEXP (XEXP (x, 0), 1)))
 		*total += COSTS_N_INSNS (1) + rtx_cost (XEXP (XEXP (x, 0), 1),
-							subcode, 1, speed);
+							mode, subcode,
+							1, speed);
 	      return true;
 	    }
 	}
@@ -8612,14 +8631,15 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	    && REG_P (XEXP (operand, 0))
 	    && REGNO (XEXP (operand, 0)) == CC_REGNUM))
 	*total += COSTS_N_INSNS (1);
-      *total += (rtx_cost (XEXP (x, 1), code, 1, speed)
-		 + rtx_cost (XEXP (x, 2), code, 2, speed));
+      *total += rtx_cost (XEXP (x, 1), VOIDmode, code, 1, speed);
+      *total += rtx_cost (XEXP (x, 2), VOIDmode, code, 2, speed);
       return true;
 
     case NE:
       if (mode == SImode && XEXP (x, 1) == const0_rtx)
 	{
-	  *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), code, 0, speed);
+	  *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), mode, code,
+						 0, speed);
 	  return true;
 	}
       goto scc_insn;
@@ -8628,7 +8648,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if ((!REG_P (XEXP (x, 0)) || REGNO (XEXP (x, 0)) != CC_REGNUM)
 	  && mode == SImode && XEXP (x, 1) == const0_rtx)
 	{
-	  *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), code, 0, speed);
+	  *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), mode, code,
+						 0, speed);
 	  return true;
 	}
       goto scc_insn;
@@ -8637,7 +8658,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if ((!REG_P (XEXP (x, 0)) || REGNO (XEXP (x, 0)) != CC_REGNUM)
 	  && mode == SImode && XEXP (x, 1) == const0_rtx)
 	{
-	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), code, 0, speed);
+	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), mode, code,
+						 0, speed);
 	  return true;
 	}
       goto scc_insn;
@@ -8678,7 +8700,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if (CONST_INT_P (XEXP (x, 1))
 	  && const_ok_for_op (INTVAL (XEXP (x, 1)), code))
 	{
-	  *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+	  *total += rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed);
 	  return true;
 	}
 
@@ -8687,16 +8709,18 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	  || subcode == LSHIFTRT
 	  || subcode == ROTATE || subcode == ROTATERT)
 	{
-	  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
-	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), subcode, 0, speed);
+	  mode = GET_MODE (XEXP (x, 0));
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), mode, subcode, 0, speed);
 	  return true;
 	}
 
       if (subcode == MULT
 	  && power_of_two_operand (XEXP (XEXP (x, 0), 1), SImode))
 	{
-	  *total += rtx_cost (XEXP (x, 1), code, 1, speed);
-	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), subcode, 0, speed);
+	  mode = GET_MODE (XEXP (x, 0));
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
+	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), mode, subcode, 0, speed);
 	  return true;
 	}
 
@@ -8706,10 +8730,10 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
     case UMAX:
     case SMIN:
     case SMAX:
-      *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), code, 0, speed);
+      *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), mode, code, 0, speed);
       if (!CONST_INT_P (XEXP (x, 1))
 	  || !const_ok_for_arm (INTVAL (XEXP (x, 1))))
-	*total += rtx_cost (XEXP (x, 1), code, 1, speed);
+	*total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
       return true;
 
     case ABS:
@@ -8786,7 +8810,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 
     case ZERO_EXTRACT:
     case SIGN_EXTRACT:
-      *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), code, 0, speed);
+      mode = GET_MODE (XEXP (x, 0));
+      *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), mode, code, 0, speed);
       return true;
 
     case CONST_INT:
@@ -8811,7 +8836,7 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 
     case LO_SUM:
       *total = COSTS_N_INSNS (1);
-      *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+      *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
       return true;
 
     case CONST_DOUBLE:
@@ -8829,7 +8854,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
       if (TARGET_NEON && MEM_P (SET_DEST (x))
 	  && GET_CODE (SET_SRC (x)) == VEC_SELECT)
 	{
-	  *total = rtx_cost (SET_DEST (x), code, 0, speed);
+	  mode = GET_MODE (SET_DEST (x));
+	  *total = rtx_cost (SET_DEST (x), mode, code, 0, speed);
 	  if (!neon_vector_mem_operand (SET_DEST (x), 2, true))
 	    *total += COSTS_N_INSNS (1);
 	  return true;
@@ -8840,7 +8866,8 @@ arm_rtx_costs_1 (rtx x, enum rtx_code outer, int* total, bool speed)
 	  && MEM_P (XEXP (XEXP (SET_SRC (x), 0), 0)))
 	{
 	  rtx mem = XEXP (XEXP (SET_SRC (x), 0), 0);
-	  *total = rtx_cost (mem, code, 0, speed);
+	  mode = GET_MODE (SET_DEST (x));
+	  *total = rtx_cost (mem, mode, code, 0, speed);
 	  if (!neon_vector_mem_operand (mem, 2, true))
 	    *total += COSTS_N_INSNS (1);
 	  return true;
@@ -9063,7 +9090,8 @@ arm_size_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case ROTATE:
       if (mode == SImode && REG_P (XEXP (x, 1)))
 	{
-	  *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), code, 0, false);
+	  *total = COSTS_N_INSNS (2) + rtx_cost (XEXP (x, 0), mode, code,
+						 0, false);
 	  return true;
 	}
       /* Fall through */
@@ -9073,15 +9101,17 @@ arm_size_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case ASHIFTRT:
       if (mode == DImode && CONST_INT_P (XEXP (x, 1)))
 	{
-	  *total = COSTS_N_INSNS (3) + rtx_cost (XEXP (x, 0), code, 0, false);
+	  *total = COSTS_N_INSNS (3) + rtx_cost (XEXP (x, 0), mode, code,
+						 0, false);
 	  return true;
 	}
       else if (mode == SImode)
 	{
-	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), code, 0, false);
+	  *total = COSTS_N_INSNS (1) + rtx_cost (XEXP (x, 0), mode, code,
+						 0, false);
 	  /* Slightly disparage register shifts, but not by much.  */
 	  if (!CONST_INT_P (XEXP (x, 1)))
-	    *total += 1 + rtx_cost (XEXP (x, 1), code, 1, false);
+	    *total += 1 + rtx_cost (XEXP (x, 1), mode, code, 1, false);
 	  return true;
 	}
 
@@ -9133,8 +9163,8 @@ arm_size_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  && power_of_two_operand (XEXP (XEXP (x, 0), 1), SImode))
 	{
 	  *total = COSTS_N_INSNS (TARGET_THUMB2 ? 2 : 1);
-	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), code, 0, false);
-	  *total += rtx_cost (XEXP (x, 1), code, 1, false);
+	  *total += rtx_cost (XEXP (XEXP (x, 0), 0), mode, code, 0, false);
+	  *total += rtx_cost (XEXP (x, 1), mode, code, 1, false);
 	  return true;
 	}
 
@@ -9312,7 +9342,7 @@ arm_unspec_cost (rtx x, enum rtx_code /* outer_code */, bool speed_p, int *cost)
 	*cost += (ARM_NUM_REGS (GET_MODE (x)) * extra_cost->ldst.store
 		  + extra_cost->ldst.store_unaligned);
 
-      *cost += rtx_cost (XVECEXP (x, 0, 0), UNSPEC, 0, speed_p);
+      *cost += rtx_cost (XVECEXP (x, 0, 0), VOIDmode, UNSPEC, 0, speed_p);
 #ifdef NOT_YET
       *cost += arm_address_cost (XEXP (XVECEXP (x, 0, 0), 0), GET_MODE (x),
 				 ADDR_SPACE_GENERIC, speed_p);
@@ -9325,7 +9355,6 @@ arm_unspec_cost (rtx x, enum rtx_code /* outer_code */, bool speed_p, int *cost)
     case UNSPEC_VRINTR:
     case UNSPEC_VRINTX:
     case UNSPEC_VRINTA:
-      *cost = COSTS_N_INSNS (1);
       if (speed_p)
         *cost += extra_cost->fp[GET_MODE (x) == DFmode].roundint;
 
@@ -9351,15 +9380,18 @@ arm_unspec_cost (rtx x, enum rtx_code /* outer_code */, bool speed_p, int *cost)
 	        if (shift_reg)						\
 		  {							\
 		    if (speed_p)					\
-		      *cost += extra_cost->alu.arith_shift_reg;	\
-		    *cost += rtx_cost (shift_reg, ASHIFT, 1, speed_p);	\
+		      *cost += extra_cost->alu.arith_shift_reg;		\
+		    *cost += rtx_cost (shift_reg, GET_MODE (shift_reg),	\
+				       ASHIFT, 1, speed_p);		\
 		  }							\
 	        else if (speed_p)					\
-		  *cost += extra_cost->alu.arith_shift;		\
+		  *cost += extra_cost->alu.arith_shift;			\
 									\
-		  *cost += (rtx_cost (shift_op, ASHIFT, 0, speed_p)	\
+		*cost += (rtx_cost (shift_op, GET_MODE (shift_op),	\
+				    ASHIFT, 0, speed_p)			\
 			  + rtx_cost (XEXP (x, 1 - IDX),		\
-			              OP, 1, speed_p));		\
+				      GET_MODE (shift_op),		\
+			              OP, 1, speed_p));			\
 	        return true;						\
 	      }								\
 	  }								\
@@ -9384,6 +9416,8 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		   int *cost, bool speed_p)
 {
   machine_mode mode = GET_MODE (x);
+
+  *cost = COSTS_N_INSNS (1);
 
   if (TARGET_THUMB1)
     {
@@ -9423,7 +9457,8 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  /* Handle CONST_INT here, since the value doesn't have a mode
 	     and we would otherwise be unable to work out the true cost.  */
-	  *cost = rtx_cost (SET_DEST (x), SET, 0, speed_p);
+	  *cost = rtx_cost (SET_DEST (x), GET_MODE (SET_DEST (x)), SET,
+			    0, speed_p);
 	  outer_code = SET;
 	  /* Slightly lower the cost of setting a core reg to a constant.
 	     This helps break up chains and allows for better scheduling.  */
@@ -9485,8 +9520,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       bool is_ldm = load_multiple_operation (x, SImode);
       bool is_stm = store_multiple_operation (x, SImode);
 
-      *cost = COSTS_N_INSNS (1);
-
       if (is_ldm || is_stm)
         {
 	  if (speed_p)
@@ -9513,10 +9546,10 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case UDIV:
       if (TARGET_HARD_FLOAT && GET_MODE_CLASS (mode) == MODE_FLOAT
 	  && (mode == SFmode || !TARGET_VFP_SINGLE))
-	*cost = COSTS_N_INSNS (speed_p
-			       ? extra_cost->fp[mode != SFmode].div : 1);
+	*cost += COSTS_N_INSNS (speed_p
+			       ? extra_cost->fp[mode != SFmode].div : 0);
       else if (mode == SImode && TARGET_IDIV)
-	*cost = COSTS_N_INSNS (speed_p ? extra_cost->mult[0].idiv : 1);
+	*cost += COSTS_N_INSNS (speed_p ? extra_cost->mult[0].idiv : 0);
       else
 	*cost = LIBCALL_COST (2);
       return false;	/* All arguments must be in registers.  */
@@ -9529,8 +9562,8 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case ROTATE:
       if (mode == SImode && REG_P (XEXP (x, 1)))
 	{
-	  *cost = (COSTS_N_INSNS (2)
-		   + rtx_cost (XEXP (x, 0), code, 0, speed_p));
+	  *cost += (COSTS_N_INSNS (1)
+		   + rtx_cost (XEXP (x, 0), mode, code, 0, speed_p));
 	  if (speed_p)
 	    *cost += extra_cost->alu.shift_reg;
 	  return true;
@@ -9542,20 +9575,19 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case ASHIFTRT:
       if (mode == DImode && CONST_INT_P (XEXP (x, 1)))
 	{
-	  *cost = (COSTS_N_INSNS (3)
-		   + rtx_cost (XEXP (x, 0), code, 0, speed_p));
+	  *cost += (COSTS_N_INSNS (2)
+		   + rtx_cost (XEXP (x, 0), mode, code, 0, speed_p));
 	  if (speed_p)
 	    *cost += 2 * extra_cost->alu.shift;
 	  return true;
 	}
       else if (mode == SImode)
 	{
-	  *cost = (COSTS_N_INSNS (1)
-		   + rtx_cost (XEXP (x, 0), code, 0, speed_p));
+	  *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 	  /* Slightly disparage register shifts at -Os, but not by much.  */
 	  if (!CONST_INT_P (XEXP (x, 1)))
 	    *cost += (speed_p ? extra_cost->alu.shift_reg : 1
-		      + rtx_cost (XEXP (x, 1), code, 1, speed_p));
+		      + rtx_cost (XEXP (x, 1), mode, code, 1, speed_p));
 	  return true;
 	}
       else if (GET_MODE_CLASS (mode) == MODE_INT
@@ -9563,28 +9595,26 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  if (code == ASHIFT)
 	    {
-	      *cost = (COSTS_N_INSNS (1)
-		       + rtx_cost (XEXP (x, 0), code, 0, speed_p));
+	      *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 	      /* Slightly disparage register shifts at -Os, but not by
 	         much.  */
 	      if (!CONST_INT_P (XEXP (x, 1)))
 		*cost += (speed_p ? extra_cost->alu.shift_reg : 1
-			  + rtx_cost (XEXP (x, 1), code, 1, speed_p));
+			  + rtx_cost (XEXP (x, 1), mode, code, 1, speed_p));
 	    }
 	  else if (code == LSHIFTRT || code == ASHIFTRT)
 	    {
 	      if (arm_arch_thumb2 && CONST_INT_P (XEXP (x, 1)))
 		{
 		  /* Can use SBFX/UBFX.  */
-		  *cost = COSTS_N_INSNS (1);
 		  if (speed_p)
 		    *cost += extra_cost->alu.bfx;
-		  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+		  *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 		}
 	      else
 		{
-		  *cost = COSTS_N_INSNS (2);
-		  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+		  *cost += COSTS_N_INSNS (1);
+		  *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 		  if (speed_p)
 		    {
 		      if (CONST_INT_P (XEXP (x, 1)))
@@ -9600,8 +9630,8 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	    }
 	  else /* Rotates.  */
 	    {
-	      *cost = COSTS_N_INSNS (3 + !CONST_INT_P (XEXP (x, 1)));
-	      *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	      *cost = COSTS_N_INSNS (2 + !CONST_INT_P (XEXP (x, 1)));
+	      *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 	      if (speed_p)
 		{
 		  if (CONST_INT_P (XEXP (x, 1)))
@@ -9624,7 +9654,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
         {
           if (mode == SImode)
             {
-              *cost = COSTS_N_INSNS (1);
               if (speed_p)
                 *cost += extra_cost->alu.rev;
 
@@ -9637,7 +9666,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
            and thumb_legacy_rev for the form of RTL used then.  */
           if (TARGET_THUMB)
             {
-              *cost = COSTS_N_INSNS (10);
+              *cost += COSTS_N_INSNS (9);
 
               if (speed_p)
                 {
@@ -9647,7 +9676,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
             }
           else
             {
-              *cost = COSTS_N_INSNS (5);
+              *cost += COSTS_N_INSNS (4);
 
               if (speed_p)
                 {
@@ -9664,7 +9693,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       if (TARGET_HARD_FLOAT && GET_MODE_CLASS (mode) == MODE_FLOAT
 	  && (mode == SFmode || !TARGET_VFP_SINGLE))
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (GET_CODE (XEXP (x, 0)) == MULT
 	      || GET_CODE (XEXP (x, 1)) == MULT)
 	    {
@@ -9691,9 +9719,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      if (GET_CODE (mul_op0) == NEG)
 		mul_op0 = XEXP (mul_op0, 0);
 
-	      *cost += (rtx_cost (mul_op0, code, 0, speed_p)
-			+ rtx_cost (mul_op1, code, 0, speed_p)
-			+ rtx_cost (sub_op, code, 0, speed_p));
+	      *cost += (rtx_cost (mul_op0, mode, code, 0, speed_p)
+			+ rtx_cost (mul_op1, mode, code, 0, speed_p)
+			+ rtx_cost (sub_op, mode, code, 0, speed_p));
 
 	      return true;
 	    }
@@ -9708,8 +9736,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  rtx shift_by_reg = NULL;
 	  rtx shift_op;
 	  rtx non_shift_op;
-
-	  *cost = COSTS_N_INSNS (1);
 
 	  shift_op = shifter_op_p (XEXP (x, 0), &shift_by_reg);
 	  if (shift_op == NULL)
@@ -9726,13 +9752,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		{
 		  if (speed_p)
 		    *cost += extra_cost->alu.arith_shift_reg;
-		  *cost += rtx_cost (shift_by_reg, code, 0, speed_p);
+		  *cost += rtx_cost (shift_by_reg, mode, code, 0, speed_p);
 		}
 	      else if (speed_p)
 		*cost += extra_cost->alu.arith_shift;
 
-	      *cost += (rtx_cost (shift_op, code, 0, speed_p)
-			+ rtx_cost (non_shift_op, code, 0, speed_p));
+	      *cost += rtx_cost (shift_op, mode, code, 0, speed_p);
+	      *cost += rtx_cost (non_shift_op, mode, code, 0, speed_p);
 	      return true;
 	    }
 
@@ -9742,9 +9768,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      /* MLS.  */
 	      if (speed_p)
 		*cost += extra_cost->mult[0].add;
-	      *cost += (rtx_cost (XEXP (x, 0), MINUS, 0, speed_p)
-			+ rtx_cost (XEXP (XEXP (x, 1), 0), MULT, 0, speed_p)
-			+ rtx_cost (XEXP (XEXP (x, 1), 1), MULT, 1, speed_p));
+	      *cost += rtx_cost (XEXP (x, 0), mode, MINUS, 0, speed_p);
+	      *cost += rtx_cost (XEXP (XEXP (x, 1), 0), mode, MULT, 0, speed_p);
+	      *cost += rtx_cost (XEXP (XEXP (x, 1), 1), mode, MULT, 1, speed_p);
 	      return true;
 	    }
 
@@ -9756,7 +9782,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      *cost = COSTS_N_INSNS (insns);
 	      if (speed_p)
 		*cost += insns * extra_cost->alu.arith;
-	      *cost += rtx_cost (XEXP (x, 1), code, 1, speed_p);
+	      *cost += rtx_cost (XEXP (x, 1), mode, code, 1, speed_p);
 	      return true;
 	    }
 	  else if (speed_p)
@@ -9778,13 +9804,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  HANDLE_NARROW_SHIFT_ARITH (MINUS, 1)
 
 	  /* Slightly disparage, as we might need to widen the result.  */
-	  *cost = 1 + COSTS_N_INSNS (1);
+	  *cost += 1;
 	  if (speed_p)
 	    *cost += extra_cost->alu.arith;
 
 	  if (CONST_INT_P (XEXP (x, 0)))
 	    {
-	      *cost += rtx_cost (XEXP (x, 1), code, 1, speed_p);
+	      *cost += rtx_cost (XEXP (x, 1), mode, code, 1, speed_p);
 	      return true;
 	    }
 
@@ -9793,7 +9819,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 
       if (mode == DImode)
 	{
-	  *cost = COSTS_N_INSNS (2);
+	  *cost += COSTS_N_INSNS (1);
 
 	  if (GET_CODE (XEXP (x, 0)) == ZERO_EXTEND)
 	    {
@@ -9803,10 +9829,11 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		*cost += 2 * extra_cost->alu.arith;
 
 	      if (GET_CODE (op1) == ZERO_EXTEND)
-		*cost += rtx_cost (XEXP (op1, 0), ZERO_EXTEND, 0, speed_p);
+		*cost += rtx_cost (XEXP (op1, 0), VOIDmode, ZERO_EXTEND,
+				   0, speed_p);
 	      else
-		*cost += rtx_cost (op1, MINUS, 1, speed_p);
-	      *cost += rtx_cost (XEXP (XEXP (x, 0), 0), ZERO_EXTEND,
+		*cost += rtx_cost (op1, mode, MINUS, 1, speed_p);
+	      *cost += rtx_cost (XEXP (XEXP (x, 0), 0), VOIDmode, ZERO_EXTEND,
 				 0, speed_p);
 	      return true;
 	    }
@@ -9814,9 +9841,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	    {
 	      if (speed_p)
 		*cost += extra_cost->alu.arith + extra_cost->alu.arith_shift;
-	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0), SIGN_EXTEND,
+	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0), VOIDmode, SIGN_EXTEND,
 				  0, speed_p)
-			+ rtx_cost (XEXP (x, 1), MINUS, 1, speed_p));
+			+ rtx_cost (XEXP (x, 1), mode, MINUS, 1, speed_p));
 	      return true;
 	    }
 	  else if (GET_CODE (XEXP (x, 1)) == ZERO_EXTEND
@@ -9827,8 +9854,8 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 			  + (GET_CODE (XEXP (x, 1)) == ZERO_EXTEND
 			     ? extra_cost->alu.arith
 			     : extra_cost->alu.arith_shift));
-	      *cost += (rtx_cost (XEXP (x, 0), MINUS, 0, speed_p)
-			+ rtx_cost (XEXP (XEXP (x, 1), 0),
+	      *cost += (rtx_cost (XEXP (x, 0), mode, MINUS, 0, speed_p)
+			+ rtx_cost (XEXP (XEXP (x, 1), 0), VOIDmode,
 				    GET_CODE (XEXP (x, 1)), 0, speed_p));
 	      return true;
 	    }
@@ -9847,7 +9874,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       if (TARGET_HARD_FLOAT && GET_MODE_CLASS (mode) == MODE_FLOAT
 	  && (mode == SFmode || !TARGET_VFP_SINGLE))
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (GET_CODE (XEXP (x, 0)) == MULT)
 	    {
 	      rtx mul_op0, mul_op1, add_op;
@@ -9859,9 +9885,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      mul_op1 = XEXP (XEXP (x, 0), 1);
 	      add_op = XEXP (x, 1);
 
-	      *cost += (rtx_cost (mul_op0, code, 0, speed_p)
-			+ rtx_cost (mul_op1, code, 0, speed_p)
-			+ rtx_cost (add_op, code, 0, speed_p));
+	      *cost += (rtx_cost (mul_op0, mode, code, 0, speed_p)
+			+ rtx_cost (mul_op1, mode, code, 0, speed_p)
+			+ rtx_cost (add_op, mode, code, 0, speed_p));
 
 	      return true;
 	    }
@@ -9898,13 +9924,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		*cost += insns * extra_cost->alu.arith;
 	      /* Slightly penalize a narrow operation as the result may
 		 need widening.  */
-	      *cost += 1 + rtx_cost (XEXP (x, 0), PLUS, 0, speed_p);
+	      *cost += 1 + rtx_cost (XEXP (x, 0), mode, PLUS, 0, speed_p);
 	      return true;
 	    }
 
 	  /* Slightly penalize a narrow operation as the result may
 	     need widening.  */
-	  *cost = 1 + COSTS_N_INSNS (1);
+	  *cost += 1;
 	  if (speed_p)
 	    *cost += extra_cost->alu.arith;
 
@@ -9915,7 +9941,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  rtx shift_op, shift_reg;
 
-	  *cost = COSTS_N_INSNS (1);
 	  if (TARGET_INT_SIMD
 	      && (GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
 		  || GET_CODE (XEXP (x, 0)) == SIGN_EXTEND))
@@ -9923,9 +9948,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      /* UXTA[BH] or SXTA[BH].  */
 	      if (speed_p)
 		*cost += extra_cost->alu.extend_arith;
-	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0), ZERO_EXTEND, 0,
-				  speed_p)
-			+ rtx_cost (XEXP (x, 1), PLUS, 0, speed_p));
+	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0), VOIDmode, ZERO_EXTEND,
+				  0, speed_p)
+			+ rtx_cost (XEXP (x, 1), mode, PLUS, 0, speed_p));
 	      return true;
 	    }
 
@@ -9937,20 +9962,18 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		{
 		  if (speed_p)
 		    *cost += extra_cost->alu.arith_shift_reg;
-		  *cost += rtx_cost (shift_reg, ASHIFT, 1, speed_p);
+		  *cost += rtx_cost (shift_reg, mode, ASHIFT, 1, speed_p);
 		}
 	      else if (speed_p)
 		*cost += extra_cost->alu.arith_shift;
 
-	      *cost += (rtx_cost (shift_op, ASHIFT, 0, speed_p)
-			+ rtx_cost (XEXP (x, 1), PLUS, 1, speed_p));
+	      *cost += (rtx_cost (shift_op, mode, ASHIFT, 0, speed_p)
+			+ rtx_cost (XEXP (x, 1), mode, PLUS, 1, speed_p));
 	      return true;
 	    }
 	  if (GET_CODE (XEXP (x, 0)) == MULT)
 	    {
 	      rtx mul_op = XEXP (x, 0);
-
-	      *cost = COSTS_N_INSNS (1);
 
 	      if (TARGET_DSP_MULTIPLY
 		  && ((GET_CODE (XEXP (mul_op, 0)) == SIGN_EXTEND
@@ -9970,19 +9993,19 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		  /* SMLA[BT][BT].  */
 		  if (speed_p)
 		    *cost += extra_cost->mult[0].extend_add;
-		  *cost += (rtx_cost (XEXP (XEXP (mul_op, 0), 0),
+		  *cost += (rtx_cost (XEXP (XEXP (mul_op, 0), 0), mode,
 				      SIGN_EXTEND, 0, speed_p)
-			    + rtx_cost (XEXP (XEXP (mul_op, 1), 0),
+			    + rtx_cost (XEXP (XEXP (mul_op, 1), 0), mode,
 					SIGN_EXTEND, 0, speed_p)
-			    + rtx_cost (XEXP (x, 1), PLUS, 1, speed_p));
+			    + rtx_cost (XEXP (x, 1), mode, PLUS, 1, speed_p));
 		  return true;
 		}
 
 	      if (speed_p)
 		*cost += extra_cost->mult[0].add;
-	      *cost += (rtx_cost (XEXP (mul_op, 0), MULT, 0, speed_p)
-			+ rtx_cost (XEXP (mul_op, 1), MULT, 1, speed_p)
-			+ rtx_cost (XEXP (x, 1), PLUS, 1, speed_p));
+	      *cost += (rtx_cost (XEXP (mul_op, 0), mode, MULT, 0, speed_p)
+			+ rtx_cost (XEXP (mul_op, 1), mode, MULT, 1, speed_p)
+			+ rtx_cost (XEXP (x, 1), mode, PLUS, 1, speed_p));
 	      return true;
 	    }
 	  if (CONST_INT_P (XEXP (x, 1)))
@@ -9993,7 +10016,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      *cost = COSTS_N_INSNS (insns);
 	      if (speed_p)
 		*cost += insns * extra_cost->alu.arith;
-	      *cost += rtx_cost (XEXP (x, 0), PLUS, 0, speed_p);
+	      *cost += rtx_cost (XEXP (x, 0), mode, PLUS, 0, speed_p);
 	      return true;
 	    }
 	  else if (speed_p)
@@ -10011,18 +10034,17 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		  || (GET_CODE (XEXP (XEXP (x, 0), 0)) == SIGN_EXTEND
 		      && GET_CODE (XEXP (XEXP (x, 0), 1)) == SIGN_EXTEND)))
 	    {
-	      *cost = COSTS_N_INSNS (1);
 	      if (speed_p)
 		*cost += extra_cost->mult[1].extend_add;
-	      *cost += (rtx_cost (XEXP (XEXP (XEXP (x, 0), 0), 0),
+	      *cost += (rtx_cost (XEXP (XEXP (XEXP (x, 0), 0), 0), mode,
 				  ZERO_EXTEND, 0, speed_p)
-			+ rtx_cost (XEXP (XEXP (XEXP (x, 0), 1), 0),
+			+ rtx_cost (XEXP (XEXP (XEXP (x, 0), 1), 0), mode,
 				    ZERO_EXTEND, 0, speed_p)
-			+ rtx_cost (XEXP (x, 1), PLUS, 1, speed_p));
+			+ rtx_cost (XEXP (x, 1), mode, PLUS, 1, speed_p));
 	      return true;
 	    }
 
-	  *cost = COSTS_N_INSNS (2);
+	  *cost += COSTS_N_INSNS (1);
 
 	  if (GET_CODE (XEXP (x, 0)) == ZERO_EXTEND
 	      || GET_CODE (XEXP (x, 0)) == SIGN_EXTEND)
@@ -10033,9 +10055,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 			     ? extra_cost->alu.arith
 			     : extra_cost->alu.arith_shift));
 
-	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0), ZERO_EXTEND, 0,
-				  speed_p)
-			+ rtx_cost (XEXP (x, 1), PLUS, 1, speed_p));
+	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0), VOIDmode, ZERO_EXTEND,
+				  0, speed_p)
+			+ rtx_cost (XEXP (x, 1), mode, PLUS, 1, speed_p));
 	      return true;
 	    }
 
@@ -10050,7 +10072,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case IOR:
       if (mode == SImode && arm_arch6 && aarch_rev16_p (x))
         {
-          *cost = COSTS_N_INSNS (1);
           if (speed_p)
             *cost += extra_cost->alu.rev;
 
@@ -10063,8 +10084,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  enum rtx_code subcode = GET_CODE (XEXP (x, 0));
 	  rtx op0 = XEXP (x, 0);
 	  rtx shift_op, shift_reg;
-
-	  *cost = COSTS_N_INSNS (1);
 
 	  if (subcode == NOT
 	      && (code == AND
@@ -10079,13 +10098,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		{
 		  if (speed_p)
 		    *cost += extra_cost->alu.log_shift_reg;
-		  *cost += rtx_cost (shift_reg, ASHIFT, 1, speed_p);
+		  *cost += rtx_cost (shift_reg, mode, ASHIFT, 1, speed_p);
 		}
 	      else if (speed_p)
 		*cost += extra_cost->alu.log_shift;
 
-	      *cost += (rtx_cost (shift_op, ASHIFT, 0, speed_p)
-			+ rtx_cost (XEXP (x, 1), code, 1, speed_p));
+	      *cost += (rtx_cost (shift_op, mode, ASHIFT, 0, speed_p)
+			+ rtx_cost (XEXP (x, 1), mode, code, 1, speed_p));
 	      return true;
 	    }
 
@@ -10098,14 +10117,14 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      *cost = COSTS_N_INSNS (insns);
 	      if (speed_p)
 		*cost += insns * extra_cost->alu.logical;
-	      *cost += rtx_cost (op0, code, 0, speed_p);
+	      *cost += rtx_cost (op0, mode, code, 0, speed_p);
 	      return true;
 	    }
 
 	  if (speed_p)
 	    *cost += extra_cost->alu.logical;
-	  *cost += (rtx_cost (op0, code, 0, speed_p)
-		    + rtx_cost (XEXP (x, 1), code, 1, speed_p));
+	  *cost += (rtx_cost (op0, mode, code, 0, speed_p)
+		    + rtx_cost (XEXP (x, 1), mode, code, 1, speed_p));
 	  return true;
 	}
 
@@ -10114,7 +10133,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  rtx op0 = XEXP (x, 0);
 	  enum rtx_code subcode = GET_CODE (op0);
 
-	  *cost = COSTS_N_INSNS (2);
+	  *cost += COSTS_N_INSNS (1);
 
 	  if (subcode == NOT
 	      && (code == AND
@@ -10126,8 +10145,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      if (speed_p)
 		*cost += 2 * extra_cost->alu.logical;
 
-	      *cost += (rtx_cost (XEXP (op0, 0), ZERO_EXTEND, 0, speed_p)
-			+ rtx_cost (XEXP (x, 1), code, 0, speed_p));
+	      *cost += (rtx_cost (XEXP (op0, 0), VOIDmode, ZERO_EXTEND,
+				  0, speed_p)
+			+ rtx_cost (XEXP (x, 1), mode, code, 0, speed_p));
 	      return true;
 	    }
 	  else if (GET_CODE (op0) == SIGN_EXTEND)
@@ -10135,8 +10155,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      if (speed_p)
 		*cost += extra_cost->alu.logical + extra_cost->alu.log_shift;
 
-	      *cost += (rtx_cost (XEXP (op0, 0), SIGN_EXTEND, 0, speed_p)
-			+ rtx_cost (XEXP (x, 1), code, 0, speed_p));
+	      *cost += (rtx_cost (XEXP (op0, 0), VOIDmode, SIGN_EXTEND,
+				  0, speed_p)
+			+ rtx_cost (XEXP (x, 1), mode, code, 0, speed_p));
 	      return true;
 	    }
 
@@ -10156,16 +10177,14 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  rtx op0 = XEXP (x, 0);
 
-	  *cost = COSTS_N_INSNS (1);
-
 	  if (GET_CODE (op0) == NEG)
 	    op0 = XEXP (op0, 0);
 
 	  if (speed_p)
 	    *cost += extra_cost->fp[mode != SFmode].mult;
 
-	  *cost += (rtx_cost (op0, MULT, 0, speed_p)
-		    + rtx_cost (XEXP (x, 1), MULT, 1, speed_p));
+	  *cost += (rtx_cost (op0, mode, MULT, 0, speed_p)
+		    + rtx_cost (XEXP (x, 1), mode, MULT, 1, speed_p));
 	  return true;
 	}
       else if (GET_MODE_CLASS (mode) == MODE_FLOAT)
@@ -10176,7 +10195,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 
       if (mode == SImode)
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (TARGET_DSP_MULTIPLY
 	      && ((GET_CODE (XEXP (x, 0)) == SIGN_EXTEND
 		   && (GET_CODE (XEXP (x, 1)) == SIGN_EXTEND
@@ -10195,8 +10213,8 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      /* SMUL[TB][TB].  */
 	      if (speed_p)
 		*cost += extra_cost->mult[0].extend;
-	      *cost += (rtx_cost (XEXP (x, 0), SIGN_EXTEND, 0, speed_p)
-			+ rtx_cost (XEXP (x, 1), SIGN_EXTEND, 0, speed_p));
+	      *cost += rtx_cost (XEXP (x, 0), mode, SIGN_EXTEND, 0, speed_p);
+	      *cost += rtx_cost (XEXP (x, 1), mode, SIGN_EXTEND, 1, speed_p);
 	      return true;
 	    }
 	  if (speed_p)
@@ -10212,12 +10230,11 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		  || (GET_CODE (XEXP (x, 0)) == SIGN_EXTEND
 		      && GET_CODE (XEXP (x, 1)) == SIGN_EXTEND)))
 	    {
-	      *cost = COSTS_N_INSNS (1);
 	      if (speed_p)
 		*cost += extra_cost->mult[1].extend;
-	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0),
+	      *cost += (rtx_cost (XEXP (XEXP (x, 0), 0), VOIDmode,
 				  ZERO_EXTEND, 0, speed_p)
-			+ rtx_cost (XEXP (XEXP (x, 1), 0),
+			+ rtx_cost (XEXP (XEXP (x, 1), 0), VOIDmode,
 				    ZERO_EXTEND, 0, speed_p));
 	      return true;
 	    }
@@ -10234,7 +10251,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       if (TARGET_HARD_FLOAT && GET_MODE_CLASS (mode) == MODE_FLOAT
 	  && (mode == SFmode || !TARGET_VFP_SINGLE))
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->fp[mode != SFmode].neg;
 
@@ -10250,19 +10266,19 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  if (GET_CODE (XEXP (x, 0)) == ABS)
 	    {
-	      *cost = COSTS_N_INSNS (2);
+	      *cost += COSTS_N_INSNS (1);
 	      /* Assume the non-flag-changing variant.  */
 	      if (speed_p)
 		*cost += (extra_cost->alu.log_shift
 			  + extra_cost->alu.arith_shift);
-	      *cost += rtx_cost (XEXP (XEXP (x, 0), 0), ABS, 0, speed_p);
+	      *cost += rtx_cost (XEXP (XEXP (x, 0), 0), mode, ABS, 0, speed_p);
 	      return true;
 	    }
 
 	  if (GET_RTX_CLASS (GET_CODE (XEXP (x, 0))) == RTX_COMPARE
 	      || GET_RTX_CLASS (GET_CODE (XEXP (x, 0))) == RTX_COMM_COMPARE)
 	    {
-	      *cost = COSTS_N_INSNS (2);
+	      *cost += COSTS_N_INSNS (1);
 	      /* No extra cost for MOV imm and MVN imm.  */
 	      /* If the comparison op is using the flags, there's no further
 		 cost, otherwise we need to add the cost of the comparison.  */
@@ -10270,17 +10286,18 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		    && REGNO (XEXP (XEXP (x, 0), 0)) == CC_REGNUM
 		    && XEXP (XEXP (x, 0), 1) == const0_rtx))
 		{
+		  mode = GET_MODE (XEXP (XEXP (x, 0), 0));
 		  *cost += (COSTS_N_INSNS (1)
-			    + rtx_cost (XEXP (XEXP (x, 0), 0), COMPARE, 0,
-					speed_p)
-			    + rtx_cost (XEXP (XEXP (x, 0), 1), COMPARE, 1,
-					speed_p));
+			    + rtx_cost (XEXP (XEXP (x, 0), 0), mode, COMPARE,
+					0, speed_p)
+			    + rtx_cost (XEXP (XEXP (x, 0), 1), mode, COMPARE,
+					1, speed_p));
 		  if (speed_p)
 		    *cost += extra_cost->alu.arith;
 		}
 	      return true;
 	    }
-	  *cost = COSTS_N_INSNS (1);
+
 	  if (speed_p)
 	    *cost += extra_cost->alu.arith;
 	  return false;
@@ -10290,7 +10307,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  && GET_MODE_SIZE (mode) < 4)
 	{
 	  /* Slightly disparage, as we might need an extend operation.  */
-	  *cost = 1 + COSTS_N_INSNS (1);
+	  *cost += 1;
 	  if (speed_p)
 	    *cost += extra_cost->alu.arith;
 	  return false;
@@ -10298,7 +10315,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 
       if (mode == DImode)
 	{
-	  *cost = COSTS_N_INSNS (2);
+	  *cost += COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += 2 * extra_cost->alu.arith;
 	  return false;
@@ -10314,7 +10331,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  rtx shift_op;
 	  rtx shift_reg = NULL;
 
-	  *cost = COSTS_N_INSNS (1);
 	  shift_op = shifter_op_p (XEXP (x, 0), &shift_reg);
 
 	  if (shift_op)
@@ -10323,11 +10339,11 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		{
 		  if (speed_p)
 		    *cost += extra_cost->alu.log_shift_reg;
-		  *cost += rtx_cost (shift_reg, ASHIFT, 1, speed_p);
+		  *cost += rtx_cost (shift_reg, mode, ASHIFT, 1, speed_p);
 		}
 	      else if (speed_p)
 		*cost += extra_cost->alu.log_shift;
-	      *cost += rtx_cost (shift_op, ASHIFT, 0, speed_p);
+	      *cost += rtx_cost (shift_op, mode, ASHIFT, 0, speed_p);
 	      return true;
 	    }
 
@@ -10337,7 +10353,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	}
       if (mode == DImode)
 	{
-	  *cost = COSTS_N_INSNS (2);
+	  *cost += COSTS_N_INSNS (1);
 	  return false;
 	}
 
@@ -10350,13 +10366,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       {
         if (GET_CODE (XEXP (x, 1)) == PC || GET_CODE (XEXP (x, 2)) == PC)
 	  {
-	    *cost = COSTS_N_INSNS (4);
+	    *cost += COSTS_N_INSNS (3);
 	    return true;
 	  }
-	int op1cost = rtx_cost (XEXP (x, 1), SET, 1, speed_p);
-	int op2cost = rtx_cost (XEXP (x, 2), SET, 1, speed_p);
+	int op1cost = rtx_cost (XEXP (x, 1), mode, SET, 1, speed_p);
+	int op2cost = rtx_cost (XEXP (x, 2), mode, SET, 1, speed_p);
 
-	*cost = rtx_cost (XEXP (x, 0), IF_THEN_ELSE, 0, speed_p);
+	*cost = rtx_cost (XEXP (x, 0), mode, IF_THEN_ELSE, 0, speed_p);
 	/* Assume that if one arm of the if_then_else is a register,
 	   that it will be tied with the result and eliminate the
 	   conditional insn.  */
@@ -10393,13 +10409,12 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  if (TARGET_HARD_FLOAT && GET_MODE_CLASS (op0mode) == MODE_FLOAT
 	      && (op0mode == SFmode || !TARGET_VFP_SINGLE))
 	    {
-	      *cost = COSTS_N_INSNS (1);
 	      if (speed_p)
 		*cost += extra_cost->fp[op0mode != SFmode].compare;
 
 	      if (XEXP (x, 1) == CONST0_RTX (op0mode))
 		{
-		  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+		  *cost += rtx_cost (XEXP (x, 0), op0mode, code, 0, speed_p);
 		  return true;
 		}
 
@@ -10414,7 +10429,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  /* DImode compares normally take two insns.  */
 	  if (op0mode == DImode)
 	    {
-	      *cost = COSTS_N_INSNS (2);
+	      *cost += COSTS_N_INSNS (1);
 	      if (speed_p)
 		*cost += 2 * extra_cost->alu.arith;
 	      return false;
@@ -10430,7 +10445,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		       || (GET_CODE (XEXP (x, 0)) == SUBREG
 			   && REG_P (SUBREG_REG (XEXP (x, 0))))))
 		{
-		  *cost = rtx_cost (XEXP (x, 0), COMPARE, 0, speed_p);
+		  *cost = rtx_cost (XEXP (x, 0), op0mode, COMPARE, 0, speed_p);
 
 		  /* Multiply operations that set the flags are often
 		     significantly more expensive.  */
@@ -10452,27 +10467,26 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      shift_op = shifter_op_p (XEXP (x, 0), &shift_reg);
 	      if (shift_op != NULL)
 		{
-		  *cost = COSTS_N_INSNS (1);
 		  if (shift_reg != NULL)
 		    {
-		      *cost += rtx_cost (shift_reg, ASHIFT, 1, speed_p);
+		      *cost += rtx_cost (shift_reg, op0mode, ASHIFT,
+					 1, speed_p);
 		      if (speed_p)
 			*cost += extra_cost->alu.arith_shift_reg;
 		    }
 		  else if (speed_p)
 		    *cost += extra_cost->alu.arith_shift;
-		  *cost += (rtx_cost (shift_op, ASHIFT, 0, speed_p)
-			    + rtx_cost (XEXP (x, 1), COMPARE, 1, speed_p));
+		  *cost += rtx_cost (shift_op, op0mode, ASHIFT, 0, speed_p);
+		  *cost += rtx_cost (XEXP (x, 1), op0mode, COMPARE, 1, speed_p);
 		  return true;
 		}
 
-	      *cost = COSTS_N_INSNS (1);
 	      if (speed_p)
 		*cost += extra_cost->alu.arith;
 	      if (CONST_INT_P (XEXP (x, 1))
 		  && const_ok_for_op (INTVAL (XEXP (x, 1)), COMPARE))
 		{
-		  *cost += rtx_cost (XEXP (x, 0), COMPARE, 0, speed_p);
+		  *cost += rtx_cost (XEXP (x, 0), op0mode, COMPARE, 0, speed_p);
 		  return true;
 		}
 	      return false;
@@ -10510,7 +10524,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      && XEXP (x, 1) == const0_rtx)
 	    {
 	      /* Thumb also needs an IT insn.  */
-	      *cost = COSTS_N_INSNS (TARGET_THUMB ? 3 : 2);
+	      *cost += COSTS_N_INSNS (TARGET_THUMB ? 2 : 1);
 	      return true;
 	    }
 	  if (XEXP (x, 1) == const0_rtx)
@@ -10519,7 +10533,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		{
 		case LT:
 		  /* LSR Rd, Rn, #31.  */
-		  *cost = COSTS_N_INSNS (1);
 		  if (speed_p)
 		    *cost += extra_cost->alu.shift;
 		  break;
@@ -10531,13 +10544,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		case NE:
 		  /* SUBS T1, Rn, #1
 		     SBC  Rd, Rn, T1.  */
-		  *cost = COSTS_N_INSNS (2);
+		  *cost += COSTS_N_INSNS (1);
 		  break;
 
 		case LE:
 		  /* RSBS T1, Rn, Rn, LSR #31
 		     ADC  Rd, Rn, T1. */
-		  *cost = COSTS_N_INSNS (2);
+		  *cost += COSTS_N_INSNS (1);
 		  if (speed_p)
 		    *cost += extra_cost->alu.arith_shift;
 		  break;
@@ -10545,7 +10558,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		case GT:
 		  /* RSB  Rd, Rn, Rn, ASR #1
 		     LSR  Rd, Rd, #31.  */
-		  *cost = COSTS_N_INSNS (2);
+		  *cost += COSTS_N_INSNS (1);
 		  if (speed_p)
 		    *cost += (extra_cost->alu.arith_shift
 			      + extra_cost->alu.shift);
@@ -10554,7 +10567,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		case GE:
 		  /* ASR  Rd, Rn, #31
 		     ADD  Rd, Rn, #1.  */
-		  *cost = COSTS_N_INSNS (2);
+		  *cost += COSTS_N_INSNS (1);
 		  if (speed_p)
 		    *cost += extra_cost->alu.shift;
 		  break;
@@ -10565,16 +10578,16 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		  *cost = COSTS_N_INSNS (3);
 		  break;
 		}
-	      *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	      *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 	      return true;
 	    }
 	  else
 	    {
-	      *cost = COSTS_N_INSNS (TARGET_THUMB ? 4 : 3);
+	      *cost += COSTS_N_INSNS (TARGET_THUMB ? 3 : 2);
 	      if (CONST_INT_P (XEXP (x, 1))
 		  && const_ok_for_op (INTVAL (XEXP (x, 1)), COMPARE))
 		{
-		  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+		  *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 		  return true;
 		}
 
@@ -10598,7 +10611,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       if (TARGET_HARD_FLOAT && GET_MODE_CLASS (mode) == MODE_FLOAT
 	  && (mode == SFmode || !TARGET_VFP_SINGLE))
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->fp[mode != SFmode].neg;
 
@@ -10612,7 +10624,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 
       if (mode == SImode)
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->alu.log_shift + extra_cost->alu.arith_shift;
 	  return false;
@@ -10625,7 +10636,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       if ((arm_arch4 || GET_MODE (XEXP (x, 0)) == SImode)
 	  && MEM_P (XEXP (x, 0)))
 	{
-	  *cost = rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost = rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 
 	  if (mode == DImode)
 	    *cost += COSTS_N_INSNS (1);
@@ -10648,16 +10659,15 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       if (GET_MODE (XEXP (x, 0)) != SImode && arm_arch6)
 	{
 	  /* We have SXTB/SXTH.  */
-	  *cost = COSTS_N_INSNS (1);
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 	  if (speed_p)
 	    *cost += extra_cost->alu.extend;
 	}
       else if (GET_MODE (XEXP (x, 0)) != SImode)
 	{
 	  /* Needs two shifts.  */
-	  *cost = COSTS_N_INSNS (2);
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += COSTS_N_INSNS (1);
+	  *cost += rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 	  if (speed_p)
 	    *cost += 2 * extra_cost->alu.shift;
 	}
@@ -10678,7 +10688,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	   || GET_MODE (XEXP (x, 0)) == QImode)
 	  && MEM_P (XEXP (x, 0)))
 	{
-	  *cost = rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost = rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 
 	  if (mode == DImode)
 	    *cost += COSTS_N_INSNS (1);  /* No speed penalty.  */
@@ -10694,15 +10704,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	     optimizing for speed it should never be slower to use
 	     AND, and we don't really model 16-bit vs 32-bit insns
 	     here.  */
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->alu.logical;
 	}
       else if (GET_MODE (XEXP (x, 0)) != SImode && arm_arch6)
 	{
 	  /* We have UXTB/UXTH.  */
-	  *cost = COSTS_N_INSNS (1);
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 	  if (speed_p)
 	    *cost += extra_cost->alu.extend;
 	}
@@ -10713,12 +10721,10 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	     shift may merge with a subsequent insn as a shifter
 	     op.  */
 	  *cost = COSTS_N_INSNS (2);
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 	  if (speed_p)
 	    *cost += 2 * extra_cost->alu.shift;
 	}
-      else  /* GET_MODE (XEXP (x, 0)) == SImode.  */
-        *cost = COSTS_N_INSNS (1);
 
       /* Widening beyond 32-bits requires one more insn.  */
       if (mode == DImode)
@@ -10776,12 +10782,12 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       if (speed_p)
 	{
 	  if (arm_arch_thumb2 && !flag_pic)
-	    *cost = COSTS_N_INSNS (2);
+	    *cost += COSTS_N_INSNS (1);
 	  else
-	    *cost = COSTS_N_INSNS (1) + extra_cost->ldst.load;
+	    *cost += extra_cost->ldst.load;
 	}
       else
-	*cost = COSTS_N_INSNS (2);
+	*cost += COSTS_N_INSNS (1);
 
       if (flag_pic)
 	{
@@ -10803,7 +10809,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  if (vfp3_const_double_rtx (x))
 	    {
-	      *cost = COSTS_N_INSNS (1);
 	      if (speed_p)
 		*cost += extra_cost->fp[mode == DFmode].fpconst;
 	      return true;
@@ -10811,14 +10816,13 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 
 	  if (speed_p)
 	    {
-	      *cost = COSTS_N_INSNS (1);
 	      if (mode == DFmode)
 		*cost += extra_cost->ldst.loadd;
 	      else
 		*cost += extra_cost->ldst.loadf;
 	    }
 	  else
-	    *cost = COSTS_N_INSNS (2 + (mode == DFmode));
+	    *cost += COSTS_N_INSNS (1 + (mode == DFmode));
 
 	  return true;
 	}
@@ -10838,7 +10842,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 
     case HIGH:
     case LO_SUM:
-      *cost = COSTS_N_INSNS (1);
       /* When optimizing for size, we prefer constant pool entries to
 	 MOVW/MOVT pairs, so bump the cost of these slightly.  */
       if (!speed_p)
@@ -10846,7 +10849,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       return true;
 
     case CLZ:
-      *cost = COSTS_N_INSNS (1);
       if (speed_p)
 	*cost += extra_cost->alu.clz;
       return false;
@@ -10854,17 +10856,16 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case SMIN:
       if (XEXP (x, 1) == const0_rtx)
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->alu.log_shift;
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 	  return true;
 	}
       /* Fall through.  */
     case SMAX:
     case UMIN:
     case UMAX:
-      *cost = COSTS_N_INSNS (2);
+      *cost += COSTS_N_INSNS (1);
       return false;
 
     case TRUNCATE:
@@ -10878,13 +10879,12 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 		  && (GET_CODE (XEXP (XEXP (XEXP (x, 0), 0), 1))
 		      == ZERO_EXTEND))))
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->mult[1].extend;
-	  *cost += (rtx_cost (XEXP (XEXP (XEXP (x, 0), 0), 0), ZERO_EXTEND, 0,
-			      speed_p)
-		    + rtx_cost (XEXP (XEXP (XEXP (x, 0), 0), 1), ZERO_EXTEND,
-				0, speed_p));
+	  *cost += (rtx_cost (XEXP (XEXP (XEXP (x, 0), 0), 0), VOIDmode,
+			      ZERO_EXTEND, 0, speed_p)
+		    + rtx_cost (XEXP (XEXP (XEXP (x, 0), 0), 1), VOIDmode,
+				ZERO_EXTEND, 0, speed_p));
 	  return true;
 	}
       *cost = LIBCALL_COST (1);
@@ -10909,23 +10909,21 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  && CONST_INT_P (XEXP (x, 1))
 	  && CONST_INT_P (XEXP (x, 2)))
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->alu.bfx;
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 	  return true;
 	}
       /* Without UBFX/SBFX, need to resort to shift operations.  */
-      *cost = COSTS_N_INSNS (2);
+      *cost += COSTS_N_INSNS (1);
       if (speed_p)
 	*cost += 2 * extra_cost->alu.shift;
-      *cost += rtx_cost (XEXP (x, 0), ASHIFT, 0, speed_p);
+      *cost += rtx_cost (XEXP (x, 0), mode, ASHIFT, 0, speed_p);
       return true;
 
     case FLOAT_EXTEND:
       if (TARGET_HARD_FLOAT)
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->fp[mode == DFmode].widen;
 	  if (!TARGET_FPU_ARMV8
@@ -10937,7 +10935,7 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	      if (speed_p)
 		*cost += extra_cost->fp[0].widen;
 	    }
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 	  return true;
 	}
 
@@ -10947,10 +10945,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
     case FLOAT_TRUNCATE:
       if (TARGET_HARD_FLOAT)
 	{
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->fp[mode == DFmode].narrow;
-	  *cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+	  *cost += rtx_cost (XEXP (x, 0), VOIDmode, code, 0, speed_p);
 	  return true;
 	  /* Vector modes?  */
 	}
@@ -10964,7 +10961,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
           rtx op1 = XEXP (x, 1);
           rtx op2 = XEXP (x, 2);
 
-          *cost = COSTS_N_INSNS (1);
 
           /* vfms or vfnma.  */
           if (GET_CODE (op0) == NEG)
@@ -10974,9 +10970,9 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
           if (GET_CODE (op2) == NEG)
             op2 = XEXP (op2, 0);
 
-          *cost += rtx_cost (op0, FMA, 0, speed_p);
-          *cost += rtx_cost (op1, FMA, 1, speed_p);
-          *cost += rtx_cost (op2, FMA, 2, speed_p);
+          *cost += rtx_cost (op0, mode, FMA, 0, speed_p);
+          *cost += rtx_cost (op1, mode, FMA, 1, speed_p);
+          *cost += rtx_cost (op2, mode, FMA, 2, speed_p);
 
           if (speed_p)
             *cost += extra_cost->fp[mode ==DFmode].fma;
@@ -10993,14 +10989,15 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  if (GET_MODE_CLASS (mode) == MODE_INT)
 	    {
-	      *cost = COSTS_N_INSNS (1);
+	      mode = GET_MODE (XEXP (x, 0));
 	      if (speed_p)
-		*cost += extra_cost->fp[GET_MODE (XEXP (x, 0)) == DFmode].toint;
+		*cost += extra_cost->fp[mode == DFmode].toint;
 	      /* Strip of the 'cost' of rounding towards zero.  */
 	      if (GET_CODE (XEXP (x, 0)) == FIX)
-		*cost += rtx_cost (XEXP (XEXP (x, 0), 0), code, 0, speed_p);
+		*cost += rtx_cost (XEXP (XEXP (x, 0), 0), mode, code,
+				   0, speed_p);
 	      else
-		*cost += rtx_cost (XEXP (x, 0), code, 0, speed_p);
+		*cost += rtx_cost (XEXP (x, 0), mode, code, 0, speed_p);
 	      /* ??? Increase the cost to deal with transferring from
 		 FP -> CORE registers?  */
 	      return true;
@@ -11008,7 +11005,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	  else if (GET_MODE_CLASS (mode) == MODE_FLOAT
 		   && TARGET_FPU_ARMV8)
 	    {
-	      *cost = COSTS_N_INSNS (1);
 	      if (speed_p)
 		*cost += extra_cost->fp[mode == DFmode].roundint;
 	      return false;
@@ -11024,7 +11020,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	{
 	  /* ??? Increase the cost to deal with transferring from CORE
 	     -> FP registers?  */
-	  *cost = COSTS_N_INSNS (1);
 	  if (speed_p)
 	    *cost += extra_cost->fp[mode == DFmode].fromint;
 	  return false;
@@ -11033,7 +11028,6 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
       return false;
 
     case CALL:
-      *cost = COSTS_N_INSNS (1);
       return true;
 
     case ASM_OPERANDS:
@@ -11060,10 +11054,11 @@ arm_new_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 
 /* RTX costs when optimizing for size.  */
 static bool
-arm_rtx_costs (rtx x, int code, int outer_code, int opno ATTRIBUTE_UNUSED,
-	       int *total, bool speed)
+arm_rtx_costs (rtx x, machine_mode mode ATTRIBUTE_UNUSED, int outer_code,
+	       int opno ATTRIBUTE_UNUSED, int *total, bool speed)
 {
   bool result;
+  int code = GET_CODE (x);
 
   if (TARGET_OLD_RTX_COSTS
       || (!current_tune->insn_extra_cost && !TARGET_NEW_GENERIC_COSTS))
@@ -11144,7 +11139,7 @@ arm_slowmul_rtx_costs (rtx x, enum rtx_code code, enum rtx_code outer_code,
 	    }
 
 	  *total = COSTS_N_INSNS (cost);
-	  *total += rtx_cost (XEXP (x, 0), code, 0, speed);
+	  *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
 	  return true;
 	}
 
@@ -17581,7 +17576,7 @@ arm_output_multireg_pop (rtx *operands, bool return_pc, rtx cond, bool reverse,
     }
 
   conditional = reverse ? "%?%D0" : "%?%d0";
-  if ((regno_base == SP_REGNUM) && TARGET_UNIFIED_ASM)
+  if ((regno_base == SP_REGNUM) && TARGET_THUMB)
     {
       /* Output pop (not stmfd) because it has a shorter encoding.  */
       gcc_assert (update);
@@ -17876,19 +17871,27 @@ output_mov_long_double_arm_from_arm (rtx *operands)
 void
 arm_emit_movpair (rtx dest, rtx src)
  {
+  rtx insn;
+
   /* If the src is an immediate, simplify it.  */
   if (CONST_INT_P (src))
     {
       HOST_WIDE_INT val = INTVAL (src);
       emit_set_insn (dest, GEN_INT (val & 0x0000ffff));
       if ((val >> 16) & 0x0000ffff)
-        emit_set_insn (gen_rtx_ZERO_EXTRACT (SImode, dest, GEN_INT (16),
-                                             GEN_INT (16)),
-                       GEN_INT ((val >> 16) & 0x0000ffff));
+	{
+	  emit_set_insn (gen_rtx_ZERO_EXTRACT (SImode, dest, GEN_INT (16),
+					       GEN_INT (16)),
+			 GEN_INT ((val >> 16) & 0x0000ffff));
+	  insn = get_last_insn ();
+	  set_unique_reg_note (insn, REG_EQUAL, copy_rtx (src));
+	}
       return;
     }
    emit_set_insn (dest, gen_rtx_HIGH (SImode, src));
    emit_set_insn (dest, gen_rtx_LO_SUM (SImode, dest, src));
+   insn = get_last_insn ();
+   set_unique_reg_note (insn, REG_EQUAL, copy_rtx (src));
  }
 
 /* Output a move between double words.  It must be REG<-MEM
@@ -26379,7 +26382,7 @@ arm_dbx_register_number (unsigned int regno)
   if (IS_IWMMXT_REGNUM (regno))
     return 112 + regno - FIRST_IWMMXT_REGNUM;
 
-  gcc_unreachable ();
+  return DWARF_FRAME_REGISTERS;
 }
 
 /* Dwarf models VFPv3 registers as 32 64-bit registers.
@@ -27372,7 +27375,8 @@ vfp3_const_double_for_fract_bits (rtx operand)
     return 0;
   
   REAL_VALUE_FROM_CONST_DOUBLE (r0, operand);
-  if (exact_real_inverse (DFmode, &r0))
+  if (exact_real_inverse (DFmode, &r0)
+      && !REAL_VALUE_NEGATIVE (r0))
     {
       if (exact_real_truncate (DFmode, &r0))
 	{
@@ -27605,6 +27609,8 @@ arm_split_compare_and_swap (rtx operands[])
   scratch = operands[7];
   mode = GET_MODE (mem);
 
+  bool is_armv8_sync = arm_arch8 && is_mm_sync (mod_s);
+
   bool use_acquire = TARGET_HAVE_LDACQ
                      && !(is_mm_relaxed (mod_s) || is_mm_consume (mod_s)
 			  || is_mm_release (mod_s));
@@ -27612,6 +27618,11 @@ arm_split_compare_and_swap (rtx operands[])
   bool use_release = TARGET_HAVE_LDACQ
                      && !(is_mm_relaxed (mod_s) || is_mm_consume (mod_s)
 			  || is_mm_acquire (mod_s));
+
+  /* For ARMv8, the load-acquire is too weak for __sync memory orders.  Instead,
+     a full barrier is emitted after the store-release.  */
+  if (is_armv8_sync)
+    use_acquire = false;
 
   /* Checks whether a barrier is needed and emits one accordingly.  */
   if (!(use_acquire || use_release))
@@ -27653,7 +27664,8 @@ arm_split_compare_and_swap (rtx operands[])
     emit_label (label2);
 
   /* Checks whether a barrier is needed and emits one accordingly.  */
-  if (!(use_acquire || use_release))
+  if (is_armv8_sync
+      || !(use_acquire || use_release))
     arm_post_atomic_barrier (mod_s);
 
   if (is_mm_relaxed (mod_f))
@@ -27670,6 +27682,8 @@ arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
   rtx_code_label *label;
   rtx x;
 
+  bool is_armv8_sync = arm_arch8 && is_mm_sync (model);
+
   bool use_acquire = TARGET_HAVE_LDACQ
                      && !(is_mm_relaxed (model) || is_mm_consume (model)
 			  || is_mm_release (model));
@@ -27677,6 +27691,11 @@ arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
   bool use_release = TARGET_HAVE_LDACQ
                      && !(is_mm_relaxed (model) || is_mm_consume (model)
 			  || is_mm_acquire (model));
+
+  /* For ARMv8, a load-acquire is too weak for __sync memory orders.  Instead,
+     a full barrier is emitted after the store-release.  */
+  if (is_armv8_sync)
+    use_acquire = false;
 
   /* Checks whether a barrier is needed and emits one accordingly.  */
   if (!(use_acquire || use_release))
@@ -27748,7 +27767,8 @@ arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
   emit_unlikely_jump (gen_cbranchsi4 (x, cond, const0_rtx, label));
 
   /* Checks whether a barrier is needed and emits one accordingly.  */
-  if (!(use_acquire || use_release))
+  if (is_armv8_sync
+      || !(use_acquire || use_release))
     arm_post_atomic_barrier (model);
 }
 
@@ -29353,9 +29373,9 @@ arm_set_current_function (tree fndecl)
 
   arm_previous_fndecl = fndecl;
   if (old_tree == new_tree)
-    ;
+    return;
 
-  else if (new_tree)
+  if (new_tree && new_tree != target_option_default_node)
     {
       cl_target_option_restore (&global_options,
 				TREE_TARGET_OPTION (new_tree));
@@ -29367,7 +29387,7 @@ arm_set_current_function (tree fndecl)
 	  = save_target_globals_default_opts ();
     }
 
-  else if (old_tree)
+  else if (old_tree && old_tree != target_option_default_node)
     {
       new_tree = target_option_current_node;
 
@@ -29459,6 +29479,52 @@ arm_valid_target_attribute_tree (tree args, struct gcc_options *opts,
   arm_option_override_internal (opts, opts_set);
 
   return build_target_option_node (opts);
+}
+
+static void 
+add_attribute  (const char * mode, tree *attributes)
+{
+  size_t len = strlen (mode);
+  tree value = build_string (len, mode);
+
+  TREE_TYPE (value) = build_array_type (char_type_node,
+					build_index_type (size_int (len)));
+
+  *attributes = tree_cons (get_identifier ("target"),
+			   build_tree_list (NULL_TREE, value),
+			   *attributes);
+}
+
+/* For testing. Insert thumb or arm modes alternatively on functions.  */
+
+static void
+arm_insert_attributes (tree fndecl, tree * attributes)
+{
+  const char *mode;
+
+  if (! TARGET_FLIP_THUMB)
+    return;
+
+  if (TREE_CODE (fndecl) != FUNCTION_DECL || DECL_EXTERNAL(fndecl)
+      || DECL_BUILT_IN (fndecl) || DECL_ARTIFICIAL (fndecl))
+   return;
+
+  /* Nested definitions must inherit mode.  */
+  if (current_function_decl)
+   {
+     mode = TARGET_THUMB ? "thumb" : "arm";      
+     add_attribute (mode, attributes);
+     return;
+   }
+
+  /* If there is already a setting don't change it.  */
+  if (lookup_attribute ("target", *attributes) != NULL)
+    return;
+
+  mode = thumb_flipper ? "thumb" : "arm";
+  add_attribute (mode, attributes);
+
+  thumb_flipper = !thumb_flipper;
 }
 
 /* Hook to validate attribute((target("string"))).  */

@@ -559,17 +559,25 @@ sub getdjver
     }
     close $fd;
 
-    if ($major eq "2" && (($minor eq "3") || ($minor eq "4"))) 
+    if ($major eq "2" && ($minor ge "3")) 
     {
         if ($minor == 3)
         {
+            # Not actually supported: left in however
             $djver_desc = "2.03 Patchlevel 2";
             $djreq = $djver_desc;
         }
-        else
+        elsif ($minor == 4)
         {
+            # Also obsolete: left in howev er
             $djver_desc = "2.04 Beta 1 or above";
             $djreq = ">= 2.04 Beta 1";
+        }
+        elsif ($minor > 5)
+        {
+            # Fix for DJGPP v2.1X later (perhaps not very soon)
+            $djver_dec = "2.0$minor";
+            $djreq = ">=2.0$minor";
         }
         return sprintf("%d.%02d", $major, $minor);
     }

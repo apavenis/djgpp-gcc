@@ -441,7 +441,7 @@ rtx_equal_p_cb (const_rtx x, const_rtx y, rtx_equal_p_callback_function cb)
 
     case DEBUG_PARAMETER_REF:
       return DEBUG_PARAMETER_REF_DECL (x)
-	     == DEBUG_PARAMETER_REF_DECL (x);
+	     == DEBUG_PARAMETER_REF_DECL (y);
 
     case ENTRY_VALUE:
       return rtx_equal_p_cb (ENTRY_VALUE_EXP (x), ENTRY_VALUE_EXP (y), cb);
@@ -683,15 +683,20 @@ classify_insn (rtx x)
   if (GET_CODE (x) == PARALLEL)
     {
       int j;
+      bool has_return_p = false;
       for (j = XVECLEN (x, 0) - 1; j >= 0; j--)
 	if (GET_CODE (XVECEXP (x, 0, j)) == CALL)
 	  return CALL_INSN;
+	else if (ANY_RETURN_P (XVECEXP (x, 0, j)))
+	  has_return_p = true;
 	else if (GET_CODE (XVECEXP (x, 0, j)) == SET
 		 && GET_CODE (SET_DEST (XVECEXP (x, 0, j))) == PC)
 	  return JUMP_INSN;
 	else if (GET_CODE (XVECEXP (x, 0, j)) == SET
 		 && GET_CODE (SET_SRC (XVECEXP (x, 0, j))) == CALL)
 	  return CALL_INSN;
+      if (has_return_p)
+	return JUMP_INSN;
     }
 #ifdef GENERATOR_FILE
   if (GET_CODE (x) == MATCH_OPERAND

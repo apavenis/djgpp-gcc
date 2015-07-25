@@ -20,27 +20,21 @@
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-
+#include "backend.h"
+#include "cfghooks.h"
+#include "tree.h"
 #include "rtl.h"
+#include "df.h"
+
 #include "regs.h"
-#include "hard-reg-set.h"
-#include "input.h"
-#include "function.h"
 #include "flags.h"
 #include "insn-config.h"
 #include "recog.h"
 #include "except.h"
-#include "predict.h"
-#include "dominance.h"
-#include "cfg.h"
 #include "cfgrtl.h"
 #include "cfganal.h"
 #include "cfgcleanup.h"
-#include "basic-block.h"
-#include "symtab.h"
 #include "alias.h"
-#include "tree.h"
 #include "expmed.h"
 #include "dojump.h"
 #include "explow.h"
@@ -57,7 +51,6 @@
 #include "cfgloop.h"
 #include "target.h"
 #include "tree-pass.h"
-#include "df.h"
 #include "dbgcnt.h"
 #include "shrink-wrap.h"
 #include "ifcvt.h"
@@ -67,9 +60,6 @@
 #endif
 #ifndef HAVE_decscc
 #define HAVE_decscc 0
-#endif
-#ifndef HAVE_trap
-#define HAVE_trap 0
 #endif
 
 #ifndef MAX_CONDITIONAL_EXECUTE
@@ -2066,7 +2056,7 @@ noce_try_abs (struct noce_if_info *if_info)
     negate = 0;
   else if (GET_CODE (b) == NEG && rtx_equal_p (XEXP (b, 0), a))
     {
-      c = a; a = b; b = c;
+      std::swap (a, b);
       negate = 1;
     }
   else if (GET_CODE (a) == NOT && rtx_equal_p (XEXP (a, 0), b))
@@ -2076,7 +2066,7 @@ noce_try_abs (struct noce_if_info *if_info)
     }
   else if (GET_CODE (b) == NOT && rtx_equal_p (XEXP (b, 0), a))
     {
-      c = a; a = b; b = c;
+      std::swap (a, b);
       negate = 1;
       one_cmpl = true;
     }
@@ -2239,7 +2229,7 @@ noce_try_sign_mask (struct noce_if_info *if_info)
      && (if_info->insn_b == NULL_RTX
 	 || BLOCK_FOR_INSN (if_info->insn_b) == if_info->test_bb));
   if (!(t_unconditional
-	|| (set_src_cost (t, optimize_bb_for_speed_p (if_info->test_bb))
+	|| (set_src_cost (t, mode, optimize_bb_for_speed_p (if_info->test_bb))
 	    < COSTS_N_INSNS (2))))
     return FALSE;
 
@@ -3391,11 +3381,7 @@ find_if_header (basic_block test_bb, int pass)
   if (then_edge->flags & EDGE_FALLTHRU)
     ;
   else if (else_edge->flags & EDGE_FALLTHRU)
-    {
-      edge e = else_edge;
-      else_edge = then_edge;
-      then_edge = e;
-    }
+    std::swap (then_edge, else_edge);
   else
     /* Otherwise this must be a multiway branch of some sort.  */
     return NULL;
@@ -3419,7 +3405,7 @@ find_if_header (basic_block test_bb, int pass)
       && cond_exec_find_if_block (&ce_info))
     goto success;
 
-  if (HAVE_trap
+  if (targetm.have_trap ()
       && optab_handler (ctrap_optab, word_mode) != CODE_FOR_nothing
       && find_cond_trap (test_bb, then_edge, else_edge))
     goto success;
@@ -3829,10 +3815,9 @@ find_cond_trap (basic_block test_bb, edge then_edge, edge else_edge)
     single_succ_edge (test_bb)->flags |= EDGE_FALLTHRU;
   else if (trap_bb == then_bb)
     {
-      rtx lab;
-
-      lab = JUMP_LABEL (jump);
-      rtx_jump_insn *newjump = emit_jump_insn_after (gen_jump (lab), jump);
+      rtx lab = JUMP_LABEL (jump);
+      rtx_insn *seq = targetm.gen_jump (lab);
+      rtx_jump_insn *newjump = emit_jump_insn_after (seq, jump);
       LABEL_NUSES (lab) += 1;
       JUMP_LABEL (newjump) = lab;
       emit_barrier_after (newjump);

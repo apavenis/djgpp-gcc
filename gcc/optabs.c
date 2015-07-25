@@ -21,16 +21,15 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
+#include "backend.h"
+#include "predict.h"
 #include "diagnostic-core.h"
 
 /* Include insn-config.h before expr.h so that HAVE_conditional_move
    is properly defined.  */
 #include "insn-config.h"
 #include "rtl.h"
-#include "input.h"
 #include "alias.h"
-#include "symtab.h"
 #include "tree.h"
 #include "tree-hasher.h"
 #include "stor-layout.h"
@@ -38,8 +37,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "varasm.h"
 #include "tm_p.h"
 #include "flags.h"
-#include "hard-reg-set.h"
-#include "function.h"
 #include "except.h"
 #include "expmed.h"
 #include "dojump.h"
@@ -53,10 +50,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "libfuncs.h"
 #include "recog.h"
 #include "reload.h"
-#include "predict.h"
-#include "dominance.h"
-#include "cfg.h"
-#include "basic-block.h"
 #include "target.h"
 
 struct target_optabs default_target_optabs;
@@ -1111,7 +1104,7 @@ expand_doubleword_shift (machine_mode op1_mode, optab binoptab,
 			       unsignedp, methods))
     return false;
 
-  emit_jump_insn (gen_jump (done_label));
+  emit_jump_insn (targetm.gen_jump (done_label));
   emit_barrier ();
   emit_label (subword_label);
 
@@ -1369,8 +1362,8 @@ avoid_expensive_constant (machine_mode mode, optab binoptab,
   if (mode != VOIDmode
       && optimize
       && CONSTANT_P (x)
-      && (rtx_cost (x, optab_to_code (binoptab), opn, speed)
-	  > set_src_cost (x, speed)))
+      && (rtx_cost (x, mode, optab_to_code (binoptab), opn, speed)
+	  > set_src_cost (x, mode, speed)))
     {
       if (CONST_INT_P (x))
 	{
@@ -2590,7 +2583,7 @@ expand_doubleword_clz (machine_mode mode, rtx op0, rtx target)
   if (temp != result)
     convert_move (result, temp, true);
 
-  emit_jump_insn (gen_jump (after_label));
+  emit_jump_insn (targetm.gen_jump (after_label));
   emit_barrier ();
 
   /* Else clz of the full value is clz of the low word plus the number
@@ -4051,12 +4044,12 @@ prepare_cmp_insn (rtx x, rtx y, enum rtx_code comparison, rtx size,
 
   /* If we are optimizing, force expensive constants into a register.  */
   if (CONSTANT_P (x) && optimize
-      && (rtx_cost (x, COMPARE, 0, optimize_insn_for_speed_p ())
+      && (rtx_cost (x, mode, COMPARE, 0, optimize_insn_for_speed_p ())
           > COSTS_N_INSNS (1)))
     x = force_reg (mode, x);
 
   if (CONSTANT_P (y) && optimize
-      && (rtx_cost (y, COMPARE, 1, optimize_insn_for_speed_p ())
+      && (rtx_cost (y, mode, COMPARE, 1, optimize_insn_for_speed_p ())
           > COSTS_N_INSNS (1)))
     y = force_reg (mode, y);
 
@@ -4384,8 +4377,7 @@ prepare_float_lib_cmp (rtx x, rtx y, enum rtx_code comparison,
       if (code_to_optab (swapped)
 	  && (libfunc = optab_libfunc (code_to_optab (swapped), mode)))
 	{
-	  rtx tmp;
-	  tmp = x; x = y; y = tmp;
+	  std::swap (x, y);
 	  comparison = swapped;
 	  break;
 	}
@@ -5090,7 +5082,7 @@ expand_float (rtx to, rtx from, int unsignedp)
 
 	      /* The sign bit is not set.  Convert as signed.  */
 	      expand_float (target, from, 0);
-	      emit_jump_insn (gen_jump (label));
+	      emit_jump_insn (targetm.gen_jump (label));
 	      emit_barrier ();
 
 	      /* The sign bit is set.
@@ -5295,7 +5287,7 @@ expand_fix (rtx to, rtx from, int unsignedp)
 
 	  /* If not, do the signed "fix" and branch around fixup code.  */
 	  expand_fix (to, from, 0);
-	  emit_jump_insn (gen_jump (lab2));
+	  emit_jump_insn (targetm.gen_jump (lab2));
 	  emit_barrier ();
 
 	  /* Otherwise, subtract 2**(N-1), convert to signed number,
@@ -6053,7 +6045,7 @@ gen_satfractuns_conv_libfunc (convert_optab tab,
 
 /* Hashtable callbacks for libfunc_decls.  */
 
-struct libfunc_decl_hasher : ggc_hasher<tree>
+struct libfunc_decl_hasher : ggc_ptr_hash<tree_node>
 {
   static hashval_t
   hash (tree entry)
@@ -6968,11 +6960,7 @@ expand_mult_highpart (machine_mode mode, rtx op0, rtx op1,
       tab1 = uns_p ? vec_widen_umult_lo_optab : vec_widen_smult_lo_optab;
       tab2 = uns_p ? vec_widen_umult_hi_optab : vec_widen_smult_hi_optab;
       if (BYTES_BIG_ENDIAN)
-	{
-	  optab t = tab1;
-	  tab1 = tab2;
-	  tab2 = t;
-	}
+	std::swap (tab1, tab2);
       break;
     default:
       gcc_unreachable ();
@@ -7581,12 +7569,12 @@ expand_asm_memory_barrier (void)
 void
 expand_mem_thread_fence (enum memmodel model)
 {
-  if (HAVE_mem_thread_fence)
-    emit_insn (gen_mem_thread_fence (GEN_INT (model)));
+  if (targetm.have_mem_thread_fence ())
+    emit_insn (targetm.gen_mem_thread_fence (GEN_INT (model)));
   else if (!is_mm_relaxed (model))
     {
-      if (HAVE_memory_barrier)
-	emit_insn (gen_memory_barrier ());
+      if (targetm.have_memory_barrier ())
+	emit_insn (targetm.gen_memory_barrier ());
       else if (synchronize_libfunc != NULL_RTX)
 	emit_library_call (synchronize_libfunc, LCT_NORMAL, VOIDmode, 0);
       else
@@ -7600,8 +7588,8 @@ expand_mem_thread_fence (enum memmodel model)
 void
 expand_mem_signal_fence (enum memmodel model)
 {
-  if (HAVE_mem_signal_fence)
-    emit_insn (gen_mem_signal_fence (GEN_INT (model)));
+  if (targetm.have_mem_signal_fence ())
+    emit_insn (targetm.gen_mem_signal_fence (GEN_INT (model)));
   else if (!is_mm_relaxed (model))
     {
       /* By default targets are coherent between a thread and the signal
@@ -8422,18 +8410,6 @@ expand_jump_insn (enum insn_code icode, unsigned int nops,
 }
 
 /* Reduce conditional compilation elsewhere.  */
-#ifndef HAVE_insv
-#define HAVE_insv	0
-#define CODE_FOR_insv	CODE_FOR_nothing
-#endif
-#ifndef HAVE_extv
-#define HAVE_extv	0
-#define CODE_FOR_extv	CODE_FOR_nothing
-#endif
-#ifndef HAVE_extzv
-#define HAVE_extzv	0
-#define CODE_FOR_extzv	CODE_FOR_nothing
-#endif
 
 /* Enumerates the possible types of structure operand to an
    extraction_insn.  */
@@ -8518,25 +8494,25 @@ get_extraction_insn (extraction_insn *insn,
   switch (pattern)
     {
     case EP_insv:
-      if (HAVE_insv
+      if (targetm.have_insv ()
 	  && get_traditional_extraction_insn (insn, type, mode,
-					      CODE_FOR_insv, 0, 3))
+					      targetm.code_for_insv, 0, 3))
 	return true;
       return get_optab_extraction_insn (insn, type, mode, insv_optab,
 					insvmisalign_optab, 2);
 
     case EP_extv:
-      if (HAVE_extv
+      if (targetm.have_extv ()
 	  && get_traditional_extraction_insn (insn, type, mode,
-					      CODE_FOR_extv, 1, 0))
+					      targetm.code_for_extv, 1, 0))
 	return true;
       return get_optab_extraction_insn (insn, type, mode, extv_optab,
 					extvmisalign_optab, 3);
 
     case EP_extzv:
-      if (HAVE_extzv
+      if (targetm.have_extzv ()
 	  && get_traditional_extraction_insn (insn, type, mode,
-					      CODE_FOR_extzv, 1, 0))
+					      targetm.code_for_extzv, 1, 0))
 	return true;
       return get_optab_extraction_insn (insn, type, mode, extzv_optab,
 					extzvmisalign_optab, 3);
@@ -8645,7 +8621,7 @@ lshift_cheap_p (bool speed_p)
     {
       rtx reg = gen_raw_REG (word_mode, 10000);
       int cost = set_src_cost (gen_rtx_ASHIFT (word_mode, const1_rtx, reg),
-			       speed_p);
+			       word_mode, speed_p);
       cheap[speed_p] = cost < COSTS_N_INSNS (3);
       init[speed_p] = true;
     }

@@ -24,9 +24,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
-#include "input.h"
 #include "alias.h"
-#include "symtab.h"
 #include "tree.h"
 #include "stringpool.h"
 #include "varasm.h"
@@ -281,7 +279,7 @@ build_zero_init_1 (tree type, tree nelts, bool static_storage_p,
       /* Build a constructor to contain the initializations.  */
       init = build_constructor (type, v);
     }
-  else if (TREE_CODE (type) == VECTOR_TYPE)
+  else if (VECTOR_TYPE_P (type))
     init = build_zero_cst (type);
   else
     gcc_assert (TREE_CODE (type) == REFERENCE_TYPE);
@@ -323,7 +321,7 @@ build_value_init (tree type, tsubst_flags_t complain)
 
      - if T is a class type (clause 9) with either no default constructor
        (12.1) or a default constructor that is user-provided or deleted,
-       then then the object is default-initialized;
+       then the object is default-initialized;
 
      - if T is a (possibly cv-qualified) class type without a user-provided
        or deleted default constructor, then the object is zero-initialized
@@ -3385,6 +3383,18 @@ get_temp_regvar (tree type, tree init)
   return decl;
 }
 
+/* Subroutine of build_vec_init.  Returns true if assigning to an array of
+   INNER_ELT_TYPE from INIT is trivial.  */
+
+static bool
+vec_copy_assign_is_trivial (tree inner_elt_type, tree init)
+{
+  tree fromtype = inner_elt_type;
+  if (real_lvalue_p (init))
+    fromtype = cp_build_reference_type (fromtype, /*rval*/false);
+  return is_trivially_xible (MODIFY_EXPR, inner_elt_type, fromtype);
+}
+
 /* `build_vec_init' returns tree structure that performs
    initialization of a vector of aggregate types.
 
@@ -3461,8 +3471,7 @@ build_vec_init (tree base, tree maxindex, tree init,
       && TREE_CODE (atype) == ARRAY_TYPE
       && TREE_CONSTANT (maxindex)
       && (from_array == 2
-	  ? (!CLASS_TYPE_P (inner_elt_type)
-	     || !TYPE_HAS_COMPLEX_COPY_ASSIGN (inner_elt_type))
+	  ? vec_copy_assign_is_trivial (inner_elt_type, init)
 	  : !TYPE_NEEDS_CONSTRUCTING (type))
       && ((TREE_CODE (init) == CONSTRUCTOR
 	   /* Don't do this if the CONSTRUCTOR might contain something
@@ -3590,7 +3599,8 @@ build_vec_init (tree base, tree maxindex, tree init,
 
       if (length_check)
 	{
-	  tree nelts = size_int (CONSTRUCTOR_NELTS (init) - 1);
+	  tree nelts = build_int_cst (ptrdiff_type_node,
+				      CONSTRUCTOR_NELTS (init) - 1);
 	  if (TREE_CODE (atype) != ARRAY_TYPE)
 	    {
 	      if (flag_exceptions)
