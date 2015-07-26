@@ -1,3 +1,267 @@
+2015-07-25  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	Backport from mainline
+	2015-07-16  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	PR target/65249
+	* config/sh/sh.md (movdi): Split simple reg move to two movsi
+	when the destination is R0.
+
+2015-07-24  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	Backported from mainline r226159.
+	2015-07-24  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	* config/aarch64/aarch64-elf-raw.h (LINK_SPEC): Handle -h, -static,
+	-shared, -symbolic, -rdynamic.
+
+2015-07-24  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	Backported from mainline r226158.
+	2015-07-24  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	PR target/65711
+	* config/aarch64/aarch64-linux.h (LINUX_TARGET_LINK_SPEC): Move
+	-dynamic-linker within %{!static %{!shared, and -rdynamic within
+	%{!static.
+
+2015-07-21  Georg-Johann Lay  <avr@gjlay.de>
+
+	Backport from 2015-07-21 trunk r226046.
+
+	PR target/66956
+	* config/avr/avr-dimode.md (<extend_u>mulsidi3_insn)
+	(<extend_u>mulsidi3): Don't use if !AVR_HAVE_MUL.
+
+2015-07-18  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/66922
+	* config/i386/i386.c (ix86_expand_pinsr): Reject insertions
+	to misaligned positions.
+
+2015-07-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/66866
+	* config/i386/i386.c (ix86_expand_pinsr): Reject non-lowpart
+	source subregs.
+
+2015-07-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2015-07-10  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/sse.md (movdi_to_sse): Use gen_lowpart
+	and gen_higpart instead of gen_rtx_SUBREG.
+	* config/i386/i386.md
+	(floatdi<X87MODEF:mode>2_i387_with_xmm splitter): Ditto.
+	(read-modify peephole2): Use gen_lowpart instead of
+	gen_rtx_SUBREG for operand 5.
+
+2015-07-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline:
+	2015-07-08  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/66814
+	* config/i386/predicates.md (nonimmediate_gr_operand): New predicate.
+	* config/i386/i386.md (not peephole2): Use nonimmediate_gr_operand.
+	(varous peephole2s): Use {GENERAL,SSE,MMX}_REGNO_P instead of
+	{GENERAL,SSE,MMX}_REG_P where appropriate.
+
+2015-07-10  Mantas Mikaitis  <Mantas.Mikaitis@arm.com>
+
+	* config/arm/arm.h (TARGET_NEON_FP): Remove conditional definition,
+	define to zero if !TARGET_NEON.
+	(TARGET_ARM_FP): Add !TARGET_SOFT_FLOAT into the conditional
+	definition.
+
+2015-07-09  Iain Sandoe  <iain@codesourcery.com>
+
+	PR target/66523
+	* config/darwin.c (darwin_mark_decl_preserved): Exclude 'L' label
+	names from preservation.
+
+2015-07-07  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	Backport form mainline
+	2015-07-07  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	PR target/66780
+	* config/sh/sh.md (symGOT_load): Revert a part of 2015-03-03
+	change for target/65249.
+
+2015-07-05  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	Backport from mainline r224725
+	2015-06-22  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	PR target/65914
+	* config/rs6000/predicates.md (altivec_register_operand): Permit
+	virtual stack registers.
+	(vsx_register_operand): Likewise.
+	(vfloat_operand): Likewise.
+	(vint_operand): Likewise.
+	(vlogical_operand): Likewise.
+
+2015-07-04  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR target/66114
+	* config/pa/pa.md (indirect_jump): Use pmode_register_operand instead
+	of register_operand.  Remove constraint.
+
+2015-07-03  Jack Howarth  <howarth.at.gcc@gmail.com>
+
+	PR target/66509
+	* configure.ac: Fix filds and fildq test for 64-bit.
+	* configure: Regenerated.
+
+2015-07-01  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	Backport from mainline
+	2015-06-30  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	PR target/64833
+	* config/sh/sh.md (casesi_worker_1): Set length to 8 when
+	flag_pic is set.
+
+2015-07-01  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+
+	Backport from mainline
+        2015-06-24  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+
+	PR target/63408
+	* config/arm/arm.c (vfp3_const_double_for_fract_bits): Disable
+	for negative numbers.
+
+2015-06-30  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/sparc/leon.md (leon_load): Enable for all LEON variants if
+	-mfix-ut699 is not specified.
+	(leon3_load): Rename into...
+	(ut699_load): ...this.  Enable for all LEON variants if -mfix-ut699
+	is specified.
+
+2015-06-28  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	Backport from mainline
+	2015-06-24  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	PR target/66563
+	* config/sh/sh.md (GOTaddr2picreg): Add a new operand for
+	an additional element of the unspec vector.  Modify indices
+	of operands.
+	(builtin_setjmp_receiver): Pass const0_rtx to gen_GOTaddr2picreg.
+	* config/sh/sh.c (prepare_move_operands): Pass incremented
+	const_int to gen_GOTaddr2picreg.
+	(sh_expand_prologue): Pass const0_rtx to gen_GOTaddr2picreg.
+
+2015-06-27  Uros Bizjak  <ubizjak@gmail.com>
+	    Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR target/66412
+	* config/i386/i386.md (various splitters): Use shallow_copy_rtx
+	before doing PUT_MODE or PUT_CODE on operands to avoid
+	in-place RTX modification.
+
+2015-06-26  Jakub Jelinek  <jakub@redhat.com>
+
+	* BASE-VER: Set to 4.9.4.
+	* DEV-PHASE: Set to prerelease.
+
+2015-06-26  Release Manager
+
+	* GCC 4.9.3 released.
+
+2015-06-26  Jakub Jelinek  <jakub@redhat.com>
+
+	* doc/cpp.texi: Update displayed copyright years.
+	* doc/cppinternals.texi: Likewise.
+	* doc/gcc.texi: Likewise.
+	* doc/gccint.texi: Likewise.
+	* doc/gcov.texi: Likewise.
+	* doc/install.texi: Likewise.
+	* doc/invoke.texi: Likewise.
+	* gcc.c: Likewise.
+	* gcov-dump.c: Likewise.
+	* gcov.c: Likewise.
+
+2015-06-23  Matthias Klose  <doko@ubuntu.com>
+
+	PR target/66483
+	Backport from mainline r212178.
+	2014-06-30  Joseph Myers  <joseph@codesourcery.com>
+
+        * var-tracking.c (add_stores): Return instead of asserting if old
+        and new values for conditional store are the same.
+
+2015-06-23  Ludovic Courtès  <ludo@gnu.org>
+
+	PR 65711
+	* config/arm/linux-elf.h (LINUX_TARGET_LINK_SPEC): Move
+	'-dynamic-linker' within %{!shared: ...}.
+
+2015-06-22  Vladimir Makarov  <vmakarov@redhat.com>
+
+	PR bootstrap/63740
+	* lra-lives.c (process_bb_lives): Check insn copying the same
+	reload pseudo and don't create a copy for it.
+
+2015-06-19  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	Backport from mainline r215707.
+	2014-09-30  David Sherwood  <david.sherwood@arm.com>
+
+	* ira-int.h (ira_allocno): Add "wmode" field.
+	* ira-build.c (create_insn_allocnos): Add new "parent" function
+	parameter.
+	* ira-conflicts.c (ira_build_conflicts): Add conflicts for registers
+	that cannot be accessed in wmode.
+
+2015-06-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/66233
+	* fold-const.c (fold_unary_loc): Don't handle vector types.
+	Simplify.
+	* tree-ssa-forwprop.c (combine_conversions): Likewise.
+
+2015-06-16  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+
+	PR target/66200
+	* config/aarch64/aarch64.c (TARGET_RELAXED_ORDERING): Define.
+
+2015-06-16  Richard Biener  <rguenther@suse.de>
+
+	Revert
+	2015-06-01  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2015-05-26  Michael Matz  <matz@suse.de>
+
+	PR middle-end/66251
+	* tree-vect-stmts.c (vect_create_vectorized_demotion_stmts): Always set
+	STMT_VINFO_VEC_STMT, also with SLP.
+
+	2015-05-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/66251
+	* tree-vect-stmts.c (vectorizable_conversion): Properly
+	set STMT_VINFO_VEC_STMT even for the SLP case.
+
+2015-06-16  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	Backported from mainline r217076.
+	2014-11-04  Michael Collison <michael.collison@linaro.org>
+
+	* config/aarch64/iterators.md (lconst_atomic): New mode attribute
+	to support constraints for CONST_INT in atomic operations.
+	* config/aarch64/atomics.md
+	(atomic_<atomic_optab><mode>): Use lconst_atomic constraint.
+	(atomic_nand<mode>): Likewise.
+	(atomic_fetch_<atomic_optab><mode>): Likewise.
+	(atomic_fetch_nand<mode>): Likewise.
+	(atomic_<atomic_optab>_fetch<mode>): Likewise.
+	(atomic_nand_fetch<mode>): Likewise.
+
 2015-06-12  Michael Matz  <matz@suse.de>
 
 	Backported from mainline
