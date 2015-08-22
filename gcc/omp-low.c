@@ -142,7 +142,7 @@ struct omp_region
 /* Context structure.  Used to store information about each parallel
    directive in the code.  */
 
-typedef struct omp_context
+struct omp_context
 {
   /* This field must be at the beginning, as we do "inheritance": Some
      callback functions for tree-inline.c (e.g., omp_copy_decl)
@@ -204,7 +204,7 @@ typedef struct omp_context
      this level and above.  For parallel and kernels clauses, a mask
      indicating which of num_gangs/num_workers/num_vectors was used.  */
   int gwv_this;
-} omp_context;
+};
 
 /* A structure holding the elements of:
    for (V = N1; V cond N2; V += STEP) [...] */
@@ -9961,24 +9961,6 @@ oacc_process_reduction_data (gimple_seq *body, gimple_seq *in_stmt_seqp,
 	  gimplify_assign (acc_device_host,
 			   build_int_cst (integer_type_node,
 					  GOMP_DEVICE_HOST),
-			   in_stmt_seqp);
-
-	  enter = create_artificial_label (UNKNOWN_LOCATION);
-	  exit = create_artificial_label (UNKNOWN_LOCATION);
-
-	  stmt = gimple_build_cond (EQ_EXPR, acc_device, acc_device_host,
-				    enter, exit);
-	  gimple_seq_add_stmt (in_stmt_seqp, stmt);
-	  gimple_seq_add_stmt (in_stmt_seqp, gimple_build_label (enter));
-	  gimplify_assign (nthreads, fold_build1 (NOP_EXPR, sizetype,
-						  integer_one_node),
-			   in_stmt_seqp);
-	  gimple_seq_add_stmt (in_stmt_seqp, gimple_build_label (exit));
-
-	  /* Also, set nthreads = 1 for ACC_DEVICE_TYPE=host_nonshm.  */
-	  gimplify_assign (acc_device_host,
-			   build_int_cst (integer_type_node,
-					  GOMP_DEVICE_HOST_NONSHM),
 			   in_stmt_seqp);
 
 	  enter = create_artificial_label (UNKNOWN_LOCATION);

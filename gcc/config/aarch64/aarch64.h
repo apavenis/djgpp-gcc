@@ -156,12 +156,16 @@ extern unsigned aarch64_architecture_version;
 #define AARCH64_ISA_CRYPTO         (aarch64_isa_flags & AARCH64_FL_CRYPTO)
 #define AARCH64_ISA_FP             (aarch64_isa_flags & AARCH64_FL_FP)
 #define AARCH64_ISA_SIMD           (aarch64_isa_flags & AARCH64_FL_SIMD)
+#define AARCH64_ISA_LSE		   (aarch64_isa_flags & AARCH64_FL_LSE)
 
 /* Crypto is an optional extension to AdvSIMD.  */
 #define TARGET_CRYPTO (TARGET_SIMD && AARCH64_ISA_CRYPTO)
 
 /* CRC instructions that can be enabled through +crc arch extension.  */
 #define TARGET_CRC32 (AARCH64_ISA_CRC)
+
+/* Atomic instructions that can be enabled through the +lse extension.  */
+#define TARGET_LSE (AARCH64_ISA_LSE)
 
 /* Make sure this is always defined so we don't have to check for ifdefs
    but rather use normal ifs.  */
@@ -401,6 +405,7 @@ extern unsigned aarch64_architecture_version;
 enum reg_class
 {
   NO_REGS,
+  FIXED_REG0,
   CALLER_SAVE_REGS,
   GENERAL_REGS,
   STACK_REG,
@@ -416,6 +421,7 @@ enum reg_class
 #define REG_CLASS_NAMES				\
 {						\
   "NO_REGS",					\
+  "FIXED_REG0",					\
   "CALLER_SAVE_REGS",				\
   "GENERAL_REGS",				\
   "STACK_REG",					\
@@ -428,6 +434,7 @@ enum reg_class
 #define REG_CLASS_CONTENTS						\
 {									\
   { 0x00000000, 0x00000000, 0x00000000 },	/* NO_REGS */		\
+  { 0x00000001, 0x00000000, 0x00000000 },	/* FIXED_REG0 */	\
   { 0x0007ffff, 0x00000000, 0x00000000 },	/* CALLER_SAVE_REGS */	\
   { 0x7fffffff, 0x00000000, 0x00000003 },	/* GENERAL_REGS */	\
   { 0x80000000, 0x00000000, 0x00000000 },	/* STACK_REG */		\
@@ -880,18 +887,18 @@ extern enum aarch64_code_model aarch64_cmodel;
   {"arch", "%{!march=*:%{!mcpu=*:-march=%(VALUE)}}" },	\
   {"cpu",  "%{!march=*:%{!mcpu=*:-mcpu=%(VALUE)}}" },
 
-#define BIG_LITTLE_SPEC \
-   " %{mcpu=*:-mcpu=%:rewrite_mcpu(%{mcpu=*:%*})}"
+#define MCPU_TO_MARCH_SPEC \
+   " %{mcpu=*:-march=%:rewrite_mcpu(%{mcpu=*:%*})}"
 
 extern const char *aarch64_rewrite_mcpu (int argc, const char **argv);
-#define BIG_LITTLE_CPU_SPEC_FUNCTIONS \
+#define MCPU_TO_MARCH_SPEC_FUNCTIONS \
   { "rewrite_mcpu", aarch64_rewrite_mcpu },
 
 #if defined(__aarch64__)
 extern const char *host_detect_local_cpu (int argc, const char **argv);
 # define EXTRA_SPEC_FUNCTIONS						\
   { "local_cpu_detect", host_detect_local_cpu },			\
-  BIG_LITTLE_CPU_SPEC_FUNCTIONS
+  MCPU_TO_MARCH_SPEC_FUNCTIONS
 
 # define MCPU_MTUNE_NATIVE_SPECS					\
    " %{march=native:%<march=native %:local_cpu_detect(arch)}"		\
@@ -899,11 +906,11 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
    " %{mtune=native:%<mtune=native %:local_cpu_detect(tune)}"
 #else
 # define MCPU_MTUNE_NATIVE_SPECS ""
-# define EXTRA_SPEC_FUNCTIONS BIG_LITTLE_CPU_SPEC_FUNCTIONS
+# define EXTRA_SPEC_FUNCTIONS MCPU_TO_MARCH_SPEC_FUNCTIONS
 #endif
 
 #define ASM_CPU_SPEC \
-   BIG_LITTLE_SPEC
+   MCPU_TO_MARCH_SPEC
 
 #define EXTRA_SPECS						\
   { "asm_cpu_spec",		ASM_CPU_SPEC }

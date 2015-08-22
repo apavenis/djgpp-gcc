@@ -103,8 +103,6 @@ nvptx_option_override (void)
   flag_toplevel_reorder = 1;
   /* Assumes that it will see only hard registers.  */
   flag_var_tracking = 0;
-  write_symbols = NO_DEBUG;
-  debug_info_level = DINFO_LEVEL_NONE;
 
   declared_fndecls_htab = hash_table<tree_hasher>::create_ggc (17);
   needed_fndecls_htab = hash_table<tree_hasher>::create_ggc (17);
@@ -600,9 +598,11 @@ nvptx_declare_function_name (FILE *file, const char *name, const_tree decl)
   sz = get_frame_size ();
   if (sz > 0 || cfun->machine->has_call_with_sc)
     {
+      int alignment = crtl->stack_alignment_needed / BITS_PER_UNIT;
+
       fprintf (file, "\t.reg.u%d %%frame;\n"
-	       "\t.local.align 8 .b8 %%farray[" HOST_WIDE_INT_PRINT_DEC"];\n",
-	       BITS_PER_WORD, sz == 0 ? 1 : sz);
+	       "\t.local.align %d .b8 %%farray[" HOST_WIDE_INT_PRINT_DEC"];\n",
+	       BITS_PER_WORD, alignment, sz == 0 ? 1 : sz);
       fprintf (file, "\tcvta.local.u%d %%frame, %%farray;\n",
 	       BITS_PER_WORD);
     }
@@ -726,6 +726,14 @@ static bool
 nvptx_function_ok_for_sibcall (tree, tree)
 {
   return false;
+}
+
+/* Return Dynamic ReAlignment Pointer RTX.  For PTX there isn't any.  */
+
+static rtx
+nvptx_get_drap_rtx (void)
+{
+  return NULL_RTX;
 }
 
 /* Implement the TARGET_CALL_ARGS hook.  Record information about one
@@ -2120,6 +2128,8 @@ nvptx_file_end (void)
 #define TARGET_LIBCALL_VALUE nvptx_libcall_value
 #undef TARGET_FUNCTION_OK_FOR_SIBCALL
 #define TARGET_FUNCTION_OK_FOR_SIBCALL nvptx_function_ok_for_sibcall
+#undef TARGET_GET_DRAP_RTX
+#define TARGET_GET_DRAP_RTX nvptx_get_drap_rtx
 #undef TARGET_SPLIT_COMPLEX_ARG
 #define TARGET_SPLIT_COMPLEX_ARG hook_bool_const_tree_true
 #undef TARGET_RETURN_IN_MEMORY

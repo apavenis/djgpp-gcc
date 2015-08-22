@@ -314,10 +314,9 @@ get_object_alignment_2 (tree exp, unsigned int *alignp,
       /* The alignment of a CONST_DECL is determined by its initializer.  */
       exp = DECL_INITIAL (exp);
       align = TYPE_ALIGN (TREE_TYPE (exp));
-#ifdef CONSTANT_ALIGNMENT
       if (CONSTANT_CLASS_P (exp))
 	align = (unsigned) CONSTANT_ALIGNMENT (exp, align);
-#endif
+
       known_alignment = true;
     }
   else if (DECL_P (exp))
@@ -393,10 +392,9 @@ get_object_alignment_2 (tree exp, unsigned int *alignp,
       /* STRING_CST are the only constant objects we allow to be not
          wrapped inside a CONST_DECL.  */
       align = TYPE_ALIGN (TREE_TYPE (exp));
-#ifdef CONSTANT_ALIGNMENT
       if (CONSTANT_CLASS_P (exp))
 	align = (unsigned) CONSTANT_ALIGNMENT (exp, align);
-#endif
+
       known_alignment = true;
     }
 
@@ -4953,11 +4951,9 @@ expand_builtin_adjust_trampoline (tree exp)
    function.  The function first checks whether the back end provides
    an insn to implement signbit for the respective mode.  If not, it
    checks whether the floating point format of the value is such that
-   the sign bit can be extracted.  If that is not the case, the
-   function returns NULL_RTX to indicate that a normal call should be
-   emitted rather than expanding the function in-line.  EXP is the
-   expression that is a call to the builtin function; if convenient,
-   the result should be placed in TARGET.  */
+   the sign bit can be extracted.  If that is not the case, error out.
+   EXP is the expression that is a call to the builtin function; if
+   convenient, the result should be placed in TARGET.  */
 static rtx
 expand_builtin_signbit (tree exp, rtx target)
 {
@@ -5000,8 +4996,7 @@ expand_builtin_signbit (tree exp, rtx target)
   if (bitpos < 0)
   {
     /* But we can't do this if the format supports signed zero.  */
-    if (fmt->has_signed_zero && HONOR_SIGNED_ZEROS (fmode))
-      return NULL_RTX;
+    gcc_assert (!fmt->has_signed_zero || !HONOR_SIGNED_ZEROS (fmode));
 
     arg = fold_build2_loc (loc, LT_EXPR, TREE_TYPE (exp), arg,
 		       build_real (TREE_TYPE (arg), dconst0));
@@ -5011,8 +5006,7 @@ expand_builtin_signbit (tree exp, rtx target)
   if (GET_MODE_SIZE (fmode) <= UNITS_PER_WORD)
     {
       imode = int_mode_for_mode (fmode);
-      if (imode == BLKmode)
-	return NULL_RTX;
+      gcc_assert (imode != BLKmode);
       temp = gen_lowpart (imode, temp);
     }
   else
@@ -5879,10 +5873,8 @@ expand_stack_save (void)
    acceleration device (ACCEL_COMPILER conditional).  */
 
 static rtx
-expand_builtin_acc_on_device (tree exp ATTRIBUTE_UNUSED,
-			      rtx target ATTRIBUTE_UNUSED)
+expand_builtin_acc_on_device (tree exp, rtx target)
 {
-#ifdef ACCEL_COMPILER
   if (!validate_arglist (exp, INTEGER_TYPE, VOID_TYPE))
     return NULL_RTX;
 
@@ -5891,8 +5883,13 @@ expand_builtin_acc_on_device (tree exp ATTRIBUTE_UNUSED,
   /* Return (arg == v1 || arg == v2) ? 1 : 0.  */
   machine_mode v_mode = TYPE_MODE (TREE_TYPE (arg));
   rtx v = expand_normal (arg), v1, v2;
+#ifdef ACCEL_COMPILER
   v1 = GEN_INT (GOMP_DEVICE_NOT_HOST);
   v2 = GEN_INT (ACCEL_COMPILER_acc_device);
+#else
+  v1 = GEN_INT (GOMP_DEVICE_NONE);
+  v2 = GEN_INT (GOMP_DEVICE_HOST);
+#endif
   machine_mode target_mode = TYPE_MODE (integer_type_node);
   if (!target || !register_operand (target, target_mode))
     target = gen_reg_rtx (target_mode);
@@ -5906,9 +5903,6 @@ expand_builtin_acc_on_device (tree exp ATTRIBUTE_UNUSED,
   emit_label (done_label);
 
   return target;
-#else
-  return NULL;
-#endif
 }
 
 

@@ -150,7 +150,6 @@ static void aarch64_elf_asm_constructor (rtx, int) ATTRIBUTE_UNUSED;
 static void aarch64_elf_asm_destructor (rtx, int) ATTRIBUTE_UNUSED;
 static void aarch64_override_options_after_change (void);
 static bool aarch64_vector_mode_supported_p (machine_mode);
-static unsigned bit_count (unsigned HOST_WIDE_INT);
 static bool aarch64_vectorize_vec_perm_const_ok (machine_mode vmode,
 						 const unsigned char *sel);
 static int aarch64_address_cost (rtx, machine_mode, addr_space_t, bool);
@@ -744,6 +743,24 @@ aarch64_is_long_call_p (rtx sym)
   return aarch64_decl_is_long_call_p (SYMBOL_REF_DECL (sym));
 }
 
+/* Return true if calls to symbol-ref SYM should not go through
+   plt stubs.  */
+
+bool
+aarch64_is_noplt_call_p (rtx sym)
+{
+  const_tree decl = SYMBOL_REF_DECL (sym);
+
+  if (flag_pic
+      && decl
+      && (!flag_plt
+	  || lookup_attribute ("noplt", DECL_ATTRIBUTES (decl)))
+      && !targetm.binds_local_p (decl))
+    return true;
+
+  return false;
+}
+
 /* Return true if the offsets to a zero/sign-extract operation
    represent an expression that matches an extend operation.  The
    operands represent the paramters from
@@ -913,7 +930,7 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
 	       The generate instruction sequence for accessing global variable
 	       is:
 
-	         ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym]
+		 ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym]
 
 	       Only one instruction needed. But we must initialize
 	       pic_offset_table_rtx properly.  We generate initialize insn for
@@ -922,12 +939,12 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
 	       The final instruction sequences will look like the following
 	       for multiply global variables access.
 
-	         adrp pic_offset_table_rtx, _GLOBAL_OFFSET_TABLE_
+		 adrp pic_offset_table_rtx, _GLOBAL_OFFSET_TABLE_
 
-	         ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym1]
-	         ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym2]
-	         ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym3]
-	         ...  */
+		 ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym1]
+		 ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym2]
+		 ldr reg, [pic_offset_table_rtx, #:gotpage_lo15:sym3]
+		 ...  */
 
 	    rtx s = gen_rtx_SYMBOL_REF (Pmode, "_GLOBAL_OFFSET_TABLE_");
 	    crtl->uses_pic_offset_table = 1;
@@ -1026,22 +1043,39 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
       {
 	machine_mode mode = GET_MODE (dest);
 	rtx x0 = gen_rtx_REG (mode, R0_REGNUM);
+	rtx offset;
 	rtx tp;
 
 	gcc_assert (mode == Pmode || mode == ptr_mode);
 
-	/* In ILP32, the got entry is always of SImode size.  Unlike
-	   small GOT, the dest is fixed at reg 0.  */
-	if (TARGET_ILP32)
-	  emit_insn (gen_tlsdesc_small_si (imm));
+	if (can_create_pseudo_p ())
+	  {
+	    rtx reg = gen_reg_rtx (mode);
+
+	    if (TARGET_ILP32)
+	      emit_insn (gen_tlsdesc_small_pseudo_si (reg, imm));
+	    else
+	      emit_insn (gen_tlsdesc_small_pseudo_di (reg, imm));
+
+	    offset = reg;
+	  }
 	else
-	  emit_insn (gen_tlsdesc_small_di (imm));
+	  {
+	    /* In ILP32, the got entry is always of SImode size.  Unlike
+	       small GOT, the dest is fixed at reg 0.  */
+	    if (TARGET_ILP32)
+	      emit_insn (gen_tlsdesc_small_si (imm));
+	    else
+	      emit_insn (gen_tlsdesc_small_di (imm));
+
+	    offset = x0;
+	  }
 	tp = aarch64_load_tp (NULL);
 
 	if (mode != Pmode)
 	  tp = gen_lowpart (mode, tp);
 
-	emit_insn (gen_rtx_SET (dest, gen_rtx_PLUS (mode, tp, x0)));
+	emit_insn (gen_rtx_SET (dest, gen_rtx_PLUS (mode, tp, offset)));
 	set_unique_reg_note (get_last_insn (), REG_EQUIV, imm);
 	return;
       }
@@ -4128,19 +4162,6 @@ aarch64_const_vec_all_same_int_p (rtx x, HOST_WIDE_INT val)
   return aarch64_const_vec_all_same_in_range_p (x, val, val);
 }
 
-static unsigned
-bit_count (unsigned HOST_WIDE_INT value)
-{
-  unsigned count = 0;
-
-  while (value)
-    {
-      count++;
-      value &= value - 1;
-    }
-
-  return count;
-}
 
 /* N Z C V.  */
 #define AARCH64_CC_V 1
@@ -4295,7 +4316,7 @@ aarch64_print_operand (FILE *f, rtx x, char code)
 	  return;
 	}
 
-      asm_fprintf (f, "%u", bit_count (INTVAL (x)));
+      asm_fprintf (f, "%u", popcount_hwi (INTVAL (x)));
       break;
 
     case 'H':
@@ -5087,6 +5108,7 @@ aarch64_class_max_nregs (reg_class_t regclass, machine_mode mode)
 	aarch64_vector_mode_p (mode)
 	  ? (GET_MODE_SIZE (mode) + UNITS_PER_VREG - 1) / UNITS_PER_VREG
 	  : (GET_MODE_SIZE (mode) + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
+    case FIXED_REG0:
     case STACK_REG:
       return 1;
 
@@ -6955,10 +6977,10 @@ aarch64_register_move_cost (machine_mode mode,
     = aarch64_tune_params.regmove_cost;
 
   /* Caller save and pointer regs are equivalent to GENERAL_REGS.  */
-  if (to == CALLER_SAVE_REGS || to == POINTER_REGS)
+  if (to == CALLER_SAVE_REGS || to == POINTER_REGS || to == FIXED_REG0)
     to = GENERAL_REGS;
 
-  if (from == CALLER_SAVE_REGS || from == POINTER_REGS)
+  if (from == CALLER_SAVE_REGS || from == POINTER_REGS || from == FIXED_REG0)
     from = GENERAL_REGS;
 
   /* Moving between GPR and stack cost is the same as GP2GP.  */
@@ -7859,26 +7881,13 @@ initialize_aarch64_code_model (struct gcc_options *opts)
 	 case AARCH64_CMODEL_LARGE:
 	   sorry ("code model %qs with -f%s", "large",
 		  opts->x_flag_pic > 1 ? "PIC" : "pic");
+	   break;
 	 default:
 	   gcc_unreachable ();
 	 }
      }
    else
      aarch64_cmodel = opts->x_aarch64_cmodel_var;
-}
-
-/* Print to F the architecture features specified by ISA_FLAGS.  */
-
-static void
-aarch64_print_extension (FILE *f, unsigned long isa_flags)
-{
-  const struct aarch64_option_extension *opt = NULL;
-
-  for (opt = all_extensions; opt->name != NULL; opt++)
-    if ((isa_flags & opt->flags_on) == opt->flags_on)
-      asm_fprintf (f, "+%s", opt->name);
-
-  asm_fprintf (f, "\n");
 }
 
 /* Implement TARGET_OPTION_SAVE.  */
@@ -7913,10 +7922,12 @@ aarch64_option_print (FILE *file, int indent, struct cl_target_option *ptr)
     = aarch64_get_tune_cpu (ptr->x_explicit_tune_core);
   unsigned long isa_flags = ptr->x_aarch64_isa_flags;
   const struct processor *arch = aarch64_get_arch (ptr->x_explicit_arch);
+  std::string extension
+    = aarch64_get_extension_string_for_isa_flags (isa_flags);
 
   fprintf (file, "%*sselected tune = %s\n", indent, "", cpu->name);
-  fprintf (file, "%*sselected arch = %s", indent, "", arch->name);
-  aarch64_print_extension (file, isa_flags);
+  fprintf (file, "%*sselected arch = %s%s\n", indent, "",
+	   arch->name, extension.c_str ());
 }
 
 static GTY(()) tree aarch64_previous_fndecl;
@@ -9856,31 +9867,10 @@ sizetochar (int size)
 static bool
 aarch64_vect_float_const_representable_p (rtx x)
 {
-  int i = 0;
-  REAL_VALUE_TYPE r0, ri;
-  rtx x0, xi;
-
-  if (GET_MODE_CLASS (GET_MODE (x)) != MODE_VECTOR_FLOAT)
-    return false;
-
-  x0 = CONST_VECTOR_ELT (x, 0);
-  if (!CONST_DOUBLE_P (x0))
-    return false;
-
-  REAL_VALUE_FROM_CONST_DOUBLE (r0, x0);
-
-  for (i = 1; i < CONST_VECTOR_NUNITS (x); i++)
-    {
-      xi = CONST_VECTOR_ELT (x, i);
-      if (!CONST_DOUBLE_P (xi))
-	return false;
-
-      REAL_VALUE_FROM_CONST_DOUBLE (ri, xi);
-      if (!REAL_VALUES_EQUAL (r0, ri))
-	return false;
-    }
-
-  return aarch64_float_const_representable_p (x0);
+  rtx elt;
+  return (GET_MODE_CLASS (GET_MODE (x)) == MODE_VECTOR_FLOAT
+	  && const_vec_duplicate_p (x, &elt)
+	  && aarch64_float_const_representable_p (elt));
 }
 
 /* Return true for valid and false for invalid.  */
@@ -10343,28 +10333,15 @@ aarch64_simd_dup_constant (rtx vals)
 {
   machine_mode mode = GET_MODE (vals);
   machine_mode inner_mode = GET_MODE_INNER (mode);
-  int n_elts = GET_MODE_NUNITS (mode);
-  bool all_same = true;
   rtx x;
-  int i;
 
-  if (GET_CODE (vals) != CONST_VECTOR)
-    return NULL_RTX;
-
-  for (i = 1; i < n_elts; ++i)
-    {
-      x = CONST_VECTOR_ELT (vals, i);
-      if (!rtx_equal_p (x, CONST_VECTOR_ELT (vals, 0)))
-	all_same = false;
-    }
-
-  if (!all_same)
+  if (!const_vec_duplicate_p (vals, &x))
     return NULL_RTX;
 
   /* We can load this constant by using DUP and a constant in a
      single ARM register.  This will be cheaper than a vector
      load.  */
-  x = copy_to_mode_reg (inner_mode, CONST_VECTOR_ELT (vals, 0));
+  x = copy_to_mode_reg (inner_mode, x);
   return gen_rtx_VEC_DUPLICATE (mode, x);
 }
 
@@ -10640,8 +10617,11 @@ aarch64_declare_function_name (FILE *stream, const char* name,
   const struct processor *this_arch
     = aarch64_get_arch (targ_options->x_explicit_arch);
 
-  asm_fprintf (asm_out_file, "\t.arch %s", this_arch->name);
-  aarch64_print_extension (asm_out_file, targ_options->x_aarch64_isa_flags);
+  unsigned long isa_flags = targ_options->x_aarch64_isa_flags;
+  std::string extension
+    = aarch64_get_extension_string_for_isa_flags (isa_flags);
+  asm_fprintf (asm_out_file, "\t.arch %s%s\n",
+	       this_arch->name, extension.c_str ());
 
   /* Print the cpu name we're tuning for in the comments, might be
      useful to readers of the generated asm.  */
@@ -10717,7 +10697,23 @@ aarch64_expand_compare_and_swap (rtx operands[])
 {
   rtx bval, rval, mem, oldval, newval, is_weak, mod_s, mod_f, x;
   machine_mode mode, cmp_mode;
-  rtx (*gen) (rtx, rtx, rtx, rtx, rtx, rtx, rtx);
+  typedef rtx (*gen_cas_fn) (rtx, rtx, rtx, rtx, rtx, rtx, rtx);
+  int idx;
+  gen_cas_fn gen;
+  const gen_cas_fn split_cas[] =
+  {
+    gen_aarch64_compare_and_swapqi,
+    gen_aarch64_compare_and_swaphi,
+    gen_aarch64_compare_and_swapsi,
+    gen_aarch64_compare_and_swapdi
+  };
+  const gen_cas_fn atomic_cas[] =
+  {
+    gen_aarch64_compare_and_swapqi_lse,
+    gen_aarch64_compare_and_swaphi_lse,
+    gen_aarch64_compare_and_swapsi_lse,
+    gen_aarch64_compare_and_swapdi_lse
+  };
 
   bval = operands[0];
   rval = operands[1];
@@ -10762,13 +10758,17 @@ aarch64_expand_compare_and_swap (rtx operands[])
 
   switch (mode)
     {
-    case QImode: gen = gen_atomic_compare_and_swapqi_1; break;
-    case HImode: gen = gen_atomic_compare_and_swaphi_1; break;
-    case SImode: gen = gen_atomic_compare_and_swapsi_1; break;
-    case DImode: gen = gen_atomic_compare_and_swapdi_1; break;
+    case QImode: idx = 0; break;
+    case HImode: idx = 1; break;
+    case SImode: idx = 2; break;
+    case DImode: idx = 3; break;
     default:
       gcc_unreachable ();
     }
+  if (TARGET_LSE)
+    gen = atomic_cas[idx];
+  else
+    gen = split_cas[idx];
 
   emit_insn (gen (rval, mem, oldval, newval, is_weak, mod_s, mod_f));
 
@@ -10795,6 +10795,42 @@ aarch64_emit_post_barrier (enum memmodel model)
     {
       emit_insn (gen_mem_thread_fence (GEN_INT (MEMMODEL_SEQ_CST)));
     }
+}
+
+/* Emit an atomic compare-and-swap operation.  RVAL is the destination register
+   for the data in memory.  EXPECTED is the value expected to be in memory.
+   DESIRED is the value to store to memory.  MEM is the memory location.  MODEL
+   is the memory ordering to use.  */
+
+void
+aarch64_gen_atomic_cas (rtx rval, rtx mem,
+			rtx expected, rtx desired,
+			rtx model)
+{
+  rtx (*gen) (rtx, rtx, rtx, rtx);
+  machine_mode mode;
+
+  mode = GET_MODE (mem);
+
+  switch (mode)
+    {
+    case QImode: gen = gen_aarch64_atomic_casqi; break;
+    case HImode: gen = gen_aarch64_atomic_cashi; break;
+    case SImode: gen = gen_aarch64_atomic_cassi; break;
+    case DImode: gen = gen_aarch64_atomic_casdi; break;
+    default:
+      gcc_unreachable ();
+    }
+
+  /* Move the expected value into the CAS destination register.  */
+  emit_insn (gen_rtx_SET (rval, expected));
+
+  /* Emit the CAS.  */
+  emit_insn (gen (rval, mem, desired, model));
+
+  /* Compare the expected value with the value loaded by the CAS, to establish
+     whether the swap was made.  */
+  aarch64_gen_compare_reg (EQ, rval, expected);
 }
 
 /* Split a compare and swap pattern.  */

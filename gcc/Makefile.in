@@ -1448,7 +1448,6 @@ OBJS = \
 	tree-ssa-ccp.o \
 	tree-ssa-coalesce.o \
 	tree-ssa-copy.o \
-	tree-ssa-copyrename.o \
 	tree-ssa-dce.o \
 	tree-ssa-dom.o \
 	tree-ssa-dse.o \
@@ -3075,7 +3074,7 @@ doc/%.7: %.pod
 	$(STAMP) $@
 	-$(TEXI2POD) -DBUGURL="$(BUGURL_TEXI)" $< > $@
 
-.INTERMEDIATE: cpp.pod gcc.pod gfdl.pod fsf-funding.pod
+.INTERMEDIATE: cpp.pod gcc.pod gfdl.pod fsf-funding.pod gpl.pod
 cpp.pod: cpp.texi cppenv.texi cppopts.texi
 
 # These next rules exist because the output name is not the same as

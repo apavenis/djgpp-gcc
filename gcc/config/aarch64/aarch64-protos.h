@@ -258,6 +258,7 @@ bool aarch64_handle_option (struct gcc_options *, struct gcc_options *,
 			     const struct cl_decoded_option *, location_t);
 bool aarch64_is_extend_from_extract (machine_mode, rtx, rtx);
 bool aarch64_is_long_call_p (rtx);
+bool aarch64_is_noplt_call_p (rtx);
 bool aarch64_label_mentioned_p (rtx);
 void aarch64_declare_function_name (FILE *, const char*, tree);
 bool aarch64_legitimate_pic_operand_p (rtx);
@@ -309,6 +310,7 @@ rtx aarch64_simd_gen_const_vector_dup (machine_mode, int);
 bool aarch64_simd_mem_operand_p (rtx);
 rtx aarch64_simd_vect_par_cnst_half (machine_mode, bool);
 rtx aarch64_tls_get_addr (void);
+std::string aarch64_get_extension_string_for_isa_flags (unsigned long);
 tree aarch64_fold_builtin (tree, int, tree *, bool);
 unsigned aarch64_dbx_register_number (unsigned);
 unsigned aarch64_trampoline_size (void);
@@ -361,6 +363,7 @@ rtx aarch64_load_tp (rtx);
 
 void aarch64_expand_compare_and_swap (rtx op[]);
 void aarch64_split_compare_and_swap (rtx op[]);
+void aarch64_gen_atomic_cas (rtx, rtx, rtx, rtx, rtx);
 void aarch64_split_atomic_op (enum rtx_code, rtx, rtx, rtx, rtx, rtx, rtx);
 
 bool aarch64_gen_adjusted_ldpstp (rtx *, bool, enum machine_mode, RTX_CODE);

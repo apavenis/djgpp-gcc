@@ -55,7 +55,7 @@ install-data-local: gdb.py
 ## fragile, but there does not seem to be a better option, because
 ## libtool hides the real names from us.
 	@here=`pwd`; cd $(DESTDIR)$(toolexeclibdir); \
-	  for file in $(name_base)*; do \
+	  for file in $(name_base).*; do \
 	    case $$file in \
 	      *-gdb.py) ;; \
 	      *.la) ;; \

@@ -52,6 +52,8 @@
 #define BIGGEST_ALIGNMENT 64
 #define STRICT_ALIGNMENT 1
 
+#define MAX_STACK_ALIGNMENT (1024 * 8)
+
 /* Copied from elf.h and other places.  We'd otherwise use
    BIGGEST_ALIGNMENT and fail a number of testcases.  */
 #define MAX_OFILE_ALIGNMENT (32768 * 8)
@@ -339,7 +341,7 @@ struct GTY(()) machine_function
 
 /* Misc.  */
 
-#define DWARF2_DEBUGGING_INFO 1
+#define DWARF2_LINENO_DEBUGGING_INFO 1
 
 #define CLZ_DEFINED_VALUE_AT_ZERO(MODE, VALUE) \
   ((VALUE) = GET_MODE_BITSIZE ((MODE)), 2)

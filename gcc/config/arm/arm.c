@@ -2230,8 +2230,8 @@ char arm_arch_name[] = "__ARM_ARCH_0UNK__";
 
 static const struct arm_fpu_desc all_fpus[] =
 {
-#define ARM_FPU(NAME, MODEL, REV, VFP_REGS, NEON, FP16, CRYPTO) \
-  { NAME, MODEL, REV, VFP_REGS, NEON, FP16, CRYPTO },
+#define ARM_FPU(NAME, MODEL, REV, VFP_REGS, FEATURES) \
+  { NAME, MODEL, REV, VFP_REGS, FEATURES },
 #include "arm-fpus.def"
 #undef ARM_FPU
 };
@@ -12607,22 +12607,12 @@ neon_vdup_constant (rtx vals)
 {
   machine_mode mode = GET_MODE (vals);
   machine_mode inner_mode = GET_MODE_INNER (mode);
-  int n_elts = GET_MODE_NUNITS (mode);
-  bool all_same = true;
   rtx x;
-  int i;
 
   if (GET_CODE (vals) != CONST_VECTOR || GET_MODE_SIZE (inner_mode) > 4)
     return NULL_RTX;
 
-  for (i = 0; i < n_elts; ++i)
-    {
-      x = XVECEXP (vals, 0, i);
-      if (i > 0 && !rtx_equal_p (x, XVECEXP (vals, 0, 0)))
-	all_same = false;
-    }
-
-  if (!all_same)
+  if (!const_vec_duplicate_p (vals, &x))
     /* The elements are not all the same.  We could handle repeating
        patterns of a mode larger than INNER_MODE here (e.g. int8x8_t
        {0, C, 0, C, 0, C, 0, C} which can be loaded using
@@ -12633,7 +12623,7 @@ neon_vdup_constant (rtx vals)
      single ARM register.  This will be cheaper than a vector
      load.  */
 
-  x = copy_to_mode_reg (inner_mode, XVECEXP (vals, 0, 0));
+  x = copy_to_mode_reg (inner_mode, x);
   return gen_rtx_VEC_DUPLICATE (mode, x);
 }
 
@@ -12809,10 +12799,10 @@ bounds_check (rtx operand, HOST_WIDE_INT low, HOST_WIDE_INT high,
   if (lane < low || lane >= high)
     {
       if (exp)
-	error ("%K%s %lld out of range %lld - %lld",
+	error ("%K%s %wd out of range %wd - %wd",
 	       exp, desc, lane, low, high - 1);
       else
-	error ("%s %lld out of range %lld - %lld", desc, lane, low, high - 1);
+	error ("%s %wd out of range %wd - %wd", desc, lane, low, high - 1);
     }
 }
 
@@ -12836,7 +12826,7 @@ neon_const_bounds (rtx operand, HOST_WIDE_INT low, HOST_WIDE_INT high)
 HOST_WIDE_INT
 neon_element_bits (machine_mode mode)
 {
-  return GET_MODE_BITSIZE (GET_MODE_INNER (mode));
+  return GET_MODE_UNIT_BITSIZE (mode);
 }
 
 
@@ -14412,7 +14402,10 @@ arm_block_move_unaligned_straight (rtx dstbase, rtx srcbase,
 				srcoffset + j * UNITS_PER_WORD - src_autoinc);
 	  mem = adjust_automodify_address (srcbase, SImode, addr,
 					   srcoffset + j * UNITS_PER_WORD);
-	  emit_insn (gen_unaligned_loadsi (regs[j], mem));
+	  if (src_aligned)
+	    emit_move_insn (regs[j], mem);
+	  else
+	    emit_insn (gen_unaligned_loadsi (regs[j], mem));
 	}
       srcoffset += words * UNITS_PER_WORD;
     }
@@ -14431,7 +14424,10 @@ arm_block_move_unaligned_straight (rtx dstbase, rtx srcbase,
 				dstoffset + j * UNITS_PER_WORD - dst_autoinc);
 	  mem = adjust_automodify_address (dstbase, SImode, addr,
 					   dstoffset + j * UNITS_PER_WORD);
-	  emit_insn (gen_unaligned_storesi (mem, regs[j]));
+	  if (dst_aligned)
+	    emit_move_insn (mem, regs[j]);
+	  else
+	    emit_insn (gen_unaligned_storesi (mem, regs[j]));
 	}
       dstoffset += words * UNITS_PER_WORD;
     }
