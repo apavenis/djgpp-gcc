@@ -29,6 +29,7 @@ EXTRA_GCC_OBJS += malloc.o
 # Use a larger stack for CC1, CC1PLUS, etc.
 # EXTRA_OBJS is not sufficient as djgpp-stack.o only contains data definition (_stklen)
 # and as result including it into static library does not help
+EXTRA_OBJS += djgpp-stack.o
 BACKEND += djgpp-stack.o
 
 # Some build tools also require larger stack (different object file name
