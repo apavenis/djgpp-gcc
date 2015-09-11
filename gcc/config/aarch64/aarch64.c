@@ -171,7 +171,7 @@ struct aarch64_flag_desc
   unsigned int flag;
 };
 
-#define AARCH64_FUSION_PAIR(name, internal_name, y) \
+#define AARCH64_FUSION_PAIR(name, internal_name) \
   { name, AARCH64_FUSE_##internal_name },
 static const struct aarch64_flag_desc aarch64_fusible_pairs[] =
 {
@@ -182,7 +182,7 @@ static const struct aarch64_flag_desc aarch64_fusible_pairs[] =
 };
 #undef AARCH64_FUION_PAIR
 
-#define AARCH64_EXTRA_TUNING_OPTION(name, internal_name, y) \
+#define AARCH64_EXTRA_TUNING_OPTION(name, internal_name) \
   { name, AARCH64_EXTRA_TUNE_##internal_name },
 static const struct aarch64_flag_desc aarch64_tuning_flags[] =
 {
@@ -585,6 +585,29 @@ static const char * const aarch64_condition_codes[] =
   "eq", "ne", "cs", "cc", "mi", "pl", "vs", "vc",
   "hi", "ls", "ge", "lt", "gt", "le", "al", "nv"
 };
+
+/* Generate code to enable conditional branches in functions over 1 MiB.  */
+const char *
+aarch64_gen_far_branch (rtx * operands, int pos_label, const char * dest,
+			const char * branch_format)
+{
+    rtx_code_label * tmp_label = gen_label_rtx ();
+    char label_buf[256];
+    char buffer[128];
+    ASM_GENERATE_INTERNAL_LABEL (label_buf, dest,
+				 CODE_LABEL_NUMBER (tmp_label));
+    const char *label_ptr = targetm.strip_name_encoding (label_buf);
+    rtx dest_label = operands[pos_label];
+    operands[pos_label] = tmp_label;
+
+    snprintf (buffer, sizeof (buffer), "%s%s", branch_format, label_ptr);
+    output_asm_insn (buffer, operands);
+
+    snprintf (buffer, sizeof (buffer), "b\t%%l%d\n%s:", pos_label, label_ptr);
+    operands[pos_label] = dest_label;
+    output_asm_insn (buffer, operands);
+    return "";
+}
 
 void
 aarch64_err_no_fpadvsimd (machine_mode mode, const char *msg)
@@ -1080,7 +1103,7 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
 	return;
       }
 
-    case SYMBOL_SMALL_GOTTPREL:
+    case SYMBOL_SMALL_TLSIE:
       {
 	/* In ILP32, the mode of dest can be either SImode or DImode,
 	   while the got entry is always of SImode size.  The mode of
@@ -1114,14 +1137,43 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
 	return;
       }
 
-    case SYMBOL_TLSLE:
+    case SYMBOL_TLSLE12:
+    case SYMBOL_TLSLE24:
+    case SYMBOL_TLSLE32:
+    case SYMBOL_TLSLE48:
       {
+	machine_mode mode = GET_MODE (dest);
 	rtx tp = aarch64_load_tp (NULL);
 
-	if (GET_MODE (dest) != Pmode)
-	  tp = gen_lowpart (GET_MODE (dest), tp);
+	if (mode != Pmode)
+	  tp = gen_lowpart (mode, tp);
 
-	emit_insn (gen_tlsle (dest, tp, imm));
+	switch (type)
+	  {
+	  case SYMBOL_TLSLE12:
+	    emit_insn ((mode == DImode ? gen_tlsle12_di : gen_tlsle12_si)
+			(dest, tp, imm));
+	    break;
+	  case SYMBOL_TLSLE24:
+	    emit_insn ((mode == DImode ? gen_tlsle24_di : gen_tlsle24_si)
+			(dest, tp, imm));
+	  break;
+	  case SYMBOL_TLSLE32:
+	    emit_insn ((mode == DImode ? gen_tlsle32_di : gen_tlsle32_si)
+			(dest, imm));
+	    emit_insn ((mode == DImode ? gen_adddi3 : gen_addsi3)
+			(dest, dest, tp));
+	  break;
+	  case SYMBOL_TLSLE48:
+	    emit_insn ((mode == DImode ? gen_tlsle48_di : gen_tlsle48_si)
+			(dest, imm));
+	    emit_insn ((mode == DImode ? gen_adddi3 : gen_addsi3)
+			(dest, dest, tp));
+	    break;
+	  default:
+	    gcc_unreachable ();
+	  }
+
 	set_unique_reg_note (get_last_insn (), REG_EQUIV, imm);
 	return;
       }
@@ -1129,6 +1181,31 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
     case SYMBOL_TINY_GOT:
       emit_insn (gen_ldr_got_tiny (dest, imm));
       return;
+
+    case SYMBOL_TINY_TLSIE:
+      {
+	machine_mode mode = GET_MODE (dest);
+	rtx tp = aarch64_load_tp (NULL);
+
+	if (mode == ptr_mode)
+	  {
+	    if (mode == DImode)
+	      emit_insn (gen_tlsie_tiny_di (dest, imm, tp));
+	    else
+	      {
+		tp = gen_lowpart (mode, tp);
+		emit_insn (gen_tlsie_tiny_si (dest, imm, tp));
+	      }
+	  }
+	else
+	  {
+	    gcc_assert (mode == Pmode);
+	    emit_insn (gen_tlsie_tiny_sidi (dest, imm, tp));
+	  }
+
+	set_unique_reg_note (get_last_insn (), REG_EQUIV, imm);
+	return;
+      }
 
     default:
       gcc_unreachable ();
@@ -1258,6 +1335,9 @@ aarch64_split_simd_combine (rtx dst, rtx src1, rtx src2)
 	case V2SImode:
 	  gen = gen_aarch64_simd_combinev2si;
 	  break;
+	case V4HFmode:
+	  gen = gen_aarch64_simd_combinev4hf;
+	  break;
 	case V2SFmode:
 	  gen = gen_aarch64_simd_combinev2sf;
 	  break;
@@ -1305,6 +1385,9 @@ aarch64_split_simd_move (rtx dst, rtx src)
 	  break;
 	case V2DImode:
 	  gen = gen_aarch64_split_simd_movv2di;
+	  break;
+	case V8HFmode:
+	  gen = gen_aarch64_split_simd_movv8hf;
 	  break;
 	case V4SFmode:
 	  gen = gen_aarch64_split_simd_movv4sf;
@@ -1660,10 +1743,11 @@ aarch64_expand_mov_immediate (rtx dest, rtx imm)
 
         case SYMBOL_SMALL_TLSGD:
         case SYMBOL_SMALL_TLSDESC:
-        case SYMBOL_SMALL_GOTTPREL:
+	case SYMBOL_SMALL_TLSIE:
 	case SYMBOL_SMALL_GOT_28K:
 	case SYMBOL_SMALL_GOT_4G:
 	case SYMBOL_TINY_GOT:
+	case SYMBOL_TINY_TLSIE:
 	  if (offset != const0_rtx)
 	    {
 	      gcc_assert(can_create_pseudo_p ());
@@ -1676,7 +1760,10 @@ aarch64_expand_mov_immediate (rtx dest, rtx imm)
 
 	case SYMBOL_SMALL_ABSOLUTE:
 	case SYMBOL_TINY_ABSOLUTE:
-	case SYMBOL_TLSLE:
+	case SYMBOL_TLSLE12:
+	case SYMBOL_TLSLE24:
+	case SYMBOL_TLSLE32:
+	case SYMBOL_TLSLE48:
 	  aarch64_load_symref_appropriately (dest, imm, sty);
 	  return;
 
@@ -4542,11 +4629,11 @@ aarch64_print_operand (FILE *f, rtx x, char code)
 	  asm_fprintf (asm_out_file, ":tlsdesc:");
 	  break;
 
-	case SYMBOL_SMALL_GOTTPREL:
+	case SYMBOL_SMALL_TLSIE:
 	  asm_fprintf (asm_out_file, ":gottprel:");
 	  break;
 
-	case SYMBOL_TLSLE:
+	case SYMBOL_TLSLE24:
 	  asm_fprintf (asm_out_file, ":tprel:");
 	  break;
 
@@ -4575,16 +4662,24 @@ aarch64_print_operand (FILE *f, rtx x, char code)
 	  asm_fprintf (asm_out_file, ":tlsdesc_lo12:");
 	  break;
 
-	case SYMBOL_SMALL_GOTTPREL:
+	case SYMBOL_SMALL_TLSIE:
 	  asm_fprintf (asm_out_file, ":gottprel_lo12:");
 	  break;
 
-	case SYMBOL_TLSLE:
+	case SYMBOL_TLSLE12:
+	  asm_fprintf (asm_out_file, ":tprel_lo12:");
+	  break;
+
+	case SYMBOL_TLSLE24:
 	  asm_fprintf (asm_out_file, ":tprel_lo12_nc:");
 	  break;
 
 	case SYMBOL_TINY_GOT:
 	  asm_fprintf (asm_out_file, ":got:");
+	  break;
+
+	case SYMBOL_TINY_TLSIE:
+	  asm_fprintf (asm_out_file, ":gottprel:");
 	  break;
 
 	default:
@@ -4597,7 +4692,7 @@ aarch64_print_operand (FILE *f, rtx x, char code)
 
       switch (aarch64_classify_symbolic_expression (x, SYMBOL_CONTEXT_ADR))
 	{
-	case SYMBOL_TLSLE:
+	case SYMBOL_TLSLE24:
 	  asm_fprintf (asm_out_file, ":tprel_hi12:");
 	  break;
 	default:
@@ -6674,6 +6769,25 @@ cost_plus:
       return true;
 
     case MOD:
+    /* We can expand signed mod by power of 2 using a NEGS, two parallel
+       ANDs and a CSNEG.  Assume here that CSNEG is the same as the cost of
+       an unconditional negate.  This case should only ever be reached through
+       the set_smod_pow2_cheap check in expmed.c.  */
+      if (CONST_INT_P (XEXP (x, 1))
+	  && exact_log2 (INTVAL (XEXP (x, 1))) > 0
+	  && (mode == SImode || mode == DImode))
+	{
+	  /* We expand to 4 instructions.  Reset the baseline.  */
+	  *cost = COSTS_N_INSNS (4);
+
+	  if (speed)
+	    *cost += 2 * extra_cost->alu.logical
+		     + 2 * extra_cost->alu.arith;
+
+	  return true;
+	}
+
+    /* Fall-through.  */
     case UMOD:
       if (speed)
 	{
@@ -7492,6 +7606,40 @@ aarch64_parse_one_override_token (const char* token,
   return;
 }
 
+/* A checking mechanism for the implementation of the tls size.  */
+
+static void
+initialize_aarch64_tls_size (struct gcc_options *opts)
+{
+  if (aarch64_tls_size == 0)
+    aarch64_tls_size = 24;
+
+  switch (opts->x_aarch64_cmodel_var)
+    {
+    case AARCH64_CMODEL_TINY:
+      /* Both the default and maximum TLS size allowed under tiny is 1M which
+	 needs two instructions to address, so we clamp the size to 24.  */
+      if (aarch64_tls_size > 24)
+	aarch64_tls_size = 24;
+      break;
+    case AARCH64_CMODEL_SMALL:
+      /* The maximum TLS size allowed under small is 4G.  */
+      if (aarch64_tls_size > 32)
+	aarch64_tls_size = 32;
+      break;
+    case AARCH64_CMODEL_LARGE:
+      /* The maximum TLS size allowed under large is 16E.
+	 FIXME: 16E should be 64bit, we only support 48bit offset now.  */
+      if (aarch64_tls_size > 48)
+	aarch64_tls_size = 48;
+      break;
+    default:
+      gcc_unreachable ();
+    }
+
+  return;
+}
+
 /* Parse STRING looking for options in the format:
      string	:: option:string
      option	:: name=substring
@@ -7584,6 +7732,7 @@ aarch64_override_options_internal (struct gcc_options *opts)
     }
 
   initialize_aarch64_code_model (opts);
+  initialize_aarch64_tls_size (opts);
 
   aarch64_override_options_after_change_1 (opts);
 }
@@ -7985,6 +8134,23 @@ aarch64_set_current_function (tree fndecl)
 	  else
 	    TREE_TARGET_GLOBALS (new_tree)
 	      = save_target_globals_default_opts ();
+	}
+    }
+
+  if (!fndecl)
+    return;
+
+  /* If we turned on SIMD make sure that any vector parameters are re-laid out
+     so that they use proper vector modes.  */
+  if (TARGET_SIMD)
+    {
+      tree parms = DECL_ARGUMENTS (fndecl);
+      for (; parms && parms != void_list_node; parms = TREE_CHAIN (parms))
+	{
+	  if (TREE_CODE (parms) == PARM_DECL
+	      && VECTOR_TYPE_P (TREE_TYPE (parms))
+	      && DECL_MODE (parms) != TYPE_MODE (TREE_TYPE (parms)))
+	    relayout_decl (parms);
 	}
     }
 }
@@ -8657,10 +8823,26 @@ aarch64_classify_tls_symbol (rtx x)
       return TARGET_TLS_DESC ? SYMBOL_SMALL_TLSDESC : SYMBOL_SMALL_TLSGD;
 
     case TLS_MODEL_INITIAL_EXEC:
-      return SYMBOL_SMALL_GOTTPREL;
+      switch (aarch64_cmodel)
+	{
+	case AARCH64_CMODEL_TINY:
+	case AARCH64_CMODEL_TINY_PIC:
+	  return SYMBOL_TINY_TLSIE;
+	default:
+	  return SYMBOL_SMALL_TLSIE;
+	}
 
     case TLS_MODEL_LOCAL_EXEC:
-      return SYMBOL_TLSLE;
+      if (aarch64_tls_size == 12)
+	return SYMBOL_TLSLE12;
+      else if (aarch64_tls_size == 24)
+	return SYMBOL_TLSLE24;
+      else if (aarch64_tls_size == 32)
+	return SYMBOL_TLSLE32;
+      else if (aarch64_tls_size == 48)
+	return SYMBOL_TLSLE48;
+      else
+	gcc_unreachable ();
 
     case TLS_MODEL_EMULATED:
     case TLS_MODEL_NONE:
@@ -9623,6 +9805,7 @@ aarch64_vector_mode_supported_p (machine_mode mode)
 	  || mode == V2SImode  || mode == V4HImode
 	  || mode == V8QImode || mode == V2SFmode
 	  || mode == V4SFmode || mode == V2DFmode
+	  || mode == V4HFmode || mode == V8HFmode
 	  || mode == V1DFmode))
     return true;
 
@@ -11742,6 +11925,8 @@ aarch64_evpc_dup (struct expand_vec_perm_d *d)
     case V4SImode: gen = gen_aarch64_dup_lanev4si; break;
     case V2SImode: gen = gen_aarch64_dup_lanev2si; break;
     case V2DImode: gen = gen_aarch64_dup_lanev2di; break;
+    case V8HFmode: gen = gen_aarch64_dup_lanev8hf; break;
+    case V4HFmode: gen = gen_aarch64_dup_lanev4hf; break;
     case V4SFmode: gen = gen_aarch64_dup_lanev4sf; break;
     case V2SFmode: gen = gen_aarch64_dup_lanev2sf; break;
     case V2DFmode: gen = gen_aarch64_dup_lanev2df; break;

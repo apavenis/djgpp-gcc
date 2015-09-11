@@ -1608,6 +1608,15 @@ expand_binop (machine_mode mode, optab binoptab, rtx op0, rtx op1,
 
       if (otheroptab && optab_handler (otheroptab, mode) != CODE_FOR_nothing)
 	{
+	  /* The scalar may have been extended to be too wide.  Truncate
+	     it back to the proper size to fit in the broadcast vector.  */
+	  machine_mode inner_mode = GET_MODE_INNER (mode);
+	  if (!CONST_INT_P (op1)
+	      && (GET_MODE_BITSIZE (inner_mode)
+		  < GET_MODE_BITSIZE (GET_MODE (op1))))
+	    op1 = force_reg (inner_mode,
+			     simplify_gen_unary (TRUNCATE, inner_mode, op1,
+						 GET_MODE (op1)));
 	  rtx vop1 = expand_vector_broadcast (mode, op1);
 	  if (vop1)
 	    {
@@ -4488,11 +4497,13 @@ emit_indirect_jump (rtx loc)
 {
   if (!targetm.have_indirect_jump ())
     sorry ("indirect jumps are not available on this target");
-
-  struct expand_operand ops[1];
-  create_address_operand (&ops[0], loc);
-  expand_jump_insn (targetm.code_for_indirect_jump, 1, ops);
-  emit_barrier ();
+  else
+    {
+      struct expand_operand ops[1];
+      create_address_operand (&ops[0], loc);
+      expand_jump_insn (targetm.code_for_indirect_jump, 1, ops);
+      emit_barrier ();
+    }
 }
 
 

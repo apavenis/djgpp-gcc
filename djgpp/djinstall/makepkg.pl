@@ -119,7 +119,10 @@ my @cpp_rename = (
 "unordered_map:unordmap",
 "unordered_set:unordset",
 "unordered_map:unordmap",
-"unordered_set:unordset"
+"unordered_set:unordset",
+
+"experimental/unordered_map:unordmap",
+"experimental/unordered_set:unordset",
 );
 
 my @c_inc_rename = (
@@ -720,7 +723,7 @@ sub mk_manifest
         '/include/header.gcc$',
         '/include-fixed/(?:limits|syslimits|wchar)\.h$',
         '/include-fixed/readme$',
-        '/include/(?:abm|fma4|ia32|lwp|popcnt|xop|xtest)intrin.h$',
+        '/include/(?:abm|fma4|ia32|lwp|popcnt|xop|xtest|mwaitx)intrin.h$',
 	'/include/(?:adx|fxsr|prfchw|rdseed|rtm|xsave|xsaveopt)intrin.h$',
         '/include/(?:clflushopt|clwb|pcommit|xsavec|xsaves|)intrin.(?:h|h2|h3)$',
         '/include/cross-stdarg.h$',
