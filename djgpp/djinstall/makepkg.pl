@@ -720,7 +720,7 @@ sub mk_manifest
         '/include/header.gcc$',
         '/include-fixed/(?:limits|syslimits|wchar)\.h$',
         '/include-fixed/readme$',
-        '/include/(?:abm|fma4|ia32|lwp|popcnt|xop|xtest)intrin.h$',
+        '/include/(?:abm|fma4|ia32|lwp|popcnt|xop|xtest|mwaitx)intrin.h$',
 	'/include/(?:adx|fxsr|prfchw|rdseed|rtm|xsave|xsaveopt)intrin.h$',
         '/include/(?:clflushopt|clwb|pcommit|xsavec|xsaves|)intrin.(?:h|h2|h3)$',
         '/include/cross-stdarg.h$',
