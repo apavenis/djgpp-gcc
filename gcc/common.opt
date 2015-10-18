@@ -46,6 +46,11 @@ int optimize_fast
 Variable
 bool in_lto_p = false
 
+; Enable additional checks of internal state consistency, which may slow
+; the compiler down.
+Variable
+bool flag_checking = CHECKING_P
+
 ; 0 means straightforward implementation of complex divide acceptable.
 ; 1 means wide ranges of inputs must work for complex divide.
 ; 2 means C99-like requirements for complex multiply and divide.
@@ -1909,6 +1914,19 @@ Perform a target dependent instruction fusion optimization pass
 freorder-blocks
 Common Report Var(flag_reorder_blocks) Optimization
 Reorder basic blocks to improve code placement
+
+freorder-blocks-algorithm=
+Common Joined RejectNegative Enum(reorder_blocks_algorithm) Var(flag_reorder_blocks_algorithm) Init(REORDER_BLOCKS_ALGORITHM_SIMPLE) Optimization
+-freorder-blocks-algorithm=[simple|stc] Set the used basic block reordering algorithm
+
+Enum
+Name(reorder_blocks_algorithm) Type(enum reorder_blocks_algorithm) UnknownError(unknown basic block reordering algorithm %qs)
+
+EnumValue
+Enum(reorder_blocks_algorithm) String(simple) Value(REORDER_BLOCKS_ALGORITHM_SIMPLE)
+
+EnumValue
+Enum(reorder_blocks_algorithm) String(stc) Value(REORDER_BLOCKS_ALGORITHM_STC)
 
 freorder-blocks-and-partition
 Common Report Var(flag_reorder_blocks_and_partition) Optimization

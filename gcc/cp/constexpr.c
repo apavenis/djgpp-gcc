@@ -2505,7 +2505,7 @@ cxx_fold_indirect_ref (location_t loc, tree type, tree op0, bool *empty_base)
 			(TREE_TYPE (field), type)))
 		  {
 		    return fold_build3 (COMPONENT_REF, type, op00,
-				     field, NULL_TREE);
+					field, NULL_TREE);
 		    break;
 		  }
 	    }
@@ -4385,6 +4385,8 @@ potential_constant_expression_1 (tree t, bool want_rval, bool strict,
     case TRUTH_NOT_EXPR:
     case FIXED_CONVERT_EXPR:
     case UNARY_PLUS_EXPR:
+    case UNARY_LEFT_FOLD_EXPR:
+    case UNARY_RIGHT_FOLD_EXPR:
     unary:
       return RECUR (TREE_OPERAND (t, 0), rval);
 
@@ -4565,6 +4567,8 @@ potential_constant_expression_1 (tree t, bool want_rval, bool strict,
     case MEMBER_REF:
     case DOTSTAR_EXPR:
     case MEM_REF:
+    case BINARY_LEFT_FOLD_EXPR:
+    case BINARY_RIGHT_FOLD_EXPR:
     binary:
       for (i = 0; i < 2; ++i)
 	if (!RECUR (TREE_OPERAND (t, i), want_rval))
