@@ -6563,13 +6563,13 @@ gfc_trans_alloc_subarray_assign (tree dest, gfc_component * cm,
 	{
 	  tmp = TREE_TYPE (dest);
 	  tmp = gfc_duplicate_allocatable (dest, se.expr,
-					   tmp, expr->rank);
+					   tmp, expr->rank, NULL_TREE);
 	}
     }
   else
     tmp = gfc_duplicate_allocatable (dest, se.expr,
 				     TREE_TYPE(cm->backend_decl),
-				     cm->as->rank);
+				     cm->as->rank, NULL_TREE);
 
   gfc_add_expr_to_block (&block, tmp);
   gfc_add_block_to_block (&block, &se.post);
@@ -8999,7 +8999,6 @@ gfc_trans_assignment_1 (gfc_expr * expr1, gfc_expr * expr2, bool init_flag,
   scalar_to_array = (expr2->ts.type == BT_DERIVED
 		       && expr2->ts.u.derived->attr.alloc_comp
 		       && !expr_is_variable (expr2)
-		       && !gfc_is_constant_expr (expr2)
 		       && expr1->rank && !expr2->rank);
   scalar_to_array |= (expr1->ts.type == BT_DERIVED
 				    && expr1->rank
