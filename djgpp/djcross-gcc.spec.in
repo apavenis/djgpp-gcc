@@ -455,6 +455,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sun Nov 08 2015 Andris Pavenis <andris.pavenis@iki.fi>
+- Use GMP-6.1.0
+
 * Wed Apr 22 2015 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to gcc-5.1.0
 
