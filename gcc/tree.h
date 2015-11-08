@@ -1,4 +1,3 @@
-
 /* Definitions for the ubiquitous 'tree' type for GNU compilers.
    Copyright (C) 1989-2015 Free Software Foundation, Inc.
 
@@ -469,6 +468,12 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 /* Nonzero if TYPE represents a vector type.  */
 
 #define VECTOR_TYPE_P(TYPE) (TREE_CODE (TYPE) == VECTOR_TYPE)
+
+/* Nonzero if TYPE represents a vector of booleans.  */
+
+#define VECTOR_BOOLEAN_TYPE_P(TYPE)				\
+  (TREE_CODE (TYPE) == VECTOR_TYPE			\
+   && TREE_CODE (TREE_TYPE (TYPE)) == BOOLEAN_TYPE)
 
 /* Nonzero if TYPE represents an integral type.  Note that we do not
    include COMPLEX types here.  Keep these checks in ascending code
@@ -1212,16 +1217,6 @@ extern void protected_set_expr_location (tree, location_t);
 #define OMP_STANDALONE_CLAUSES(NODE) \
   TREE_OPERAND (TREE_RANGE_CHECK (NODE, OACC_CACHE, OMP_TARGET_EXIT_DATA), 0)
 
-#define OACC_PARALLEL_BODY(NODE) \
-  TREE_OPERAND (OACC_PARALLEL_CHECK (NODE), 0)
-#define OACC_PARALLEL_CLAUSES(NODE) \
-  TREE_OPERAND (OACC_PARALLEL_CHECK (NODE), 1)
-
-#define OACC_KERNELS_BODY(NODE) \
-  TREE_OPERAND (OACC_KERNELS_CHECK(NODE), 0)
-#define OACC_KERNELS_CLAUSES(NODE) \
-  TREE_OPERAND (OACC_KERNELS_CHECK(NODE), 1)
-
 #define OACC_DATA_BODY(NODE) \
   TREE_OPERAND (OACC_DATA_CHECK (NODE), 0)
 #define OACC_DATA_CLAUSES(NODE) \
@@ -1264,8 +1259,7 @@ extern void protected_set_expr_location (tree, location_t);
 #define OMP_FOR_COND(NODE)	   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 3)
 #define OMP_FOR_INCR(NODE)	   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 4)
 #define OMP_FOR_PRE_BODY(NODE)	   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 5)
-/* Note that this is only available for OMP_FOR, hence OMP_FOR_CHECK.  */
-#define OMP_FOR_ORIG_DECLS(NODE)   TREE_OPERAND (OMP_FOR_CHECK (NODE), 6)
+#define OMP_FOR_ORIG_DECLS(NODE)   TREE_OPERAND (OMP_LOOP_CHECK (NODE), 6)
 
 #define OMP_SECTIONS_BODY(NODE)    TREE_OPERAND (OMP_SECTIONS_CHECK (NODE), 0)
 #define OMP_SECTIONS_CLAUSES(NODE) TREE_OPERAND (OMP_SECTIONS_CHECK (NODE), 1)
@@ -1325,15 +1319,6 @@ extern void protected_set_expr_location (tree, location_t);
    This status is meaningful in the implementation of lastprivate.  */
 #define OMP_SECTION_LAST(NODE) \
   (OMP_SECTION_CHECK (NODE)->base.private_flag)
-
-/* True on an OACC_KERNELS statement if is represents combined kernels loop
-   directive.  */
-#define OACC_KERNELS_COMBINED(NODE) \
-  (OACC_KERNELS_CHECK (NODE)->base.private_flag)
-
-/* Like OACC_KERNELS_COMBINED, but for parallel loop directive.  */
-#define OACC_PARALLEL_COMBINED(NODE) \
-  (OACC_PARALLEL_CHECK (NODE)->base.private_flag)
 
 /* True on an OMP_PARALLEL statement if it represents an explicit
    combined parallel work-sharing constructs.  */
@@ -1466,10 +1451,6 @@ extern void protected_set_expr_location (tree, location_t);
    OMP_CLAUSE_MAP with GOMP_MAP_POINTER are marked with this flag.  */
 #define OMP_CLAUSE_MAP_ZERO_BIAS_ARRAY_SECTION(NODE) \
   (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_MAP)->base.public_flag)
-/* Nonzero if the same decl appears both in OMP_CLAUSE_MAP and either
-   OMP_CLAUSE_PRIVATE or OMP_CLAUSE_FIRSTPRIVATE.  */
-#define OMP_CLAUSE_MAP_PRIVATE(NODE) \
-  TREE_PRIVATE (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_MAP))
 /* Nonzero if this is a mapped array section, that might need special
    treatment if OMP_CLAUSE_SIZE is zero.  */
 #define OMP_CLAUSE_MAP_MAYBE_ZERO_LENGTH_ARRAY_SECTION(NODE) \
@@ -1574,6 +1555,9 @@ extern void protected_set_expr_location (tree, location_t);
 
 #define OMP_CLAUSE_DEFAULT_KIND(NODE) \
   (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_DEFAULT)->omp_clause.subcode.default_kind)
+
+#define OMP_CLAUSE_TILE_LIST(NODE) \
+  OMP_CLAUSE_OPERAND (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_TILE), 0)
 
 /* SSA_NAME accessors.  */
 
@@ -3847,6 +3831,7 @@ extern tree build_constructor_from_list (tree, tree);
 extern tree build_constructor_va (tree, int, ...);
 extern tree build_real_from_int_cst (tree, const_tree);
 extern tree build_complex (tree, tree, tree);
+extern tree build_complex_inf (tree, bool);
 extern tree build_each_one_cst (tree);
 extern tree build_one_cst (tree);
 extern tree build_minus_one_cst (tree);
@@ -3895,6 +3880,8 @@ extern tree build_reference_type_for_mode (tree, machine_mode, bool);
 extern tree build_reference_type (tree);
 extern tree build_vector_type_for_mode (tree, machine_mode);
 extern tree build_vector_type (tree innertype, int nunits);
+extern tree build_truth_vector_type (unsigned, unsigned);
+extern tree build_same_sized_truth_vector_type (tree vectype);
 extern tree build_opaque_vector_type (tree innertype, int nunits);
 extern tree build_index_type (tree);
 extern tree build_array_type (tree, tree);
@@ -4615,6 +4602,7 @@ extern void init_ttree (void);
 extern void build_common_tree_nodes (bool, bool);
 extern void build_common_builtin_nodes (void);
 extern tree build_nonstandard_integer_type (unsigned HOST_WIDE_INT, int);
+extern tree build_nonstandard_boolean_type (unsigned HOST_WIDE_INT);
 extern tree build_range_type (tree, tree, tree);
 extern tree build_nonshared_range_type (tree, tree, tree);
 extern bool subrange_type_for_debug_p (const_tree, tree *, tree *);

@@ -31,22 +31,21 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
+#include "target.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "tree-pass.h"
 #include "ssa.h"
+#include "cgraph.h"
+#include "diagnostic.h"
 #include "flags.h"
 #include "alias.h"
 #include "fold-const.h"
 #include "stor-layout.h"
 #include "calls.h"
 #include "attribs.h"
-#include "varasm.h"
-#include "tm_p.h"
 #include "toplev.h" /* get_random_seed */
-#include "filenames.h"
 #include "output.h"
-#include "target.h"
 #include "common/common-target.h"
 #include "langhooks.h"
 #include "tree-inline.h"
@@ -54,24 +53,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "internal-fn.h"
 #include "gimple-iterator.h"
 #include "gimplify.h"
-#include "cgraph.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "emit-rtl.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
 #include "params.h"
-#include "tree-pass.h"
 #include "langhooks-def.h"
-#include "diagnostic.h"
 #include "tree-diagnostic.h"
-#include "tree-pretty-print.h"
 #include "except.h"
-#include "debug.h"
-#include "intl.h"
 #include "builtins.h"
 #include "print-tree.h"
 #include "ipa-utils.h"
@@ -342,6 +328,7 @@ unsigned const char omp_clause_num_ops[] =
   1, /* OMP_CLAUSE_NUM_GANGS  */
   1, /* OMP_CLAUSE_NUM_WORKERS  */
   1, /* OMP_CLAUSE_VECTOR_LENGTH  */
+  1, /* OMP_CLAUSE_TILE  */
 };
 
 const char * const omp_clause_code_name[] =
@@ -412,7 +399,8 @@ const char * const omp_clause_code_name[] =
   "vector",
   "num_gangs",
   "num_workers",
-  "vector_length"
+  "vector_length",
+  "tile"
 };
 
 
@@ -1364,7 +1352,7 @@ int_cst_hasher::hash (tree x)
   int i;
 
   for (i = 0; i < TREE_INT_CST_NUNITS (t); i++)
-    code ^= TREE_INT_CST_ELT (t, i);
+    code = iterative_hash_host_wide_int (TREE_INT_CST_ELT(t, i), code);
 
   return code;
 }
@@ -1730,13 +1718,19 @@ tree
 build_vector_from_ctor (tree type, vec<constructor_elt, va_gc> *v)
 {
   tree *vec = XALLOCAVEC (tree, TYPE_VECTOR_SUBPARTS (type));
-  unsigned HOST_WIDE_INT idx;
+  unsigned HOST_WIDE_INT idx, pos = 0;
   tree value;
 
   FOR_EACH_CONSTRUCTOR_VALUE (v, idx, value)
-    vec[idx] = value;
+    {
+      if (TREE_CODE (value) == VECTOR_CST)
+	for (unsigned i = 0; i < VECTOR_CST_NELTS (value); ++i)
+	  vec[pos++] = VECTOR_CST_ELT (value, i);
+      else
+	vec[pos++] = value;
+    }
   for (; idx < TYPE_VECTOR_SUBPARTS (type); ++idx)
-    vec[idx] = build_zero_cst (TREE_TYPE (type));
+    vec[pos++] = build_zero_cst (TREE_TYPE (type));
 
   return build_vector (type, vec);
 }
@@ -1984,6 +1978,21 @@ build_complex (tree type, tree real, tree imag)
   TREE_TYPE (t) = type ? type : build_complex_type (TREE_TYPE (real));
   TREE_OVERFLOW (t) = TREE_OVERFLOW (real) | TREE_OVERFLOW (imag);
   return t;
+}
+
+/* Build a complex (inf +- 0i), such as for the result of cproj.
+   TYPE is the complex tree type of the result.  If NEG is true, the
+   imaginary zero is negative.  */
+
+tree
+build_complex_inf (tree type, bool neg)
+{
+  REAL_VALUE_TYPE rinf, rzero = dconst0;
+
+  real_inf (&rinf);
+  rzero.sign = neg;
+  return build_complex (type, build_real (TREE_TYPE (type), rinf),
+			build_real (TREE_TYPE (type), rzero));
 }
 
 /* Return the constant 1 in type TYPE.  If TYPE has several elements, each
@@ -5937,10 +5946,11 @@ free_lang_data_in_cgraph (void)
   /* Traverse every type found freeing its language data.  */
   FOR_EACH_VEC_ELT (fld.types, i, t)
     free_lang_data_in_type (t);
-#ifdef ENABLE_CHECKING
-  FOR_EACH_VEC_ELT (fld.types, i, t)
-    verify_type (t);
-#endif
+  if (flag_checking)
+    {
+      FOR_EACH_VEC_ELT (fld.types, i, t)
+	verify_type (t);
+    }
 
   delete fld.pset;
   fld.worklist.release ();
@@ -8041,6 +8051,34 @@ build_nonstandard_integer_type (unsigned HOST_WIDE_INT precision,
   return ret;
 }
 
+#define MAX_BOOL_CACHED_PREC \
+  (HOST_BITS_PER_WIDE_INT > 64 ? HOST_BITS_PER_WIDE_INT : 64)
+static GTY(()) tree nonstandard_boolean_type_cache[MAX_BOOL_CACHED_PREC + 1];
+
+/* Builds a boolean type of precision PRECISION.
+   Used for boolean vectors to choose proper vector element size.  */
+tree
+build_nonstandard_boolean_type (unsigned HOST_WIDE_INT precision)
+{
+  tree type;
+
+  if (precision <= MAX_BOOL_CACHED_PREC)
+    {
+      type = nonstandard_boolean_type_cache[precision];
+      if (type)
+	return type;
+    }
+
+  type = make_node (BOOLEAN_TYPE);
+  TYPE_PRECISION (type) = precision;
+  fixup_unsigned_type (type);
+
+  if (precision <= MAX_INT_CACHED_PREC)
+    nonstandard_boolean_type_cache[precision] = type;
+
+  return type;
+}
+
 /* Create a range of some discrete type TYPE (an INTEGER_TYPE, ENUMERAL_TYPE
    or BOOLEAN_TYPE) with low bound LOWVAL and high bound HIGHVAL.  If SHARED
    is true, reuse such a type that has already been constructed.  */
@@ -9791,8 +9829,9 @@ make_vector_type (tree innertype, int nunits, machine_mode mode)
 
   if (TYPE_STRUCTURAL_EQUALITY_P (innertype))
     SET_TYPE_STRUCTURAL_EQUALITY (t);
-  else if (TYPE_CANONICAL (innertype) != innertype
-	   || mode != VOIDmode)
+  else if ((TYPE_CANONICAL (innertype) != innertype
+	    || mode != VOIDmode)
+	   && !VECTOR_BOOLEAN_TYPE_P (t))
     TYPE_CANONICAL (t)
       = make_vector_type (TYPE_CANONICAL (innertype), nunits, VOIDmode);
 
@@ -10617,6 +10656,46 @@ build_vector_type (tree innertype, int nunits)
   return make_vector_type (innertype, nunits, VOIDmode);
 }
 
+/* Build truth vector with specified length and number of units.  */
+
+tree
+build_truth_vector_type (unsigned nunits, unsigned vector_size)
+{
+  machine_mode mask_mode = targetm.vectorize.get_mask_mode (nunits,
+							    vector_size);
+
+  gcc_assert (mask_mode != VOIDmode);
+
+  unsigned HOST_WIDE_INT vsize;
+  if (mask_mode == BLKmode)
+    vsize = vector_size * BITS_PER_UNIT;
+  else
+    vsize = GET_MODE_BITSIZE (mask_mode);
+
+  unsigned HOST_WIDE_INT esize = vsize / nunits;
+  gcc_assert (esize * nunits == vsize);
+
+  tree bool_type = build_nonstandard_boolean_type (esize);
+
+  return make_vector_type (bool_type, nunits, mask_mode);
+}
+
+/* Returns a vector type corresponding to a comparison of VECTYPE.  */
+
+tree
+build_same_sized_truth_vector_type (tree vectype)
+{
+  if (VECTOR_BOOLEAN_TYPE_P (vectype))
+    return vectype;
+
+  unsigned HOST_WIDE_INT size = GET_MODE_SIZE (TYPE_MODE (vectype));
+
+  if (!size)
+    size = tree_to_uhwi (TYPE_SIZE_UNIT (vectype));
+
+  return build_truth_vector_type (TYPE_VECTOR_SUBPARTS (vectype), size);
+}
+
 /* Similarly, but builds a variant type with TYPE_VECTOR_OPAQUE set.  */
 
 tree
@@ -11103,9 +11182,10 @@ truth_type_for (tree type)
 {
   if (TREE_CODE (type) == VECTOR_TYPE)
     {
-      tree elem = lang_hooks.types.type_for_size
-        (GET_MODE_BITSIZE (TYPE_MODE (TREE_TYPE (type))), 0);
-      return build_opaque_vector_type (elem, TYPE_VECTOR_SUBPARTS (type));
+      if (VECTOR_BOOLEAN_TYPE_P (type))
+	return type;
+      return build_truth_vector_type (TYPE_VECTOR_SUBPARTS (type),
+				      GET_MODE_SIZE (TYPE_MODE (type)));
     }
   else
     return boolean_type_node;
@@ -11517,6 +11597,7 @@ walk_tree_1 (tree *tp, walk_tree_fn func, void *data,
 	case OMP_CLAUSE_DEFAULTMAP:
 	case OMP_CLAUSE_AUTO:
 	case OMP_CLAUSE_SEQ:
+	case OMP_CLAUSE_TILE:
 	  WALK_SUBTREE_TAIL (OMP_CLAUSE_CHAIN (*tp));
 
 	case OMP_CLAUSE_LASTPRIVATE:
@@ -13340,6 +13421,14 @@ verify_type (const_tree t)
 	   && !gimple_canonical_types_compatible_p (t, ct, false))
     {
       error ("TYPE_CANONICAL is not compatible");
+      debug_tree (ct);
+      error_found = true;
+    }
+
+  if (COMPLETE_TYPE_P (t) && TYPE_CANONICAL (t)
+      && TYPE_MODE (t) != TYPE_MODE (TYPE_CANONICAL (t)))
+    {
+      error ("TYPE_MODE of TYPE_CANONICAL is not compatible");
       debug_tree (ct);
       error_found = true;
     }

@@ -439,7 +439,7 @@ powerpc*-*-*)
 	cpu_type=rs6000
 	extra_headers="ppc-asm.h altivec.h spe.h ppu_intrinsics.h paired.h spu2vmx.h vec_types.h si2vmx.h htmintrin.h htmxlintrin.h"
 	case x$with_cpu in
-	    xpowerpc64|xdefault64|x6[23]0|x970|xG5|xpower[345678]|xpower6x|xrs64a|xcell|xa2|xe500mc64|xe5500|Xe6500)
+	    xpowerpc64|xdefault64|x6[23]0|x970|xG5|xpower[345678]|xpower6x|xrs64a|xcell|xa2|xe500mc64|xe5500|xe6500)
 		cpu_is_64bit=yes
 		;;
 	esac
@@ -2443,6 +2443,10 @@ powerpc*-*-linux*)
 	    powerpc*-*-linux*paired*)
 		tm_file="${tm_file} rs6000/750cl.h" ;;
 	esac
+	case ${target} in
+	    *-linux*-musl*)
+		enable_secureplt=yes ;;
+	esac
 	if test x${enable_secureplt} = xyes; then
 		tm_file="rs6000/secureplt.h ${tm_file}"
 	fi
@@ -2536,6 +2540,7 @@ rs6000-ibm-aix6.* | powerpc-ibm-aix6.*)
 	thread_file='aix'
 	use_gcc_stdint=wrap
 	extra_headers=altivec.h
+	default_use_cxa_atexit=yes
 	;;
 rs6000-ibm-aix[789].* | powerpc-ibm-aix[789].*)
 	tm_file="${tm_file} rs6000/aix.h rs6000/aix71.h rs6000/xcoff.h rs6000/aix-stdint.h"
@@ -2545,6 +2550,7 @@ rs6000-ibm-aix[789].* | powerpc-ibm-aix[789].*)
 	thread_file='aix'
 	use_gcc_stdint=wrap
 	extra_headers=altivec.h
+	default_use_cxa_atexit=yes
 	;;
 rl78-*-elf*)
 	tm_file="dbxelf.h elfos.h newlib-stdint.h ${tm_file}"
@@ -2622,6 +2628,9 @@ sh-*-elf* | sh[12346l]*-*-elf* | \
 	tm_file="${tm_file} dbxelf.h elfos.h sh/elf.h"
 	case ${target} in
 	sh*-*-linux*)	tmake_file="${tmake_file} sh/t-linux"
+			if test x$enable_fdpic = xyes; then
+				tm_defines="$tm_defines FDPIC_DEFAULT=1"
+			fi
 			tm_file="${tm_file} gnu-user.h linux.h glibc-stdint.h sh/linux.h" ;;
 	sh*-*-netbsd*)
 			tm_file="${tm_file} netbsd.h netbsd-elf.h sh/netbsd-elf.h"

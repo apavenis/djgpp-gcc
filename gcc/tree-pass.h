@@ -300,6 +300,9 @@ protected:
 /* Rebuild the callgraph edges.  */
 #define TODO_rebuild_cgraph_edges       (1 << 22)
 
+/* Release function body and stop pass manager.  */
+#define TODO_discard_function		(1 << 23)
+
 /* Internally used in execute_function_todo().  */
 #define TODO_update_ssa_any		\
     (TODO_update_ssa			\
@@ -487,6 +490,8 @@ extern ipa_opt_pass_d *make_pass_ipa_reference (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_pure_const (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_pta (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_tm (gcc::context *ctxt);
+extern simple_ipa_opt_pass *make_pass_target_clone (gcc::context *ctxt);
+extern simple_ipa_opt_pass *make_pass_dispatcher_calls (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_omp_simd_clone (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_profile (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_cdtor_merge (gcc::context *ctxt);
@@ -497,6 +502,7 @@ extern gimple_opt_pass *make_pass_cleanup_cfg_post_optimizing (gcc::context
 							       *ctxt);
 extern gimple_opt_pass *make_pass_init_datastructures (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_fixup_cfg (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_backprop (gcc::context *ctxt);
 
 extern rtl_opt_pass *make_pass_expand (gcc::context *ctxt);
 extern rtl_opt_pass *make_pass_instantiate_virtual_regs (gcc::context *ctxt);

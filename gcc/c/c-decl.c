@@ -27,38 +27,32 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "tm.h"
-#include "intl.h"
+#include "target.h"
+#include "function.h"
 #include "tree.h"
-#include "alias.h"
-#include "fold-const.h"
+#include "c-family/c-common.h"
+#include "c-tree.h"
+#include "timevar.h"
+#include "tm_p.h"
+#include "stringpool.h"
+#include "cgraph.h"
+#include "intl.h"
 #include "print-tree.h"
 #include "stor-layout.h"
 #include "varasm.h"
 #include "attribs.h"
-#include "stringpool.h"
 #include "tree-inline.h"
 #include "flags.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "c-tree.h"
 #include "toplev.h"
-#include "tm_p.h"
-#include "cpplib.h"
-#include "target.h"
 #include "debug.h"
 #include "opts.h"
-#include "timevar.h"
-#include "c-family/c-common.h"
 #include "c-family/c-objc.h"
 #include "c-family/c-pragma.h"
 #include "c-family/c-ubsan.h"
 #include "c-lang.h"
 #include "langhooks.h"
 #include "tree-iterator.h"
-#include "diagnostic-core.h"
 #include "dumpfile.h"
-#include "cgraph.h"
 #include "langhooks-def.h"
 #include "plugin.h"
 #include "c-family/c-ada-spec.h"
@@ -4417,13 +4411,7 @@ c_decl_attributes (tree *node, tree attributes, int flags)
 	  || TREE_CODE (*node) == FUNCTION_DECL))
     {
       if (VAR_P (*node)
-	  && ((DECL_CONTEXT (*node)
-	       && TREE_CODE (DECL_CONTEXT (*node)) == FUNCTION_DECL)
-	      || (current_function_decl && !DECL_EXTERNAL (*node))))
-	error ("%q+D in block scope inside of declare target directive",
-	       *node);
-      else if (VAR_P (*node)
-	       && !lang_hooks.types.omp_mappable_type (TREE_TYPE (*node)))
+	  && !lang_hooks.types.omp_mappable_type (TREE_TYPE (*node)))
 	error ("%q+D in declare target directive does not have mappable type",
 	       *node);
       else
@@ -5297,9 +5285,10 @@ warn_defaults_to (location_t location, int opt, const char *gmsgid, ...)
 {
   diagnostic_info diagnostic;
   va_list ap;
+  rich_location richloc (location);
 
   va_start (ap, gmsgid);
-  diagnostic_set_info (&diagnostic, gmsgid, &ap, location,
+  diagnostic_set_info (&diagnostic, gmsgid, &ap, &richloc,
                        flag_isoc99 ? DK_PEDWARN : DK_WARNING);
   diagnostic.option_index = opt;
   report_diagnostic (&diagnostic);
@@ -8328,6 +8317,12 @@ start_function (struct c_declspecs *declspecs, struct c_declarator *declarator,
 	  && comptypes (TREE_TYPE (TREE_TYPE (decl1)),
 			TREE_TYPE (TREE_TYPE (old_decl))))
 	{
+	  if (stdarg_p (TREE_TYPE (old_decl)))
+	    {
+	      warning_at (loc, 0, "%q+D defined as variadic function "
+			  "without prototype", decl1);
+	      locate_old_decl (old_decl);
+	    }
 	  TREE_TYPE (decl1) = composite_type (TREE_TYPE (old_decl),
 					      TREE_TYPE (decl1));
 	  current_function_prototype_locus = DECL_SOURCE_LOCATION (old_decl);

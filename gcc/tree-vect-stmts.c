@@ -22,18 +22,20 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "dumpfile.h"
 #include "backend.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
 #include "ssa.h"
+#include "optabs-tree.h"
+#include "insn-config.h"
+#include "recog.h"		/* FIXME: for insn_data */
+#include "cgraph.h"
+#include "dumpfile.h"
 #include "alias.h"
 #include "fold-const.h"
 #include "stor-layout.h"
-#include "target.h"
-#include "gimple-pretty-print.h"
-#include "internal-fn.h"
 #include "tree-eh.h"
 #include "gimplify.h"
 #include "gimple-iterator.h"
@@ -43,14 +45,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "cfgloop.h"
 #include "tree-ssa-loop.h"
 #include "tree-scalar-evolution.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "recog.h"		/* FIXME: for insn_data */
-#include "insn-codes.h"
-#include "optabs-tree.h"
-#include "diagnostic-core.h"
 #include "tree-vectorizer.h"
-#include "cgraph.h"
 #include "builtins.h"
 
 /* For lang_hooks.types.type_for_mode.  */
@@ -2831,6 +2826,9 @@ vectorizable_simd_clone_call (gimple *stmt, gimple_stmt_iterator *gsi,
 	      case SIMD_CLONE_ARG_TYPE_LINEAR_VARIABLE_STEP:
 	      case SIMD_CLONE_ARG_TYPE_LINEAR_VAL_CONSTANT_STEP:
 	      case SIMD_CLONE_ARG_TYPE_LINEAR_UVAL_CONSTANT_STEP:
+	      case SIMD_CLONE_ARG_TYPE_LINEAR_REF_VARIABLE_STEP:
+	      case SIMD_CLONE_ARG_TYPE_LINEAR_VAL_VARIABLE_STEP:
+	      case SIMD_CLONE_ARG_TYPE_LINEAR_UVAL_VARIABLE_STEP:
 		/* FORNOW */
 		i = -1;
 		break;
@@ -3103,6 +3101,9 @@ vectorizable_simd_clone_call (gimple *stmt, gimple_stmt_iterator *gsi,
 		}
 	      break;
 	    case SIMD_CLONE_ARG_TYPE_LINEAR_VARIABLE_STEP:
+	    case SIMD_CLONE_ARG_TYPE_LINEAR_REF_VARIABLE_STEP:
+	    case SIMD_CLONE_ARG_TYPE_LINEAR_VAL_VARIABLE_STEP:
+	    case SIMD_CLONE_ARG_TYPE_LINEAR_UVAL_VARIABLE_STEP:
 	    default:
 	      gcc_unreachable ();
 	    }
@@ -4702,7 +4703,26 @@ vectorizable_operation (gimple *stmt, gimple_stmt_iterator *gsi,
   /* If op0 is an external or constant def use a vector type with
      the same size as the output vector type.  */
   if (!vectype)
-    vectype = get_same_sized_vectype (TREE_TYPE (op0), vectype_out);
+    {
+      /* For boolean type we cannot determine vectype by
+	 invariant value (don't know whether it is a vector
+	 of booleans or vector of integers).  We use output
+	 vectype because operations on boolean don't change
+	 type.  */
+      if (TREE_CODE (TREE_TYPE (op0)) == BOOLEAN_TYPE)
+	{
+	  if (TREE_CODE (TREE_TYPE (scalar_dest)) != BOOLEAN_TYPE)
+	    {
+	      if (dump_enabled_p ())
+		dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				 "not supported operation on bool value.\n");
+	      return false;
+	    }
+	  vectype = vectype_out;
+	}
+      else
+	vectype = get_same_sized_vectype (TREE_TYPE (op0), vectype_out);
+    }
   if (vec_stmt)
     gcc_assert (vectype);
   if (!vectype)
@@ -7202,21 +7222,24 @@ vectorizable_condition (gimple *stmt, gimple_stmt_iterator *gsi,
   if (reduc_index && STMT_SLP_TYPE (stmt_info))
     return false;
 
-  if (!STMT_VINFO_RELEVANT_P (stmt_info) && !bb_vinfo)
-    return false;
-
-  if (STMT_VINFO_DEF_TYPE (stmt_info) != vect_internal_def
-      && !(STMT_VINFO_DEF_TYPE (stmt_info) == vect_nested_cycle
-           && reduc_def))
-    return false;
-
-  /* FORNOW: not yet supported.  */
-  if (STMT_VINFO_LIVE_P (stmt_info))
+  if (STMT_VINFO_VEC_REDUCTION_TYPE (stmt_info) == TREE_CODE_REDUCTION)
     {
-      if (dump_enabled_p ())
-        dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-                         "value used after loop.\n");
-      return false;
+      if (!STMT_VINFO_RELEVANT_P (stmt_info) && !bb_vinfo)
+	return false;
+
+      if (STMT_VINFO_DEF_TYPE (stmt_info) != vect_internal_def
+	  && !(STMT_VINFO_DEF_TYPE (stmt_info) == vect_nested_cycle
+	       && reduc_def))
+	return false;
+
+      /* FORNOW: not yet supported.  */
+      if (STMT_VINFO_LIVE_P (stmt_info))
+	{
+	  if (dump_enabled_p ())
+	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			     "value used after loop.\n");
+	  return false;
+	}
     }
 
   /* Is vectorizable conditional operation?  */
@@ -7254,10 +7277,7 @@ vectorizable_condition (gimple *stmt, gimple_stmt_iterator *gsi,
   if (!vect_is_simple_use (else_clause, stmt_info->vinfo, &def_stmt, &dt))
     return false;
 
-  unsigned int prec = GET_MODE_BITSIZE (TYPE_MODE (TREE_TYPE (vectype)));
-  /* The result of a vector comparison should be signed type.  */
-  tree cmp_type = build_nonstandard_integer_type (prec, 0);
-  vec_cmp_type = get_same_sized_vectype (cmp_type, vectype);
+  vec_cmp_type = build_same_sized_truth_vector_type (comp_vectype);
   if (vec_cmp_type == NULL_TREE)
     return false;
 
@@ -7868,6 +7888,7 @@ new_stmt_vec_info (gimple *stmt, vec_info *vinfo)
   STMT_VINFO_RELATED_STMT (res) = NULL;
   STMT_VINFO_PATTERN_DEF_SEQ (res) = NULL;
   STMT_VINFO_DATA_REF (res) = NULL;
+  STMT_VINFO_VEC_REDUCTION_TYPE (res) = TREE_CODE_REDUCTION;
 
   STMT_VINFO_DR_BASE_ADDRESS (res) = NULL;
   STMT_VINFO_DR_OFFSET (res) = NULL;
@@ -8067,6 +8088,9 @@ get_vectype_for_scalar_type (tree scalar_type)
 tree
 get_same_sized_vectype (tree scalar_type, tree vector_type)
 {
+  if (TREE_CODE (scalar_type) == BOOLEAN_TYPE)
+    return build_same_sized_truth_vector_type (vector_type);
+
   return get_vectype_for_scalar_type_and_size
 	   (scalar_type, GET_MODE_SIZE (TYPE_MODE (vector_type)));
 }
@@ -8118,8 +8142,8 @@ vect_is_simple_use (tree operand, vec_info *vinfo,
   if (TREE_CODE (operand) != SSA_NAME)
     {
       if (dump_enabled_p ())
-        dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-                         "not ssa-name.\n");
+	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			 "not ssa-name.\n");
       return false;
     }
 
@@ -8136,12 +8160,7 @@ vect_is_simple_use (tree operand, vec_info *vinfo,
       dump_gimple_stmt (MSG_NOTE, TDF_SLIM, *def_stmt, 0);
     }
 
-  basic_block bb = gimple_bb (*def_stmt);
-  if ((is_a <loop_vec_info> (vinfo)
-       && !flow_bb_inside_loop_p (as_a <loop_vec_info> (vinfo)->loop, bb))
-      || (is_a <bb_vec_info> (vinfo)
-	  && (bb != as_a <bb_vec_info> (vinfo)->bb
-	      || gimple_code (*def_stmt) == GIMPLE_PHI)))
+  if (! vect_stmt_in_region_p (vinfo, *def_stmt))
     *dt = vect_external_def;
   else
     {

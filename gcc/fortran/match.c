@@ -22,13 +22,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "options.h"
-#include "flags.h"
+#include "tree.h"
 #include "gfortran.h"
+#include "stringpool.h"
+#include "flags.h"
 #include "match.h"
 #include "parse.h"
 #include "alias.h"
-#include "tree.h"
-#include "stringpool.h"
 
 int gfc_matching_ptr_assignment = 0;
 int gfc_matching_procptr_assignment = 0;
@@ -1938,6 +1938,11 @@ kind_selector:
 
   if (m == MATCH_NO)
     m = MATCH_YES;		/* No kind specifier found.  */
+
+  /* gfortran may have matched REAL(a=1), which is the keyword form of the
+     intrinsic procedure.  */
+  if (ts->type == BT_REAL && m == MATCH_ERROR)
+    m = MATCH_NO;
 
   return m;
 }
@@ -4365,16 +4370,6 @@ gfc_match_common (void)
 		goto cleanup;
 	    }
 
-	  sym->common_block = t;
-	  sym->common_block->refs++;
-
-	  if (tail != NULL)
-	    tail->common_next = sym;
-	  else
-	    *head = sym;
-
-	  tail = sym;
-
 	  /* Deal with an optional array specification after the
 	     symbol name.  */
 	  m = gfc_match_array_spec (&as, true, true);
@@ -4408,6 +4403,16 @@ gfc_match_common (void)
 	  /* Add the in_common attribute, but ignore the reported errors
 	     if any, and continue matching.  */
 	  gfc_add_in_common (&sym->attr, sym->name, NULL);
+
+	  sym->common_block = t;
+	  sym->common_block->refs++;
+
+	  if (tail != NULL)
+	    tail->common_next = sym;
+	  else
+	    *head = sym;
+
+	  tail = sym;
 
 	  sym->common_head = t;
 
@@ -5013,7 +5018,9 @@ gfc_free_case_list (gfc_case *p)
 }
 
 
-/* Match a single case selector.  */
+/* Match a single case selector.  Combining the requirements of F08:C830
+   and F08:C832 (R838) means that the case-value must have either CHARACTER,
+   INTEGER, or LOGICAL type.  */
 
 static match
 match_case_selector (gfc_case **cp)
@@ -5031,6 +5038,14 @@ match_case_selector (gfc_case **cp)
 	goto need_expr;
       if (m == MATCH_ERROR)
 	goto cleanup;
+
+      if (c->high->ts.type != BT_LOGICAL && c->high->ts.type != BT_INTEGER
+	  && c->high->ts.type != BT_CHARACTER)
+	{
+	  gfc_error ("Expression in CASE selector at %L cannot be %s",
+		     &c->high->where, gfc_typename (&c->high->ts));
+	  goto cleanup;
+	}
     }
   else
     {
@@ -5039,6 +5054,14 @@ match_case_selector (gfc_case **cp)
 	goto cleanup;
       if (m == MATCH_NO)
 	goto need_expr;
+
+      if (c->low->ts.type != BT_LOGICAL && c->low->ts.type != BT_INTEGER
+	  && c->low->ts.type != BT_CHARACTER)
+	{
+	  gfc_error ("Expression in CASE selector at %L cannot be %s",
+		     &c->low->where, gfc_typename (&c->low->ts));
+	  goto cleanup;
+	}
 
       /* If we're not looking at a ':' now, make a range out of a single
 	 target.  Else get the upper bound for the case range.  */

@@ -1421,6 +1421,7 @@ begin
            Pragma_Pre                            |
            Pragma_Precondition                   |
            Pragma_Predicate                      |
+           Pragma_Predicate_Failure              |
            Pragma_Preelaborate                   |
            Pragma_Pre_Class                      |
            Pragma_Priority                       |
@@ -1486,6 +1487,7 @@ begin
            Pragma_Volatile                       |
            Pragma_Volatile_Components            |
            Pragma_Volatile_Full_Access           |
+           Pragma_Volatile_Function              |
            Pragma_Warning_As_Error               |
            Pragma_Weak_External                  |
            Pragma_Validity_Checks                =>

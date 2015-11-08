@@ -22,9 +22,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "system.h"
 #include "coretypes.h"
 #include "options.h"
-#include "gfortran.h"
-#include "obstack.h"
 #include "bitmap.h"
+#include "gfortran.h"
 #include "arith.h"  /* For gfc_compare_expr().  */
 #include "dependency.h"
 #include "data.h"
@@ -9373,6 +9372,7 @@ gfc_resolve_blocks (gfc_code *b, gfc_namespace *ns)
 	case EXEC_OACC_CACHE:
 	case EXEC_OACC_ENTER_DATA:
 	case EXEC_OACC_EXIT_DATA:
+	case EXEC_OACC_ATOMIC:
 	case EXEC_OMP_ATOMIC:
 	case EXEC_OMP_CRITICAL:
 	case EXEC_OMP_DISTRIBUTE:
@@ -10645,6 +10645,7 @@ start:
 	case EXEC_OACC_CACHE:
 	case EXEC_OACC_ENTER_DATA:
 	case EXEC_OACC_EXIT_DATA:
+	case EXEC_OACC_ATOMIC:
 	  gfc_resolve_oacc_directive (code, ns);
 	  break;
 
@@ -10800,7 +10801,7 @@ gfc_verify_binding_labels (gfc_symbol *sym)
       sym->binding_label = NULL;
 
     }
-  else if (sym->attr.flavor == FL_VARIABLE
+  else if (sym->attr.flavor == FL_VARIABLE && module 
 	   && (strcmp (module, gsym->mod_name) != 0
 	       || strcmp (sym->name, gsym->sym_name) != 0))
     {

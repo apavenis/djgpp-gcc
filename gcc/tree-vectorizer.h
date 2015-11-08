@@ -60,6 +60,12 @@ enum vect_def_type {
   vect_unknown_def_type
 };
 
+/* Define type of reduction.  */
+enum vect_reduction_type {
+  TREE_CODE_REDUCTION,
+  COND_REDUCTION
+};
+
 #define VECTORIZABLE_CYCLE_DEF(D) (((D) == vect_reduction_def)           \
                                    || ((D) == vect_double_reduction_def) \
                                    || ((D) == vect_nested_cycle))
@@ -384,6 +390,8 @@ nested_in_vect_loop_p (struct loop *loop, gimple *stmt)
 typedef struct _bb_vec_info : public vec_info
 {
   basic_block bb;
+  gimple_stmt_iterator region_begin;
+  gimple_stmt_iterator region_end;
 } *bb_vec_info;
 
 #define BB_VINFO_BB(B)               (B)->bb
@@ -581,6 +589,10 @@ typedef struct _stmt_vec_info {
 
   /* For both loads and stores.  */
   bool simd_lane_access_p;
+
+  /* For reduction loops, this is the type of reduction.  */
+  enum vect_reduction_type v_reduc_type;
+
 } *stmt_vec_info;
 
 /* Access Functions.  */
@@ -609,6 +621,7 @@ STMT_VINFO_BB_VINFO (stmt_vec_info stmt_vinfo)
 #define STMT_VINFO_GATHER_SCATTER_P(S)	   (S)->gather_scatter_p
 #define STMT_VINFO_STRIDED_P(S)	   	   (S)->strided_p
 #define STMT_VINFO_SIMD_LANE_ACCESS_P(S)   (S)->simd_lane_access_p
+#define STMT_VINFO_VEC_REDUCTION_TYPE(S)   (S)->v_reduc_type
 
 #define STMT_VINFO_DR_BASE_ADDRESS(S)      (S)->dr_base_address
 #define STMT_VINFO_DR_INIT(S)              (S)->dr_init
@@ -999,7 +1012,7 @@ extern bool vect_analyze_data_ref_accesses (vec_info *);
 extern bool vect_prune_runtime_alias_test_list (loop_vec_info);
 extern tree vect_check_gather_scatter (gimple *, loop_vec_info, tree *, tree *,
 				       int *);
-extern bool vect_analyze_data_refs (vec_info *, int *, unsigned *);
+extern bool vect_analyze_data_refs (vec_info *, int *);
 extern tree vect_create_data_ref_ptr (gimple *, tree, struct loop *, tree,
 				      tree *, gimple_stmt_iterator *,
 				      gimple **, bool, bool *,
@@ -1061,10 +1074,7 @@ extern bool vect_make_slp_decision (loop_vec_info);
 extern void vect_detect_hybrid_slp (loop_vec_info);
 extern void vect_get_slp_defs (vec<tree> , slp_tree,
 			       vec<vec<tree> > *, int);
-
-extern source_location find_bb_location (basic_block);
-extern bb_vec_info vect_slp_analyze_bb (basic_block);
-extern void vect_slp_transform_bb (basic_block);
+extern bool vect_slp_bb (basic_block);
 
 /* In tree-vect-patterns.c.  */
 /* Pattern recognition functions.
@@ -1077,5 +1087,6 @@ void vect_pattern_recog (vec_info *);
 /* In tree-vectorizer.c.  */
 unsigned vectorize_loops (void);
 void vect_destroy_datarefs (vec_info *);
+bool vect_stmt_in_region_p (vec_info *, gimple *);
 
 #endif  /* GCC_TREE_VECTORIZER_H  */

@@ -78,6 +78,8 @@ package Aspects is
       Aspect_Address,
       Aspect_Alignment,
       Aspect_Annotate,                      -- GNAT
+      Aspect_Async_Readers,                 -- GNAT
+      Aspect_Async_Writers,                 -- GNAT
       Aspect_Attach_Handler,
       Aspect_Bit_Order,
       Aspect_Component_Size,
@@ -96,6 +98,8 @@ package Aspects is
       Aspect_Dimension_System,              -- GNAT
       Aspect_Dispatching_Domain,
       Aspect_Dynamic_Predicate,
+      Aspect_Effective_Reads,               -- GNAT
+      Aspect_Effective_Writes,              -- GNAT
       Aspect_Extensions_Visible,            -- GNAT
       Aspect_External_Name,
       Aspect_External_Tag,
@@ -121,6 +125,7 @@ package Aspects is
       Aspect_Pre,
       Aspect_Precondition,
       Aspect_Predicate,                     -- GNAT
+      Aspect_Predicate_Failure,
       Aspect_Priority,
       Aspect_Read,
       Aspect_Refined_Depends,               -- GNAT
@@ -145,6 +150,7 @@ package Aspects is
       Aspect_Unsuppress,
       Aspect_Value_Size,                    -- GNAT
       Aspect_Variable_Indexing,
+      Aspect_Volatile_Function,             -- GNAT
       Aspect_Warnings,                      -- GNAT
       Aspect_Write,
 
@@ -167,15 +173,11 @@ package Aspects is
       --  the aspect value is inherited from the parent, in which case, we do
       --  not allow False if we inherit a True value from the parent.
 
-      Aspect_Async_Readers,                 -- GNAT
-      Aspect_Async_Writers,                 -- GNAT
       Aspect_Asynchronous,
       Aspect_Atomic,
       Aspect_Atomic_Components,
       Aspect_Disable_Controlled,            -- GNAT
       Aspect_Discard_Names,
-      Aspect_Effective_Reads,               -- GNAT
-      Aspect_Effective_Writes,              -- GNAT
       Aspect_Export,
       Aspect_Favor_Top_Level,               -- GNAT
       Aspect_Independent,
@@ -264,6 +266,7 @@ package Aspects is
       Aspect_Unreferenced               => True,
       Aspect_Unreferenced_Objects       => True,
       Aspect_Value_Size                 => True,
+      Aspect_Volatile_Function          => True,
       Aspect_Warnings                   => True,
       others                            => False);
 
@@ -291,7 +294,7 @@ package Aspects is
    --  aspect is enabled. If it is False, the aspect is disabled.
 
    subtype Boolean_Aspects is
-     Aspect_Id range Aspect_Async_Readers .. Aspect_Id'Last;
+     Aspect_Id range Aspect_Asynchronous .. Aspect_Id'Last;
 
    subtype Pre_Post_Aspects is
      Aspect_Id range Aspect_Post .. Aspect_Precondition;
@@ -312,6 +315,8 @@ package Aspects is
       Aspect_Address                    => Expression,
       Aspect_Alignment                  => Expression,
       Aspect_Annotate                   => Expression,
+      Aspect_Async_Readers              => Optional_Expression,
+      Aspect_Async_Writers              => Optional_Expression,
       Aspect_Attach_Handler             => Expression,
       Aspect_Bit_Order                  => Expression,
       Aspect_Component_Size             => Expression,
@@ -330,6 +335,8 @@ package Aspects is
       Aspect_Dimension_System           => Expression,
       Aspect_Dispatching_Domain         => Expression,
       Aspect_Dynamic_Predicate          => Expression,
+      Aspect_Effective_Reads            => Optional_Expression,
+      Aspect_Effective_Writes           => Optional_Expression,
       Aspect_Extensions_Visible         => Optional_Expression,
       Aspect_External_Name              => Expression,
       Aspect_External_Tag               => Expression,
@@ -355,6 +362,7 @@ package Aspects is
       Aspect_Pre                        => Expression,
       Aspect_Precondition               => Expression,
       Aspect_Predicate                  => Expression,
+      Aspect_Predicate_Failure          => Expression,
       Aspect_Priority                   => Expression,
       Aspect_Read                       => Name,
       Aspect_Refined_Depends            => Expression,
@@ -379,6 +387,7 @@ package Aspects is
       Aspect_Unsuppress                 => Name,
       Aspect_Value_Size                 => Expression,
       Aspect_Variable_Indexing          => Name,
+      Aspect_Volatile_Function          => Optional_Expression,
       Aspect_Warnings                   => Name,
       Aspect_Write                      => Name,
 
@@ -465,6 +474,7 @@ package Aspects is
       Aspect_Pre                          => Name_Pre,
       Aspect_Precondition                 => Name_Precondition,
       Aspect_Predicate                    => Name_Predicate,
+      Aspect_Predicate_Failure            => Name_Predicate_Failure,
       Aspect_Preelaborable_Initialization => Name_Preelaborable_Initialization,
       Aspect_Preelaborate                 => Name_Preelaborate,
       Aspect_Priority                     => Name_Priority,
@@ -511,6 +521,7 @@ package Aspects is
       Aspect_Volatile                     => Name_Volatile,
       Aspect_Volatile_Components          => Name_Volatile_Components,
       Aspect_Volatile_Full_Access         => Name_Volatile_Full_Access,
+      Aspect_Volatile_Function            => Name_Volatile_Function,
       Aspect_Warnings                     => Name_Warnings,
       Aspect_Write                        => Name_Write);
 
@@ -579,7 +590,7 @@ package Aspects is
    --  constructs. To handle forward references in such aspects, the compiler
    --  delays the analysis of their respective pragmas by collecting them in
    --  N_Contract nodes. The pragmas are then analyzed at the end of the
-   --  declarative region which contains the related construct. For details,
+   --  declarative region containing the related construct. For details,
    --  see routines Analyze_xxx_In_Decl_Part.
 
    --  The following shows which aspects are delayed. There are three cases:
@@ -668,6 +679,7 @@ package Aspects is
       Aspect_Pre                          => Always_Delay,
       Aspect_Precondition                 => Always_Delay,
       Aspect_Predicate                    => Always_Delay,
+      Aspect_Predicate_Failure            => Always_Delay,
       Aspect_Preelaborable_Initialization => Always_Delay,
       Aspect_Preelaborate                 => Always_Delay,
       Aspect_Priority                     => Always_Delay,
@@ -731,6 +743,7 @@ package Aspects is
       Aspect_Synchronization              => Never_Delay,
       Aspect_Test_Case                    => Never_Delay,
       Aspect_Unimplemented                => Never_Delay,
+      Aspect_Volatile_Function            => Never_Delay,
       Aspect_Warnings                     => Never_Delay,
 
       Aspect_Alignment                    => Rep_Aspect,
@@ -785,7 +798,7 @@ package Aspects is
    --    package body P with SPARK_Mode is ...;
 
    --  The table should be synchronized with Pragma_On_Body_Or_Stub_OK in unit
-   --  Sem_Prag if the aspects below are implemented by a pragma.
+   --  Sem_Prag.
 
    Aspect_On_Body_Or_Stub_OK : constant array (Aspect_Id) of Boolean :=
      (Aspect_Refined_Depends              => True,
@@ -793,6 +806,26 @@ package Aspects is
       Aspect_Refined_Post                 => True,
       Aspect_SPARK_Mode                   => True,
       Aspect_Warnings                     => True,
+      others                              => False);
+
+   -------------------------------------------------------------------
+   -- Handling of Aspects Specifications on Single Concurrent Types --
+   -------------------------------------------------------------------
+
+   --  Certain aspects that appear on the following nodes
+
+   --    N_Single_Protected_Declaration
+   --    N_Single_Task_Declaration
+
+   --  are treated as if they apply to the anonymous object produced by the
+   --  analysis of a single concurrent type. The following table lists all
+   --  aspects that should apply to the anonymous object. The table should
+   --  be synchronized with Pragma_On_Anonymous_Object_OK in unit Sem_Prag.
+
+   Aspect_On_Anonymous_Object_OK : constant array (Aspect_Id) of Boolean :=
+     (Aspect_Depends                      => True,
+      Aspect_Global                       => True,
+      Aspect_Part_Of                      => True,
       others                              => False);
 
    ---------------------------------------------------
@@ -852,10 +885,14 @@ package Aspects is
 
    procedure Move_Or_Merge_Aspects (From : Node_Id; To : Node_Id);
    --  Relocate the aspect specifications of node From to node To. If To has
-   --  aspects, the aspects of From are added to the aspects of To. If From has
-   --  no aspects, the routine has no effect. When From denotes a subprogram
-   --  body stub that also acts as a spec, the only aspects relocated to node
-   --  To are those from table Aspect_On_Body_Or_Stub_OK and preconditions.
+   --  aspects, the aspects of From are appended to the aspects of To. If From
+   --  has no aspects, the routine has no effect. Special behavior:
+   --    * When node From denotes a subprogram body stub without a previous
+   --      declaration, the only aspects relocated to node To are those found
+   --      in table Aspect_On_Body_Or_Stub_OK.
+   --    * When node From denotes a single synchronized type declaration, the
+   --      only aspects relocated to node To are those found in table
+   --      Aspect_On_Anonymous_Object_OK.
 
    function Permits_Aspect_Specifications (N : Node_Id) return Boolean;
    --  Returns True if the node N is a declaration node that permits aspect

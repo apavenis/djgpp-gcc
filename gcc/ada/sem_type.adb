@@ -1977,7 +1977,7 @@ package body Sem_Type is
                   return It2;
                end if;
 
-            elsif Nkind (N) in  N_Unary_Op then
+            elsif Nkind (N) in N_Unary_Op then
                if Etype (Right_Opnd (N)) = Etype (First_Formal (Nam1)) then
                   return It1;
                else
@@ -2711,6 +2711,17 @@ package body Sem_Type is
          then
             Error_Msg_NE ("(Ada 2005) does not implement interface }",
                           L, Etype (Class_Wide_Type (Etype (R))));
+
+         --  Specialize message if one operand is a limited view, a priori
+         --  unrelated to all other types.
+
+         elsif From_Limited_With (Etype (R)) then
+            Error_Msg_NE ("limited view of& not compatible with context",
+                           R, Etype (R));
+
+         elsif From_Limited_With (Etype (L)) then
+            Error_Msg_NE ("limited view of& not compatible with context",
+                           L, Etype (L));
          else
             Error_Msg_N ("incompatible types", Parent (L));
          end if;

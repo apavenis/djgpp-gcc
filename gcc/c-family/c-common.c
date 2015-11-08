@@ -22,37 +22,32 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "c-common.h"
-#include "tm.h"
-#include "intl.h"
+#include "target.h"
+#include "function.h"
+#include "obstack.h"
 #include "tree.h"
-#include "fold-const.h"
+#include "c-common.h"
+#include "gimple-expr.h"
+#include "tm_p.h"
+#include "stringpool.h"
+#include "cgraph.h"
+#include "diagnostic.h"
+#include "intl.h"
 #include "stor-layout.h"
 #include "calls.h"
-#include "stringpool.h"
 #include "attribs.h"
 #include "varasm.h"
 #include "trans-mem.h"
 #include "flags.h"
 #include "c-pragma.h"
 #include "c-objc.h"
-#include "tm_p.h"
-#include "obstack.h"
-#include "cpplib.h"
-#include "target.h"
 #include "common/common-target.h"
 #include "langhooks.h"
 #include "tree-inline.h"
 #include "toplev.h"
-#include "diagnostic.h"
 #include "tree-iterator.h"
 #include "opts.h"
-#include "hard-reg-set.h"
-#include "function.h"
-#include "cgraph.h"
 #include "gimplify.h"
-#include "wide-int-print.h"
-#include "gimple-expr.h"
 
 cpp_reader *parse_in;		/* Declared in c-pragma.h.  */
 
@@ -384,6 +379,7 @@ static tree handle_alloc_size_attribute (tree *, tree, tree, int, bool *);
 static tree handle_alloc_align_attribute (tree *, tree, tree, int, bool *);
 static tree handle_assume_aligned_attribute (tree *, tree, tree, int, bool *);
 static tree handle_target_attribute (tree *, tree, tree, int, bool *);
+static tree handle_target_clones_attribute (tree *, tree, tree, int, bool *);
 static tree handle_optimize_attribute (tree *, tree, tree, int, bool *);
 static tree ignore_attribute (tree *, tree, tree, int, bool *);
 static tree handle_no_split_stack_attribute (tree *, tree, tree, int, bool *);
@@ -798,6 +794,8 @@ const struct attribute_spec c_common_attribute_table[] =
 			      handle_error_attribute, false },
   { "target",                 1, -1, true, false, false,
 			      handle_target_attribute, false },
+  { "target_clones",          1, -1, true, false, false,
+			      handle_target_clones_attribute, false },
   { "optimize",               1, -1, true, false, false,
 			      handle_optimize_attribute, false },
   /* For internal use only.  The leading '*' both prevents its usage in
@@ -4849,9 +4847,8 @@ pointer_int_sum (location_t loc, enum tree_code resultcode,
      for the pointer operation and disregard an overflow that occurred only
      because of the sign-extension change in the latter conversion.  */
   {
-    tree t = build_binary_op (loc,
-			      MULT_EXPR, intop,
-			      convert (TREE_TYPE (intop), size_exp), 1);
+    tree t = fold_build2_loc (loc, MULT_EXPR, TREE_TYPE (intop), intop,
+			      convert (TREE_TYPE (intop), size_exp));
     intop = convert (sizetype, t);
     if (TREE_OVERFLOW_P (intop) && !TREE_OVERFLOW (t))
       intop = wide_int_to_tree (TREE_TYPE (intop), intop);
@@ -5738,7 +5735,6 @@ c_define_builtins (tree va_list_ref_type_node, tree va_list_arg_type_node)
 		   BOTH_P, FALLBACK_P, NONANSI_P,                       \
 		   built_in_attributes[(int) ATTRS], IMPLICIT);
 #include "builtins.def"
-#undef DEF_BUILTIN
 
   targetm.init_builtins ();
 
@@ -7394,6 +7390,12 @@ handle_always_inline_attribute (tree *node, tree name,
 	{
 	  warning (OPT_Wattributes, "%qE attribute ignored due to conflict "
 		   "with %qs attribute", name, "noinline");
+	  *no_add_attrs = true;
+	}
+      else if (lookup_attribute ("target_clones", DECL_ATTRIBUTES (*node)))
+	{
+	  warning (OPT_Wattributes, "%qE attribute ignored due to conflict "
+		   "with %qs attribute", name, "target_clones");
 	  *no_add_attrs = true;
 	}
       else
@@ -9824,10 +9826,49 @@ handle_target_attribute (tree *node, tree name, tree args, int flags,
       warning (OPT_Wattributes, "%qE attribute ignored", name);
       *no_add_attrs = true;
     }
+  else if (lookup_attribute ("target_clones", DECL_ATTRIBUTES (*node)))
+    {
+      warning (OPT_Wattributes, "%qE attribute ignored due to conflict "
+		   "with %qs attribute", name, "target_clones");
+      *no_add_attrs = true;
+    }
   else if (! targetm.target_option.valid_attribute_p (*node, name, args,
 						      flags))
     *no_add_attrs = true;
 
+  return NULL_TREE;
+}
+
+/* Handle a "target_clones" attribute.  */
+
+static tree
+handle_target_clones_attribute (tree *node, tree name, tree ARG_UNUSED (args),
+			  int ARG_UNUSED (flags), bool *no_add_attrs)
+{
+  /* Ensure we have a function type.  */
+  if (TREE_CODE (*node) == FUNCTION_DECL)
+    {
+      if (lookup_attribute ("always_inline", DECL_ATTRIBUTES (*node)))
+	{
+	  warning (OPT_Wattributes, "%qE attribute ignored due to conflict "
+		   "with %qs attribute", name, "always_inline");
+	  *no_add_attrs = true;
+	}
+      else if (lookup_attribute ("target", DECL_ATTRIBUTES (*node)))
+	{
+	  warning (OPT_Wattributes, "%qE attribute ignored due to conflict "
+		   "with %qs attribute", name, "target");
+	  *no_add_attrs = true;
+	}
+      else
+      /* Do not inline functions with multiple clone targets.  */
+	DECL_UNINLINABLE (*node) = 1;
+    }
+  else
+    {
+      warning (OPT_Wattributes, "%qE attribute ignored", name);
+      *no_add_attrs = true;
+    }
   return NULL_TREE;
 }
 
@@ -10501,15 +10542,14 @@ c_option_controlling_cpp_error (int reason)
 /* Callback from cpp_error for PFILE to print diagnostics from the
    preprocessor.  The diagnostic is of type LEVEL, with REASON set
    to the reason code if LEVEL is represents a warning, at location
-   LOCATION unless this is after lexing and the compiler's location
-   should be used instead, with column number possibly overridden by
-   COLUMN_OVERRIDE if not zero; MSG is the translated message and AP
+   RICHLOC unless this is after lexing and the compiler's location
+   should be used instead; MSG is the translated message and AP
    the arguments.  Returns true if a diagnostic was emitted, false
    otherwise.  */
 
 bool
 c_cpp_error (cpp_reader *pfile ATTRIBUTE_UNUSED, int level, int reason,
-	     location_t location, unsigned int column_override,
+	     rich_location *richloc,
 	     const char *msg, va_list *ap)
 {
   diagnostic_info diagnostic;
@@ -10550,11 +10590,11 @@ c_cpp_error (cpp_reader *pfile ATTRIBUTE_UNUSED, int level, int reason,
       gcc_unreachable ();
     }
   if (done_lexing)
-    location = input_location;
+    richloc->set_range (0,
+			source_range::from_location (input_location),
+			true, true);
   diagnostic_set_info_translated (&diagnostic, msg, ap,
-				  location, dlevel);
-  if (column_override)
-    diagnostic_override_column (&diagnostic, column_override);
+				  richloc, dlevel);
   diagnostic_override_option_index (&diagnostic,
                                     c_option_controlling_cpp_error (reason));
   ret = report_diagnostic (&diagnostic);
@@ -10589,11 +10629,11 @@ c_common_to_target_charset (HOST_WIDE_INT c)
    traditional rendering of offsetof as a macro.  Return the folded result.  */
 
 tree
-fold_offsetof_1 (tree expr)
+fold_offsetof_1 (tree expr, enum tree_code ctx)
 {
   tree base, off, t;
-
-  switch (TREE_CODE (expr))
+  tree_code code = TREE_CODE (expr);
+  switch (code)
     {
     case ERROR_MARK:
       return expr;
@@ -10617,7 +10657,7 @@ fold_offsetof_1 (tree expr)
       return TREE_OPERAND (expr, 0);
 
     case COMPONENT_REF:
-      base = fold_offsetof_1 (TREE_OPERAND (expr, 0));
+      base = fold_offsetof_1 (TREE_OPERAND (expr, 0), code);
       if (base == error_mark_node)
 	return base;
 
@@ -10634,7 +10674,7 @@ fold_offsetof_1 (tree expr)
       break;
 
     case ARRAY_REF:
-      base = fold_offsetof_1 (TREE_OPERAND (expr, 0));
+      base = fold_offsetof_1 (TREE_OPERAND (expr, 0), code);
       if (base == error_mark_node)
 	return base;
 
@@ -10649,8 +10689,9 @@ fold_offsetof_1 (tree expr)
 	      && !tree_int_cst_equal (upbound,
 				      TYPE_MAX_VALUE (TREE_TYPE (upbound))))
 	    {
-	      upbound = size_binop (PLUS_EXPR, upbound,
-				    build_int_cst (TREE_TYPE (upbound), 1));
+	      if (ctx != ARRAY_REF && ctx != COMPONENT_REF)
+	        upbound = size_binop (PLUS_EXPR, upbound,
+				      build_int_cst (TREE_TYPE (upbound), 1));
 	      if (tree_int_cst_lt (upbound, t))
 		{
 		  tree v;

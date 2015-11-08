@@ -223,7 +223,7 @@ along with GCC; see the file COPYING3.  If not see
 
 bool
 ix86_handle_option (struct gcc_options *opts,
-		    struct gcc_options *opts_set,
+		    struct gcc_options *opts_set ATTRIBUTE_UNUSED,
 		    const struct cl_decoded_option *decoded,
 		    location_t loc)
 {
@@ -232,20 +232,6 @@ ix86_handle_option (struct gcc_options *opts,
 
   switch (code)
     {
-    case OPT_miamcu:
-      if (value)
-	{
-	  /* Turn off x87/MMX/SSE/AVX codegen for -miamcu.  */
-	  opts->x_target_flags &= ~MASK_80387;
-	  opts_set->x_target_flags |= MASK_80387;
-	  opts->x_ix86_isa_flags &= ~(OPTION_MASK_ISA_MMX_UNSET
-				      | OPTION_MASK_ISA_SSE_UNSET);
-	  opts->x_ix86_isa_flags_explicit |= (OPTION_MASK_ISA_MMX_UNSET
-					      | OPTION_MASK_ISA_SSE_UNSET);
-
-	}
-      return true;
-
     case OPT_mmmx:
       if (value)
 	{
@@ -1011,6 +997,9 @@ static const struct default_options ix86_option_optimization_table[] =
     { OPT_LEVELS_2_PLUS, OPT_free, NULL, 1 },
     /* Enable function splitting at -O2 and higher.  */
     { OPT_LEVELS_2_PLUS, OPT_freorder_blocks_and_partition, NULL, 1 },
+    /* The STC algorithm produces the smallest code at -Os, for x86.  */
+    { OPT_LEVELS_2_PLUS, OPT_freorder_blocks_algorithm_, NULL,
+      REORDER_BLOCKS_ALGORITHM_STC },
     /* Turn off -fschedule-insns by default.  It tends to make the
        problem with not enough registers even worse.  */
     { OPT_LEVELS_ALL, OPT_fschedule_insns, NULL, 0 },

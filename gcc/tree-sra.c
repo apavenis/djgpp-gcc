@@ -74,16 +74,19 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
-#include "alloc-pool.h"
 #include "backend.h"
-#include "predict.h"
+#include "target.h"
+#include "rtl.h"
 #include "tree.h"
 #include "gimple.h"
-#include "rtl.h"
+#include "predict.h"
+#include "alloc-pool.h"
+#include "tree-pass.h"
 #include "ssa.h"
+#include "cgraph.h"
+#include "gimple-pretty-print.h"
 #include "alias.h"
 #include "fold-const.h"
-#include "internal-fn.h"
 #include "tree-eh.h"
 #include "stor-layout.h"
 #include "gimplify.h"
@@ -91,27 +94,13 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimplify-me.h"
 #include "gimple-walk.h"
 #include "tree-cfg.h"
-#include "flags.h"
-#include "insn-config.h"
-#include "expmed.h"
-#include "dojump.h"
-#include "explow.h"
-#include "calls.h"
-#include "emit-rtl.h"
-#include "varasm.h"
-#include "stmt.h"
-#include "expr.h"
 #include "tree-dfa.h"
 #include "tree-ssa.h"
-#include "tree-pass.h"
-#include "cgraph.h"
 #include "symbol-summary.h"
 #include "ipa-prop.h"
 #include "params.h"
-#include "target.h"
 #include "dbgcnt.h"
 #include "tree-inline.h"
-#include "gimple-pretty-print.h"
 #include "ipa-inline.h"
 #include "ipa-utils.h"
 #include "builtins.h"
@@ -956,6 +945,7 @@ scalarizable_type_p (tree type)
 	;
       else if ((tree_to_shwi (TYPE_SIZE (type)) <= 0)
 	       || !tree_fits_shwi_p (TYPE_MAX_VALUE (TYPE_DOMAIN (type))))
+	/* Variable-length array, do not allow scalarization.  */
 	return false;
 
       tree elem = TREE_TYPE (type);
@@ -1005,21 +995,29 @@ completely_scalarize (tree base, tree decl_type, HOST_WIDE_INT offset, tree ref)
 	tree minidx = TYPE_MIN_VALUE (TYPE_DOMAIN (decl_type));
 	gcc_assert (TREE_CODE (minidx) == INTEGER_CST);
 	tree maxidx = TYPE_MAX_VALUE (TYPE_DOMAIN (decl_type));
+	/* Skip (some) zero-length arrays; others have MAXIDX == MINIDX - 1.  */
 	if (maxidx)
 	  {
 	    gcc_assert (TREE_CODE (maxidx) == INTEGER_CST);
-	    /* MINIDX and MAXIDX are inclusive.  Try to avoid overflow.  */
-	    unsigned HOST_WIDE_INT lenp1 = tree_to_shwi (maxidx)
-					- tree_to_shwi (minidx);
-	    unsigned HOST_WIDE_INT idx = 0;
-	    do
+	    tree domain = TYPE_DOMAIN (decl_type);
+	    /* MINIDX and MAXIDX are inclusive, and must be interpreted in
+	       DOMAIN (e.g. signed int, whereas min/max may be size_int).  */
+	    offset_int idx = wi::to_offset (minidx);
+	    offset_int max = wi::to_offset (maxidx);
+	    if (!TYPE_UNSIGNED (domain))
 	      {
-		tree nref = build4 (ARRAY_REF, elemtype, ref, size_int (idx),
-				    NULL_TREE, NULL_TREE);
-		int el_off = offset + idx * el_size;
-		scalarize_elem (base, el_off, el_size, nref, elemtype);
+		idx = wi::sext (idx, TYPE_PRECISION (domain));
+		max = wi::sext (max, TYPE_PRECISION (domain));
 	      }
-	    while (++idx <= lenp1);
+	    for (int el_off = offset; wi::les_p (idx, max); ++idx)
+	      {
+		tree nref = build4 (ARRAY_REF, elemtype,
+				    ref,
+				    wide_int_to_tree (domain, idx),
+				    NULL_TREE, NULL_TREE);
+		scalarize_elem (base, el_off, el_size, nref, elemtype);
+		el_off += el_size;
+	      }
 	  }
       }
       break;
@@ -2146,7 +2144,7 @@ create_access_replacement (struct access *access)
   return repl;
 }
 
-/* Return ACCESS scalar replacement, create it if it does not exist yet.  */
+/* Return ACCESS scalar replacement, which must exist.  */
 
 static inline tree
 get_access_replacement (struct access *access)
