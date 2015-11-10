@@ -1,3 +1,222 @@
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* gcc.target/i386/mask-pack.c: New test.
+	* gcc.target/i386/mask-unpack.c: New test.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* gcc.target/i386/avx2-vec-mask-bit-not.c: New test.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* gcc.dg/vect/slp-cond-5.c: New test.
+
+2015-11-10  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68240
+	* gcc.dg/torture/pr68240.c: New testcase.
+
+2015-11-10  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56118
+	* gcc.target/i386/pr56118.c: New testcase.
+
+2015-11-10  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/aarch64/cond_op_imm_1.c: New test.
+
+2015-11-10  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gfortran.dg/pr68251.f90: New test.
+
+2015-11-09  Cesar Philippidis  <cesar@codesourcery.com>
+
+	* c-c++-common/goacc/routine-5.c: Enable c++ tests.
+
+2015-11-09  Martin Sebor  <msebor@redhat.com>
+
+	* init/new45.C: New test to verify that operator new is invoked
+	with or without overhead for a cookie.
+
+	PR c++/67927
+	* init/new44.C: New test for placement new expressions for arrays
+	with excessive number of elements.
+
+	PR c++/67913
+	* init/new43.C: New test for placement new expressions for arrays
+	with negative number of elements.
+
+	* other/new-size-type.C: Expect array new expression with
+	an excessive number of elements to be rejected.
+
+2015-11-09  Nathan Sidwell  <nathan@codesourcery.com>
+
+	* c-c++-common/goacc/routine-1.c: New.
+	* c-c++-common/goacc/routine-2.c: New.
+	* c-c++-common/goacc/routine-3.c: New.
+	* c-c++-common/goacc/routine-4.c: New.
+	* c-c++-common/goacc/routine-5.c: New.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.target/sparc/sparc-ret.c: Rename to...
+	* gcc.target/sparc/sparc-ret-1.c: ...this.
+	* gcc.target/sparc/sparc-ret-2.c: New test.
+
+2015-11-09  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* lib/target-supports.exp (check_p8vector_hw_available): Split
+	long line.
+	(check_vsx_hw_available): Likewise.
+	(check_p9vector_hw_available): Add new checks for ISA 3.0 hardware
+	support and for PowerPC float128 support.
+	(check_p9modulo_hw_available): Likewise.
+	(check_ppc_float128_sw_available): Likewise.
+	(check_ppc_float128_hw_available): Likewise.
+	(check_effective_target_powerpc_p9vector_ok): Likewise.
+	(check_effective_target_powerpc_p9modulo_ok): Likewise.
+	(check_effective_target_powerpc_float128_sw_ok): Likewise.
+	(check_effective_target_powerpc_float128_hw_ok): Likewise.
+	(is-effective-target): Add new PowerPc targets.
+	(is-effective-target-keyword): Likewise.
+	(check_vect_support_and_set_flags): If we have ISA 3.0 vector
+	instructions, use it.
+
+	* gcc.target/powerpc/mod-1.c: New test for ISA 3.0 instructions.
+	* gcc.target/powerpc/mod-2.c: Likewise.
+	* gcc.target/powerpc/ctz-1.c: Likewise.
+	* gcc.target/powerpc/ctz-2.c: Likewise.
+	* gcc.target/powerpc/extswsli-1.c: Likewise.
+	* gcc.target/powerpc/extswsli-2.c: Likewise.
+	* gcc.target/powerpc/extswsli-3.c: Likewise.
+
+	* gcc.target/powerpc/fusion.c (fusion_vector): Move to fusion2.c
+	and allow the test on PowerPC LE.
+	* gcc.target/powerpc/fusion2.c (fusion_vector): Likewise.
+	* gcc.target/powerpc/fusion3.c: New file, test power9 fusion.
+
+	* gcc.target/powerpc/float128-call.c: Use powerpc_float128_sw_ok
+	check instead of powerpc_vsx_ok.
+	* gcc.target/powerpc/float128-mix.c: Likewise.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.dg/sso/*.c: Robustify dg-output directives.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* g++.dg/ubsan/pr68259.C: New test.
+
+2015-11-09  Uros Bizjak  <ubizjak@gmail.com>
+
+	* g++.dg/cilk-plus/CK/pr66326.cc: Do not include cilk.h.
+	(main): Use _Cilk_spawn instead of cilk_spawn.
+
+2015-11-09  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* gcc.target/i386/addr-space-3.c: Fix quoting in dg-final
+	scan-assembler directive.
+
+2015-11-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/68129
+	* gcc.dg/pr68129_1.c: New test.
+
+2015-11-09  Andreas Arnez  <arnez@linux.vnet.ibm.com>
+
+	PR debug/67192
+	* gcc.dg/guality/pr67192.c (f3, f4): New functions.
+	(main): Invoke them.
+
+2015-11-09  Andreas Arnez  <arnez@linux.vnet.ibm.com>
+
+	PR debug/67192
+	* gcc.dg/guality/pr67192.c: New test.
+
+2015-11-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68248
+	* gcc.dg/torture/pr68248.c: New testcase.
+
+2015-11-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56118
+	* gcc.dg/vect/no-tree-sra-bb-slp-pr50730.c: Adjust.
+
+2015-11-09  Thomas Preud'homme  <thomas.preudhomme@arm.com>
+
+	* gcc.target/arm/thumb2-slow-flash-data.c: Add missing typespec for
+	labelref and check use of constant pool by looking for .word and
+	similar directives.
+
+2015-11-09  Igor Zamyatin  <igor.zamyatin@intel.com>
+
+	PR target/66326
+	* g++.dg/cilk-plus/CK/pr66326.cc: New test.
+
+2015-11-09  Richard Henderson  <rth@redhat.com>
+
+	* gcc.target/i386/addr-space-1.c: New test.
+	* gcc.target/i386/addr-space-2.c: New test.
+	* gcc.target/i386/addr-space-3.c: New test.
+
+2015-11-08  Steven g. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/68053
+	* gfortran.dg/pr68053.f90: New test.
+
+2015-11-06  Jan Hubicka  <hubicka@ucw.cz>
+
+	* g++.dg/lto/pr68057_0.C: Fix testcase.
+
+2015-11-08  Joost VandeVondele <vondele@gcc.gnu.org>
+
+	* gfortran.dg/PR67518.f90: move from here...
+	* gfortran.dg/graphite/PR67518.f90: to here.
+	* gfortran.dg/PR53852.f90: move from here...
+	* gfortran.dg/graphite/PR53852.f90: to here.
+
+2015-11-08  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.dg/sso-1.c: New test.
+	* gcc.dg/sso-2.c: Likewise.
+	* gcc.dg/sso-3.c: Likewise.
+	* gcc.dg/sso-4.c: Likewise.
+	* gcc.dg/sso-5.c: Likewise.
+	* gcc.dg/sso-6.c: Likewise.
+	* gcc.dg/sso-7.c: Likewise.
+	* gcc.dg/sso-8.c: Likewise.
+	* gcc.dg/sso: New directory.
+	* gcc.target/i386/movbe-3.c: New test.
+	* gnat.dg/sso1.adb: Likewise.
+	* gnat.dg/sso2.ad[sb]: Likewise.
+	* gnat.dg/sso3.adb: Likewise.
+	* gnat.dg/sso4.adb: Likewise.
+	* gnat.dg/sso5.adb: Likewise.
+	* gnat.dg/sso6.adb: Likewise.
+	* gnat.dg/sso7.adb: Likewise.
+	* gnat.dg/specs/sso1.ads: Likewise.
+	* gnat.dg/specs/sso2.ads: Likewise.
+	* gnat.dg/sso: New directory.
+
+2015-11-08  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/68218
+	* gfortran.dg/allocate_with_arrayspec_1.f90: New test.
+
+2015-11-08  Steven G. Kargl  <kargl@gc.gnu.org>
+
+	PR fortran/68224
+	* gfortran.dg/pr68224.f90: New test.
+
+2015-11-08  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/68196
+	* gfortran.dg/proc_ptr_47.f90: New test.
+
+	PR fortran/66465
+	* gfortran.dg/pr66465.f90: New test.
+
 2015-11-07  John David Anglin  <danglin@gcc.gnu.org>
 
 	* gcc.dg/Wno-frame-address.c: Skip on hppa*-*-*.
@@ -36,7 +255,7 @@
 2015-11-06  Dominique d'Humieres <dominiq@lps.ens.fr>
 
 	PR fortran/54224
-	* gfortran.dg/warn_unused_function_2.f90: Add two new 
+	* gfortran.dg/warn_unused_function_2.f90: Add two new
 	"defined but not used" subroutines.
 
 2015-11-06  Jakub Jelinek  <jakub@redhat.com>

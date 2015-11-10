@@ -1,3 +1,1103 @@
+2015-11-10  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.c (ix86_print_operand): Remove dead code that
+	tried to avoid (%rip) for call operands.
+
+2015-11-10  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.c (ix86_print_operand_address_as): Add no_rip
+	argument.  Do not use RIP relative addressing when no_rip is set.
+	(ix86_print_operand): Update call to ix86_print_operand_address_as.
+	(ix86_print_operand_address): Ditto.
+
+2015-11-10  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm.c (arm_new_rtx_costs, FIX case): Handle
+	combine_vcvtf2i pattern.
+
+2015-11-10  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm.c (neon_valid_immediate): Remove integer
+	CONST_DOUBLE handling.  It should never occur.
+
+2015-11-10  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/aarch64/atomics.md (unspecv): Move to iterators.md.
+	(ATOMIC_LDOP): Likewise.
+	(atomic_ldop): Likewise.
+	* config/aarch64/iterators.md (unspecv): Moved from atomics.md.
+	(ATOMIC_LDOP): Likewise.
+	(atomic_ldop): Likewise.
+
+2015-11-10  Martin Liska  <mliska@suse.cz>
+
+	* alloc-pool.h (allocate_raw): New function.
+	(operator new (size_t, object_allocator<T> &a)): Use the
+	function instead of object_allocator::allocate).
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* config/i386/sse.md (HALFMASKMODE): New attribute.
+	(DOUBLEMASKMODE): New attribute.
+	(vec_pack_trunc_qi): New.
+	(vec_pack_trunc_<mode>): New.
+	(vec_unpacks_lo_hi): New.
+	(vec_unpacks_lo_si): New.
+	(vec_unpacks_lo_di): New.
+	(vec_unpacks_hi_hi): New.
+	(vec_unpacks_hi_<mode>): New.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* optabs.c (expand_binop_directly): Allow scalar mode for
+	vec_pack_trunc_optab.
+	* tree-vect-loop.c (vect_determine_vectorization_factor): Skip
+	boolean vector producers from pattern sequence when computing VF.
+	* tree-vect-patterns.c (vect_vect_recog_func_ptrs) Add
+	vect_recog_mask_conversion_pattern.
+	(search_type_for_mask): Choose the smallest
+	type if different size types are mixed.
+	(build_mask_conversion): New.
+	(vect_recog_mask_conversion_pattern): New.
+	(vect_pattern_recog_1): Allow scalar mode for boolean vectype.
+	* tree-vect-stmts.c (vectorizable_mask_load_store): Support masked
+	load with pattern.
+	(vectorizable_conversion): Support boolean vectors.
+	(free_stmt_vec_info): Allow patterns for statements with no lhs.
+	* tree-vectorizer.h (NUM_PATTERNS): Increase to 14.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* config/i386/i386-protos.h (ix86_expand_sse_movcc): New.
+	* config/i386/i386.c (ix86_expand_sse_movcc): Make public.
+	Cast mask to FP mode if required.
+	* config/i386/sse.md (vcond_mask_<mode><avx512fmaskmodelower>): New.
+	(vcond_mask_<mode><avx512fmaskmodelower>): New.
+	(vcond_mask_<mode><sseintvecmodelower>): New.
+	(vcond_mask_<mode><sseintvecmodelower>): New.
+	(vcond_mask_v2div2di): New.
+	(vcond_mask_<mode><sseintvecmodelower>): New.
+	(vcond_mask_<mode><sseintvecmodelower>): New.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* optabs-query.h (get_vcond_mask_icode): New.
+	* optabs-tree.c (expand_vec_cond_expr_p): Use
+	get_vcond_mask_icode for VEC_COND_EXPR with mask.
+	* optabs.c (expand_vec_cond_mask_expr): New.
+	(expand_vec_cond_expr): Use get_vcond_mask_icode
+	when possible.
+	* optabs.def (vcond_mask_optab): New.
+	* tree-vect-patterns.c (vect_recog_bool_pattern): Don't
+	generate redundant comparison for COND_EXPR.
+	* tree-vect-stmts.c (vect_is_simple_cond): Allow SSA_NAME
+	as a condition.
+	(vectorizable_condition): Likewise.
+	* tree-vect-slp.c (vect_get_and_check_slp_defs): Allow
+	cond_exp with no embedded comparison.
+	(vect_build_slp_tree_1): Likewise.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* config/i386/sse.md (maskload<mode>): Rename to ...
+	(maskload<mode><sseintvecmodelower>): ... this.
+	(maskstore<mode>): Rename to ...
+	(maskstore<mode><sseintvecmodelower>): ... this.
+	(maskload<mode><avx512fmaskmodelower>): New.
+	(maskstore<mode><avx512fmaskmodelower>): New.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* internal-fn.c (expand_MASK_LOAD): Adjust to maskload optab changes.
+	(expand_MASK_STORE): Adjust to maskstore optab changes.
+	* optabs-query.c (can_vec_mask_load_store_p): Add MASK_MODE arg.
+	 Adjust to maskload, maskstore optab changes.
+	* optabs-query.h (can_vec_mask_load_store_p): Add MASK_MODE arg.
+	* optabs.def (maskload_optab): Transform into convert optab.
+	(maskstore_optab): Likewise.
+	* tree-if-conv.c (ifcvt_can_use_mask_load_store): Adjust to
+	can_vec_mask_load_store_p signature change.
+	(predicate_mem_writes): Use boolean mask.
+	* tree-vect-stmts.c (vectorizable_mask_load_store): Adjust to
+	can_vec_mask_load_store_p signature change.  Allow invariant masks.
+	(vectorizable_operation): Ignore type precision for boolean vectors.
+
+2015-11-10  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* expr.c (do_store_flag): Use expand_vec_cmp_expr for mask results.
+	(const_vector_mask_from_tree): New.
+	(const_vector_from_tree): Use const_vector_mask_from_tree
+	for boolean vectors.
+	* optabs-query.h (get_vec_cmp_icode): New.
+	* optabs-tree.c (expand_vec_cmp_expr_p): New.
+	* optabs-tree.h (expand_vec_cmp_expr_p): New.
+	* optabs.c (vector_compare_rtx): Add OPNO arg.
+	(expand_vec_cond_expr): Adjust to vector_compare_rtx change.
+	(expand_vec_cmp_expr): New.
+	* optabs.def (vec_cmp_optab): New.
+	(vec_cmpu_optab): New.
+	* optabs.h (expand_vec_cmp_expr): New.
+	* tree-vect-generic.c (expand_vector_comparison): Add vector
+	comparison optabs check.
+	* tree-vect-loop.c (vect_determine_vectorization_factor):  Ignore mask
+	operations for VF.  Add mask type computation.
+	* tree-vect-stmts.c (get_mask_type_for_scalar_type): New.
+	(vectorizable_comparison): New.
+	(vect_analyze_stmt): Add vectorizable_comparison.
+	(vect_transform_stmt): Likewise.
+	(vect_init_vector): Support boolean vector invariants.
+	(vect_get_vec_def_for_operand): Add VECTYPE arg.
+	(vectorizable_condition): Directly provide vectype for invariants
+	used in comparison.
+	* tree-vectorizer.h (get_mask_type_for_scalar_type): New.
+	(enum vect_var_kind): Add vect_mask_var.
+	(enum stmt_vec_info_type): Add comparison_vec_info_type.
+	(vectorizable_comparison): New.
+	(vect_get_vec_def_for_operand): Add VECTYPE arg.
+	* tree-vect-data-refs.c (vect_get_new_vect_var): Support vect_mask_var.
+	(vect_create_destination_var): Likewise.
+	* tree-vect-patterns.c (check_bool_pattern): Check fails
+	if we can vectorize comparison directly.
+	(search_type_for_mask): New.
+	(vect_recog_bool_pattern): Support cases when bool pattern
+	check fails.
+	* tree-vect-slp.c (vect_build_slp_tree_1): Allow
+	comparison statements.
+	(vect_get_constant_vectors): Support boolean vector
+	constants.
+	* config/i386/i386-protos.h (ix86_expand_mask_vec_cmp): New.
+	(ix86_expand_int_vec_cmp): New.
+	(ix86_expand_fp_vec_cmp): New.
+	* config/i386/i386.c (ix86_expand_sse_cmp): Allow NULL for
+	op_true and op_false.
+	(ix86_int_cmp_code_to_pcmp_immediate): New.
+	(ix86_fp_cmp_code_to_pcmp_immediate): New.
+	(ix86_cmp_code_to_pcmp_immediate): New.
+	(ix86_expand_mask_vec_cmp): New.
+	(ix86_expand_fp_vec_cmp): New.
+	(ix86_expand_int_sse_cmp): New.
+	(ix86_expand_int_vcond): Use ix86_expand_int_sse_cmp.
+	(ix86_expand_int_vec_cmp): New.
+	(ix86_get_mask_mode): New.
+	(TARGET_VECTORIZE_GET_MASK_MODE): New.
+	* config/i386/sse.md (avx512fmaskmodelower): New.
+	(vec_cmp<mode><avx512fmaskmodelower>): New.
+	(vec_cmp<mode><sseintvecmodelower>): New.
+	(vec_cmpv2div2di): New.
+	(vec_cmpu<mode><avx512fmaskmodelower>): New.
+	(vec_cmpu<mode><sseintvecmodelower>): New.
+	(vec_cmpuv2div2di): New.
+
+2015-11-10  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68240
+	* tree-ssa-sccvn.c (cond_stmts_equal_p): Handle commutative compares
+	properly.
+	(visit_phi): For PHIs with just a single executable edge
+	take its value directly.
+	(expressions_equal_p): Handle VN_TOP properly.
+
+2015-11-10  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-data-refs.c (vect_slp_analyze_node_dependences):
+	Handle memory using/clobbering stmts without a STMT_VINFO_DATA_REF
+	conservatively.
+
+2015-11-10  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56118
+	* tree-vect-slp.c (vect_bb_vectorization_profitable_p): Make equal
+	cost favor vectorized version.
+
+2015-11-10  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.md (<neg_not_op><mode>cc): New define_expand.
+	* config/aarch64/iterators.md (NEG_NOT): New code iterator.
+	(neg_not_op): New code attribute.
+
+2015-11-10  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* ifcvt.c (noce_try_inverse_constants): New function.
+	(noce_process_if_block): Call it.
+	* optabs.h (emit_conditional_neg_or_complement): Declare prototype.
+	* optabs.def (negcc_optab, notcc_optab): Declare.
+	* optabs.c (emit_conditional_neg_or_complement): New function.
+	* doc/tm.texi (Standard Names): Document negcc, notcc names.
+
+2015-11-10  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR rtl-optimization/68236
+	* haifa-sched.c (autopref_multipass_dfa_lookahead_guard): Return 0
+	if insn_queue doesn't exist.
+	(haifa_sched_finish): Reset insn_queue to NULL.
+
+2015-11-10  Robert Suchanek  <robert.suchanek@imgtec.com>
+
+	* regrename.c (create_new_chain): Initialize renamed and tied_chain.
+	(build_def_use): Initialize terminated_this_insn.
+	(find_best_rename_reg): Pick and check register from the tied chain.
+	(regrename_do_replace): Mark head as renamed.
+	(struct du_head *terminated_this_insn). New static variable.
+	(scan_rtx_reg): Tie chains in move insns.  Set terminated_this_insn.
+	* regrename.h (struct du_head): Add tied_chain, renamed members.
+
+2015-11-10  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+
+	PR bootstrap/68256
+	* config/aarch64/aarch64.c (aarch64_use_constant_blocks_p):
+	Return false.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR target/57845
+	* config/sparc/sparc.c (sparc_function_value_1): In 32-bit mode, do
+	not promote the mode for aggregate types.
+
+2015-11-09  Nathan Sidwell  <nathan@codesourcery.com>
+
+	* omp-low.h (replace_oacc_fn_attrib, build_oacc_routine_dims): Declare.
+	* omp-low.c (build_oacc_routine_dims): New.
+
+2015-11-09  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* config/rs6000/constraints.md (wF constraint): New constraints
+	for power9/toc fusion.
+	(wG constraint): Likewise.
+
+	* config/rs6000/predicates.md (u6bit_cint_operand): New
+	predicate, recognize 0..63.
+	(upper16_cint_operand): New predicate for power9 and toc fusion.
+	(fpr_reg_operand): Likewise.
+	(toc_fusion_or_p9_reg_operand): Likewise.
+	(toc_fusion_mem_raw): Likewise.
+	(toc_fusion_mem_wrapped): Likewise.
+	(fusion_gpr_addis): If power9 fusion, allow fusion for a larger
+	address range.
+	(fusion_gpr_mem_combo): Delete, use fusion_addis_mem_combo_load
+	instead.
+	(fusion_addis_mem_combo_load): Add support for power9 fusion of
+	floating point loads, floating point stores, and gpr stores.
+	(fusion_addis_mem_combo_store): Likewise.
+	(fusion_offsettable_mem_operand): Likewise.
+
+	* config/rs6000/rs6000-protos.h (emit_fusion_addis): Add
+	declarations.
+	(emit_fusion_load_store): Likewise.
+	(fusion_p9_p): Likewise.
+	(expand_fusion_p9_load): Likewise.
+	(expand_fusion_p9_store): Likewise.
+	(emit_fusion_p9_load): Likewise.
+	(emit_fusion_p9_store): Likewise.
+	(fusion_wrap_memory_address): Likewise.
+
+	* config/rs6000/rs6000.c (struct rs6000_reg_addr): Add new
+	elements for power9 fusion.
+	(rs6000_debug_print_mode): Rework debug information to print more
+	information about fusion.
+	(rs6000_init_hard_regno_mode_ok): Setup for power9 fusion
+	support.
+	(rs6000_legitimate_address_p): Recognize toc fusion as a valid
+	offsettable memory address.
+	(rs6000_rtx_costs): Update costs for new ISA 3.0 instructions.
+	(emit_fusion_gpr_load): Move most of the code from
+	emit_fusion_gpr_load into emit_fusion-addis that handles both
+	power8 and power9 fusion.
+	(emit_fusion_addis): Likewise.
+	(emit_fusion_load_store): Likewise.
+	(fusion_wrap_memory_address): Add support for TOC fusion.
+	(fusion_split_address): Likewise.
+	(fusion_p9_p): Add support for power9 fusion.
+	(expand_fusion_p9_load): Likewise.
+	(expand_fusion_p9_store): Likewise.
+	(emit_fusion_p9_load): Likewise.
+	(emit_fusion_p9_store): Likewise.
+
+	* config/rs6000/rs6000.h (TARGET_EXTSWSLI): Macros for support for
+	new instructions in ISA 3.0.
+	(TARGET_CTZ): Likewise.
+	(TARGET_TOC_FUSION_INT): Macros for power9 fusion support.
+	(TARGET_TOC_FUSION_FP): Likewise.
+
+	* config/rs6000/rs6000.md (UNSPEC_FUSION_P9): New power9/toc
+	fusion unspecs.
+	(UNSPEC_FUSION_ADDIS): Likewise.
+	(QHSI mode iterator): New iterator for power9 fusion.
+	(GPR_FUSION): Likewise.
+	(FPR_FUSION): Likewise.
+	(mod<mode>3): Add support for ISA 3.0
+	modulus instructions.
+	(umod<mode>3): Likewise.
+	(divmod peephole): Likewise.
+	(udivmod peephole): Likewise.
+	(ctz<mode>2): Add support for ISA 3.0 count trailing zeros scalar
+	instructions.
+	(ctz<mode>2_h): Likewise.
+	(ashdi3_extswsli): Add support for ISA 3.0 EXTSWSLI instruction.
+	(ashdi3_extswsli_dot): Likewise.
+	(ashdi3_extswsli_dot2): Likewise.
+	(power9 fusion splitter): New power9/toc fusion support.
+	(toc_fusionload_<mode>): Likewise.
+	(toc_fusionload_di): Likewise.
+	(fusion_gpr_load_<mode>): Update predicate function.
+	(power9 fusion peephole2s): New power9/toc fusion support.
+	(fusion_gpr_<P:mode>_<GPR_FUSION:mode>_load): Likewise.
+	(fusion_gpr_<P:mode>_<GPR_FUSION:mode>_store): Likewise.
+	(fusion_fpr_<P:mode>_<FPR_FUSION:mode>_load): Likewise.
+	(fusion_fpr_<P:mode>_<FPR_FUSION:mode>_store): Likewise.
+	(fusion_p9_<mode>_constant): Likewise.
+
+2015-11-09  Steve Ellcey  <sellcey@imgtec.com>
+
+	* optabs.c (prepare_libcall_arg): New function.
+	(expand_fixed_convert): Add call to prepare_libcall_arg.
+
+2015-11-09  Nikolai Bozhenov  <n.bozhenov@samsung.com>
+
+	* sched-int.h (dump_rgn_dependencies_dot): Declare
+	* sched-rgn.c (dump_rgn_dependencies_dot): New function
+	* print-rtl.h (print_insn): Add prototype
+
+	* haifa-sched.c (setup_sched_dump): Don't redirect output to stderr.
+	* common.opt (-fsched-verbose): Set default value to 1.
+	* invoke.texi (-fsched-verbose): Update the option's description.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/visium/visium.h (PRINT_OPERAND): Delete.
+	(PRINT_OPERAND_PUNCT_VALID_P): Likewise.
+	(PRINT_OPERAND_ADDRESS): Likewise.
+	* config/visium/visium.c (TARGET_PRINT_OPERAND_PUNCT_VALID_P): Define
+	to...
+	(visium_print_operand_punct_valid_p): ...this.  New function.
+	(TARGET_PRINT_OPERAND): Define to...
+	(print_operand): Rename to...
+	(visium_print_operand): ...this.
+	(TARGET_PRINT_OPERAND_ADDRESS): Define to...
+	(visium_output_address): Rename to...
+	(visium_print_operand_address): ...this.
+	(print_operand_address): Delete.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR middle-end/68259
+	* tree.h (reverse_storage_order_for_component_p) <COMPONENT_REF>:
+	Check that the type of the first operand is an aggregate type.
+
+2015-11-09  Nathan Sidwell  <nathan@codesourcery.com>
+
+	* omp-low.c: Fix some OpenACC comment typos.
+	(lower_reduction_clauses): Remove BUILT_IN_GOACC_GET_THREAD_NUM call.
+	* omp-builtins.def (BUILT_IN_GOACC_GET_THREAD_NUM,
+	BUILT_IN_GOACC_GET_NUM_THREADS): Delete.
+
+2015-11-09  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (*strmovqi_1): Fix insn enable condition.
+
+2015-11-09  Jeff Law  <law@redhat.com>
+
+	* tree-ssanames.c (verify_ssaname_freelists): Simplify check for
+	being in gimple/ssa form.  Remove redundant check for SSA_NAME.
+	Fix comment typo.
+
+2015-11-09  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* config/rs6000/rs6000.opt (-mpower9-fusion): Add new switches for
+	ISA 3.0 (power9).
+	(-mpower9-vector): Likewise.
+	(-mpower9-dform): Likewise.
+	(-mpower9-minmax): Likewise.
+	(-mtoc-fusion): Likewise.
+	(-mmodulo): Likewise.
+	(-mfloat128-hardware): Likewise.
+
+	* config/rs6000/rs6000-cpus.def (ISA_3_0_MASKS_SERVER): Add option
+	mask for ISA 3.0 (power9).
+	(POWERPC_MASKS): Add new ISA 3.0 switches.
+	(power9 cpu): Add power9 cpu.
+
+	* config/rs6000/rs6000.h (ASM_CPU_POWER9_SPEC): Add support for
+	power9.
+	(ASM_CPU_SPEC): Likewise.
+	(EXTRA_SPECS): Likewise.
+
+	* config/rs6000/rs6000-opts.h (enum processor_type): Add
+	PROCESSOR_POWER9.
+
+	* config/rs6000/rs6000.c (power9_cost): Initial cost setup for
+	power9.
+	(rs6000_debug_reg_global): Add support for power9 fusion.
+	(rs6000_setup_reg_addr_masks): Cache mode size.
+	(rs6000_option_override_internal): Until real power9 tuning is
+	added, use -mtune=power8 for -mcpu=power9.
+	(rs6000_setup_reg_addr_masks): Do not allow pre-increment,
+	pre-decrement, or pre-modify on SFmode/DFmode if we allow the use
+	of Altivec registers.
+	(rs6000_option_override_internal): Add support for ISA 3.0
+	switches.
+	(rs6000_loop_align): Add support for power9 cpu.
+	(rs6000_file_start): Likewise.
+	(rs6000_adjust_cost): Likewise.
+	(rs6000_issue_rate): Likewise.
+	(insn_must_be_first_in_group): Likewise.
+	(insn_must_be_last_in_group): Likewise.
+	(force_new_group): Likewise.
+	(rs6000_register_move_cost): Likewise.
+	(rs6000_opt_masks): Likewise.
+
+	* config/rs6000/rs6000.md (cpu attribute): Add power9.
+	* config/rs6000/rs6000-tables.opt: Regenerate.
+
+	* config/rs6000/rs6000-c.c (rs6000_target_modify_macros): Define
+	_ARCH_PWR9 if power9 support is available.
+
+	* config/rs6000/aix61.h (ASM_CPU_SPEC): Add power9.
+	* config/rs6000/aix53.h (ASM_CPU_SPEC): Likewise.
+
+	* configure.ac: Determine if the assembler supports the ISA 3.0
+	instructions.
+	* config.in (HAVE_AS_POWER9): Likewise.
+	* configure: Regenerate.
+
+	* doc/invoke.texi (RS/6000 and PowerPC Options): Document ISA 3.0
+	switches.
+
+2015-11-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_simd_valid_immediate):
+	Remove integer CONST_DOUBLE handling.  It should never occur.
+
+2015-11-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/68129
+	* config/aarch64/aarch64.h (TARGET_SUPPORTS_WIDE_INT): Define to 1.
+	* config/aarch64/aarch64.c (aarch64_print_operand, CONST_DOUBLE):
+	Delete VOIDmode case.  Assert that mode is not VOIDmode.
+	* config/aarch64/predicates.md (const0_operand): Remove const_double
+	match.
+
+2015-11-09  Martin Liska  <mliska@suse.cz>
+
+	* ipa-inline-analysis.c (estimate_function_body_sizes): Call
+	body_info release function.
+	* ipa-prop.c (ipa_release_body_info): New function.
+	(ipa_analyze_node): Call the function.
+	(ipa_node_params::~ipa_node_params): Release known_csts.
+	* ipa-prop.h (ipa_release_body_info): Declare.
+
+2015-11-09  Martin Liska  <mliska@suse.cz>
+
+	* gcc.c (record_temp_file): Release name string.
+	* ifcvt.c (noce_convert_multiple_sets): Use auto_vec instead
+	of vec.
+	* lra-lives.c (free_live_range_list): Utilize
+	lra_live_range_pool for allocation and deallocation.
+	(create_live_range): Likewise.
+	(copy_live_range): Likewise.
+	(lra_merge_live_ranges): Likewise.
+	(remove_some_program_points_and_update_live_ranges): Likewise.
+	(lra_create_live_ranges_1): Release point_freq_vec that can
+	be not freed from previous iteration of the function.
+	* tree-eh.c (lower_try_finally_switch): Use auto_vec instead of
+	vec.
+	* tree-sra.c (sra_deinitialize): Release all vectors in
+	base_access_vec.
+	* tree-ssa-dom.c (free_dom_edge_info): Make the function extern.
+	* tree-ssa-threadupdate.c (remove_ctrl_stmt_and_useless_edges):
+	Release edge_info for a removed edge.
+	(thread_through_all_blocks): Free region vector.
+	* tree-ssa.h (free_dom_edge_info): Declare function extern.
+
+2015-11-09  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* optabs.c (expand_vec_cond_expr): Always get sign from type.
+	* tree.c (wide_int_to_tree): Support negative values for boolean.
+	(build_nonstandard_boolean_type): Use signed type for booleans.
+
+2015-11-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/68248
+	* tree-vect-generic.c (expand_vector_operations_1): Handle
+	scalar rhs2.
+
+2015-11-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/56118
+	* tree-vectorizer.h (vect_find_last_scalar_stmt_in_slp): Declare.
+	* tree-vect-slp.c (vect_find_last_scalar_stmt_in_slp): Export.
+	* tree-vect-data-refs.c (vect_slp_analyze_node_dependences): New
+	function.
+	(vect_slp_analyze_data_ref_dependences): Instead of computing
+	all dependences of the region DRs just analyze the code motions
+	SLP vectorization will perform.  Remove SLP instances that
+	cannot have their store/load motions applied.
+	(vect_analyze_data_refs): Allow DRs without a vectype
+	in BB vectorization.
+
+2015-11-09  Julian Brown  <julian@codesourcery.com>
+
+	* final.c (output_asm_insn): Pass VOIDmode to output_address.
+	(output_address): Add MODE argument. Pass to print_operand_address
+	hook.
+	* targhooks.c (default_print_operand_address): Add MODE argument.
+	* targhooks.h (default_print_operand_address): Update prototype.
+	* output.h (output_address): Update prototype.
+	* target.def (print_operand_address): Add MODE argument.
+	* config/vax/vax.c (print_operand_address): Pass VOIDmode to
+	output_address.
+	(print_operand): Pass access mode to output_address.
+	* config/mcore/mcore.c (mcore_print_operand_address): Add MODE
+	argument.
+	(mcore_print_operand): Update calls to mcore_print_operand_address.
+	* config/fr30/fr30.c (fr30_print_operand): Pass VOIDmode to
+	output_address.
+	* config/lm32/lm32.c (lm32_print_operand): Pass mode in calls to
+	output_address.
+	* config/tilegx/tilegx.c (output_memory_reference_mode): Remove
+	global.
+	(tilegx_print_operand): Don't set above global. Update calls to
+	output_address.
+	(tilegx_print_operand_address): Add MODE argument. Use instead of
+	output_memory_reference_mode global.
+	* config/frv/frv.c (frv_print_operand_address): Add MODE argument.
+	(frv_print_operand): Pass mode to frv_print_operand_address calls.
+	* config/mn10300/mn10300.c (mn10300_print_operand): Pass mode to
+	output_address.
+	* config/cris/cris.c (cris_print_operand_address): Add MODE
+	argument.
+	(cris_print_operand): Pass mode to output_address calls.
+	* config/spu/spu.c (print_operand): Pass mode to output_address
+	calls.
+	* config/aarch64/aarch64.h (aarch64_print_operand)
+	(aarch64_print_operand_address): Remove prototypes.
+	* config/aarch64/aarch64.c (aarch64_memory_reference_mode): Delete
+	global.
+	(aarch64_print_operand): Make static. Update calls to
+	output_address.
+	(aarch64_print_operand_address): Add MODE argument. Use instead of
+	aarch64_memory_reference_mode global.
+	(TARGET_PRINT_OPERAND, TARGET_PRINT_OPERAND_ADDRESS): Define target
+	hooks.
+	* config/aarch64/aarch64.h (PRINT_OPERAND, PRINT_OPERAND_ADDRESS):
+	Delete macro definitions.
+	* config/pa/pa.c (pa_print_operand): Pass mode in output_address
+	calls.
+	* config/xtensa/xtensa.c (print_operand): Pass mode in
+	output_address calls.
+	* config/h8300/h8300.c (h8300_print_operand_address): Add MODE
+	argument.
+	(h83000_print_operand): Update calls to h8300_print_operand_address
+	and output_address.
+	* config/ia64/ia64.c (ia64_print_operand_address): Add MODE
+	argument.
+	* config/tilepro/tilepro.c (output_memory_reference_mode): Delete
+	global.
+	(tilepro_print_operand): Pass mode to output_address.
+	(tilepro_print_operand_address): Add MODE argument. Use instead of
+	output_memory_reference_mode.
+	* config/nvptx/nvptx.c (output_decl_chunk, nvptx_assemble_integer)
+	(nvptx_output_call_insn, nvptx_print_address_operand): Pass VOIDmode
+	to output_address calls.
+	(nvptx_print_operand_address): Add MODE argument.
+	* config/alpha/alpha.c (print_operand): Pass mode argument in
+	output_address calls.
+	* config/m68k/m68k.c (print_operand): Pass mode argument in
+	output_address call.
+	* config/avr/avr.c (avr_print_operand_address): Add MODE argument.
+	(avr_print_operand): Update calls to avr_print_operand_address.
+	* config/sparc/sparc.c (sparc_print_operand_address): Add MODE
+	argument. Update calls to output_address.
+	(sparc_print_operand): Pass mode to output_address.
+	* config/iq2000/iq2000.c (iq2000_print_operand_address): Add MODE
+	argument.
+	(iq2000_print_operand): Pass mode in output_address calls.
+	* config/stormy16/stormy16.c (xstormy16_print_operand_address): Add
+	MODE argument.
+	(xstormy16_print_operand): Pass mode to
+	xstormy16_print_operand_address calls.
+	* config/mips/mips.c (mips_print_operand): Update calls to
+	output_address.
+	(mips_print_operand_address): Add MODE argument.
+	* config/epiphany/epiphany.c (epiphany_print_operand): Update calls
+	to output_address.
+	(epiphany_print_operand_address): Add MODE argument. Add FIXME note.
+	* config/pdp11/pdp11.c (pdp11_asm_print_operand): Update call to
+	output_address.
+	* config/rx/rx.c (rx_print_operand_address): Add MODE argument.
+	(rx_print_operand): Update calls to output_address,
+	rx_print_operand_address.
+	* config/nds32/nds32.c (nds32_print_operand): Update calls to
+	output_address.
+	(nds32_print_operand_address): Add MODE argument.
+	* config/rs6000/rs6000.c (print_operand): Pass mem mode to
+	output_address calls.
+	* config/c6x/c6x.c (print_address_offset): Pass mem mode to
+	output_address call.
+	(c6x_print_address_operand): Update calls to output_address.
+	(c6x_print_operand_address): Pass mode to above.
+	* config/v850/v850.c (v850_print_operand_address): Add MODE
+	argument.
+	(v850_print_operand): Pass mode to v850_print_operand_address,
+	output_address.
+	* config/mmix/mmix.c (mmix_print_operand_address): Add MODE
+	argument.
+	(mmix_print_operand): Pass mode in output_address calls.
+	* config/sh/sh.c (sh_print_operand_address): Add MODE argument.
+	(sh_print_operand): Pass mem mode to output_address,
+	sh_print_operand_address.
+	* config/cr16/cr16.c (cr16_print_operand_address): Add MODE
+	argument.
+	(cr16_print_operand): Pass mode to output_address,
+	cr16_print_operand_address.
+	* config/bfin/bfin.c (print_address_operand): Pass VOIDmode to
+	output_address.
+	* config/microblaze/microblaze.c (print_operand): Pass mode to
+	output_address.
+	* config/nios2/nios2.c (nios2_print_operand): Pass VOIDmode to
+	output_address.
+	(nios2_print_operand_address): Add MODE argument. Update call to
+	nios2_print_operand_address.
+	* config/s390/s390.c (print_operand): Pass mode to output_address.
+	* config/m32c/m32c.c (m32c_print_operand_address): Add MODE
+	argument.
+	* config/arc/arc.c (arc_print_operand): Pass VOIDmode to
+	output_address.
+	* config/arm/arm.c (arm_print_operand_address): Add MODE argument.
+	Use instead of output_memory_reference_mode.
+	(output_memory_reference_mode): Delete global.
+	(arm_print_operand): Pass mem mode to output_address.
+	* config/m32r/m32r.c (m32r_print_operand_address): Add MODE
+	argument.
+	(m32r_print_operand): Pass mode to output_address.
+	* config/msp430/msp430.c (msp430_print_operand_addr): Add MODE
+	argument.
+	(msp430_print_operand): Pass mode to msp430_print_operand_addr.
+	* config/i386/i386.c (ix86_print_operand): Pass mode to
+	output_address calls.
+	(ix86_print_operand_address): Add MODE argument.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR middle-end/68251
+	* tree-core.h (REF_REVERSE_STORAGE_ORDER): Move around.
+	* tree.h (REF_REVERSE_STORAGE_ORDER): Change to default_def_flag.
+	* tree-streamer-in.c (unpack_ts_base_value_fields): Adjust.
+	* tree-streamer-out.c (pack_ts_base_value_fields): Likewise.
+
+2015-11-09  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR rtl-optimization/67749
+	* ifcvt.c (noce_try_cmove_arith): Do not emit move in IF-ELSE
+	case before emitting the two blocks.  Instead modify the register
+	in the corresponding final insn of the basic block.
+
+2015-11-09  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* acinclude.m4 (gcc_AC_INITFINI_ARRAY): Allow for differences in
+	assembler syntax.
+	Support Solaris ld.
+	Define HAVE_INITFINI_ARRAY_SUPPORT as 0/1.
+
+	* config/sol2.h (SUPPORTS_INIT_PRIORITY): Define to
+	HAVE_INITFINI_ARRAY_SUPPORT.
+	* config/initfini-array.h: Check HAVE_INITFINI_ARRAY_SUPPORT
+	value.
+
+	* configure.ac (gcc_cv_as_sparc_nobits): Remove.
+	* config/sparc/sparc.c (sparc_solaris_elf_asm_named_section):
+	Don't check HAVE_AS_SPARC_NOBITS.
+	Heed SECTION_NOTYPE.
+
+	* configure: Regenerate.
+	* config.in: Regenerate.
+
+2015-11-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR middle-end/68253
+	* fold-const.c (fold_truth_andor_1): Initialize new variables to 0.
+
+2015-11-09  Richard Henderson  <rth@redhat.com>
+
+	* config/i386/i386-c.c (ix86_target_macros): Define __SEG_FS,
+	__SEG_GS, __SEG_TLS.
+	(ix86_register_pragmas): Register address spaces __seg_fs,
+	__seg_gs, __seg_tls.
+	* config/i386/i386-protos.h (enum ix86_address_seg): Remove.
+	(ADDR_SPACE_SEG_FS, ADDR_SPACE_SEG_GS, ADDR_SPACE_SEG_TLS): New.
+	(struct ix86_address): Use addr_space_t instead of ix86_address_seg.
+	* config/i386/i386.c (ix86_decompose_address): Likewise.
+	(ix86_legitimate_address_p): Likewise.
+	(memory_address_length): Likewise.  Check mem address space too.
+	(ix86_print_operand): Use ix86_print_operand_address_as.
+	(ix86_print_operand_address_as): Rename from
+	ix86_print_operand_address, add new addr_space_t parameter.
+	Validate that either the parameter or the ix86_address segment
+	is default address space.  Handle ADDR_SPACE_SEG_TLS.
+	(ix86_print_operand_address): New.
+	(ix86_addr_space_subset_p, TARGET_ADDR_SPACE_SUBSET_P): New.
+	(ix86_addr_space_convert, TARGET_ADDR_SPACE_CONVERT): New.
+	(ix86_addr_space_debug, TARGET_ADDR_SPACE_DEBUG): New.
+	(ix86_addr_space_zero_address_valid): New.
+	(TARGET_ADDR_SPACE_ZERO_ADDRESS_VALID): New.
+	* config/i386/i386.h (DEFAULT_TLS_SEG_REG): Use addr_space_t constants.
+	* config/i386/rdos.h (DEFAULT_TLS_SEG_REG): Likewise.
+	* config/i386/predicates.md (address_no_seg_operand): Likewise.
+	(vsib_address_operand): Likewise.
+	(address_mpx_no_base_operand): Likewise.
+	(address_mpx_no_index_operand): Likewise.
+	* doc/extend.texi (x86 Named Address Spaces): New section.
+
+	* config/i386/i386.c (ix86_check_no_addr_space): New.
+	(decide_alg): Add have_as parameter.
+	(alg_usable_p): Likewise; disable rep algorithms if set.
+	(ix86_expand_set_or_movmem): Notice if either MEM has a
+	non-default address space.
+	(ix86_expand_strlen): Likewise.
+	* config/i386/i386.md (strmov, strset): Likewise.
+	(*strmovdi_rex_1): Use ix86_check_no_addr_space.
+	(*strmovsi_1, *strmovqi_1, *rep_movdi_rex64, *rep_movsi, *rep_movqi,
+	*strsetdi_rex_1, *strsetsi_1, *strsethi_1, *strsetqi_1,
+	*rep_stosdi_rex64, *rep_stossi, *rep_stosqi, *cmpstrnqi_nz_1,
+	*cmpstrnqi_1, *strlenqi_1): Likewise.
+
+	* config/i386/i386.md (*movabs<mode>_1): Print the full memory rtx.
+	(*movabs<mode>_2): Likewise.
+
+	* dwarf2out.c (modified_type_die): Pass the address space number
+	through TARGET_ADDR_SPACE_DEBUG to produce the dwarf address class.
+	* target.def (TARGET_ADDR_SPACE_DEBUG): New.
+	* targhooks.c (default_addr_space_debug): New.
+	* targhooks.h (default_addr_space_debug): Declare.
+	* doc/tm.texi.in (TARGET_ADDR_SPACE_DEBUG): Mark it.
+	* doc/tm.texi: Rebuild.
+
+	* gimple.c (check_loadstore): Return false when 0 is a valid address.
+	* fold-const.c (const_unop) [ADDR_SPACE_CONVERT_EXPR]: Do not fold
+	null when 0 is valid in the source address space.
+	* target.def (TARGET_ADDR_SPACE_ZERO_ADDRESS_VALID): New.
+	* targhooks.c (default_addr_space_zero_address_valid): New.
+	* targhooks.h (default_addr_space_zero_address_valid): Declare.
+	* doc/tm.texi.in (TARGET_ADDR_SPACE_ZERO_ADDRESS_VALID): Mark it.
+	* doc/tm.texi: Rebuild.
+
+	* cselib.c (add_mem_for_addr): Compare address spaces when
+	matching memories.
+	(cselib_lookup_mem): Likewise.
+	* fold-const.c (operand_equal_p): Check address spaces of
+	pointer types before checking integer constants.
+
+	PR tree-opt/66768
+	* tree-ssa-address.c (create_mem_ref_raw): Use a pointer of
+	the correct type for the base.
+
+2015-11-09  Jeff Law  <law@redhat.com>
+
+	* tree-into-ssa.c (names_to_release): No longer static.
+	* tree-into-ssa.h (names_to_release): Declare.
+	* tree-ssanames.c (verify_ssaname_freelists): New debug function.
+	(release_free_names_and_compact_live_names): New function extracted
+	from pass_release_ssa_names::execute.
+	(pass_release_ssa_names::execute): Use it.
+
+2015-11-09  Alan Modra  <amodra@gmail.com>
+
+	* gensupport.c (add_mnemonic_string): Make len param a size_t.
+	(gen_mnemonic_setattr): Make "size" var a size_t.  Use
+	obstack_blank_fast to shrink obstack.  Cast obstack_next_free
+	return value.
+
+2015-11-09  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR rtl-optimization/68182
+	* bb-reorder.c (reorder_basic_blocks_simple): Treat a conditional
+	branch with only one successor just like unconditional branches.
+
+2015-11-08  Jeff Law  <law@redhat.com>
+
+	* tree-ssa-threadupdate.c (register_jump_thraed): Assert that a
+	non-FSM path has no edges marked with EDGE_DFS_BACK.
+	(ssa_redirect_edges): No longer call mark_loop_for_removal.
+	(thread_single_edge, def_split_header_continue_p): Remove.
+	(bb_ends_with_multiway_branch): Likewise.
+	(thread_through_loop_header): Remove cases of threading from
+	latch through the header.  Simplify knowing we won't thread
+	the latch.
+	(thread_through_all_blocks): Simplify knowing that only the FSM
+	threader needs to handle backedges.
+
+2015-11-08  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* doc/extend.texi (type attributes): Document scalar_storage_order.
+	(Structure-Packing Pragmas): Rename into...
+	(Structure-Layout Pragmas): ...this.  Document scalar_storage_order.
+	* doc/invoke.texi (C Dialect Options): Document -fsso-struct
+	(Warnings): Document -Wno-scalar-storage-order.
+	* flag-types.h (enum scalar_storage_order_kind): New enumeration.
+	* calls.c (store_unaligned_arguments_into_pseudos): Adjust calls to
+	extract_bit_field and store_bit_field.
+	(initialize_argument_information): Adjust call to store_expr.
+	(load_register_parameters): Adjust call to extract_bit_field.
+	* expmed.c (check_reverse_storage_order_support): New function.
+	(check_reverse_float_storage_order_support): Likewise.
+	(flip_storage_order): Likewise.
+	(store_bit_field_1): Add REVERSE parameter.  Flip the storage order
+	of the value if it is true.  Pass REVERSE to recursive call after
+	adjusting the target offset.
+	Do not use extraction or movstrict instruction if REVERSE is true.
+	Pass REVERSE to store_fixed_bit_field.
+	(store_bit_field): Add REVERSE parameter and pass to it to above.
+	(store_fixed_bit_field): Add REVERSE parameter and pass to it to
+	store_split_bit_field and store_fixed_bit_field_1.
+	(store_fixed_bit_field_1):  Add REVERSE parameter.  Flip the storage
+	order of the value if it is true and adjust the target offset.
+	(store_split_bit_field): Add REVERSE parameter and pass it to
+	store_fixed_bit_field.  Adjust the target offset if it is true.
+	(extract_bit_field_1): Add REVERSE parameter.  Flip the storage order
+	of the value if it is true.  Pass REVERSE to recursive call after
+	adjusting the target offset.
+	Do not use extraction or subreg instruction if REVERSE is true.
+	Pass REVERSE to extract_fixed_bit_field.
+	(extract_bit_field): Add REVERSE parameter and pass to it to above.
+	(extract_fixed_bit_field): Add REVERSE parameter and pass to it to
+	extract_split_bit_field and extract_fixed_bit_field_1.
+	(extract_fixed_bit_field_1): Add REVERSE parameter.  Flip the storage
+	order of the value if it is true and adjust the target offset.
+	(extract_split_bit_field): Add REVERSE parameter and pass it to
+	extract_fixed_bit_field.  Adjust the target offset if it is true.
+	* expmed.h (flip_storage_order): Declare.
+	(store_bit_field): Adjust prototype.
+	(extract_bit_field): Likewise.
+	* expr.c (emit_group_load_1): Adjust calls to extract_bit_field.
+	(emit_group_store): Adjust call to store_bit_field.
+	(copy_blkmode_from_reg): Likewise.
+	(copy_blkmode_to_reg): Likewise.
+	(write_complex_part): Likewise.
+	(read_complex_part): Likewise.
+	(optimize_bitfield_assignment_op): Add REVERSE parameter.  Assert
+	that it isn't true if the target is a register.
+	<PLUS_EXPR>: If it is, do not optimize unless bitsize is equal to 1,
+	and flip the storage order of the value.
+	<BIT_IOR_EXPR>: Flip the storage order of the value.
+	(get_bit_range): Adjust call to get_inner_reference.
+	(expand_assignment): Adjust calls to get_inner_reference, store_expr,
+	optimize_bitfield_assignment_op and store_field.  Handle MEM_EXPRs
+	with reverse storage order.
+	(store_expr_with_bounds): Add REVERSE parameter and pass it to
+	recursive calls and call to store_bit_field.  Force the value into a
+	register if it is true and then flip the storage order of the value.
+	(store_expr): Add REVERSE parameter and pass it to above.
+	(categorize_ctor_elements_1): Adjust call to
+	initializer_constant_valid_p.
+	(store_constructor_field): Add REVERSE parameter and pass it to
+	recursive calls and call to store_field.
+	(store_constructor): Add REVERSE parameter and pass it to calls to
+	store_constructor_field and store_expr.  Set it to true for an
+	aggregate type with TYPE_REVERSE_STORAGE_ORDER.
+	(store_field): Add REVERSE parameter and pass it to recursive calls
+	and calls to store_expr and store_bit_field.  Temporarily flip the
+	storage order of the value with record type and integral mode and
+	adjust the shift if it is true.
+	(get_inner_reference): Add PREVERSEP parameter and set it to true
+	upon encoutering a reference with reverse storage order.
+	(expand_expr_addr_expr_1): Adjust call to get_inner_reference.
+	(expand_constructor): Adjust call to store_constructor.
+	(expand_expr_real_2) <CASE_CONVERT>: Pass TYPE_REVERSE_STORAGE_ORDER
+	of the union type to store_expr in the MEM case and assert that it
+	isn't set in the REG case.  Adjust call to store_field.
+	(expand_expr_real_1) <MEM_REF>: Handle reverse storage order.
+	<normal_inner_ref>: Add REVERSEP variable and adjust calls to
+	get_inner_reference and extract_bit_field. Temporarily flip the
+	storage order of the value with record type and integral mode and
+	adjust the shift if it is true.  Flip the storage order of the value
+	at the end if it is true.
+	<VIEW_CONVERT_EXPR>: Add REVERSEP variable and adjust call to
+	get_inner_reference.  Do not fetch an inner reference if it is true.
+	* expr.h (store_expr_with_bounds): Ajust prototype.
+	(store_expr): Likewise.
+	* fold-const.c (make_bit_field_ref): Add REVERSEP parameter and set
+	REF_REVERSE_STORAGE_ORDER on the reference according to it.
+	(optimize_bit_field_compare): Deal with reverse storage order.
+	Adjust calls to get_inner_reference and make_bit_field_ref.
+	(decode_field_reference): Add PREVERSEP parameter and adjust call to
+	get_inner_reference.
+	(fold_truth_andor_1): Deal with reverse storage order.  Adjust calls
+	to decode_field_reference and make_bit_field_ref.
+	(fold_unary_loc) <CASE_CONVERT>: Adjust call to get_inner_reference.
+	<VIEW_CONVERT_EXPR>: Propagate the REF_REVERSE_STORAGE_ORDER flag.
+	(fold_comparison): Adjust call to get_inner_reference.
+	(split_address_to_core_and_offset): Adjust call to
+	get_inner_reference.
+	* gimple-expr.c (useless_type_conversion_p): Return false for array
+	types with different TYPE_REVERSE_STORAGE_ORDER flag.
+	* gimplify.c (gimplify_expr) <MEM_REF>: Propagate the
+	REF_REVERSE_STORAGE_ORDER flag.
+	* lto-streamer-out.c (hash_tree): Deal with
+	TYPE_REVERSE_STORAGE_ORDER.
+	* output.h (assemble_real): Adjust prototype.
+	* print-tree.c (print_node): Convey TYPE_REVERSE_STORAGE_ORDER.
+	* stor-layout.c (finish_record_layout): Propagate the
+	TYPE_REVERSE_STORAGE_ORDER flag to the variants.
+	* tree-core.h (TYPE_REVERSE_STORAGE_ORDER): Document.
+	(TYPE_SATURATING): Adjust.
+	(REF_REVERSE_STORAGE_ORDER): Document.
+	* tree-dfa.c (get_ref_base_and_extent): Add PREVERSE parameter and
+	set it to true upon encoutering a reference with reverse storage
+	order.
+	* tree-dfa.h (get_ref_base_and_extent): Adjust prototype.
+	* tree-inline.c (remap_gimple_op_r): Propagate the
+	REF_REVERSE_STORAGE_ORDER flag.
+	(copy_tree_body_r): Likewise.
+	* tree-outof-ssa.c (insert_value_copy_on_edge): Adjust call to
+	store_expr.
+	* tree-streamer-in.c (unpack_ts_base_value_fields): Deal with
+	TYPE_REVERSE_STORAGE_ORDER and REF_REVERSE_STORAGE_ORDER.
+	* tree-streamer-out.c (pack_ts_base_value_fields): Likewise.
+	* tree.c (stabilize_reference) <BIT_FIELD_REF>: Propagate the
+	REF_REVERSE_STORAGE_ORDER flag.
+	(verify_type_variant): Deal with TYPE_REVERSE_STORAGE_ORDER.
+	(gimple_canonical_types_compatible_p): Likewise.
+	* tree.h (TYPE_REVERSE_STORAGE_ORDER): New flag.
+	(TYPE_SATURATING): Adjust.
+	(REF_REVERSE_STORAGE_ORDER): New flag.
+	(reverse_storage_order_for_component_p): New inline predicate.
+	(storage_order_barrier_p): Likewise.
+	(get_inner_reference): Adjust prototype.
+	* varasm.c: Include expmed.h.
+	(assemble_variable_contents): Adjust call to output_constant.
+	(assemble_real): Add REVERSE parameter.  Flip the storage
+	order of the value if REVERSE is true.
+	(compare_constant) <CONSTRUCTOR>: Compare TYPE_REVERSE_STORAGE_ORDER.
+	(assemble_constant_contents): Adjust call to output_constant.
+	(output_constant_pool_2): Adjust call to assemble_real.
+	(initializer_constant_valid_p_1) <CONSTRUCTOR>: Deal with
+	TYPE_REVERSE_STORAGE_ORDER.
+	(initializer_constant_valid_p): Add REVERSE parameter.
+	(output_constant): Add REVERSE parameter.
+	<INTEGER_TYPE>: Flip the storage order of the value if REVERSE is true.
+	<REAL_TYPE>: Adjust call to assemble_real.
+	<COMPLEX_TYPE>: Pass it to recursive calls.
+	<ARRAY_TYPE>: Likewise.  Adjust call to output_constructor.
+	<RECORD_TYPE>: Likewise.  Adjust call to output_constructor.
+	(struct oc_local_state): Add REVERSE field.
+	(output_constructor_array_range): Adjust calls to output_constant.
+	(output_constructor_regular_field): Likewise.
+	(output_constructor_bitfield): Adjust call to output_constructor.
+	Flip the storage order of the value if REVERSE is true.
+	(output_constructor): Add REVERSE parameter.  Set it to true for an
+	aggregate type with TYPE_REVERSE_STORAGE_ORDER.  Adjust call to
+	output_constructor_bitfield.
+	* varasm.h (initializer_constant_valid_p): Default REVERSE to false.
+	* asan.c (instrument_derefs): Adjust call to get_inner_reference.
+	* builtins.c (get_object_alignment_2): Likewise.
+	* cfgexpand.c (expand_debug_expr): Adjust call to get_inner_reference
+	and get_ref_base_and_extent.
+	* dbxout.c (dbxout_expand_expr): Likewise.
+	* dwarf2out.c (add_var_loc_to_decl): Likewise.
+	(loc_list_for_address_of_addr_expr_of_indirect_ref): Likewise.
+	(loc_list_from_tree): Likewise.
+	(fortran_common): Likewise.
+	* gimple-fold.c (gimple_fold_builtin_memory_op): Adjust calls to
+	get_ref_base_and_extent.
+	(get_base_constructor): Likewise.
+	(fold_const_aggregate_ref_1): Likewise.
+	* gimple-laddress.c (pass_laddress::execute): Adjust call to
+	get_inner_reference.
+	* gimple-ssa-strength-reduction.c (slsr_process_ref): Adjust call to
+	get_inner_reference and bail out on reverse storage order.
+	* ifcvt.c (noce_emit_move_insn): Adjust calls to store_bit_field.
+	* ipa-cp.c (ipa_get_jf_ancestor_result): Adjust call to
+	build_ref_for_offset.
+	* ipa-polymorphic-call.c (set_by_invariant): Adjust call to
+	get_ref_base_and_extent.
+	(ipa_polymorphic_call_context): Likewise.
+	(extr_type_from_vtbl_ptr_store): Likewise.
+	(check_stmt_for_type_change): Likewise.
+	(get_dynamic_type): Likewise.
+	* ipa-prop.c (ipa_load_from_parm_agg_1): Adjust call to
+	get_ref_base_and_extent.
+	(compute_complex_assign_jump_func): Likewise.
+	(get_ancestor_addr_info): Likewise.
+	(compute_known_type_jump_func): Likewise.
+	(determine_known_aggregate_parts): Likewise.
+	(ipa_get_adjustment_candidate): Likewise.
+	(ipa_modify_call_arguments): Set REF_REVERSE_STORAGE_ORDER on
+	MEM_REF.
+	* ipa-prop.h (ipa_parm_adjustment): Add REVERSE field.
+	(build_ref_for_offset): Adjust prototype.
+	* simplify-rtx.c (delegitimize_mem_from_attrs): Adjust call to
+	get_inner_reference.
+	* tree-affine.c (tree_to_aff_combination): Adjust call to
+	get_inner_reference.
+	(get_inner_reference_aff): Likewise.
+	* tree-data-ref.c (split_constant_offset_1): Likewise.
+	(dr_analyze_innermost): Likewise.  Bail out if reverse storage order.
+	* tree-scalar-evolution.c (interpret_rhs_expr): Adjust call to
+	get_inner_reference.
+	* tree-sra.c (struct access): Add REVERSE and move WRITE around.
+	(dump_access): Print new fields.
+	(create_access): Adjust call to get_ref_base_and_extent and set the
+	REVERSE flag according to the result.
+	(completely_scalarize_record): Set the REVERSE flag.
+	(scalarize_elem): Add REVERSE parameter.
+	(build_access_from_expr_1): Preserve storage order barriers.
+	(build_accesses_from_assign): Likewise.
+	(build_ref_for_offset): Add REVERSE parameter and set the
+	REF_REVERSE_STORAGE_ORDER flag accordingly.
+	(build_ref_for_model): Adjust call to build_ref_for_offset and clear
+	the REF_REVERSE_STORAGE_ORDER flag if there are components.
+	(analyze_access_subtree): Likewise.
+	(create_artificial_child_access): Set the REVERSE flag.
+	(get_access_for_expr): Adjust call to get_ref_base_and_extent.
+	(turn_representatives_into_adjustments): Propagate REVERSE flag.
+	(ipa_sra_check_caller): Adjust call to get_inner_reference.
+	* tree-ssa-alias.c (ao_ref_base): Adjust call to
+	get_ref_base_and_extent.
+	(aliasing_component_refs_p): Likewise.
+	(stmt_kills_ref_p_1): Likewise.
+	* tree-ssa-dce.c (mark_aliased_reaching_defs_necessary_1): Likewise.
+	* tree-ssa-loop-ivopts.c (may_be_nonaddressable_p) <MEM_REF>: New.
+	Return true if reverse storage order.
+	<BIT_FIELD_REF>: Likewise.
+	<COMPONENT_REF>: Likewise.
+	<ARRAY_REF>: Likewise.
+	<ARRAY_RANGE_REF>: Likewise.
+	(split_address_cost): Likewise.  Bail out if reverse storage order.
+	* tree-ssa-math-opts.c (find_bswap_or_nop_load): Adjust call to
+	get_inner_reference.  Bail out if reverse storage order.
+	(bswap_replace): Adjust call to get_inner_reference.
+	* tree-ssa-pre.c (create_component_ref_by_pieces_1) <MEM_REF>: Set
+	the REF_REVERSE_STORAGE_ORDER flag.
+	<BIT_FIELD_REF>: Likewise.
+	* tree-ssa-sccvn.c (vn_reference_eq): Return false on storage order
+	barriers.
+	(copy_reference_ops_from_ref) <MEM_REF>: Set REVERSE field according
+	to the REF_REVERSE_STORAGE_ORDER flag.
+	<BIT_FIELD_REF>: Likewise.
+	<VIEW_CONVERT_EXPR>: Set it for storage order barriers.
+	(contains_storage_order_barrier_p): New predicate.
+	(vn_reference_lookup_3): Adjust calls to get_ref_base_and_extent.
+	Punt on storage order barriers if necessary.
+	* tree-ssa-sccvn.h (struct vn_reference_op_struct): Add REVERSE.
+	* tree-ssa-structalias.c (get_constraint_for_component_ref): Adjust
+	call to get_ref_base_and_extent.
+	(do_structure_copy): Likewise.
+	* tree-vect-data-refs.c (vect_check_gather): Adjust call to
+	get_inner_reference.
+	(vect_analyze_data_refs): Likewise.  Bail out if reverse storage
+	order.
+	* tsan.c (instrument_expr): Adjust call to get_inner_reference.
+	* ubsan.c (instrument_bool_enum_load): Likewise.
+	(instrument_object_size): Likewise.
+	* var-tracking.c (track_expr_p): Adjust call to
+	get_ref_base_and_extent
+	* config/mips/mips.c (r10k_safe_mem_expr_p): Adjust call to
+	get_inner_reference.
+	* config/s390/s390.c (s390_expand_atomic): Adjust call to
+	store_bit_field.
+	* config/tilegx/tilegx.c (tilegx_expand_unaligned_load): Adjust call to
+	extract_bit_field.
+	* config/tilepro/tilepro.c (tilepro_expand_unaligned_load): Likewise.
+
 2015-11-07  Eric Botcazou  <ebotcazou@adacore.com>
 
 	* config/sparc/sparc.opt (mfix-at697f): Add final period.
@@ -70,7 +1170,7 @@
 	the dominance info; free it if we can't.
 	(pass_call_cdce::execute): Don't free the dominance info here.
 
-2015-11-06  Jeff Law <jeff@redhat.com>
+2015-11-06  Jeff Law <law@redhat.com>
 
 	* tree-ssa-threadedge.c (dummy_simplify): Remove.
 	(thread_around_empty_blocks): Remove backedge_seen_p argument.
@@ -103,7 +1203,7 @@
 	(build_scop_scattering): Call build_pbb_minimal_scattering_polyhedrons.
 	(build_poly_scop): Call build_scop_minimal_scattering.
 
-2015-11-06  Jeff Law <jeff@redhat.com>
+2015-11-06  Jeff Law <law@redhat.com>
 
 	* cfg-flags.def (IGNORE): New edge flag.
 	* tree-vrp.c (identify_jump_threads): Mark and clear edges
@@ -291,11 +1391,11 @@
 
 	Properly apply.
 	2015-11-05  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
-        * config/aarch64/aarch64.c
-        (aarch64_can_use_per_function_literal_pools_p): New.
-        (aarch64_use_blocks_for_constant_p): Adjust declaration
-        and use aarch64_can_use_function_literal_pools_p.
-        (aarch64_select_rtx_section): Update.
+	* config/aarch64/aarch64.c
+	(aarch64_can_use_per_function_literal_pools_p): New.
+	(aarch64_use_blocks_for_constant_p): Adjust declaration
+	and use aarch64_can_use_function_literal_pools_p.
+	(aarch64_select_rtx_section): Update.
 
 2015-11-06  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
 
@@ -340,16 +1440,16 @@
 	* config/aarch64/aarch64-simd.md: Matching expressions for frsqrte and
 	frsqrts.
 	* config/aarch64/aarch64-tuning-flags.def: Added recip_sqrt.
-	* config/aarch64/aarch64.c: New functions. Emit rsqrt estimation code when
-	applicable.
+	* config/aarch64/aarch64.c: New functions. Emit rsqrt estimation
+	code when applicable.
 	* config/aarch64/aarch64.md: Added enum entries.
 	* config/aarch64/aarch64.opt: Added option -mlow-precision-recip-sqrt.
-	* testsuite/gcc.target/aarch64/rsqrt_asm_check_common.h: Common macros for
-	assembly checks.
+	* testsuite/gcc.target/aarch64/rsqrt_asm_check_common.h: Common
+	macros for assembly checks.
 	* testsuite/gcc.target/aarch64/rsqrt_asm_check_negative_1.c: Make sure
 	frsqrts and frsqrte are not emitted.
-	* testsuite/gcc.target/aarch64/rsqrt_asm_check_1.c: Make sure frsqrts and
-	frsqrte are emitted.
+	* testsuite/gcc.target/aarch64/rsqrt_asm_check_1.c: Make sure
+	frsqrts and frsqrte are emitted.
 	* testsuite/gcc.target/aarch64/rsqrt_1.c: Functional tests for rsqrt.
 
 2015-11-07  Jan Hubicka  <hubicka@ucw.cz>
@@ -639,11 +1739,11 @@
 
 2015-11-05  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
 
-        * config/aarch64/aarch64.c
-        (aarch64_can_use_per_function_literal_pools_p): New.
-        (aarch64_use_blocks_for_constant_p): Adjust declaration
-        and use aarch64_can_use_function_literal_pools_p.
-        (aarch64_select_rtx_section): Update.
+	* config/aarch64/aarch64.c
+	(aarch64_can_use_per_function_literal_pools_p): New.
+	(aarch64_use_blocks_for_constant_p): Adjust declaration
+	and use aarch64_can_use_function_literal_pools_p.
+	(aarch64_select_rtx_section): Update.
 
 2015-11-05  Ilya Enkovich  <enkovich.gnu@gmail.com>
 
@@ -875,7 +1975,7 @@
 	* tree-ssa.c (gimple_uses_undefined_value_p): New.
 	* tree-ssa.h (gimple_uses_undefined_value_p): Declare.
 
-2015-11-02  Jeff Law <jeff@redhat.com>
+2015-11-02  Jeff Law <law@redhat.com>
 
 	* tree-ssa-threadupdate.c (valid_jump_thread_path): Also detect
 	cases where the loop latch edge is in the middle of an FSM path.
@@ -939,7 +2039,7 @@
 	PR middle-end/68166
 	* fold-const.c: Include "md5.h".
 
-2015-11-01  Jeff Law <jeff@redhat.com>
+2015-11-01  Jeff Law <law@redhat.com>
 
 	* vmsdbgout.c: Revert unused header file reduction patch.
 
@@ -988,7 +2088,7 @@
 
 	* tree-ssa-structalias.c (ipa_pta_execute): Use make_copy_constraint.
 
-2015-10-30  Jeff Law <jeff@redhat.com>
+2015-10-30  Jeff Law <law@redhat.com>
 	    Nathan Sidwell  <nathan@acm.org>
 
 	* config/nvptx/nvptx.h (HARD_REGNO_NREGS): Avoid warning on unused
