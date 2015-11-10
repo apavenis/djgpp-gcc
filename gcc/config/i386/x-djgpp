@@ -22,20 +22,17 @@ version := $(shell echo $(version) | sed -e 's:\.::2g')
 LN = cp -p
 LN_S = cp -p
 
-# Use a larger stack for CC1, CC1PLUS, etc.
-# EXTRA_OBJS is not sufficient as djgpp-stack.o only contains data definition (_stklen)
-# and as result including it into static library does not help
-EXTRA_OBJS += djgpp-stack.o
-BACKEND += djgpp-stack.o
+EXTRA_OBJS += xm-djgpp.o
+BACKEND += xm-djgpp.o
+
+xm-djgpp.o: $(srcdir)/config/i386/xm-djgpp.c
+	$(CC) -c -O2 -W -Wall $< -o $@
+
 
 # Some build tools also require larger stack (different object file name
 # used as djgpp-stack.o and djgpp-stack-tools.o may be built with compilers
 # for different targets in case of cross-compiling
-BUILD_RTL += djgpp-stack-tools.o
+BUILD_RTL += xm-djgpp-tools.o
 
-djgpp-stack.o: $(srcdir)/config/i386/djgpp-stack.c
-	$(CC) -c -O2 -W -Wall $< -o $@
-
-
-djgpp-stack-tools.o: $(srcdir)/config/i386/djgpp-stack.c
+xm-djgpp-tools.o: $(srcdir)/config/i386/xm-djgpp.c
 	$(CC_FOR_BUILD) -c -O2 -W -Wall $< -o $@
