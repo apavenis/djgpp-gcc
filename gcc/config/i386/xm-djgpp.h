@@ -37,8 +37,13 @@ along with GCC; see the file COPYING3.  If not see
 #define MD_EXEC_PREFIX "/dev/env/DJDIR/bin/"
 
 /* Standard DJGPP library and startup files */
-#undef MD_STARTFILE_PREFIX
-#define MD_STARTFILE_PREFIX "/dev/env/DJDIR/lib/"
+#undef STANDARD_STARTFILE_PREFIX_1
+#define STANDARD_STARTFILE_PREFIX_1 "/dev/env/DJDIR/lib/"
+
+/* Define STANDARD_STARTFILE_PREFIX_2 equal to STANDARD_STARTFILE_PREFIX_1
+   to avoid gcc.c redefining it to /usr/lib */
+#undef STANDARD_STARTFILE_PREFIX_2
+#define STANDARD_STARTFILE_PREFIX_1 "/dev/env/DJDIR/lib/"
 
 /* Make sure that gcc will not look for .h files in /usr/local/include 
    unless user explicitly requests it.  */

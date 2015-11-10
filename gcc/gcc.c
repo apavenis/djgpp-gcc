@@ -1491,12 +1491,10 @@ static const char *const standard_startfile_prefix = STANDARD_STARTFILE_PREFIX;
 static const char *md_exec_prefix = MD_EXEC_PREFIX;
 static const char *md_startfile_prefix = MD_STARTFILE_PREFIX;
 static const char *md_startfile_prefix_1 = MD_STARTFILE_PREFIX_1;
-#ifndef __DJGPP__
 static const char *const standard_startfile_prefix_1
   = STANDARD_STARTFILE_PREFIX_1;
 static const char *const standard_startfile_prefix_2
   = STANDARD_STARTFILE_PREFIX_2;
-#endif
 
 /* A relative path to be used in finding the location of tools
    relative to the driver.  */
@@ -7464,7 +7462,6 @@ driver::set_up_specs () const
 		      NULL, PREFIX_PRIORITY_LAST, 0, 1);
 	}
 
-#ifndef __DJGPP__
       /* Sysrooted prefixes are relocated because target_system_root is
 	 also relocated by gcc_exec_prefix.  */
       if (*standard_startfile_prefix_1)
@@ -7475,7 +7472,6 @@ driver::set_up_specs () const
 	add_sysrooted_prefix (&startfile_prefixes,
 			      standard_startfile_prefix_2, "BINUTILS",
 			      PREFIX_PRIORITY_LAST, 0, 1);
-#endif
     }
 
   /* Process any user specified specs in the order given on the command
