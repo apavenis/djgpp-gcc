@@ -114,9 +114,11 @@ along with GCC; see the file COPYING3.  If not see
 #define LIBSTDCXX_PROFILE "stdcxx"
 #define LIBSTDCXX_STATIC "stdcxx"
 
-/* Definition is missing in DJGPP headers. That broke building
-   GNU Fortran compiler in GCC-4.1 */
+/* Definition is missing in DJGPP headers. */
 typedef unsigned int uint;
 
 #undef MAX_OFILE_ALIGNMENT
 #define MAX_OFILE_ALIGNMENT 128
+
+/* DJGPP do not have scalbln() */
+double scalbln(double val, int exp_)
