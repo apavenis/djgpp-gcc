@@ -121,4 +121,4 @@ typedef unsigned int uint;
 #define MAX_OFILE_ALIGNMENT 128
 
 /* DJGPP do not have scalbln() */
-double scalbln(double val, int exp_)
+double scalbln(double val, int exp_);
