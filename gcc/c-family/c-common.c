@@ -24,7 +24,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "target.h"
 #include "function.h"
-#include "obstack.h"
 #include "tree.h"
 #include "c-common.h"
 #include "gimple-expr.h"
@@ -38,8 +37,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "attribs.h"
 #include "varasm.h"
 #include "trans-mem.h"
-#include "flags.h"
-#include "c-pragma.h"
 #include "c-objc.h"
 #include "common/common-target.h"
 #include "langhooks.h"
@@ -13108,6 +13105,28 @@ warn_duplicated_cond_add_or_warn (location_t loc, tree cond, vec<tree> **chain)
       /* Don't infinitely grow the chain.  */
       && (*chain)->length () < 512)
     (*chain)->safe_push (cond);
+}
+
+/* Check if array size calculations overflow or if the array covers more
+   than half of the address space.  Return true if the size of the array
+   is valid, false otherwise.  TYPE is the type of the array and NAME is
+   the name of the array, or NULL_TREE for unnamed arrays.  */
+
+bool
+valid_array_size_p (location_t loc, tree type, tree name)
+{
+  if (type != error_mark_node
+      && COMPLETE_TYPE_P (type)
+      && TREE_CODE (TYPE_SIZE_UNIT (type)) == INTEGER_CST
+      && !valid_constant_size_p (TYPE_SIZE_UNIT (type)))
+    {
+      if (name)
+	error_at (loc, "size of array %qE is too large", name);
+      else
+	error_at (loc, "size of unnamed array is too large");
+      return false;
+    }
+  return true;
 }
 
 #include "gt-c-family-c-common.h"
