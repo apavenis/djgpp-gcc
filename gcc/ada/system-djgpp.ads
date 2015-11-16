@@ -5,9 +5,9 @@
 --                               S Y S T E M                                --
 --                                                                          --
 --                                 S p e c                                  --
---                            (Compiler Version)                            --
+--                            (DJGPP Version)                             --
 --                                                                          --
---          Copyright (C) 1992-2011, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -34,16 +34,14 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
---  This version of System is a generic version that is used in building the
---  compiler. Right now, we have a host/target problem if we try to use the
---  "proper" System, and since the compiler itself does not care about most
---  System parameters, this generic version works fine.
-
 package System is
    pragma Pure;
    --  Note that we take advantage of the implementation permission to make
    --  this unit Pure instead of Preelaborable; see RM 13.7.1(15). In Ada
    --  2005, this is Pure in any case (AI-362).
+
+   pragma No_Elaboration_Code_All;
+   --  Allow the use of that restriction in units that WITH this unit
 
    type Name is (SYSTEM_NAME_GNAT);
    System_Name : constant Name := SYSTEM_NAME_GNAT;
@@ -67,15 +65,12 @@ package System is
    --  Storage-related Declarations
 
    type Address is private;
-   --  Note that we do NOT add pragma Preelaborable_Initialization in this
-   --  version of System, since it is used for the compiler only, and typical
-   --  earlier bootstrap compilers don't support this pragma. We don't need
-   --  it in this context, so there is no problem in omitting it.
+   pragma Preelaborable_Initialization (Address);
    Null_Address : constant Address;
 
-   Storage_Unit : constant := Standard'Storage_Unit;
-   Word_Size    : constant := Standard'Word_Size;
-   Memory_Size  : constant := 2 ** Standard'Address_Size;
+   Storage_Unit : constant := 8;
+   Word_Size    : constant := 32;
+   Memory_Size  : constant := 2 ** 32;
 
    --  Address comparison
 
@@ -94,8 +89,7 @@ package System is
    --  Other System-Dependent Declarations
 
    type Bit_Order is (High_Order_First, Low_Order_First);
-   Default_Bit_Order : constant Bit_Order :=
-                         Bit_Order'Val (Standard'Default_Bit_Order);
+   Default_Bit_Order : constant Bit_Order := Low_Order_First;
    pragma Warnings (Off, Default_Bit_Order); -- kill constant condition warning
 
    --  Priority-related Declarations (RM D.1)
@@ -118,21 +112,14 @@ private
    -- System Implementation Parameters --
    --------------------------------------
 
-   --  These parameters provide information about the target that is used by
-   --  the compiler. They are in the private part of System, where they can be
-   --  accessed using the special circuitry in the Targparm unit whose source
-   --  should be consulted for more detailed descriptions of the individual
-   --  switch values.
-
-   --  This version of system.ads is used only for building the compiler.
-   --  We really ought to use the proper target system (i.e. the one that
-   --  corresponds to the host for the compiler), but that causes as yet
-   --  unsolved makefile problems. For the most part the setting of these
-   --  parameters is not too critical for the compiler version (e.g. we
-   --  do not use floating-point anyway in the compiler).
+   --  These parameters provide information about the target that is used
+   --  by the compiler. They are in the private part of System, where they
+   --  can be accessed using the special circuitry in the Targparm unit
+   --  whose source should be consulted for more detailed descriptions
+   --  of the individual switch values.
 
    Backend_Divide_Checks     : constant Boolean := False;
-   Backend_Overflow_Checks   : constant Boolean := False;
+   Backend_Overflow_Checks   : constant Boolean := True;
    Command_Line_Args         : constant Boolean := True;
    Configurable_Run_Time     : constant Boolean := False;
    Denorm                    : constant Boolean := True;
@@ -142,19 +129,19 @@ private
    Frontend_Layout           : constant Boolean := False;
    Machine_Overflows         : constant Boolean := False;
    Machine_Rounds            : constant Boolean := True;
-   Preallocated_Stacks       : constant Boolean := False;
+   Preallocated_Stacks       : constant Boolean := True;
    Signed_Zeros              : constant Boolean := True;
    Stack_Check_Default       : constant Boolean := False;
-   Stack_Check_Probes        : constant Boolean := False;
+   Stack_Check_Probes        : constant Boolean := True;
    Stack_Check_Limits        : constant Boolean := False;
    Support_Aggregates        : constant Boolean := True;
    Support_Atomic_Primitives : constant Boolean := False;
    Support_Composite_Assign  : constant Boolean := True;
    Support_Composite_Compare : constant Boolean := True;
    Support_Long_Shifts       : constant Boolean := True;
-   Always_Compatible_Rep     : constant Boolean := True;
+   Always_Compatible_Rep     : constant Boolean := False;
    Suppress_Standard_Library : constant Boolean := False;
    Use_Ada_Main_Program_Name : constant Boolean := False;
-   ZCX_By_Default            : constant Boolean := False;
+   ZCX_By_Default            : constant Boolean := True;
 
 end System;
