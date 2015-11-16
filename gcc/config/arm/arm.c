@@ -759,9 +759,6 @@ const struct tune_params *current_tune;
 /* Which floating point hardware to schedule for.  */
 int arm_fpu_attr;
 
-/* Which floating popint hardware to use.  */
-const struct arm_fpu_desc *arm_fpu_desc;
-
 /* Used for Thumb call_via trampolines.  */
 rtx thumb_call_via_label[14];
 static int thumb_call_reg_needed;
@@ -2224,14 +2221,13 @@ char arm_arch_name[] = "__ARM_ARCH_0UNK__";
 
 /* Available values for -mfpu=.  */
 
-static const struct arm_fpu_desc all_fpus[] =
+const struct arm_fpu_desc all_fpus[] =
 {
 #define ARM_FPU(NAME, MODEL, REV, VFP_REGS, FEATURES) \
   { NAME, MODEL, REV, VFP_REGS, FEATURES },
 #include "arm-fpus.def"
 #undef ARM_FPU
 };
-
 
 /* Supported TLS relocations.  */
 
@@ -2704,6 +2700,12 @@ static void
 arm_option_check_internal (struct gcc_options *opts)
 {
   int flags = opts->x_target_flags;
+  const struct arm_fpu_desc *fpu_desc = &all_fpus[opts->x_arm_fpu_index];
+
+  /* iWMMXt and NEON are incompatible.  */
+    if (TARGET_IWMMXT && TARGET_VFP
+      && ARM_FPU_FSET_HAS (fpu_desc->features, FPU_FL_NEON))
+    error ("iWMMXt and NEON are incompatible");
 
   /* Make sure that the processor choice does not conflict with any of the
      other command line choices.  */
@@ -3133,17 +3135,13 @@ arm_option_override (void)
       gcc_assert (ok);
     }
 
-  arm_fpu_desc = &all_fpus[arm_fpu_index];
-
-  switch (arm_fpu_desc->model)
-    {
-    case ARM_FP_MODEL_VFP:
-      arm_fpu_attr = FPU_VFP;
-      break;
-
-    default:
-      gcc_unreachable();
-    }
+  /* If soft-float is specified then don't use FPU.  */
+  if (TARGET_SOFT_FLOAT)
+    arm_fpu_attr = FPU_NONE;
+  else if (TARGET_VFP)
+    arm_fpu_attr = FPU_VFP;
+  else
+    gcc_unreachable();
 
   if (TARGET_AAPCS_BASED)
     {
@@ -3154,17 +3152,9 @@ arm_option_override (void)
 	  error ("AAPCS does not support -mcallee-super-interworking");
     }
 
-  /* iWMMXt and NEON are incompatible.  */
-  if (TARGET_IWMMXT && TARGET_NEON)
-    error ("iWMMXt and NEON are incompatible");
-
   /* __fp16 support currently assumes the core has ldrh.  */
   if (!arm_arch4 && arm_fp16_format != ARM_FP16_FORMAT_NONE)
     sorry ("__fp16 and no ldrh");
-
-  /* If soft-float is specified then don't use FPU.  */
-  if (TARGET_SOFT_FLOAT)
-    arm_fpu_attr = FPU_NONE;
 
   if (TARGET_AAPCS_BASED)
     {
@@ -25867,7 +25857,6 @@ arm_file_start (void)
 
   if (TARGET_BPABI)
     {
-      const char *fpu_name;
       if (arm_selected_arch)
         {
 	  /* armv7ve doesn't support any extensions.  */
@@ -25911,23 +25900,14 @@ arm_file_start (void)
       if (print_tune_info)
 	arm_print_tune_info ();
 
-      if (TARGET_SOFT_FLOAT)
+      if (! TARGET_SOFT_FLOAT && TARGET_VFP)
 	{
-	  fpu_name = "softvfp";
-	}
-      else
-	{
-	  fpu_name = arm_fpu_desc->name;
-	  if (arm_fpu_desc->model == ARM_FP_MODEL_VFP)
-	    {
-	      if (TARGET_HARD_FLOAT && TARGET_VFP_SINGLE)
-		arm_emit_eabi_attribute ("Tag_ABI_HardFP_use", 27, 1);
+	  if (TARGET_HARD_FLOAT && TARGET_VFP_SINGLE)
+	    arm_emit_eabi_attribute ("Tag_ABI_HardFP_use", 27, 1);
 
-	      if (TARGET_HARD_FLOAT_ABI)
-		arm_emit_eabi_attribute ("Tag_ABI_VFP_args", 28, 1);
-	    }
+	  if (TARGET_HARD_FLOAT_ABI)
+	    arm_emit_eabi_attribute ("Tag_ABI_VFP_args", 28, 1);
 	}
-      asm_fprintf (asm_out_file, "\t.fpu %s\n", fpu_name);
 
       /* Some of these attributes only apply when the corresponding features
          are used.  However we don't have any easy way of figuring this out.
@@ -29766,21 +29746,49 @@ static void
 arm_option_print (FILE *file, int indent, struct cl_target_option *ptr)
 {
   int flags = ptr->x_target_flags;
+  const struct arm_fpu_desc *fpu_desc = &all_fpus[ptr->x_arm_fpu_index];
 
   fprintf (file, "%*sselected arch %s\n", indent, "",
 	   TARGET_THUMB2_P (flags) ? "thumb2" :
 	   TARGET_THUMB_P (flags) ? "thumb1" :
 	   "arm");
+
+  fprintf (file, "%*sselected fpu %s\n", indent, "", fpu_desc->name);
 }
 
 /* Hook to determine if one function can safely inline another.  */
 
 static bool
-arm_can_inline_p (tree caller ATTRIBUTE_UNUSED, tree callee ATTRIBUTE_UNUSED)
+arm_can_inline_p (tree caller, tree callee)
 {
-  /* Overidde default hook: Always OK to inline between different modes. 
-     Function with mode specific instructions, e.g using asm, must be explicitely 
-     protected with noinline.  */
+  tree caller_tree = DECL_FUNCTION_SPECIFIC_TARGET (caller);
+  tree callee_tree = DECL_FUNCTION_SPECIFIC_TARGET (callee);
+
+  struct cl_target_option *caller_opts
+	= TREE_TARGET_OPTION (caller_tree ? caller_tree
+					   : target_option_default_node);
+
+  struct cl_target_option *callee_opts
+	= TREE_TARGET_OPTION (callee_tree ? callee_tree
+					   : target_option_default_node);
+
+  const struct arm_fpu_desc *caller_fpu
+    = &all_fpus[caller_opts->x_arm_fpu_index];
+  const struct arm_fpu_desc *callee_fpu
+    = &all_fpus[callee_opts->x_arm_fpu_index];
+
+  /* Callee's fpu features should be a subset of the caller's.  */
+  if ((caller_fpu->features & callee_fpu->features) != callee_fpu->features)
+    return false;
+
+  /* Need same model and regs.  */
+  if (callee_fpu->model != caller_fpu->model
+      || callee_fpu->regs != callee_fpu->regs)
+    return false;
+
+  /* OK to inline between different modes.
+     Function with mode specific instructions, e.g using asm,
+     must be explicitly protected with noinline.  */
   return true;
 }
 
@@ -29811,6 +29819,7 @@ arm_valid_target_attribute_rec (tree args, struct gcc_options *opts)
   if (TREE_CODE (args) == TREE_LIST)
     {
       bool ret = true;
+
       for (; args; args = TREE_CHAIN (args))
 	if (TREE_VALUE (args)
 	    && !arm_valid_target_attribute_rec (TREE_VALUE (args), opts))
@@ -29825,30 +29834,38 @@ arm_valid_target_attribute_rec (tree args, struct gcc_options *opts)
     }
 
   char *argstr = ASTRDUP (TREE_STRING_POINTER (args));
-  while (argstr && *argstr != '\0')
+  char *q;
+
+  while ((q = strtok (argstr, ",")) != NULL)
     {
-      while (ISSPACE (*argstr))
-	argstr++;
+      while (ISSPACE (*q)) ++q;
 
-      if (!strcmp (argstr, "thumb"))
-	{
+      argstr = NULL;
+      if (!strncmp (q, "thumb", 5))
 	  opts->x_target_flags |= MASK_THUMB;
-	  arm_option_check_internal (opts);
-	  return true;
-	}
 
-      if (!strcmp (argstr, "arm"))
-	{
+      else if (!strncmp (q, "arm", 3))
 	  opts->x_target_flags &= ~MASK_THUMB;
-	  arm_option_check_internal (opts);
-	  return true;
+
+      else if (!strncmp (q, "fpu=", 4))
+	{
+	  if (! opt_enum_arg_to_value (OPT_mfpu_, q+4,
+				       &opts->x_arm_fpu_index, CL_TARGET))
+	    {
+	      error ("invalid fpu for attribute(target(\"%s\"))", q);
+	      return false;
+	    }
+	}
+      else
+	{
+	  error ("attribute(target(\"%s\")) is unknown", q);
+	  return false;
 	}
 
-      warning (0, "attribute(target(\"%s\")) is unknown", argstr);
-      return false;
+      arm_option_check_internal (opts);
     }
 
-  return false;
+  return true;
 }
 
 /* Return a TARGET_OPTION_NODE tree of the target options listed or NULL.  */
@@ -29862,6 +29879,9 @@ arm_valid_target_attribute_tree (tree args, struct gcc_options *opts,
 
   /* Do any overrides, such as global options arch=xxx.  */
   arm_option_override_internal (opts, opts_set);
+
+  if (TARGET_NEON)
+    arm_init_neon_builtins ();
 
   return build_target_option_node (opts);
 }
@@ -29978,6 +29998,9 @@ arm_declare_function_name (FILE *stream, const char *name, tree decl)
     }
   else
     fprintf (stream, "\t.arm\n");
+
+  asm_fprintf (asm_out_file, "\t.fpu %s\n",
+	       TARGET_SOFT_FLOAT ? "softvfp" : TARGET_FPU_NAME);
 
   if (TARGET_POKE_FUNCTION_NAME)
     arm_poke_function_name (stream, (const char *) name);

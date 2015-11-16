@@ -2095,6 +2095,25 @@ fold_convert_const (enum tree_code code, tree type, tree arg1)
       else if (TREE_CODE (arg1) == REAL_CST)
 	return fold_convert_const_fixed_from_real (type, arg1);
     }
+  else if (TREE_CODE (type) == VECTOR_TYPE)
+    {
+      if (TREE_CODE (arg1) == VECTOR_CST
+	  && TYPE_VECTOR_SUBPARTS (type) == VECTOR_CST_NELTS (arg1))
+	{
+	  int len = TYPE_VECTOR_SUBPARTS (type);
+	  tree elttype = TREE_TYPE (type);
+	  tree *v = XALLOCAVEC (tree, len);
+	  for (int i = 0; i < len; ++i)
+	    {
+	      tree elt = VECTOR_CST_ELT (arg1, i);
+	      tree cvt = fold_convert_const (code, elttype, elt);
+	      if (cvt == NULL_TREE)
+		return NULL_TREE;
+	      v[i] = cvt;
+	    }
+	  return build_vector (type, v);
+	}
+    }
   return NULL_TREE;
 }
 
@@ -10195,54 +10214,9 @@ fold_binary_loc (location_t loc,
 	return fold_build2_loc (loc, RDIV_EXPR, type,
 			    negate_expr (arg0),
 			    TREE_OPERAND (arg1, 0));
-
-      /* Convert A/B/C to A/(B*C).  */
-      if (flag_reciprocal_math
-	  && TREE_CODE (arg0) == RDIV_EXPR)
-	return fold_build2_loc (loc, RDIV_EXPR, type, TREE_OPERAND (arg0, 0),
-			    fold_build2_loc (loc, MULT_EXPR, type,
-					 TREE_OPERAND (arg0, 1), arg1));
-
-      /* Convert A/(B/C) to (A/B)*C.  */
-      if (flag_reciprocal_math
-	  && TREE_CODE (arg1) == RDIV_EXPR)
-	return fold_build2_loc (loc, MULT_EXPR, type,
-			    fold_build2_loc (loc, RDIV_EXPR, type, arg0,
-					 TREE_OPERAND (arg1, 0)),
-			    TREE_OPERAND (arg1, 1));
-
-      /* Convert C1/(X*C2) into (C1/C2)/X.  */
-      if (flag_reciprocal_math
-	  && TREE_CODE (arg1) == MULT_EXPR
-	  && TREE_CODE (arg0) == REAL_CST
-	  && TREE_CODE (TREE_OPERAND (arg1, 1)) == REAL_CST)
-	{
-	  tree tem = const_binop (RDIV_EXPR, arg0,
-				  TREE_OPERAND (arg1, 1));
-	  if (tem)
-	    return fold_build2_loc (loc, RDIV_EXPR, type, tem,
-				TREE_OPERAND (arg1, 0));
-	}
-
       return NULL_TREE;
 
     case TRUNC_DIV_EXPR:
-      /* Optimize (X & (-A)) / A where A is a power of 2,
-	 to X >> log2(A) */
-      if (TREE_CODE (arg0) == BIT_AND_EXPR
-	  && !TYPE_UNSIGNED (type) && TREE_CODE (arg1) == INTEGER_CST
-	  && integer_pow2p (arg1) && tree_int_cst_sgn (arg1) > 0)
-	{
-	  tree sum = fold_binary_loc (loc, PLUS_EXPR, TREE_TYPE (arg1),
-				      arg1, TREE_OPERAND (arg0, 1));
-	  if (sum && integer_zerop (sum)) {
-	    tree pow2 = build_int_cst (integer_type_node,
-				       wi::exact_log2 (arg1));
-	    return fold_build2_loc (loc, RSHIFT_EXPR, type,
-				    TREE_OPERAND (arg0, 0), pow2);
-	  }
-	}
-
       /* Fall through */
       
     case FLOOR_DIV_EXPR:

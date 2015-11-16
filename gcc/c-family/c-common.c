@@ -387,6 +387,7 @@ static tree handle_warn_unused_attribute (tree *, tree, tree, int, bool *);
 static tree handle_returns_nonnull_attribute (tree *, tree, tree, int, bool *);
 static tree handle_omp_declare_simd_attribute (tree *, tree, tree, int,
 					       bool *);
+static tree handle_simd_attribute (tree *, tree, tree, int, bool *);
 static tree handle_omp_declare_target_attribute (tree *, tree, tree, int,
 						 bool *);
 static tree handle_designated_init_attribute (tree *, tree, tree, int, bool *);
@@ -817,6 +818,8 @@ const struct attribute_spec c_common_attribute_table[] =
 			      handle_omp_declare_simd_attribute, false },
   { "cilk simd function",     0, -1, true,  false, false,
 			      handle_omp_declare_simd_attribute, false },
+  { "simd",		      0, 0, true,  false, false,
+			      handle_simd_attribute, false },
   { "omp declare target",     0, 0, true, false, false,
 			      handle_omp_declare_target_attribute, false },
   { "alloc_align",	      1, 1, false, true, true,
@@ -1187,6 +1190,7 @@ c_fully_fold_internal (tree expr, bool in_init, bool *maybe_const_operands,
   bool op0_const_self = true, op1_const_self = true, op2_const_self = true;
   bool nowarning = TREE_NO_WARNING (expr);
   bool unused_p;
+  source_range old_range;
 
   /* This function is not relevant to C++ because C++ folds while
      parsing, and may need changes to be correct for C++ when C++
@@ -1201,6 +1205,9 @@ c_fully_fold_internal (tree expr, bool in_init, bool *maybe_const_operands,
       || kind == tcc_statement
       || code == SAVE_EXPR)
     return expr;
+
+  if (IS_EXPR_CODE_CLASS (kind))
+    old_range = EXPR_LOCATION_RANGE (expr);
 
   /* Operands of variable-length expressions (function calls) have
      already been folded, as have __builtin_* function calls, and such
@@ -1626,7 +1633,11 @@ c_fully_fold_internal (tree expr, bool in_init, bool *maybe_const_operands,
       TREE_NO_WARNING (ret) = 1;
     }
   if (ret != expr)
-    protected_set_expr_location (ret, loc);
+    {
+      protected_set_expr_location (ret, loc);
+      if (IS_EXPR_CODE_CLASS (kind))
+	set_source_range (ret, old_range.m_start, old_range.m_finish);
+    }
   return ret;
 }
 
@@ -9010,6 +9021,35 @@ handle_warn_unused_attribute (tree *node, tree name,
 static tree
 handle_omp_declare_simd_attribute (tree *, tree, tree, int, bool *)
 {
+  return NULL_TREE;
+}
+
+/* Handle a "simd" attribute.  */
+
+static tree
+handle_simd_attribute (tree *node, tree name, tree, int, bool *no_add_attrs)
+{
+  if (TREE_CODE (*node) == FUNCTION_DECL)
+    {
+      if (lookup_attribute ("cilk simd function",
+			    DECL_ATTRIBUTES (*node)) != NULL)
+	{
+	  error_at (DECL_SOURCE_LOCATION (*node),
+		    "%<__simd__%> attribute cannot be used in the same "
+		    "function marked as a Cilk Plus SIMD-enabled function");
+	  *no_add_attrs = true;
+	}
+      else
+	DECL_ATTRIBUTES (*node)
+	  = tree_cons (get_identifier ("omp declare simd"),
+		       NULL_TREE, DECL_ATTRIBUTES (*node));
+    }
+  else
+    {
+      warning (OPT_Wattributes, "%qE attribute ignored", name);
+      *no_add_attrs = true;
+    }
+
   return NULL_TREE;
 }
 
