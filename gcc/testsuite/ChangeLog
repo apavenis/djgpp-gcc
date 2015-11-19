@@ -1,3 +1,135 @@
+2015-11-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/67409
+	* g++.dg/eh/goto3.C: New test.
+
+2015-11-19  Marek Polacek  <polacek@redhat.com>
+
+	PR tree-optimization/68431
+	* gcc.dg/tree-ssa/pr68431.c: New test.
+
+2015-11-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/68376
+	* gcc.c-torture/execute/pr68376-1.c: New test.
+	* gcc.c-torture/execute/pr68376-2.c: New test.
+
+	PR target/67770
+	* gcc.target/i386/pr67770.c: New test.
+
+2015-11-18  Jeff Law  <law@redhat.com>
+
+        PR tree-optimization/68198
+	* gcc.dg/tree-ssa/pr66752-3.c: Update expected output for VRP1.
+	* gcc.dg/tree-ssa/pr68198.c: New test.
+
+2015-11-18  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/59910
+	* gfortran.dg/pr59910.f90: New test.
+
+2015-11-18  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/43996
+	* gfortran.dg/pr43996.f90: New test.
+
+2015-11-18  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/65083
+	* gcc.dg/atomic/stdatomic-fence-2.c,
+	gcc.dg/atomic/stdatomic-flag-2.c: New tests.
+
+2015-11-18  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/loop_optimization19.adb: New test.
+	* gnat.dg/loop_optimization20.adb: Likewise.
+	* gnat.dg/loop_optimization21.ad[sb]: Likewise.
+
+2015-11-18  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/opt52.adb: New test.
+
+2015-11-18  Nathan Sidwell  <nathan@codesourcery.com>
+
+	* gcc.dg/goacc/nvptx-sese-1.c: New.
+
+2015-11-18  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/renaming7.adb: New test.
+	* gnat.dg/renaming7_pkg.ads: New helper.
+
+2015-11-18  Ajit Agarwal  <ajitkum@xilinx.com>
+
+	PR tree-optimization/68402
+	* gcc.dg/tree-ssa/split-path-1.c: Fix the testcase
+	to avoid undefined behaviour.
+
+2015-11-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/68157
+	* g++.dg/opt/pr68157.C: New test.
+
+2015-11-18  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/67790
+	* gcc.dg/vect/pr67790.c: New testcase.
+
+2015-11-17  David Edelsohn  <dje.gcc@gmail.com>
+
+	* g++.dg/cpp1y/pr58708.C: Define wfoo based on sizeof wchar_t.
+
+2015-11-17  David Malcolm  <dmalcolm@redhat.com>
+
+	* gcc.dg/plugin/diagnostic-test-expressions-1.c (vector): New
+	macro.
+	(test_braced_init): New function.
+	(test_statement_expression): New function.
+	(test_address_of_label): New function.
+	(test_transaction_expressions): New function.
+	(test_keywords): New function.
+	(test_builtin_va_arg): New function.
+	(test_builtin_offsetof): New function.
+	* lib/multiline.exp (_build_multiline_regex): Escape braces.
+
+2015-11-17  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/68308
+	* g++.dg/init/new46.C: New test.
+
+2015-11-17  Dominique d'Humieres <dominiq@lps.ens.fr>
+
+	PR fortran/65751
+	* gfortran.dg/unlimited_polymorphic_2.f03: Update test.
+
+2015-11-17  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	PR middle-end/68134
+	* gcc.dg/pr68134.c: New test.
+
+2015-11-17  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/68143
+	* gcc.c-torture/execute/pr68143_1.c: New test.
+
+2015-11-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc.dg/torture/pr68264.c: Use dg-add-options ieee.
+
+2015-11-17  Venkataramanan Kumar  <Venkataramanan.Kumar@amd.com>
+
+	* gcc.dg/tree-ssa/ifc-8.c: New test.
+
+2015-11-16  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/68362
+	* g++.dg/delayedfold/switch-1.C: New test.
+
+2015-11-16  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/58027
+	PR fortran/60993
+	* gfortran.dg/pr58027.f90: New test.
+
 2015-11-16  Kirill Yukhin  <kirill.yukhin@intel.com>
 
 	* c-c++-common/attr-simd.c: New test.
@@ -18,11 +150,11 @@
 2015-11-16  Christian Bruel  <christian.bruel@st.com>
 
 	PR target/65837
-	gcc.target/arm/lto/pr65837_0.c
-	gcc.target/arm/attr-neon2.c
-	gcc.target/arm/attr-neon.c
-	gcc.target/arm/attr-neon-builtin-fail.c
-	gcc.target/arm/attr-crypto.c
+	* gcc.target/arm/lto/pr65837_0.c
+	* gcc.target/arm/attr-neon2.c
+	* gcc.target/arm/attr-neon.c
+	* gcc.target/arm/attr-neon-builtin-fail.c
+	* gcc.target/arm/attr-crypto.c
 
 2015-11-16  Richard Biener  <rguenther@suse.de>
 

@@ -657,27 +657,6 @@ __gnat_localtime_tzoff (const time_t *timer, long *off)
 
 #elif defined (__MINGW32__)
 
-#ifdef CERT
-
-/* For the Cert run times on native Windows we use dummy functions
-   for locking and unlocking tasks since we do not support multiple
-   threads on this configuration (Cert run time on native Windows). */
-
-void dummy (void) {}
-
-void (*Lock_Task) ()   = &dummy;
-void (*Unlock_Task) () = &dummy;
-
-#else
-
-#define Lock_Task system__soft_links__lock_task
-extern void (*Lock_Task) (void);
-
-#define Unlock_Task system__soft_links__unlock_task
-extern void (*Unlock_Task) (void);
-
-#endif
-
 /* Reentrant localtime for Windows. */
 
 extern void
@@ -690,8 +669,6 @@ __gnat_localtime_tzoff (const time_t *timer, const int *is_historic, long *off)
   TIME_ZONE_INFORMATION tzi;
 
   DWORD tzi_status;
-
-  (*Lock_Task) ();
 
   tzi_status = GetTimeZoneInformation (&tzi);
 
@@ -764,8 +741,6 @@ __gnat_localtime_tzoff (const time_t *timer, const int *is_historic, long *off)
       }
     }
   }
-
-  (*Unlock_Task) ();
 }
 
 #elif defined (__Lynx__)

@@ -1,3 +1,13 @@
+2015-11-18  Nathan Sidwell  <nathan@codesourcery.com>
+
+	* testsuite/libgomp.oacc-c-c++-common/reduction-cplx-flt.c: Add
+	worker & gang cases.
+	* testsuite/libgomp.oacc-c-c++-common/reduction-cplx-dbl.c: Likewise.
+
+2015-11-17  Cesar Philippidis  <cesar@codesourcery.com>
+
+	* config/nvptx/priority_queue.c: New file.
+
 2015-11-14  Jakub Jelinek  <jakub@redhat.com>
 
 	* libgomp.texi: Update references from OpenMP 4.0 to OpenMP 4.5

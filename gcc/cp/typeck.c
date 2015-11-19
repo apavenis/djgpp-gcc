@@ -5768,10 +5768,6 @@ cp_build_unary_op (enum tree_code code, tree xarg, int noconvert,
 	    /* Make sure the result is not an lvalue: a unary plus or minus
 	       expression is always a rvalue.  */
 	    arg = rvalue (arg);
-
-	    if (code == NEGATE_EXPR && CONSTANT_CLASS_P (arg))
-	      /* Immediately fold negation of a constant.  */
-	      return fold_build1 (code, TREE_TYPE (arg), arg);
 	  }
       }
       break;
@@ -6672,7 +6668,13 @@ build_static_cast_1 (tree type, tree expr, bool c_cast_p,
 	 If T is a reference type, the result is an lvalue; otherwise,
 	 the result is an rvalue.  */
       if (TREE_CODE (type) != REFERENCE_TYPE)
-	result = rvalue (result);
+	{
+	  result = rvalue (result);
+
+	  if (result == expr && SCALAR_TYPE_P (type))
+	    /* Leave some record of the cast.  */
+	    result = build_nop (type, expr);
+	}
       return result;
     }
 
