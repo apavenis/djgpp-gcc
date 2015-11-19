@@ -188,6 +188,7 @@ UINT CurrentCCSEncoding;
 #include <accctrl.h>
 #include <aclapi.h>
 #include <tlhelp32.h>
+#endif
 #undef DIR_SEPARATOR
 #define DIR_SEPARATOR '\\'
 
