@@ -379,7 +379,7 @@ nvptx_write_function_decl (std::stringstream &s, const char *name, const_tree de
   if (DECL_EXTERNAL (decl))
     s << ".extern ";
   else if (TREE_PUBLIC (decl))
-    s << ".visible ";
+    s << (DECL_WEAK (decl) ? ".weak " : ".visible ");
 
   if (kernel)
     s << ".entry ";
@@ -1780,8 +1780,9 @@ nvptx_declare_object_name (FILE *file, const char *name, const_tree decl)
       size = tree_to_uhwi (DECL_SIZE_UNIT (decl));
       const char *section = nvptx_section_for_decl (decl);
       fprintf (file, "\t%s%s .align %d .u%d ",
-	       TREE_PUBLIC (decl) ? " .visible" : "", section,
-	       DECL_ALIGN (decl) / BITS_PER_UNIT,
+	       !TREE_PUBLIC (decl) ? ""
+	       : DECL_WEAK (decl) ? ".weak" : ".visible",
+	       section, DECL_ALIGN (decl) / BITS_PER_UNIT,
 	       decl_chunk_size * BITS_PER_UNIT);
       assemble_name (file, name);
       if (size > 0)
@@ -3894,6 +3895,19 @@ nvptx_cannot_copy_insn_p (rtx_insn *insn)
       return false;
     }
 }
+
+/* Section anchors do not work.  Initialization for flag_section_anchor
+   probes the existence of the anchoring target hooks and prevents
+   anchoring if they don't exist.  However, we may be being used with
+   a host-side compiler that does support anchoring, and hence see
+   the anchor flag set (as it's not recalculated).  So provide an
+   implementation denying anchoring.  */
+
+static bool
+nvptx_use_anchors_for_symbol_p (const_rtx ARG_UNUSED (a))
+{
+  return false;
+}
 
 /* Record a symbol for mkoffload to enter into the mapping table.  */
 
@@ -4912,6 +4926,9 @@ nvptx_goacc_reduction (gcall *call)
 
 #undef TARGET_CANNOT_COPY_INSN_P
 #define TARGET_CANNOT_COPY_INSN_P nvptx_cannot_copy_insn_p
+
+#undef TARGET_USE_ANCHORS_FOR_SYMBOL_P
+#define TARGET_USE_ANCHORS_FOR_SYMBOL_P nvptx_use_anchors_for_symbol_p
 
 #undef TARGET_INIT_BUILTINS
 #define TARGET_INIT_BUILTINS nvptx_init_builtins
