@@ -47,33 +47,6 @@ POSSIBILITY OF SUCH DAMAGE.  */
 /* This file implements file views and memory allocation when mmap is
    available.  */
 
-#ifdef __DJGPP__
-
-#define MAP_PRIVATE 0
-
-static void *mmap(void *addr, size_t length, int prot, int flags,
-           int fd, off_t offset)
-{
-    (void)addr;
-    (void)length;
-    (void)prot;
-    (void)flags;
-    (void)fd;
-    (void)offset;
-    errno = EINVAL;
-    return MAP_FAILED;
-}
-
-static int munmap(void *addr, size_t length)
-{
-    (void)addr;
-    (void)length;
-    errno = EINVAL;
-    return -1;
-}
-
-#endif
-
 /* Create a view of SIZE bytes from DESCRIPTOR at OFFSET.  */
 
 int
