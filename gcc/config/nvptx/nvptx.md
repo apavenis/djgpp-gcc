@@ -351,14 +351,14 @@
 
 (define_insn "load_arg_reg<mode>"
   [(set (match_operand:QHIM 0 "nvptx_register_operand" "=R")
-	(unspec:QHIM [(match_operand 1 "const_int_operand" "i")]
+	(unspec:QHIM [(match_operand 1 "const_int_operand" "n")]
 		     UNSPEC_ARG_REG))]
   ""
   "%.\\tcvt%t0.u32\\t%0, %%ar%1;")
 
 (define_insn "load_arg_reg<mode>"
   [(set (match_operand:SDISDFM 0 "nvptx_register_operand" "=R")
-	(unspec:SDISDFM [(match_operand 1 "const_int_operand" "i")]
+	(unspec:SDISDFM [(match_operand 1 "const_int_operand" "n")]
 			UNSPEC_ARG_REG))]
   ""
   "%.\\tmov%t0\\t%0, %%ar%1;")
@@ -391,8 +391,6 @@
       emit_move_insn (operands[0], tmp);
       DONE;
     }
-  if (GET_CODE (operands[1]) == SYMBOL_REF)
-    nvptx_record_needed_fndecl (SYMBOL_REF_DECL (operands[1]));
 })
 
 (define_insn "highpartscsf2"
@@ -731,7 +729,7 @@
   [(set (match_operand:SI 0 "nvptx_register_operand" "=R")
 	(clz:SI (match_operand:SDIM 1 "nvptx_register_operand" "R")))]
   ""
-  "%.\\tclz.b%T0\\t%0, %1;")
+  "%.\\tclz.b%T1\\t%0, %1;")
 
 (define_expand "ctz<mode>2"
   [(set (match_operand:SI 0 "nvptx_register_operand" "")
