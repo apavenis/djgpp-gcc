@@ -435,10 +435,7 @@ __gnat_readlink (char *path ATTRIBUTE_UNUSED,
 		 char *buf ATTRIBUTE_UNUSED,
 		 size_t bufsiz ATTRIBUTE_UNUSED)
 {
-#if defined (__DJGPP__) && (__DJGPP__>2 || (__DJGPP__==2 && __DJGPP_MINOR__>=4))
-  /* Symbolic links are supported for DJGPP beginning with version 2.04pre */
-  return readlink (path, buf, bufsiz);
-#elif defined(__DJGPP__) || defined (_WIN32)		\
+#if defined (_WIN32)		\
   || defined(__vxworks) || defined (__PikeOS__)
   return -1;
 #else
@@ -454,10 +451,7 @@ int
 __gnat_symlink (char *oldpath ATTRIBUTE_UNUSED,
 		char *newpath ATTRIBUTE_UNUSED)
 {
-#if defined (__DJGPP__) && (__DJGPP__>2 || (__DJGPP__==2 && __DJGPP_MINOR__>=4))
-  /* Symbolic links are supported for DJGPP beginning with version 2.04pre */
-  return symlink (oldpath, newpath);
-#elif defined(__DJGPP__) || defined (_WIN32) \
+#if defined (_WIN32) \
   || defined(__vxworks) || defined (__PikeOS__)
   return -1;
 #else
@@ -2173,8 +2167,6 @@ __gnat_is_symbolic_link_attr (char* name ATTRIBUTE_UNUSED,
 #if defined (__vxworks)
        attr->symbolic_link = 0;
 
-#elif defined (__DJGPP__) && (__DJGPP__ < 2 || (__DJGPP__==2) && (__DJGPP_MINOR__<4))
-      return 0;
 #elif defined (_AIX) || defined (__APPLE__) || defined (__unix__)
        int ret;
        GNAT_STRUCT_STAT statbuf;
@@ -2323,7 +2315,6 @@ __gnat_number_of_cpus (void)
 
   cores = vxCpuConfiguredGet ();
 
-#elif defined (__DJGPP__)
 #endif
 
   return cores;

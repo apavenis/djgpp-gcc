@@ -129,7 +129,7 @@ private
    Frontend_Layout           : constant Boolean := False;
    Machine_Overflows         : constant Boolean := False;
    Machine_Rounds            : constant Boolean := True;
-   Preallocated_Stacks       : constant Boolean := True;
+   Preallocated_Stacks       : constant Boolean := False;
    Signed_Zeros              : constant Boolean := True;
    Stack_Check_Default       : constant Boolean := False;
    Stack_Check_Probes        : constant Boolean := True;
@@ -142,6 +142,7 @@ private
    Always_Compatible_Rep     : constant Boolean := False;
    Suppress_Standard_Library : constant Boolean := False;
    Use_Ada_Main_Program_Name : constant Boolean := False;
-   ZCX_By_Default            : constant Boolean := True;
+   Frontend_Exceptions       : constant Boolean := False;
+   ZCX_By_Default            : constant Boolean := False;
 
 end System;
