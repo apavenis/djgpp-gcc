@@ -27544,25 +27544,36 @@ vfp3_const_double_for_fract_bits (rtx operand)
   return 0;
 }
 
+/* If X is a CONST_DOUBLE with a value that is a power of 2 whose
+   log2 is in [1, 32], return that log2.  Otherwise return -1.
+   This is used in the patterns for vcvt.s32.f32 floating-point to
+   fixed-point conversions.  */
+
 int
-vfp3_const_double_for_bits (rtx operand)
+vfp3_const_double_for_bits (rtx x)
 {
-  REAL_VALUE_TYPE r0;
+  if (!CONST_DOUBLE_P (x))
+    return -1;
 
-  if (!CONST_DOUBLE_P (operand))
-    return 0;
+  REAL_VALUE_TYPE r;
 
-  REAL_VALUE_FROM_CONST_DOUBLE (r0, operand);
-  if (exact_real_truncate (DFmode, &r0))
-    {
-      HOST_WIDE_INT value = real_to_integer (&r0);
-      value = value & 0xffffffff;
-      if ((value != 0) && ( (value & (value - 1)) == 0))
-	return int_log2 (value);
-    }
+  REAL_VALUE_FROM_CONST_DOUBLE (r, x);
+  if (REAL_VALUE_NEGATIVE (r)
+      || REAL_VALUE_ISNAN (r)
+      || REAL_VALUE_ISINF (r)
+      || !real_isinteger (&r, SFmode))
+    return -1;
 
-  return 0;
+  HOST_WIDE_INT hwint = exact_log2 (real_to_integer (&r));
+
+  /* The exact_log2 above will have returned -1 if this is
+     not an exact log2.  */
+  if (!IN_RANGE (hwint, 1, 32))
+    return -1;
+
+  return hwint;
 }
+
 
 /* Emit a memory barrier around an atomic sequence according to MODEL.  */
 
@@ -28993,7 +29004,7 @@ arm_block_set_unaligned_vect (rtx dstbase,
   rtx (*gen_func) (rtx, rtx);
   machine_mode mode;
   unsigned HOST_WIDE_INT v = value;
-
+  unsigned int offset = 0;
   gcc_assert ((align & 0x3) != 0);
   nelt_v8 = GET_MODE_NUNITS (V8QImode);
   nelt_v16 = GET_MODE_NUNITS (V16QImode);
@@ -29014,7 +29025,7 @@ arm_block_set_unaligned_vect (rtx dstbase,
     return false;
 
   dst = copy_addr_to_reg (XEXP (dstbase, 0));
-  mem = adjust_automodify_address (dstbase, mode, dst, 0);
+  mem = adjust_automodify_address (dstbase, mode, dst, offset);
 
   v = sext_hwi (v, BITS_PER_WORD);
   val_elt = GEN_INT (v);
@@ -29031,7 +29042,11 @@ arm_block_set_unaligned_vect (rtx dstbase,
     {
       emit_insn ((*gen_func) (mem, reg));
       if (i + 2 * nelt_mode <= length)
-	emit_insn (gen_add2_insn (dst, GEN_INT (nelt_mode)));
+	{
+	  emit_insn (gen_add2_insn (dst, GEN_INT (nelt_mode)));
+	  offset += nelt_mode;
+	  mem = adjust_automodify_address (dstbase, mode, dst, offset);
+	}
     }
 
   /* If there are not less than nelt_v8 bytes leftover, we must be in
@@ -29042,6 +29057,9 @@ arm_block_set_unaligned_vect (rtx dstbase,
   if (i + nelt_v8 < length)
     {
       emit_insn (gen_add2_insn (dst, GEN_INT (length - i)));
+      offset += length - i;
+      mem = adjust_automodify_address (dstbase, mode, dst, offset);
+
       /* We are shifting bytes back, set the alignment accordingly.  */
       if ((length & 1) != 0 && align >= 2)
 	set_mem_align (mem, BITS_PER_UNIT);
@@ -29052,12 +29070,13 @@ arm_block_set_unaligned_vect (rtx dstbase,
   else if (i < length && i + nelt_v8 >= length)
     {
       if (mode == V16QImode)
-	{
-	  reg = gen_lowpart (V8QImode, reg);
-	  mem = adjust_automodify_address (dstbase, V8QImode, dst, 0);
-	}
+	reg = gen_lowpart (V8QImode, reg);
+
       emit_insn (gen_add2_insn (dst, GEN_INT ((length - i)
 					      + (nelt_mode - nelt_v8))));
+      offset += (length - i) + (nelt_mode - nelt_v8);
+      mem = adjust_automodify_address (dstbase, V8QImode, dst, offset);
+
       /* We are shifting bytes back, set the alignment accordingly.  */
       if ((length & 1) != 0 && align >= 2)
 	set_mem_align (mem, BITS_PER_UNIT);
@@ -29084,6 +29103,7 @@ arm_block_set_aligned_vect (rtx dstbase,
   rtx rval[MAX_VECT_LEN];
   machine_mode mode;
   unsigned HOST_WIDE_INT v = value;
+  unsigned int offset = 0;
 
   gcc_assert ((align & 0x3) == 0);
   nelt_v8 = GET_MODE_NUNITS (V8QImode);
@@ -29115,14 +29135,15 @@ arm_block_set_aligned_vect (rtx dstbase,
   /* Handle first 16 bytes specially using vst1:v16qi instruction.  */
   if (mode == V16QImode)
     {
-      mem = adjust_automodify_address (dstbase, mode, dst, 0);
+      mem = adjust_automodify_address (dstbase, mode, dst, offset);
       emit_insn (gen_movmisalignv16qi (mem, reg));
       i += nelt_mode;
       /* Handle (8, 16) bytes leftover using vst1:v16qi again.  */
       if (i + nelt_v8 < length && i + nelt_v16 > length)
 	{
 	  emit_insn (gen_add2_insn (dst, GEN_INT (length - nelt_mode)));
-	  mem = adjust_automodify_address (dstbase, mode, dst, 0);
+	  offset += length - nelt_mode;
+	  mem = adjust_automodify_address (dstbase, mode, dst, offset);
 	  /* We are shifting bytes back, set the alignment accordingly.  */
 	  if ((length & 0x3) == 0)
 	    set_mem_align (mem, BITS_PER_UNIT * 4);
@@ -29144,7 +29165,7 @@ arm_block_set_aligned_vect (rtx dstbase,
   for (; (i + nelt_mode <= length); i += nelt_mode)
     {
       addr = plus_constant (Pmode, dst, i);
-      mem = adjust_automodify_address (dstbase, mode, addr, i);
+      mem = adjust_automodify_address (dstbase, mode, addr, offset + i);
       emit_move_insn (mem, reg);
     }
 
@@ -29153,8 +29174,8 @@ arm_block_set_aligned_vect (rtx dstbase,
   if (i + UNITS_PER_WORD == length)
     {
       addr = plus_constant (Pmode, dst, i - UNITS_PER_WORD);
-      mem = adjust_automodify_address (dstbase, mode,
-				       addr, i - UNITS_PER_WORD);
+      offset += i - UNITS_PER_WORD;
+      mem = adjust_automodify_address (dstbase, mode, addr, offset);
       /* We are shifting 4 bytes back, set the alignment accordingly.  */
       if (align > UNITS_PER_WORD)
 	set_mem_align (mem, BITS_PER_UNIT * UNITS_PER_WORD);
@@ -29166,7 +29187,8 @@ arm_block_set_aligned_vect (rtx dstbase,
   else if (i < length)
     {
       emit_insn (gen_add2_insn (dst, GEN_INT (length - nelt_mode)));
-      mem = adjust_automodify_address (dstbase, mode, dst, 0);
+      offset += length - nelt_mode;
+      mem = adjust_automodify_address (dstbase, mode, dst, offset);
       /* We are shifting bytes back, set the alignment accordingly.  */
       if ((length & 1) == 0)
 	set_mem_align (mem, BITS_PER_UNIT * 2);
