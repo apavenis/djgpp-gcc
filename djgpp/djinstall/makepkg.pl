@@ -573,10 +573,10 @@ sub getdjver
             $djver_desc = "2.04 Beta 1 or above";
             $djreq = ">= 2.04 Beta 1";
         }
-        elsif ($minor > 5)
+        elsif ($minor >= 5)
         {
             # Fix for DJGPP v2.1X later (perhaps not very soon)
-            $djver_dec = "2.0$minor";
+            $djver_desc = "2.0$minor or above";
             $djreq = ">=2.0$minor";
         }
         return sprintf("%d.%02d", $major, $minor);
