@@ -70,25 +70,12 @@ Binary packages includes following documentation files:
 Before you install gcc-@GCCVER@ binaries
 ======================================
 
-You should remove previous installation of gcc or egcs completely
+You should remove previous installation of gcc completely
 (unless You really know what You are doing).
 
-Make sure You don't have following files from earlier versions
-(relative paths against to DJGPP directory are given):
-	bin/cc1.exe		(from gcc272b.zip or gcc2721b.zip)
-	bin/cc1plus.exe		(from gpp272b.zip or gpp2721b.zip)
-	lib/libgcc.a		(from gcc272b.zip or gcc2721b.zip)
-	lib/libobjc.a
-	lib/specs		(from djdev201.zip or djdev202.zip)
-	lib/libstdcxx.a
-	lib/libgpp.a
-
 Following packages are required for binaries:
-	binutils-2.16 or above. Linker script is no more included in DJGPP
-	    release of GCC and all earlier binutils releases for DJGPP
-	    had incompatible scripts. SO PLEASE UPGRADE.
-
-	DJGPP-@DJVER@ (djdev203.zip)
+	binutils-2.22 or newer.
+	DJGPP-@DJVER@
 
 
 Installing binaries of gcc-@GCCVER@
@@ -114,8 +101,7 @@ or
 	unzip386 @DJDEV@
 
 
-NOTE:   For debugging GDB version 6.3 or above is recommended.
-        (gdb-6.3 is not released for DJGPP yet though).
+NOTE:   For debugging GDB version 7.9 or above is recommended.
 
 
 1. Only long filenames
@@ -166,7 +152,7 @@ Requirements
    be enough (I had more on build machine)
 
 -  Much of free disk space: the total size of all directories after build
-   was about 3 GB. Perhaps one need more to be safe.
+   was about 3 GB. Perhaps some need more to be safe.
 
 -  Amount of available DPMI memory for DOS session should
    be set to auto.
@@ -174,7 +160,7 @@ Requirements
 -  On windows Vista (and perhaps later versions) a registry hack to
    allow DPMI clients to use more that 32 MB of memory must be used
 
--  recent CVS version DJGPP v2.04
+-  DJGPP v2.05
 
 -  many GNU utilities and libraries (the list may be incomplete)
 
@@ -191,9 +177,9 @@ Requirements
 	GNU Texinfo 4.8 or above
 	GNU tar 1.1.2 or above
 	GNU binutils 2.22 (required, older versions cannot be used!!!)
-	recent GNU GMP 5.0.1 version (versions 5.0.X or newer are OK)
-        recent MPFR versions (versions 3.0.0 or newer are OK)
-	recent MPC versions (versions 1.0.0 or newer are OK)
+	recent GNU GMP version (6.0.0 or newer are OK)
+        recent MPFR versions (versions 3.1.3 is OK)
+	recent MPC versions (versions 1.0.3 is OK)
 	Zlib-1.2.5 or above (Warning configure does not check for presence
 	     one only gets build error later)
 	working GNU C compiler (perhaps not earlier than gcc-4.1).
@@ -211,9 +197,7 @@ Requirements
    about INFO-ZIP. You can find DJGPP compiled binary there.
 
 -  Working DJGPP installation of course:
-   -  recent CVS version of DJGPP-2.04 is required
-   -  the beta version from ftp://ftp.delorie.com/pub/djgpp/beta/v2
-      is too old.
+   -  DJGPP-2.05 is required
 
 Earlier requirement to have rebuilt stubify.exe with default stack size
 increased to 1.5 MB or more is no more required as the stack size
@@ -225,8 +209,8 @@ If You modify some source files You may also need
 	(No ports available for DJGPP yet. I did all patching GCC sources
 	and updating autoconf and automake related stuff in Linux)
 
-   NOTE: Building GCC-@GCCVER@ using DJGPP v2.03 patchlevel 2 requires rebuilding
-   several DJGPP packets before building GCC.
+   NOTE: Building GCC-@GCCVER@ using DJGPP versions earlier than 2.05 is
+   not supported ans is not tried.
 
 -  You should have sh.exe in DJGPP bin directory as symbolic link to
    bash.exe (type 'ln -s bash.exe sh.exe' in that directory)
@@ -256,8 +240,7 @@ by running script djconfig.sh.
 	sh djconfig.sh
 
 When this is done You can build gcc-@GCCVER@ by running script djmake.sh
-Under Win9X You'll have to restart it some times when it will crash
-due to Win9X DPMI descriptor leaks. You may use redir to get output in file.
+You may use redir to get output in file.
 
 	sh djmake.sh bootstrap
 
