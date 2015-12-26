@@ -54,8 +54,12 @@ dest=djcross-gcc-$ver1
 rm -rf $dest
 
 mkdir -p $dest
-cp -prv cross-native $dest/
+mkdir -p $dest/cross-native
+sed -e "s/@SRCDIR@/$source_name/g" \
+    cross-native/build-cross-native.sh.in \
+    >$dest/cross-native/build-cross-native.sh
 chmod +x $dest/cross-native/*.sh
+
 mkdir -p $dest/diffs/source
 mkdir -p $dest/diffs2/build.gcc
 cp -pv djbuild/* $dest/diffs2/build.gcc/
