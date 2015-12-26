@@ -120,5 +120,6 @@ typedef unsigned int uint;
 #undef MAX_OFILE_ALIGNMENT
 #define MAX_OFILE_ALIGNMENT 128
 
-/* DJGPP do not have scalbln() */
-double scalbln(double val, int exp_);
+/* DJGPP versions up to current (2.05) have ftw.h but only ftw() not nftw().
+   Disable use of ftw.h */
+#undef HAVE_FTW_H

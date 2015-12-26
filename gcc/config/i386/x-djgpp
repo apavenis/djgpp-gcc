@@ -21,18 +21,3 @@ version := $(shell echo $(version) | sed -e 's:\.::2g')
 # on DJGPP the 'ln -s' does not work correctly
 LN = cp -p
 LN_S = cp -p
-
-EXTRA_OBJS += xm-djgpp.o
-BACKEND += xm-djgpp.o
-
-xm-djgpp.o: $(srcdir)/config/i386/xm-djgpp.c
-	$(CC) -c -O2 -W -Wall $< -o $@
-
-
-# Some build tools also require larger stack (different object file name
-# used as djgpp-stack.o and djgpp-stack-tools.o may be built with compilers
-# for different targets in case of cross-compiling
-BUILD_RTL += xm-djgpp-tools.o
-
-xm-djgpp-tools.o: $(srcdir)/config/i386/xm-djgpp.c
-	$(CC_FOR_BUILD) -c -O2 -W -Wall $< -o $@
