@@ -1278,8 +1278,20 @@ maybe_pad_type (tree type, tree size, unsigned int align,
      type and name.  */
   record = make_node (RECORD_TYPE);
   TYPE_PADDING_P (record) = 1;
+  if (gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL)
+    SET_TYPE_DEBUG_TYPE (record, type);
 
-  if (Present (gnat_entity))
+  /* ??? Kludge: padding types around packed array implementation types will be
+     considered as root types in the array descriptor language hook (see
+     gnat_get_array_descr_info). Give them the original packed array type
+     name so that the one coming from sources appears in the debugging
+     information.  */
+  if (gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL
+      && TYPE_IMPLEMENTS_PACKED_ARRAY_P (type)
+      && TYPE_ORIGINAL_PACKED_ARRAY (type) != NULL_TREE)
+    TYPE_NAME (record)
+      = TYPE_NAME (TYPE_ORIGINAL_PACKED_ARRAY (type));
+  else if (Present (gnat_entity))
     TYPE_NAME (record) = create_concat_name (gnat_entity, "PAD");
 
   TYPE_ALIGN (record) = align ? align : orig_align;
@@ -1365,45 +1377,62 @@ maybe_pad_type (tree type, tree size, unsigned int align,
 	  && TREE_CODE (size) != INTEGER_CST
 	  && (definition || global_bindings_p ()))
 	{
+	  /* Whether or not gnat_entity comes from source, this XVZ variable is
+	     is a compilation artifact.  */
 	  size_unit
 	    = create_var_decl (concat_name (name, "XVZ"), NULL_TREE, sizetype,
 			      size_unit, true, global_bindings_p (),
 			      !definition && global_bindings_p (), false,
-			      true, true, NULL, gnat_entity);
+			      false, true, true, NULL, gnat_entity);
 	  TYPE_SIZE_UNIT (record) = size_unit;
 	}
 
-      tree marker = make_node (RECORD_TYPE);
-      tree orig_name = TYPE_IDENTIFIER (type);
+      /* There is no need to show what we are a subtype of when outputting as
+	 few encodings as possible: regular debugging infomation makes this
+	 redundant.  */
+      if (gnat_encodings != DWARF_GNAT_ENCODINGS_MINIMAL)
+	{
+	  tree marker = make_node (RECORD_TYPE);
+	  tree orig_name = TYPE_IDENTIFIER (type);
 
-      TYPE_NAME (marker) = concat_name (name, "XVS");
-      finish_record_type (marker,
-			  create_field_decl (orig_name,
-					     build_reference_type (type),
-					     marker, NULL_TREE, NULL_TREE,
-					     0, 0),
-			  0, true);
-      TYPE_SIZE_UNIT (marker) = size_unit;
+	  TYPE_NAME (marker) = concat_name (name, "XVS");
+	  finish_record_type (marker,
+			      create_field_decl (orig_name,
+						 build_reference_type (type),
+						 marker, NULL_TREE, NULL_TREE,
+						 0, 0),
+			      0, true);
+	  TYPE_SIZE_UNIT (marker) = size_unit;
 
-      add_parallel_type (record, marker);
+	  add_parallel_type (record, marker);
+	}
     }
 
   rest_of_record_type_compilation (record);
 
 built:
-  /* If the size was widened explicitly, maybe give a warning.  Take the
-     original size as the maximum size of the input if there was an
-     unconstrained record involved and round it up to the specified alignment,
-     if one was specified.  But don't do it if we are just annotating types
-     and the type is tagged, since tagged types aren't fully laid out in this
-     mode.  */
+  /* If a simple size was explicitly given, maybe issue a warning.  */
   if (!size
       || TREE_CODE (size) == COND_EXPR
       || TREE_CODE (size) == MAX_EXPR
-      || No (gnat_entity)
-      || (type_annotate_only && Is_Tagged_Type (Etype (gnat_entity))))
+      || No (gnat_entity))
     return record;
 
+  /* But don't do it if we are just annotating types and the type is tagged or
+     concurrent, since these types aren't fully laid out in this mode.  */
+  if (type_annotate_only)
+    {
+      Entity_Id gnat_type
+	= is_component_type
+	  ? Component_Type (gnat_entity) : Etype (gnat_entity);
+
+      if (Is_Tagged_Type (gnat_type) || Is_Concurrent_Type (gnat_type))
+	return record;
+    }
+
+  /* Take the original size as the maximum size of the input if there was an
+     unconstrained record involved and round it up to the specified alignment,
+     if one was specified, but only for aggregate types.  */
   if (CONTAINS_PLACEHOLDER_P (orig_size))
     orig_size = max_size (orig_size, true);
 
@@ -1694,7 +1723,8 @@ finish_record_type (tree record_type, tree field_list, int rep_level,
 	      /* The enclosing record type must be sufficiently aligned.
 		 Otherwise, if no alignment was specified for it and it
 		 has been laid out already, bump its alignment to the
-		 desired one if this is compatible with its size.  */
+		 desired one if this is compatible with its size and
+		 maximum alignment, if any.  */
 	      if (TYPE_ALIGN (record_type) >= align)
 		{
 		  DECL_ALIGN (field) = MAX (DECL_ALIGN (field), align);
@@ -1702,7 +1732,9 @@ finish_record_type (tree record_type, tree field_list, int rep_level,
 		}
 	      else if (!had_align
 		       && rep_level == 0
-		       && value_factor_p (TYPE_SIZE (record_type), align))
+		       && value_factor_p (TYPE_SIZE (record_type), align)
+		       && (!TYPE_MAX_ALIGN (record_type)
+			   || TYPE_MAX_ALIGN (record_type) >= align))
 		{
 		  TYPE_ALIGN (record_type) = align;
 		  DECL_ALIGN (field) = MAX (DECL_ALIGN (field), align);
@@ -1800,6 +1832,9 @@ finish_record_type (tree record_type, tree field_list, int rep_level,
 	}
     }
 
+  /* Reset the TYPE_MAX_ALIGN field since it's private to gigi.  */
+  TYPE_MAX_ALIGN (record_type) = 0;
+
   if (debug_info_p)
     rest_of_record_type_compilation (record_type);
 }
@@ -1884,7 +1919,7 @@ rest_of_record_type_compilation (tree record_type)
 
   /* If this record type is of variable size, make a parallel record type that
      will tell the debugger how the former is laid out (see exp_dbug.ads).  */
-  if (var_size)
+  if (var_size && gnat_encodings != DWARF_GNAT_ENCODINGS_MINIMAL)
     {
       tree new_record_type
 	= make_node (TREE_CODE (record_type) == QUAL_UNION_TYPE
@@ -2329,21 +2364,25 @@ create_type_decl (tree name, tree type, bool artificial_p, bool debug_info_p,
    EXTERN_FLAG is true when processing an external variable declaration (as
    opposed to a definition: no storage is to be allocated for the variable).
 
-   STATIC_FLAG is only relevant when not at top level.  In that case
-   it indicates whether to always allocate storage to the variable.
+   STATIC_FLAG is only relevant when not at top level and indicates whether
+   to always allocate storage to the variable.
+
+   VOLATILE_FLAG is true if this variable is declared as volatile.
 
    ARTIFICIAL_P is true if the variable was generated by the compiler.
 
    DEBUG_INFO_P is true if we need to write debug information for it.
+
+   ATTR_LIST is the list of attributes to be attached to the variable.
 
    GNAT_NODE is used for the position of the decl.  */
 
 tree
 create_var_decl (tree name, tree asm_name, tree type, tree init,
 		 bool const_flag, bool public_flag, bool extern_flag,
-		 bool static_flag, bool artificial_p, bool debug_info_p,
-		 struct attrib *attr_list, Node_Id gnat_node,
-		 bool const_decl_allowed_p)
+		 bool static_flag, bool volatile_flag, bool artificial_p,
+		 bool debug_info_p, struct attrib *attr_list,
+		 Node_Id gnat_node, bool const_decl_allowed_p)
 {
   /* Whether the object has static storage duration, either explicitly or by
      virtue of being declared at the global level.  */
@@ -2400,16 +2439,6 @@ create_var_decl (tree name, tree asm_name, tree type, tree init,
   /* Directly set some flags.  */
   DECL_ARTIFICIAL (var_decl) = artificial_p;
   DECL_EXTERNAL (var_decl) = extern_flag;
-  TREE_CONSTANT (var_decl) = constant_p;
-  TREE_READONLY (var_decl) = const_flag;
-
-  /* We need to allocate static storage for an object with static storage
-     duration if it isn't external.  */
-  TREE_STATIC (var_decl) = !extern_flag && static_storage;
-
-  /* The object is public if it is external or if it is declared public
-     and has static storage duration.  */
-  TREE_PUBLIC (var_decl) = extern_flag || (public_flag && static_storage);
 
   /* Ada doesn't feature Fortran-like COMMON variables so we shouldn't
      try to fiddle with DECL_COMMON.  However, on platforms that don't
@@ -2435,8 +2464,20 @@ create_var_decl (tree name, tree asm_name, tree type, tree init,
 	     != null_pointer_node))
     DECL_IGNORED_P (var_decl) = 1;
 
-  if (TYPE_VOLATILE (type))
-    TREE_SIDE_EFFECTS (var_decl) = TREE_THIS_VOLATILE (var_decl) = 1;
+  TREE_CONSTANT (var_decl) = constant_p;
+  TREE_READONLY (var_decl) = const_flag;
+
+  /* The object is public if it is external or if it is declared public
+     and has static storage duration.  */
+  TREE_PUBLIC (var_decl) = extern_flag || (public_flag && static_storage);
+
+  /* We need to allocate static storage for an object with static storage
+     duration if it isn't external.  */
+  TREE_STATIC (var_decl) = !extern_flag && static_storage;
+
+  TREE_SIDE_EFFECTS (var_decl)
+    = TREE_THIS_VOLATILE (var_decl)
+    = TYPE_VOLATILE (type) | volatile_flag;
 
   if (TREE_SIDE_EFFECTS (var_decl))
     TREE_ADDRESSABLE (var_decl) = 1;
@@ -3038,19 +3079,24 @@ create_label_decl (tree name, Node_Id gnat_node)
    the list of its parameters (a list of PARM_DECL nodes chained through the
    DECL_CHAIN field).
 
-   INLINE_STATUS, PUBLIC_FLAG, EXTERN_FLAG and ATTR_LIST are used to set the
-   appropriate fields in the FUNCTION_DECL.
+   INLINE_STATUS describes the inline flags to be set on the FUNCTION_DECL.
+
+   CONST_FLAG, PUBLIC_FLAG, EXTERN_FLAG, VOLATILE_FLAG are used to set the
+   appropriate flags on the FUNCTION_DECL.
 
    ARTIFICIAL_P is true if the subprogram was generated by the compiler.
 
    DEBUG_INFO_P is true if we need to write debug information for it.
 
+   ATTR_LIST is the list of attributes to be attached to the subprogram.
+
    GNAT_NODE is used for the position of the decl.  */
 
 tree
 create_subprog_decl (tree name, tree asm_name, tree type, tree param_decl_list,
-		     enum inline_status_t inline_status, bool public_flag,
-		     bool extern_flag, bool artificial_p, bool debug_info_p,
+		     enum inline_status_t inline_status, bool const_flag,
+		     bool public_flag, bool extern_flag, bool volatile_flag,
+		     bool artificial_p, bool debug_info_p,
 		     struct attrib *attr_list, Node_Id gnat_node)
 {
   tree subprog_decl = build_decl (input_location, FUNCTION_DECL, name, type);
@@ -3091,10 +3137,11 @@ create_subprog_decl (tree name, tree asm_name, tree type, tree param_decl_list,
   if (!debug_info_p)
     DECL_IGNORED_P (subprog_decl) = 1;
 
+  TREE_READONLY (subprog_decl) = TYPE_READONLY (type) | const_flag;
   TREE_PUBLIC (subprog_decl) = public_flag;
-  TREE_READONLY (subprog_decl) = TYPE_READONLY (type);
-  TREE_THIS_VOLATILE (subprog_decl) = TYPE_VOLATILE (type);
-  TREE_SIDE_EFFECTS (subprog_decl) = TYPE_VOLATILE (type);
+  TREE_SIDE_EFFECTS (subprog_decl)
+    = TREE_THIS_VOLATILE (subprog_decl)
+    = TYPE_VOLATILE (type) | volatile_flag;
 
   DECL_ARTIFICIAL (result_decl) = 1;
   DECL_IGNORED_P (result_decl) = 1;

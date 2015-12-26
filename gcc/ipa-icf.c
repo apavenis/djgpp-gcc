@@ -544,7 +544,7 @@ bool
 sem_function::param_used_p (unsigned int i)
 {
   if (ipa_node_params_sum == NULL)
-    return false;
+    return true;
 
   struct ipa_node_params *parms_info = IPA_NODE_REF (get_node ());
 
@@ -1352,10 +1352,17 @@ sem_function::merge (sem_item *alias_item)
   gcc_assert (alias->icf_merged || remove || redirect_callers);
   original->icf_merged = true;
 
-  /* Inform the inliner about cross-module merging.  */
-  if ((original->lto_file_data || alias->lto_file_data)
-      && original->lto_file_data != alias->lto_file_data)
-    local_original->merged = original->merged = true;
+  /* We use merged flag to track cases where COMDAT function is known to be
+     compatible its callers.  If we merged in non-COMDAT, we need to give up
+     on this optimization.  */
+  if (original->merged_comdat && !alias->merged_comdat)
+    {
+      if (dump_file)
+	fprintf (dump_file, "Dropping merged_comdat flag.\n\n");
+      if (local_original)
+        local_original->merged_comdat = false;
+      original->merged_comdat = false;
+    }
 
   if (remove)
     {
@@ -3391,13 +3398,19 @@ sem_item_optimizer::merge_classes (unsigned int prev_class_count)
 	if (c->members.length () == 1)
 	  continue;
 
-	gcc_assert (c->members.length ());
-
 	sem_item *source = c->members[0];
 
-	for (unsigned int j = 1; j < c->members.length (); j++)
+	if (MAIN_NAME_P (DECL_NAME (source->decl)))
+	  /* If merge via wrappers, picking main as the target can be
+	     problematic.  */
+	  source = c->members[1];
+
+	for (unsigned int j = 0; j < c->members.length (); j++)
 	  {
 	    sem_item *alias = c->members[j];
+
+	    if (alias == source)
+	      continue;
 
 	    if (dump_file)
 	      {

@@ -4974,13 +4974,15 @@ output_constructor_regular_field (oc_local_state *local)
 	 but we cannot do this until the deprecated support for
 	 initializing zero-length array members is removed.  */
       if (TREE_CODE (TREE_TYPE (local->field)) == ARRAY_TYPE
-	  && TYPE_DOMAIN (TREE_TYPE (local->field))
-	  && ! TYPE_MAX_VALUE (TYPE_DOMAIN (TREE_TYPE (local->field))))
+	  && (!TYPE_DOMAIN (TREE_TYPE (local->field))
+	      || !TYPE_MAX_VALUE (TYPE_DOMAIN (TREE_TYPE (local->field)))))
 	{
 	  fieldsize = array_size_for_constructor (local->val);
-	  /* Given a non-empty initialization, this field had
-	     better be last.  */
-	  gcc_assert (!fieldsize || !DECL_CHAIN (local->field));
+	  /* Given a non-empty initialization, this field had better
+	     be last.  Given a flexible array member, the next field
+	     on the chain is a TYPE_DECL of the enclosing struct.  */
+	  const_tree next = DECL_CHAIN (local->field);
+	  gcc_assert (!fieldsize || !next || TREE_CODE (next) != FIELD_DECL);
 	}
       else
 	fieldsize = tree_to_uhwi (DECL_SIZE_UNIT (local->field));
@@ -5196,7 +5198,7 @@ output_constructor (tree exp, unsigned HOST_WIDE_INT size, unsigned int align,
   if (TREE_CODE (local.type) == ARRAY_TYPE && TYPE_DOMAIN (local.type))
     local.min_index = TYPE_MIN_VALUE (TYPE_DOMAIN (local.type));
   else
-    local.min_index = NULL_TREE;
+    local.min_index = integer_zero_node;
 
   local.total_bytes = 0;
   local.byte_buffer_in_use = outer != NULL;
@@ -6837,7 +6839,9 @@ default_binds_local_p_3 (const_tree exp, bool shlib, bool weak_dominate,
     {
       if (node->in_other_partition)
 	defined_locally = true;
-      if (resolution_to_local_definition_p (node->resolution))
+      if (node->can_be_discarded_p ())
+	;
+      else if (resolution_to_local_definition_p (node->resolution))
 	defined_locally = resolved_locally = true;
       else if (resolution_local_p (node->resolution))
 	resolved_locally = true;
@@ -6930,7 +6934,8 @@ decl_binds_to_current_def_p (const_tree decl)
   /* When resolution is available, just use it.  */
   if (symtab_node *node = symtab_node::get (decl))
     {
-      if (node->resolution != LDPR_UNKNOWN)
+      if (node->resolution != LDPR_UNKNOWN
+	  && !node->can_be_discarded_p ())
 	return resolution_to_local_definition_p (node->resolution);
     }
 

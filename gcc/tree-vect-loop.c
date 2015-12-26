@@ -2123,9 +2123,12 @@ again:
   if (!slp)
     return false;
 
+  /* If there are reduction chains re-trying will fail anyway.  */
+  if (! LOOP_VINFO_REDUCTION_CHAINS (loop_vinfo).is_empty ())
+    return false;
+
   /* Likewise if the grouped loads or stores in the SLP cannot be handled
-     via interleaving or lane instructions or if there were any SLP
-     reductions.  */
+     via interleaving or lane instructions.  */
   slp_instance instance;
   slp_tree node;
   unsigned i, j;
@@ -2135,7 +2138,7 @@ again:
       vinfo = vinfo_for_stmt
 	  (SLP_TREE_SCALAR_STMTS (SLP_INSTANCE_TREE (instance))[0]);
       if (! STMT_VINFO_GROUPED_ACCESS (vinfo))
-	return false;
+	continue;
       vinfo = vinfo_for_stmt (STMT_VINFO_GROUP_FIRST_ELEMENT (vinfo));
       unsigned int size = STMT_VINFO_GROUP_SIZE (vinfo);
       tree vectype = STMT_VINFO_VECTYPE (vinfo);
@@ -2178,6 +2181,13 @@ again:
 	    {
 	      gcc_assert (STMT_SLP_TYPE (stmt_info) == loop_vect);
 	      stmt_info = vinfo_for_stmt (STMT_VINFO_RELATED_STMT (stmt_info));
+	      for (gimple_stmt_iterator pi
+		     = gsi_start (STMT_VINFO_PATTERN_DEF_SEQ (stmt_info));
+		   !gsi_end_p (pi); gsi_next (&pi))
+		{
+		  gimple *pstmt = gsi_stmt (pi);
+		  STMT_SLP_TYPE (vinfo_for_stmt (pstmt)) = loop_vect;
+		}
 	    }
 	  STMT_SLP_TYPE (stmt_info) = loop_vect;
 	}

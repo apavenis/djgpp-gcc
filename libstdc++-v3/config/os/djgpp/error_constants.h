@@ -1,4 +1,4 @@
-// Specific definitions for DJGPP platforms  -*- C++ -*-
+// Specific definitions for DJGPP platform  -*- C++ -*-
 
 // Copyright (C) 2010-2015 Free Software Foundation, Inc.
 //
@@ -39,10 +39,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   enum class errc
     {
-      //address_family_not_supported = 		EAFNOSUPPORT,
-      //address_in_use = 			EADDRINUSE,
-      //address_not_available = 		EADDRNOTAVAIL,
-      //already_connected = 			EISCONN,
+//    address_family_not_supported = 		EAFNOSUPPORT,
+//    address_in_use = 				EADDRINUSE,
+//    address_not_available = 			EADDRNOTAVAIL,
+//    already_connected = 			EISCONN,
       argument_list_too_long = 			E2BIG,
       argument_out_of_domain = 			EDOM,
       bad_address = 				EFAULT,
@@ -53,12 +53,12 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 #endif
 
       broken_pipe = 				EPIPE,
-      //connection_aborted = 			ECONNABORTED,
-      //connection_already_in_progress = 	EALREADY,
-      //connection_refused = 			ECONNREFUSED,
-      //connection_reset = 			ECONNRESET,
+//    connection_aborted = 			ECONNABORTED,
+//    connection_already_in_progress = 		EALREADY,
+//    connection_refused = 			ECONNREFUSED,
+//    connection_reset = 			ECONNRESET,
       cross_device_link = 			EXDEV,
-      //destination_address_required = 		EDESTADDRREQ,
+//    destination_address_required = 		EDESTADDRREQ,
       device_or_resource_busy = 		EBUSY,
       directory_not_empty = 			ENOTEMPTY,
       executable_format_error = 		ENOEXEC,
@@ -66,7 +66,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       file_too_large = 				EFBIG,
       filename_too_long = 			ENAMETOOLONG,
       function_not_supported = 			ENOSYS,
-      //host_unreachable = 			EHOSTUNREACH,
+//    host_unreachable = 			EHOSTUNREACH,
 
 #ifdef _GLIBCXX_HAVE_EIDRM
       identifier_removed = 			EIDRM,
@@ -79,11 +79,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       invalid_seek = 				ESPIPE,
       io_error = 				EIO,
       is_a_directory = 				EISDIR,
-      //message_size = 				EMSGSIZE,
-      //network_down = 				ENETDOWN,
-      //network_reset = 			ENETRESET,
-      //network_unreachable = 			ENETUNREACH,
-      //no_buffer_space = 			ENOBUFS,
+//    message_size = 				EMSGSIZE,
+//    network_down = 				ENETDOWN,
+//    network_reset = 				ENETRESET,
+//    network_unreachable = 			ENETUNREACH,
+//    no_buffer_space = 			ENOBUFS,
       no_child_process = 			ECHILD,
 
 #ifdef _GLIBCXX_HAVE_ENOLINK
@@ -96,8 +96,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       no_message_available = 			ENODATA, 
 #endif
 
-      //no_message = 				ENOMSG, 
-      //no_protocol_option = 			ENOPROTOOPT,
+//    no_message = 				ENOMSG, 
+//    no_protocol_option = 			ENOPROTOOPT,
       no_space_on_device = 			ENOSPC,
 
 #ifdef _GLIBCXX_HAVE_ENOSR
@@ -109,13 +109,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       no_such_file_or_directory = 		ENOENT,
       no_such_process = 			ESRCH,
       not_a_directory = 			ENOTDIR,
-      //not_a_socket = 				ENOTSOCK,
+//    not_a_socket = 				ENOTSOCK,
 
 #ifdef _GLIBCXX_HAVE_ENOSTR
       not_a_stream = 				ENOSTR,
 #endif
 
-      //not_connected = 			ENOTCONN,
+//    not_connected = 				ENOTCONN,
       not_enough_memory = 			ENOMEM,
 
 #ifdef _GLIBCXX_HAVE_ENOTSUP
@@ -126,10 +126,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       operation_canceled = 			ECANCELED,
 #endif
 
-      //operation_in_progress = 		EINPROGRESS,
+//    operation_in_progress = 			EINPROGRESS,
       operation_not_permitted = 		EPERM,
-      //operation_not_supported = 		EOPNOTSUPP,
-      //operation_would_block = 		EWOULDBLOCK,
+//    operation_not_supported = 		EOPNOTSUPP,
+//    operation_would_block = 			EWOULDBLOCK,
 
 #ifdef _GLIBCXX_HAVE_EOWNERDEAD
       owner_dead = 				EOWNERDEAD,
@@ -141,7 +141,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       protocol_error = 				EPROTO,
 #endif
 
-      //protocol_not_supported = 		EPROTONOSUPPORT,
+//    protocol_not_supported = 			EPROTONOSUPPORT,
       read_only_file_system = 			EROFS,
       resource_deadlock_would_occur = 		EDEADLK,
       resource_unavailable_try_again = 		EAGAIN,
@@ -159,7 +159,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       text_file_busy = 				ETXTBSY,
 #endif
 
-      //timed_out = 				ETIMEDOUT,
+//    timed_out = 				ETIMEDOUT,
       too_many_files_open_in_system = 		ENFILE,
       too_many_files_open = 			EMFILE,
       too_many_links = 				EMLINK,
@@ -169,7 +169,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       value_too_large = 			EOVERFLOW,
 #endif
 
-      //wrong_protocol_type = 			EPROTOTYPE
+//    wrong_protocol_type = 			EPROTOTYPE
     };
 
 _GLIBCXX_END_NAMESPACE_VERSION

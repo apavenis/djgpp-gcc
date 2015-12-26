@@ -399,7 +399,7 @@
   "frsqrts\\t%<v>0<Vmtype>, %<v>1<Vmtype>, %<v>2<Vmtype>"
   [(set_attr "type" "neon_fp_rsqrts_<Vetype><q>")])
 
-(define_expand "aarch64_rsqrt_<mode>2"
+(define_expand "rsqrt<mode>2"
   [(set (match_operand:VALLF 0 "register_operand" "=w")
 	(unspec:VALLF [(match_operand:VALLF 1 "register_operand" "w")]
 		     UNSPEC_RSQRT))]
@@ -1962,6 +1962,17 @@
   [(set_attr "type" "neon_fp_minmax_<Vetype><q>")]
 )
 
+;; Auto-vectorized forms for the IEEE-754 fmax()/fmin() functions
+(define_insn "<fmaxmin><mode>3"
+  [(set (match_operand:VDQF 0 "register_operand" "=w")
+	(unspec:VDQF [(match_operand:VDQF 1 "register_operand" "w")
+		      (match_operand:VDQF 2 "register_operand" "w")]
+		      FMAXMIN))]
+  "TARGET_SIMD"
+  "<fmaxmin_op>\\t%0.<Vtype>, %1.<Vtype>, %2.<Vtype>"
+  [(set_attr "type" "neon_fp_minmax_<Vetype><q>")]
+)
+
 ;; 'across lanes' add.
 
 (define_expand "reduc_plus_scal_<mode>"
@@ -2142,6 +2153,10 @@
 ;;     bit op0, op2, mask
 ;;   if (op0 = op2) (so 0-bits in mask choose bits from op1, else op0)
 ;;     bif op0, op1, mask
+;;
+;; This pattern is expanded to by the aarch64_simd_bsl<mode> expander.
+;; Some forms of straight-line code may generate the equivalent form
+;; in *aarch64_simd_bsl<mode>_alt.
 
 (define_insn "aarch64_simd_bsl<mode>_internal"
   [(set (match_operand:VSDQ_I_DI 0 "register_operand" "=w,w,w")
@@ -2158,6 +2173,29 @@
   bsl\\t%0.<Vbtype>, %2.<Vbtype>, %3.<Vbtype>
   bit\\t%0.<Vbtype>, %2.<Vbtype>, %1.<Vbtype>
   bif\\t%0.<Vbtype>, %3.<Vbtype>, %1.<Vbtype>"
+  [(set_attr "type" "neon_bsl<q>")]
+)
+
+;; We need this form in addition to the above pattern to match the case
+;; when combine tries merging three insns such that the second operand of
+;; the outer XOR matches the second operand of the inner XOR rather than
+;; the first.  The two are equivalent but since recog doesn't try all
+;; permutations of commutative operations, we have to have a separate pattern.
+
+(define_insn "*aarch64_simd_bsl<mode>_alt"
+  [(set (match_operand:VSDQ_I_DI 0 "register_operand" "=w,w,w")
+	(xor:VSDQ_I_DI
+	   (and:VSDQ_I_DI
+	     (xor:VSDQ_I_DI
+	       (match_operand:VSDQ_I_DI 3 "register_operand" "w,w,0")
+	       (match_operand:VSDQ_I_DI 2 "register_operand" "w,0,w"))
+	      (match_operand:VSDQ_I_DI 1 "register_operand" "0,w,w"))
+	  (match_dup:VSDQ_I_DI 2)))]
+  "TARGET_SIMD"
+  "@
+  bsl\\t%0.<Vbtype>, %3.<Vbtype>, %2.<Vbtype>
+  bit\\t%0.<Vbtype>, %3.<Vbtype>, %1.<Vbtype>
+  bif\\t%0.<Vbtype>, %2.<Vbtype>, %1.<Vbtype>"
   [(set_attr "type" "neon_bsl<q>")]
 )
 
