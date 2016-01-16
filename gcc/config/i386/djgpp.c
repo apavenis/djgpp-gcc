@@ -1,6 +1,5 @@
 /* Subroutines for DJGPP.
-   Contributed by Andris Pavenis <andris.pavenis@iki.fi>
-   Copyright (C) 2013 Free Software Foundation, Inc.
+   Copyright (C) 2013-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -27,11 +26,9 @@ along with GCC; see the file COPYING3.  If not see
 
 void
 i386_djgpp_asm_named_section(const char *name, unsigned int flags,
-			     tree decl)
+			     tree)
 {
   char flagchars[8], *f = flagchars;
-
-(void)decl; /* silence warning. */
 
   if (flags & SECTION_WRITE)
     *f++ = 'w';

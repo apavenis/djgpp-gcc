@@ -1,5 +1,5 @@
 /* Configuration for an i386 running MS-DOS with DJGPP.
-   Copyright (C) 1997-2015 Free Software Foundation, Inc.
+   Copyright (C) 1997-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -17,27 +17,15 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-#define DBX_DEBUGGING_INFO 1
-#define SDB_DEBUGGING_INFO 1
-
 /* Support generation of DWARF2 debugging info.  */
 #define DWARF2_DEBUGGING_INFO 1
 
-/* Use DWARF2 debugging info by default: comment out following  */
-/* 2 lines to default to COFF debugging info  */
 #undef PREFERRED_DEBUGGING_TYPE
 #define PREFERRED_DEBUGGING_TYPE DWARF2_DEBUG
 
 /* Don't assume anything about the header files.  */
 #define NO_IMPLICIT_EXTERN_C
 
-/* If defined, a C expression whose value is a string containing the
-   assembler operation to identify the following data as
-   uninitialized global data.  If not defined, and neither
-   `ASM_OUTPUT_BSS' nor `ASM_OUTPUT_ALIGNED_BSS' are defined,
-   uninitialized global data will be output in the data section if
-   `-fno-common' is passed, otherwise `ASM_OUTPUT_COMMON' will be
-   used.  */
 #undef BSS_SECTION_ASM_OP
 #define BSS_SECTION_ASM_OP "\t.section\t.bss"
 
@@ -72,7 +60,6 @@ along with GCC; see the file COPYING3.  If not see
     }						\
   while (0)
 
-/* Include <sys/version.h> so __DJGPP__ and __DJGPP_MINOR__ are defined.  */
 #undef CPP_SPEC
 #define CPP_SPEC "-remap %{posix:-D_POSIX_SOURCE}"
 
@@ -114,7 +101,7 @@ along with GCC; see the file COPYING3.  If not see
   while (0)
 #endif
 
-/* This is how to tell assembler that a symbol is weak  */
+/* This is how to tell assembler that a symbol is weak  */ 
 #undef ASM_WEAKEN_LABEL
 #define ASM_WEAKEN_LABEL(FILE,NAME) \
   do { fputs ("\t.weak\t", FILE); assemble_name (FILE, NAME); \
@@ -144,10 +131,6 @@ along with GCC; see the file COPYING3.  If not see
 #undef PTRDIFF_TYPE
 #define PTRDIFF_TYPE "int"
 
-/* Support for C++ templates.  */
-#undef MAKE_DECL_ONE_ONLY
-#define MAKE_DECL_ONE_ONLY(DECL) (DECL_WEAK (DECL) = 1)
-
 #undef DBX_REGISTER_NUMBER
 #define DBX_REGISTER_NUMBER(n) svr4_dbx_register_map[n]
 
@@ -173,9 +156,12 @@ along with GCC; see the file COPYING3.  If not see
         }                                                               \
     while (0)
 
-/* Function protypes for gcc/i486/djgpp.c */
+/* Support for C++ templates.  */
+#undef MAKE_DECL_ONE_ONLY
+#define MAKE_DECL_ONE_ONLY(DECL) (DECL_WEAK (DECL) = 1)
+
+/* Function protypes for gcc/i386/djgpp.c */
 
 void
 i386_djgpp_asm_named_section(const char *name, unsigned int flags,
 			     tree decl);
-

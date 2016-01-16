@@ -1,5 +1,5 @@
 /* Optimize by combining instructions for GNU compiler.
-   Copyright (C) 1987-2015 Free Software Foundation, Inc.
+   Copyright (C) 1987-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -5895,6 +5895,13 @@ combine_simplify_rtx (rtx x, machine_mode op0_mode, int in_dest,
 			  || XEXP (temp, 1) != XEXP (x, 0)))))
 	    return temp;
 	}
+
+      /* Canonicalize x + x into x << 1.  */
+      if (GET_MODE_CLASS (mode) == MODE_INT
+	  && rtx_equal_p (XEXP (x, 0), XEXP (x, 1))
+	  && !side_effects_p (XEXP (x, 0)))
+	return simplify_gen_binary (ASHIFT, mode, XEXP (x, 0), const1_rtx);
+
       break;
 
     case MINUS:
@@ -7238,6 +7245,10 @@ expand_field_assignment (const_rtx x)
 
       /* Compute a mask of LEN bits, if we can do this on the host machine.  */
       if (len >= HOST_BITS_PER_WIDE_INT)
+	break;
+
+      /* Don't try to compute in too wide unsupported modes.  */
+      if (!targetm.scalar_mode_supported_p (compute_mode))
 	break;
 
       /* Now compute the equivalent expression.  Make a copy of INNER

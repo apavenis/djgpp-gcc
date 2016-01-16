@@ -1,5 +1,5 @@
 /* Prototypes for exported functions defined in arm.c and pe.c
-   Copyright (C) 1999-2015 Free Software Foundation, Inc.
+   Copyright (C) 1999-2016 Free Software Foundation, Inc.
    Contributed by Richard Earnshaw (rearnsha@arm.com)
    Minor hacks by Nick Clifton (nickc@cygnus.com)
 
@@ -213,7 +213,6 @@ extern void arm_mark_dllimport (tree);
 extern bool arm_change_mode_p (tree);
 #endif
 
-extern void arm_init_neon_builtins (void);
 extern tree arm_valid_target_attribute_tree (tree, struct gcc_options *,
 					     struct gcc_options *);
 extern void arm_pr_long_calls (struct cpp_reader *);

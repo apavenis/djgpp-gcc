@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on IA-32.
-   Copyright (C) 1988-2015 Free Software Foundation, Inc.
+   Copyright (C) 1988-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -3150,13 +3150,13 @@ scalar_chain::compute_convert_gain ()
     }
 
   if (dump_file)
-    fprintf (dump_file, "  Instruction convertion gain: %d\n", gain);
+    fprintf (dump_file, "  Instruction conversion gain: %d\n", gain);
 
   EXECUTE_IF_SET_IN_BITMAP (defs_conv, 0, insn_uid, bi)
     cost += DF_REG_DEF_COUNT (insn_uid) * ix86_cost->mmxsse_to_integer;
 
   if (dump_file)
-    fprintf (dump_file, "  Registers convertion cost: %d\n", cost);
+    fprintf (dump_file, "  Registers conversion cost: %d\n", cost);
 
   gain -= cost;
 
@@ -3531,7 +3531,7 @@ convert_scalars_to_vector ()
 
   /* Find all instructions we want to convert into vector mode.  */
   if (dump_file)
-    fprintf (dump_file, "Searching for mode convertion candidates...\n");
+    fprintf (dump_file, "Searching for mode conversion candidates...\n");
 
   FOR_EACH_BB_FN (bb, cfun)
     {
@@ -5342,6 +5342,13 @@ ix86_option_override_internal (bool main_args_p,
 			 ix86_tune_cost->l2_cache_size,
 			 opts->x_param_values,
 			 opts_set->x_param_values);
+
+  /* Restrict number of if-converted SET insns to 1.  */
+  if (TARGET_ONE_IF_CONV_INSN)
+    maybe_set_param_value (PARAM_MAX_RTL_IF_CONVERSION_INSNS,
+			   1,
+			   opts->x_param_values,
+			   opts_set->x_param_values);
 
   /* Enable sw prefetching at -O3 for CPUS that prefetching is helpful.  */
   if (opts->x_flag_prefetch_loop_arrays < 0
@@ -10903,6 +10910,10 @@ ix86_frame_pointer_required (void)
   if (TARGET_64BIT_MS_ABI && get_frame_size () > SEH_MAX_FRAME_SIZE)
     return true;
 
+  /* SSE saves require frame-pointer when stack is misaligned.  */
+  if (TARGET_64BIT_MS_ABI && ix86_incoming_stack_boundary < 128)
+    return true;
+  
   /* In ix86_option_override_internal, TARGET_OMIT_LEAF_FRAME_POINTER
      turns off the frame pointer by default.  Turn it back on now if
      we've not got a leaf function.  */
@@ -19359,11 +19370,11 @@ ix86_expand_vector_logical_operator (enum rtx_code code, machine_mode mode,
 	    {
 	      op1 = operands[1];
 	      op2 = SUBREG_REG (operands[2]);
-	      if (!nonimmediate_operand (op2, GET_MODE (dst)))
+	      if (!vector_operand (op2, GET_MODE (dst)))
 		op2 = force_reg (GET_MODE (dst), op2);
 	    }
 	  op1 = SUBREG_REG (op1);
-	  if (!nonimmediate_operand (op1, GET_MODE (dst)))
+	  if (!vector_operand (op1, GET_MODE (dst)))
 	    op1 = force_reg (GET_MODE (dst), op1);
 	  emit_insn (gen_rtx_SET (dst,
 				  gen_rtx_fmt_ee (code, GET_MODE (dst),
@@ -19374,9 +19385,9 @@ ix86_expand_vector_logical_operator (enum rtx_code code, machine_mode mode,
 	  break;
 	}
     }
-  if (!nonimmediate_operand (operands[1], mode))
+  if (!vector_operand (operands[1], mode))
     operands[1] = force_reg (mode, operands[1]);
-  if (!nonimmediate_operand (operands[2], mode))
+  if (!vector_operand (operands[2], mode))
     operands[2] = force_reg (mode, operands[2]);
   ix86_fixup_binary_operands_no_copy (code, mode, operands);
   emit_insn (gen_rtx_SET (operands[0],
@@ -21688,6 +21699,19 @@ ix86_expand_branch (enum rtx_code code, rtx op0, rtx op1, rtx label)
     case DImode:
       if (TARGET_64BIT)
 	goto simple;
+      /* For 32-bit target DI comparison may be performed on
+	 SSE registers.  To allow this we should avoid split
+	 to SI mode which is achieved by doing xor in DI mode
+	 and then comparing with zero (which is recognized by
+	 STV pass).  We don't compare using xor when optimizing
+	 for size.  */
+      if (!optimize_insn_for_size_p ()
+	  && TARGET_STV
+	  && (code == EQ || code == NE))
+	{
+	  op0 = force_reg (mode, gen_rtx_XOR (mode, op0, op1));
+	  op1 = const0_rtx;
+	}
     case TImode:
       /* Expand DImode branch into multiple compare+branch.  */
       {
@@ -35203,48 +35227,6 @@ static const struct builtin_description bdesc_tm[] =
   { OPTION_MASK_ISA_AVX, CODE_FOR_nothing, "__builtin__ITM_LM256", (enum ix86_builtins) BUILT_IN_TM_LOG_M256, UNKNOWN, VOID_FTYPE_PCVOID },
 };
 
-/* TM callbacks.  */
-
-/* Return the builtin decl needed to load a vector of TYPE.  */
-
-static tree
-ix86_builtin_tm_load (tree type)
-{
-  if (TREE_CODE (type) == VECTOR_TYPE)
-    {
-      switch (tree_to_uhwi (TYPE_SIZE (type)))
-	{
-	case 64:
-	  return builtin_decl_explicit (BUILT_IN_TM_LOAD_M64);
-	case 128:
-	  return builtin_decl_explicit (BUILT_IN_TM_LOAD_M128);
-	case 256:
-	  return builtin_decl_explicit (BUILT_IN_TM_LOAD_M256);
-	}
-    }
-  return NULL_TREE;
-}
-
-/* Return the builtin decl needed to store a vector of TYPE.  */
-
-static tree
-ix86_builtin_tm_store (tree type)
-{
-  if (TREE_CODE (type) == VECTOR_TYPE)
-    {
-      switch (tree_to_uhwi (TYPE_SIZE (type)))
-	{
-	case 64:
-	  return builtin_decl_explicit (BUILT_IN_TM_STORE_M64);
-	case 128:
-	  return builtin_decl_explicit (BUILT_IN_TM_STORE_M128);
-	case 256:
-	  return builtin_decl_explicit (BUILT_IN_TM_STORE_M256);
-	}
-    }
-  return NULL_TREE;
-}
-
 /* Initialize the transactional memory vector load/store builtins.  */
 
 static void
@@ -39772,7 +39754,11 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
       memory = 0;
       break;
     case VOID_FTYPE_PV8DF_V8DF_UQI:
+    case VOID_FTYPE_PV4DF_V4DF_UQI:
+    case VOID_FTYPE_PV2DF_V2DF_UQI:
     case VOID_FTYPE_PV16SF_V16SF_UHI:
+    case VOID_FTYPE_PV8SF_V8SF_UQI:
+    case VOID_FTYPE_PV4SF_V4SF_UQI:
     case VOID_FTYPE_PV8DI_V8DI_UQI:
     case VOID_FTYPE_PV4DI_V4DI_UQI:
     case VOID_FTYPE_PV2DI_V2DI_UQI:
@@ -39830,10 +39816,6 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
     case VOID_FTYPE_PV16QI_V16QI_UHI:
     case VOID_FTYPE_PV32QI_V32QI_USI:
     case VOID_FTYPE_PV64QI_V64QI_UDI:
-    case VOID_FTYPE_PV4DF_V4DF_UQI:
-    case VOID_FTYPE_PV2DF_V2DF_UQI:
-    case VOID_FTYPE_PV8SF_V8SF_UQI:
-    case VOID_FTYPE_PV4SF_V4SF_UQI:
       nargs = 2;
       klass = store;
       /* Reserve memory operand for target.  */
@@ -41817,13 +41799,12 @@ rdseed_step:
 
       op0 = fixup_modeless_constant (op0, mode0);
 
-      if (GET_MODE (op0) == mode0
-	  || (GET_MODE (op0) == VOIDmode && op0 != constm1_rtx))
+      if (GET_MODE (op0) == mode0 || GET_MODE (op0) == VOIDmode)
 	{
 	  if (!insn_data[icode].operand[0].predicate (op0, mode0))
 	    op0 = copy_to_mode_reg (mode0, op0);
 	}
-      else if (op0 != constm1_rtx)
+      else
 	{
 	  op0 = copy_to_reg (op0);
 	  op0 = simplify_gen_subreg (mode0, op0, GET_MODE (op0), 0);
@@ -54329,12 +54310,6 @@ ix86_addr_space_zero_address_valid (addr_space_t as)
 #undef TARGET_VECTORIZE_BUILTIN_VECTORIZED_FUNCTION
 #define TARGET_VECTORIZE_BUILTIN_VECTORIZED_FUNCTION \
   ix86_builtin_vectorized_function
-
-#undef TARGET_VECTORIZE_BUILTIN_TM_LOAD
-#define TARGET_VECTORIZE_BUILTIN_TM_LOAD ix86_builtin_tm_load
-
-#undef TARGET_VECTORIZE_BUILTIN_TM_STORE
-#define TARGET_VECTORIZE_BUILTIN_TM_STORE ix86_builtin_tm_store
 
 #undef TARGET_VECTORIZE_BUILTIN_GATHER
 #define TARGET_VECTORIZE_BUILTIN_GATHER ix86_vectorize_builtin_gather

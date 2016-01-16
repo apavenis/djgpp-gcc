@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2015 Free Software Foundation, Inc.
+/* Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
    This file is part of the GNU Offloading and Multi Processing Library
@@ -579,6 +579,7 @@ GOMP_PLUGIN_target_task_completion (void *data)
     {
       ttask->state = GOMP_TARGET_TASK_FINISHED;
       gomp_mutex_unlock (&team->task_lock);
+      return;
     }
   ttask->state = GOMP_TARGET_TASK_FINISHED;
   gomp_target_task_completion (team, task);

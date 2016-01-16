@@ -1,5 +1,5 @@
 /* Diagnostic subroutines for printing source-code
-   Copyright (C) 1999-2015 Free Software Foundation, Inc.
+   Copyright (C) 1999-2016 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@codesourcery.com>
 
 This file is part of GCC.
@@ -524,14 +524,13 @@ layout::print_source_line (int row, line_bounds *lbounds_out)
   if (!line)
     return false;
 
-  line += m_x_offset;
-
   m_colorizer.set_normal_text ();
 
   /* We will stop printing the source line at any trailing
      whitespace.  */
   line_width = get_line_width_without_trailing_whitespace (line,
 							   line_width);
+  line += m_x_offset;
 
   pp_space (m_pp);
   int first_non_ws = INT_MAX;

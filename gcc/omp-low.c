@@ -4,7 +4,7 @@
 
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
-   Copyright (C) 2005-2015 Free Software Foundation, Inc.
+   Copyright (C) 2005-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -12770,11 +12770,6 @@ expand_omp_target (struct omp_region *region)
       if (need_asm)
 	assign_assembler_name_if_neeeded (child_fn);
       cgraph_edge::rebuild_edges ();
-
-      /* Prevent IPA from removing child_fn as unreachable, since there are no
-	 refs from the parent function to child_fn in offload LTO mode.  */
-      if (ENABLE_OFFLOADING)
-	cgraph_node::get (child_fn)->mark_force_output ();
 
       /* Some EH regions might become dead, see PR34608.  If
 	 pass_cleanup_cfg isn't the first pass to happen with the

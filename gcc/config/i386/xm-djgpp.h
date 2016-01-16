@@ -1,5 +1,5 @@
 /* Configuration for GCC for Intel 80386 running DJGPP.
-   Copyright (C) 1988-2015 Free Software Foundation, Inc.
+   Copyright (C) 1988-2016 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -30,7 +30,7 @@ along with GCC; see the file COPYING3.  If not see
 #undef NATIVE_SYSTEM_HEADER_DIR
 #define NATIVE_SYSTEM_HEADER_DIR "/dev/env/DJDIR/include/"
 
-#undef PREFIX_INCLUDE_DIR
+//#undef PREFIX_INCLUDE_DIR
 
 /* Search for as.exe and ld.exe in DJGPP's binary directory.  */ 
 #undef MD_EXEC_PREFIX
@@ -113,9 +113,6 @@ along with GCC; see the file COPYING3.  If not see
 #define LIBSTDCXX "stdcxx"
 #define LIBSTDCXX_PROFILE "stdcxx"
 #define LIBSTDCXX_STATIC "stdcxx"
-
-/* Definition is missing in DJGPP headers. */
-typedef unsigned int uint;
 
 #undef MAX_OFILE_ALIGNMENT
 #define MAX_OFILE_ALIGNMENT 128

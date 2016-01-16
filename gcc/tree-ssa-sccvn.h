@@ -1,5 +1,5 @@
 /* Tree SCC value numbering
-   Copyright (C) 2007-2015 Free Software Foundation, Inc.
+   Copyright (C) 2007-2016 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dberlin@dberlin.org>
 
    This file is part of GCC.
@@ -168,6 +168,9 @@ typedef struct vn_ssa_aux
   tree valnum;
   /* Statements to insert if needs_insertion is true.  */
   gimple_seq expr;
+
+  /* Saved SSA name info.  */
+  tree_ssa_name::ssa_name_info_type info;
 
   /* Unique identifier that all expressions with the same value have. */
   unsigned int value_id;
