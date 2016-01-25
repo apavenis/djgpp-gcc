@@ -5067,8 +5067,9 @@ extract_code_and_val_from_cond_with_ops (tree name, enum tree_code cond_code,
   if (invert)
     comp_code = invert_tree_comparison (comp_code, 0);
 
-  /* VRP does not handle float types.  */
-  if (SCALAR_FLOAT_TYPE_P (TREE_TYPE (val)))
+  /* VRP only handles integral and pointer types.  */
+  if (! INTEGRAL_TYPE_P (TREE_TYPE (val))
+      && ! POINTER_TYPE_P (TREE_TYPE (val)))
     return false;
 
   /* Do not register always-false predicates.
@@ -9256,8 +9257,8 @@ test_for_singularity (enum tree_code cond_code, tree op0,
   tree min = NULL;
   tree max = NULL;
 
-  /* Extract minimum/maximum values which satisfy the
-     the conditional as it was written.  */
+  /* Extract minimum/maximum values which satisfy the conditional as it was
+     written.  */
   if (cond_code == LE_EXPR || cond_code == LT_EXPR)
     {
       /* This should not be negative infinity; there is no overflow

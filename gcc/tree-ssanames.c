@@ -437,8 +437,7 @@ ssa_name_has_boolean_range (tree op)
      only takes on values [0..1] as determined by VRP
      analysis.  */
   if (INTEGRAL_TYPE_P (TREE_TYPE (op))
-      && (TYPE_PRECISION (TREE_TYPE (op)) > 1
-	  || TYPE_UNSIGNED (TREE_TYPE (op)))
+      && (TYPE_PRECISION (TREE_TYPE (op)) > 1)
       && wi::eq_p (get_nonzero_bits (op), 1))
     return true;
 
@@ -760,8 +759,8 @@ replace_ssa_name_symbol (tree ssa_name, tree sym)
   TREE_TYPE (ssa_name) = TREE_TYPE (sym);
 }
 
-/* Release the vector of free SSA_NAMEs and compact the the
-   vector of SSA_NAMEs that are live.  */
+/* Release the vector of free SSA_NAMEs and compact the vector of SSA_NAMEs
+   that are live.  */
 
 static void
 release_free_names_and_compact_live_names (function *fun)
