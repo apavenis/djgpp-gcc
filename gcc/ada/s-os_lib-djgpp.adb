@@ -2219,8 +2219,12 @@ package body System.OS_Lib is
          --  (path starting with a drive letter on Windows). So we take this
          --  drive letter and prepend it to the current path.
 
+         --  FIXME: Disable for DJGPP now as should also handle DJGPPs
+         --  /dev/...
+
          if Path_Buffer (1) = Directory_Separator
            and then Path_Buffer (2) /= Directory_Separator
+           and then False
          then
             declare
                Cur_Dir : constant String := Get_Directory ("");
