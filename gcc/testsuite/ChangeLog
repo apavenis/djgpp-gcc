@@ -1,3 +1,115 @@
+2016-01-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/69483
+	* gcc.dg/pr69483.c: New test.
+	* g++.dg/opt/pr69483.C: New test.
+
+2016-01-26  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	PR target/68620
+	* gcc.target/arm/pr68620.c: New test.
+
+2016-01-26  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* gcc.target/i386/pr68986-2.c: Remove -m32.
+
+2016-01-26  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/68986
+	* gcc.target/i386/pr68986-1.c: New test.
+	* gcc.target/i386/pr68986-2.c: Likewise.
+	* gcc.target/i386/pr68986-3.c: Likewise.
+
+2016-01-26  Christian Bruel  <christian.bruel@st.com>
+
+	* lib/target-supports.exp
+	(check_effective_target_arm_crypto_pragma_ok_nocache): Remove.
+	(check_effective_target_arm_crypto_pragma_ok): Likewise.
+	* gcc.target/arm/attr-crypto.c: Remove arm_crypto_pragma_ok test.
+
+2016-01-26  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69452
+	* gcc.dg/torture/pr69452.c: New testcase.
+
+2016-01-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69442
+	* gcc.dg/pr69442.c: New test.
+
+2016-01-26  Roger Ferrer Ibáñez  <rofirrim@gmail.com>
+
+	PR target/67896
+	* gcc.target/aarch64/simd/pr67896.C: New.
+
+2016-01-26  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/69400
+	* gcc.dg/plugin/wide-int_plugin.c (test_wide_int_mod_trunc): New
+	function.
+	(plugin_init): Call it.
+	* gcc.dg/torture/pr69400.c: New test.
+
+2016-01-26  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* gcc.target/arm/pr68674.c: Check and use arm_fp effective target.
+
+2016-01-25  Aditya Kumar  <aditya.k7@samsung.com>
+	    Sebastian Pop  <s.pop@samsung.com>
+
+	* gcc.dg/graphite/graphite.exp: Only run the fuse-*.c tests with
+	isl-0.15.
+
+2016-01-25  Aditya Kumar  <aditya.k7@samsung.com>
+	    Sebastian Pop  <s.pop@samsung.com>
+
+	* gcc.dg/graphite/pr69292.c: New.
+
+2016-01-25  Jakub Jelinek  <jakub@redhat.com>
+
+	* c-c++-common/goacc/use_device-1.c: New test.
+
+2016-01-25  Jeff Law  <law@redhat.com>
+
+	PR tree-optimization/69196
+	PR tree-optimization/68398
+	* gcc.dg/tree-ssa/pr66752-3.c: Update expected output
+	* gcc.dg/tree-ssa/pr68198.c: Likewise.
+
+2016-01-25  David Edelsohn  <dje.gcc@gmail.com>
+
+	PR target/69469
+	* gcc.target/powerpc/vsx-vector-2.c: Adjust for Goldschmidt's
+	Algorithm.
+
+2016-01-25  Richard Biener  <rguenther@suse.de>
+
+	PR testsuite/69380
+	* g++.dg/tree-ssa/pr69336.C: Restrict to x86_64 and i?86.
+
+2016-01-25  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	PR target/69421
+	* gcc.dg/pr69421.c: New test.
+
+2016-01-25  Bilyan Borisov  <bilyan.borisov@arm.com>
+
+	* gcc.target/aarch64/simd/vcvt_s64_f64_1.c: New.
+	* gcc.target/aarch64/simd/vcvt_u64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvta_s64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvta_u64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvtm_s64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvtm_u64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvtn_s64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvtn_u64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvtp_s64_f64_1.c: Likewise.
+	* gcc.target/aarch64/simd/vcvtp_u64_f64_1.c: Likewise.
+
+2016-01-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/69376
+	* gcc.dg/torture/pr69376.c: New testcase.
+
 2016-01-24  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
 
 	PR fortran/69397
