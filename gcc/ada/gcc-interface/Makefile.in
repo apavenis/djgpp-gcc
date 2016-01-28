@@ -1655,7 +1655,6 @@ ifeq ($(strip $(filter-out %djgpp,$(target_os))),)
 	s-taprop.adb<s-taprop-dummy.adb \
 	s-taspri.ads<s-taspri-dummy.ads \
 	system.ads<system-djgpp.ads \
-	s-os_lib.adb<s-os_lib-djgpp.adb \
 	$(DUMMY_SOCKETS_TARGET_PAIRS)
 
 endif
