@@ -1056,9 +1056,12 @@ package System.OS_Lib is
    Path_Separator : constant Character;
    --  The character to separate paths in an environment variable value
 
+   Is_Djgpp : constant Integer;
+
 private
    pragma Import (C, Path_Separator, "__gnat_path_separator");
    pragma Import (C, Directory_Separator, "__gnat_dir_separator");
+   pragma Import (C, Is_Djgpp, "__gnat_is_djgpp");
    pragma Import (C, Current_Time, "__gnat_current_time");
 
    type OS_Time is

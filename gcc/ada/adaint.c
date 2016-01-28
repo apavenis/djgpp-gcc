@@ -241,6 +241,12 @@ char __gnat_dir_separator = DIR_SEPARATOR;
 
 char __gnat_path_separator = PATH_SEPARATOR;
 
+#ifdef __DJGPP__
+int __gnat_is_djgpp = 1;
+#else
+int __gnat_is_djgpp = 0;
+#endif
+
 /* The GNAT_LIBRARY_TEMPLATE contains a list of expressions that define
    the base filenames that libraries specified with -lsomelib options
    may have. This is used by GNATMAKE to check whether an executable
