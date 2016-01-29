@@ -69,7 +69,7 @@ package body System.OS_Lib is
 
    --  The following are used by Create_Temp_File
 
-   First_Temp_File_Name : constant String := "GNAT-TEMP-000000.TMP";
+   First_Temp_File_Name : constant String := "GA000000.TMP";
    --  Used to initialize Current_Temp_File_Name and Temp_File_Name_Last_Digit
 
    Current_Temp_File_Name : String := First_Temp_File_Name;
