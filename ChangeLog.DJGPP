@@ -4,6 +4,10 @@
 
 2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
 
+	* readme.DJGPP: Update (mention Ada binary packages).
+
+2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
+
 	* djconfig.sh: Include Ada for native DJGPP build
 
 2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
