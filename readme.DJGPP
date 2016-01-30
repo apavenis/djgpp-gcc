@@ -46,6 +46,8 @@ Binary archives are split into 4 parts:
 
   gfor@GCCVER3@b.zip  : GNU Fortran compiler
 
+  ada@GCCVER3@b.zip : The GNU Ada compiler and development files
+
   Unforunately native Ada compiler is not included (built gnatmake.exe does not
   work and as result an attempt to bootstrap also Ada compiler fails).
 
@@ -89,6 +91,8 @@ Needed archives for different programming languages
 	Fortran	95              : gcc@GCCVER3@b.zip, gfor@GCCVER3@b.zip
 
 	Objective C		: gcc@GCCVER3@b.zip, objc@GCCVER3@b.zip
+
+        Ada                     : gcc@GCCVER3@b.zip, ada@GCCVER3@b.zip
 
 Of course for ALL languages You also need at least binutils (bnu216b.zip
 or newer) and @DJDEV@.zip (or newer when it will be released)
