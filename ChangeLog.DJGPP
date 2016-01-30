@@ -21,10 +21,6 @@
 	temporary file generation to work in case of DJGPP without LFN
 	support available
 
-	Attempt to use adaint.c method for enable this shortening conditionally
-	only when needed failed miserably (stuck in loop handling SIGSEGV
-	again and again)
-
 2016-01-28  Andris Pavenis  <andris.pavenis@iki.fi>
 
 	(BACKPORTED)
