@@ -69,7 +69,7 @@ package body System.OS_Lib is
 
    --  The following are used by Create_Temp_File
 
-   First_Temp_File_Name : constant String := "GNAT-TEMP-000000.TMP";
+   First_Temp_File_Name : constant String := "GA000000.TMP";
    --  Used to initialize Current_Temp_File_Name and Temp_File_Name_Last_Digit
 
    Current_Temp_File_Name : String := First_Temp_File_Name;
@@ -1907,6 +1907,13 @@ package body System.OS_Lib is
       Canonical_File_Addr : System.Address;
       Canonical_File_Len  : Integer;
 
+      function Is_Directory_Separator (C : Character) return Boolean;
+      --  Test whether provided character is directory separator
+
+      function Is_Djgpp_Special_Path (Path : String) return Boolean;
+      --  Test whether provided path is DJGPP special path (/dev/...).
+      --  Returns false in all other cases also when not DJGPP.
+
       function Final_Value (S : String) return String;
       --  Make final adjustment to the returned string. This function strips
       --  trailing directory separators, and folds returned string to lower
@@ -1916,6 +1923,28 @@ package body System.OS_Lib is
       --  If Dir is not empty, return it, adding a directory separator
       --  if not already present, otherwise return current working directory
       --  with terminating directory separator.
+
+      ----------------------------
+      -- Is_Directory_Separator --
+      ----------------------------
+
+      function Is_Directory_Separator (C : Character) return Boolean is
+      begin
+         return C = '/'
+           or else C = Directory_Separator;
+      end Is_Directory_Separator;
+
+      ---------------------------
+      -- Is_Djgpp_Special_Path --
+      ---------------------------
+
+      function Is_Djgpp_Special_Path (Path : String) return Boolean is
+      begin
+         return Is_Djgpp /= 0
+           and then Is_Directory_Separator (Path (Path'First))
+           and then Path (Path'First + 1 .. Path'First + 3) = "dev"
+           and then Is_Directory_Separator (Path (Path'First + 4));
+      end Is_Djgpp_Special_Path;
 
       -----------------
       -- Final_Value --
@@ -2061,8 +2090,11 @@ package body System.OS_Lib is
       end File_Name_Conversion;
 
       --  Replace all '/' by Directory Separators (this is for Windows)
+      --  No need to do that however for DJGPP
 
-      if Directory_Separator /= '/' then
+      if Directory_Separator /= '/'
+        and then Is_Djgpp = 0
+      then
          for Index in 1 .. End_Path loop
             if Path_Buffer (Index) = '/' then
                Path_Buffer (Index) := Directory_Separator;
@@ -2083,6 +2115,7 @@ package body System.OS_Lib is
 
          if Path_Buffer (1) = Directory_Separator
            and then Path_Buffer (2) /= Directory_Separator
+           and then not Is_Djgpp_Special_Path (Path_Buffer)
          then
             declare
                Cur_Dir : constant String := Get_Directory ("");
