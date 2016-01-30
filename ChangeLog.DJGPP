@@ -1,3 +1,7 @@
+2016-01-30  Andris Pavenis  <andris.pavenis@iki.fi>
+
+	* Update of DJGPP port of GCC-5.3.0
+
 2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
 
 	* djconfig.sh: Include Ada for native DJGPP build
@@ -8,6 +12,7 @@
 
 2016-01-29  Andris Pavenis <andris.pavenis@iki.fi>
 
+	(BACKPORTED)
 	* gcc/ada/s-os_lib.adb (First_Temp_File_Name): use shorter name for
 	temporary file generation to work in case of DJGPP without LFN
 	support available
@@ -18,6 +23,7 @@
 
 2016-01-28  Andris Pavenis  <andris.pavenis@iki.fi>
 
+	(BACKPORTED)
 	Fix path normalization for Ada compiler and tools for
 	DJGPP target
 	* gcc/ada/adaint.c (__gnat_is_djgpp): Add (1 for DJGPP, 0 for all other
