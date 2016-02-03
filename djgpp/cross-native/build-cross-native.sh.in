@@ -19,8 +19,9 @@ i586-pc-msdosdjgpp-gcc -v
 
 
 target=i586-pc-msdosdjgpp
+v1=$(echo @SRCDIR@ | sed -e 's:\.:2g')
 
-../gnu/gcc-@SRCDIR@/configure \
+../gnu/gcc-$v1/configure \
     --prefix=/dev/env/DJDIR \
     --build=i586-pc-linux-gnu \
     --host=i586-pc-msdosdjgpp \
