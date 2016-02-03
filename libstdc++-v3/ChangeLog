@@ -1,3 +1,49 @@
+2016-02-01  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR libstdc++/69581
+	* include/c_compatibility/math.h: Move header guards.
+	* include/c_compatibility/stdlib.h: Likewise.
+
+2016-01-29  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/69506
+	* config/os/newlib/os_defines.h (_GLIBCXX_USE_WEAK_REF): Define.
+
+2016-01-28  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR libstdc++/69450
+	* acinclude.m4 (GLIBCXX_CHECK_MATH11_PROTO): Split check for obsolete
+	isinf and isnan functions into two independent checks.  Check on hpux.
+	* config.h.in: Regenerate.
+	* configure: Regenerate.
+	* include/c_global/cmath (isinf(double), isnan(double)): Use
+	_GLIBCXX_HAVE_OBSOLETE_ISINF and _GLIBCXX_HAVE_OBSOLETE_ISNAN,
+	respectively.
+
+2016-01-27  Jakub Jelinek  <jakub@redhat.com>
+
+	* testsuite/libstdc++-prettyprinters/whatis.cc: Include <random>.
+
+2016-01-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/69295
+	* testsuite/ext/special_functions/hyperg/check_value.cc: Use
+	-ffp-contract=off, and -ffloat-store to disable excess precision.
+	* testsuite/special_functions/02_assoc_legendre/check_value.cc: Use
+	-ffp-contract=off.
+
+2016-01-26  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/69478
+	* include/bits/stl_algobase.h (__copy_move<_IsMove, true,
+	random_access_iterator_tag>): Check is_move_assignable when moving.
+	(__copy_move_backwards<_IsMove, true, random_access_iterator_tag>):
+	Likewise.
+	* testsuite/25_algorithms/copy/move_iterators/69478.cc: New.
+	* testsuite/25_algorithms/copy_backward/move_iterators/69478.cc: New.
+	* testsuite/25_algorithms/move/69478.cc: New.
+	* testsuite/25_algorithms/move_backward/69478.cc: new.
+
 2016-01-26  Andris Pavenis  <andris.pavenis@iki.fi>
 
 	* include/c_compatibility/stdlib.h: Include wide character related

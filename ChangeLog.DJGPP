@@ -1,5 +1,9 @@
 2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
 
+	* readme.DJGPP: Update (mention Ada binary packages).
+
+2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
+
 	* djconfig.sh: Include Ada for native DJGPP build
 
 2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
@@ -11,10 +15,6 @@
 	* gcc/ada/s-os_lib.adb (First_Temp_File_Name): use shorter name for
 	temporary file generation to work in case of DJGPP without LFN
 	support available
-
-	Attempt to use adaint.c method for enable this shortening conditionally
-	only when needed failed miserably (stuck in loop handling SIGSEGV
-	again and again)
 
 2016-01-28  Andris Pavenis  <andris.pavenis@iki.fi>
 
