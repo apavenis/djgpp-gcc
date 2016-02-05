@@ -1,3 +1,7 @@
+2016-02-05  Andris Pavenis <andris.pavenis@iki.fi>
+
+	* makepkg.pl: Include also (pku|clzero)intrin\.h into gcc*b.zip
+
 2016-01-30  Andris Pavenis <andris.pavenis@iki.fi>
 
 	* readme.DJGPP: Update (mention Ada binary packages).

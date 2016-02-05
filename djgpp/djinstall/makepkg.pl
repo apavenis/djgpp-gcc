@@ -715,7 +715,7 @@ sub mk_manifest
         'include/ssp/', 'info/(?:cpp|gcc|libquadmath)', '/djgpp\.ver$',
         '/include/(?:am|bm|em|m|nm|pm|sm|tm|xm)mintrin',
         '/include/(?:cpuid|float|iso646|mm_malloc|mm3dnow|mmintcommon)\.h$',
-        '/include/(?:avx|imm|wmm|x86|bmi|tbm)intrin\.h$',
+        '/include/(?:avx|imm|wmm|x86|bmi|tbm|pku|clzero)intrin\.h$',
         '/include/(?:avx2|bmi2|f16c|fma|lzcnt)intrin.\h$',
         '/include/std(?:align|noreturn)\.h$',
         '/include/quadmath(?:|_weak).h',
