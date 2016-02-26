@@ -5886,13 +5886,30 @@ c_parser_for_statement (c_parser *parser, bool ivdep)
   if (c_parser_next_token_is (parser, CPP_NAME))
     {
       c_token *token = c_parser_peek_token (parser);
-      tree decl = lookup_name (token->value);
-      if (decl == NULL_TREE || VAR_P (decl))
-	/* If DECL is null, we don't know what this token might be.  Treat
-	   it as an ID for better diagnostics; we'll error later on.  */
-	token->id_kind = C_ID_ID;
-      else if (TREE_CODE (decl) == TYPE_DECL)
-	token->id_kind = C_ID_TYPENAME;
+
+      if (token->id_kind != C_ID_CLASSNAME)
+	{
+	  tree decl = lookup_name (token->value);
+
+	  token->id_kind = C_ID_ID;
+	  if (decl)
+	    {
+	      if (TREE_CODE (decl) == TYPE_DECL)
+		token->id_kind = C_ID_TYPENAME;
+	    }
+	  else if (c_dialect_objc ())
+	    {
+	      tree objc_interface_decl = objc_is_class_name (token->value);
+	      /* Objective-C class names are in the same namespace as
+		 variables and typedefs, and hence are shadowed by local
+		 declarations.  */
+	      if (objc_interface_decl)
+		{
+		  token->value = objc_interface_decl;
+		  token->id_kind = C_ID_CLASSNAME;
+		}
+	    }
+	}
     }
 
   token_indent_info next_tinfo
@@ -10766,7 +10783,7 @@ c_parser_oacc_data_clause_deviceptr (c_parser *parser, tree list)
 	 c_parser_omp_var_list_parens() should construct a list of
 	 locations to go along with the var list.  */
 
-      if (!VAR_P (v))
+      if (!VAR_P (v) && TREE_CODE (v) != PARM_DECL)
 	error_at (loc, "%qD is not a variable", v);
       else if (TREE_TYPE (v) == error_mark_node)
 	;

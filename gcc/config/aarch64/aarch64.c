@@ -489,8 +489,7 @@ static const struct tune_params cortexa57_tunings =
   0,	/* max_case_values.  */
   0,	/* cache_line_size.  */
   tune_params::AUTOPREFETCHER_WEAK,	/* autoprefetcher_model.  */
-  (AARCH64_EXTRA_TUNE_RENAME_FMA_REGS
-   | AARCH64_EXTRA_TUNE_RECIP_SQRT)	/* tune_flags.  */
+  (AARCH64_EXTRA_TUNE_RENAME_FMA_REGS)	/* tune_flags.  */
 };
 
 static const struct tune_params cortexa72_tunings =
@@ -527,7 +526,7 @@ static const struct tune_params exynosm1_tunings =
   &generic_branch_cost,
   4,	/* memmov_cost  */
   3,	/* issue_rate  */
-  (AARCH64_FUSE_NOTHING), /* fusible_ops  */
+  (AARCH64_FUSE_AES_AESMC), /* fusible_ops  */
   4,	/* function_align.  */
   4,	/* jump_align.  */
   4,	/* loop_align.  */
@@ -539,7 +538,7 @@ static const struct tune_params exynosm1_tunings =
   48,	/* max_case_values.  */
   64,	/* cache_line_size.  */
   tune_params::AUTOPREFETCHER_OFF, /* autoprefetcher_model.  */
-  (AARCH64_EXTRA_TUNE_NONE) /* tune_flags.  */
+  (AARCH64_EXTRA_TUNE_RECIP_SQRT) /* tune_flags.  */
 };
 
 static const struct tune_params thunderx_tunings =
@@ -1633,6 +1632,7 @@ aarch64_internal_mov_immediate (rtx dest, rtx imm, bool generate,
 	      emit_insn (gen_insv_immdi (dest, GEN_INT (i),
 					 GEN_INT ((val >> i) & 0xffff)));
 	    }
+	  return 2;
 	}
     }
 
@@ -7468,8 +7468,9 @@ use_rsqrt_p (void)
 {
   return (!flag_trapping_math
 	  && flag_unsafe_math_optimizations
-	  && (aarch64_tune_params.extra_tuning_flags
-	      & AARCH64_EXTRA_TUNE_RECIP_SQRT));
+	  && ((aarch64_tune_params.extra_tuning_flags
+	       & AARCH64_EXTRA_TUNE_RECIP_SQRT)
+	      || flag_mrecip_low_precision_sqrt));
 }
 
 /* Function to decide when to use
@@ -8575,7 +8576,7 @@ aarch64_set_current_function (tree fndecl)
       if (old_tree == new_tree)
 	;
 
-      else if (new_tree && new_tree != target_option_default_node)
+      else if (new_tree)
 	{
 	  cl_target_option_restore (&global_options,
 				    TREE_TARGET_OPTION (new_tree));
@@ -11053,28 +11054,37 @@ aarch64_simd_make_constant (rtx vals)
     return NULL_RTX;
 }
 
+/* Expand a vector initialisation sequence, such that TARGET is
+   initialised to contain VALS.  */
+
 void
 aarch64_expand_vector_init (rtx target, rtx vals)
 {
   machine_mode mode = GET_MODE (target);
   machine_mode inner_mode = GET_MODE_INNER (mode);
+  /* The number of vector elements.  */
   int n_elts = GET_MODE_NUNITS (mode);
+  /* The number of vector elements which are not constant.  */
   int n_var = 0;
   rtx any_const = NULL_RTX;
+  /* The first element of vals.  */
+  rtx v0 = XVECEXP (vals, 0, 0);
   bool all_same = true;
 
+  /* Count the number of variable elements to initialise.  */
   for (int i = 0; i < n_elts; ++i)
     {
       rtx x = XVECEXP (vals, 0, i);
-      if (!CONST_INT_P (x) && !CONST_DOUBLE_P (x))
+      if (!(CONST_INT_P (x) || CONST_DOUBLE_P (x)))
 	++n_var;
       else
 	any_const = x;
 
-      if (i > 0 && !rtx_equal_p (x, XVECEXP (vals, 0, 0)))
-	all_same = false;
+      all_same &= rtx_equal_p (x, v0);
     }
 
+  /* No variable elements, hand off to aarch64_simd_make_constant which knows
+     how best to handle this.  */
   if (n_var == 0)
     {
       rtx constant = aarch64_simd_make_constant (vals);
@@ -11088,14 +11098,15 @@ aarch64_expand_vector_init (rtx target, rtx vals)
   /* Splat a single non-constant element if we can.  */
   if (all_same)
     {
-      rtx x = copy_to_mode_reg (inner_mode, XVECEXP (vals, 0, 0));
+      rtx x = copy_to_mode_reg (inner_mode, v0);
       aarch64_emit_move (target, gen_rtx_VEC_DUPLICATE (mode, x));
       return;
     }
 
-  /* Half the fields (or less) are non-constant.  Load constant then overwrite
-     varying fields.  Hope that this is more efficient than using the stack.  */
-  if (n_var <= n_elts/2)
+  /* Initialise a vector which is part-variable.  We want to first try
+     to build those lanes which are constant in the most efficient way we
+     can.  */
+  if (n_var != n_elts)
     {
       rtx copy = copy_rtx (vals);
 
@@ -11122,38 +11133,29 @@ aarch64_expand_vector_init (rtx target, rtx vals)
 	  XVECEXP (copy, 0, i) = subst;
 	}
       aarch64_expand_vector_init (target, copy);
-
-      /* Insert variables.  */
-      enum insn_code icode = optab_handler (vec_set_optab, mode);
-      gcc_assert (icode != CODE_FOR_nothing);
-
-      for (int i = 0; i < n_elts; i++)
-	{
-	  rtx x = XVECEXP (vals, 0, i);
-	  if (CONST_INT_P (x) || CONST_DOUBLE_P (x))
-	    continue;
-	  x = copy_to_mode_reg (inner_mode, x);
-	  emit_insn (GEN_FCN (icode) (target, x, GEN_INT (i)));
-	}
-      return;
     }
 
-  /* Construct the vector in memory one field at a time
-     and load the whole vector.  */
-  rtx mem = assign_stack_temp (mode, GET_MODE_SIZE (mode));
-  for (int i = 0; i < n_elts; i++)
-    emit_move_insn (adjust_address_nv (mem, inner_mode,
-				    i * GET_MODE_SIZE (inner_mode)),
-		    XVECEXP (vals, 0, i));
-  emit_move_insn (target, mem);
+  /* Insert the variable lanes directly.  */
 
+  enum insn_code icode = optab_handler (vec_set_optab, mode);
+  gcc_assert (icode != CODE_FOR_nothing);
+
+  for (int i = 0; i < n_elts; i++)
+    {
+      rtx x = XVECEXP (vals, 0, i);
+      if (CONST_INT_P (x) || CONST_DOUBLE_P (x))
+	continue;
+      x = copy_to_mode_reg (inner_mode, x);
+      emit_insn (GEN_FCN (icode) (target, x, GEN_INT (i)));
+    }
 }
 
 static unsigned HOST_WIDE_INT
 aarch64_shift_truncation_mask (machine_mode mode)
 {
   return
-    (aarch64_vector_mode_supported_p (mode)
+    (!SHIFT_COUNT_TRUNCATED
+     || aarch64_vector_mode_supported_p (mode)
      || aarch64_vect_struct_mode_p (mode)) ? 0 : (GET_MODE_BITSIZE (mode) - 1);
 }
 
