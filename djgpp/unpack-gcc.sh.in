@@ -6,6 +6,7 @@ contact="Andris Pavenis <andris.pavenis@iki.fi>";
 
 # Configuration params
 create_gccnnns_zip=true
+remove_tests=true
 
 params_done=false
 while ! $params_done ; do
@@ -14,6 +15,7 @@ while ! $params_done ; do
             case $1 in
                 --no-djgpp-source)
                     create_gccnnns_zip=false
+                    remove_tests=false
                     ;;
                 --verbose-shell)
                     set -x
@@ -111,12 +113,15 @@ rm -rf $gcc_dir/libgo
 rm -rf $gcc_dir/gotools
 rm -rf $gcc_dir/gcc/go
 rm -rf $gcc_dir/gcc/java
-rm -rf $gcc_dir/gcc/testsuite
 rm -rf $gcc_dir/gcc/treelang
 rm -rf $gcc_dir/libmudflap
 rm -rf $gcc_dir/libcilkrts
 rm -rf $gcc_dir/liboffloadmic
 rm -rf $gcc_dir/libvtv
+
+if $remove_tests ; then
+    rm -rf $gcc_dir/gcc/testsuite
+fi
 
 #
 #  List of directories in which we should run autoconf or/and automake

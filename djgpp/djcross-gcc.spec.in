@@ -455,6 +455,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Wed Mar 09 2016 Andris Pavenis <andris.pavenis@iki.fi>
+- Use MPFR-3.1.4
+- Do not remove tests for Linux build
+
 * Sun Nov 08 2015 Andris Pavenis <andris.pavenis@iki.fi>
 - Use GMP-6.1.0
 
