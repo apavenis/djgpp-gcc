@@ -1,3 +1,92 @@
+2016-03-18  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	PR target/70113
+	* gcc.target/aarch64/pr63304_1.c: Add -mno-fix-cortex-a53-843419.
+
+2016-03-18  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	PR tree-optimization/70252
+	* gcc.dg/pr70252.c: New test.
+
+2016-03-18  Tom de Vries  <tom@codesourcery.com>
+
+	* gcc.dg/pr70161-2.c: New test.
+	* gcc.dg/pr70161.c: New test.
+
+2016-03-18  Tom de Vries  <tom@codesourcery.com>
+
+	PR ipa/70269
+	* gcc.dg/pr70269.c: New test.
+
+2016-03-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/70267
+	* g++.dg/ext/java-3.C: New test.
+
+2016-03-18  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/70205
+	* g++.dg/lookup/pr70205.C: New test.
+
+2016-03-18  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/70218
+	* g++.dg/cpp0x/lambda/lambda-70218.C: New test.
+
+2016-03-17  Marek Polacek  <polacek@redhat.com>
+
+	PR c/69407
+	* gcc.dg/atomic-op-6.c: New test.
+
+2016-03-17  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c/70264
+	* c-c++-common/pr70264.c: New test case.
+
+2016-03-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/70144
+	* c-c++-common/pr70144-1.c: New test.
+	* c-c++-common/pr70144-2.c: New test.
+
+	PR c++/70272
+	* g++.dg/opt/flifetime-dse5.C (main): Remove extra semicolon.
+	* g++.dg/opt/flifetime-dse6.C: New test.
+	* g++.dg/tree-ssa/ehcleanup-1.C: Adjust unreachable count.
+
+2016-03-17  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR driver/70192
+	* gcc.dg/pic-1.c: New test.
+	* gcc.dg/pic-2.c: Likewise.
+	* gcc.dg/pic-3.c: Likewise.
+	* gcc.dg/pic-4.c: Likewise.
+	* gcc.dg/pie-1.c: Likewise.
+	* gcc.dg/pie-2.c: Likewise.
+	* gcc.dg/pie-3.c: Likewise.
+	* gcc.dg/pie-4.c: Likewise.
+	* gcc.dg/pie-5.c: Likewise.
+	* gcc.dg/pie-6.c: Likewise.
+
+2016-03-17  Tom de Vries  <tom@codesourcery.com>
+
+	* gfortran.dg/goacc/kernels-alias-3.f95: New test.
+	* gfortran.dg/goacc/kernels-alias-4.f95: New test.
+
+2016-03-17  Richard Biener  <rguenther@suse.de>
+
+	PR debug/70271
+	* g++.dg/debug/pr70271.C: New testcase.
+
+2016-03-17  Ilya Enkovich  <enkovich.gnu@gmail.com>
+
+	* gcc.target/i386/pr70251.c: New test.
+
+2016-03-17  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/70194
+	* g++.dg/warn/constexpr-70194.C: New test.
+
 2016-03-16  Richard Henderson  <rth@redhat.com>
 
 	PR middle-end/70240
