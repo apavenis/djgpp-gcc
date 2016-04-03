@@ -227,11 +227,6 @@ struct GTY((for_user)) named_label_entry {
    function, two inside the body of a function in a local class, etc.)  */
 int function_depth;
 
-/* To avoid unwanted recursion, finish_function defers all mark_used calls
-   encountered during its execution until it finishes.  */
-bool defer_mark_used_calls;
-vec<tree, va_gc> *deferred_mark_used_calls;
-
 /* States indicating how grokdeclarator() should handle declspecs marked
    with __attribute__((deprecated)).  An object declared as
    __attribute__((deprecated)) suppresses warnings of uses of other
@@ -1207,16 +1202,19 @@ check_redeclaration_exception_specification (tree new_decl,
      specialization, of that function shall have an
      exception-specification with the same set of type-ids.  */
   if (! DECL_IS_BUILTIN (old_decl)
-      && flag_exceptions
       && !comp_except_specs (new_exceptions, old_exceptions, ce_normal))
     {
       const char *msg
 	= "declaration of %q+F has a different exception specifier";
       bool complained = true;
-      if (! DECL_IN_SYSTEM_HEADER (old_decl))
-	error (msg, new_decl);
-      else
+      if (DECL_IN_SYSTEM_HEADER (old_decl))
 	complained = pedwarn (0, OPT_Wsystem_headers, msg, new_decl);
+      else if (!flag_exceptions)
+	/* We used to silently permit mismatched eh specs with
+	   -fno-exceptions, so make them a pedwarn now.  */
+	complained = pedwarn (0, OPT_Wpedantic, msg, new_decl);
+      else
+	error (msg, new_decl);
       if (complained)
 	inform (0, "from previous declaration %q+F", old_decl);
     }
@@ -2033,7 +2031,16 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
 	 at newdecl, which will be ggc_freed.  */
       if (TREE_CODE (newdecl) == TYPE_DECL)
 	{
+	  /* But NEWTYPE might have an attribute, honor that.  */
+	  tree tem = TREE_TYPE (newdecl);
 	  newtype = oldtype;
+
+	  if (TYPE_USER_ALIGN (tem))
+	    {
+	      if (TYPE_ALIGN (tem) > TYPE_ALIGN (newtype))
+		TYPE_ALIGN (newtype) = TYPE_ALIGN (tem);
+	      TYPE_USER_ALIGN (newtype) = true;
+	    }
 
 	  /* And remove the new type from the variants list.  */
 	  if (TYPE_NAME (TREE_TYPE (newdecl)) == newdecl)
@@ -6256,8 +6263,11 @@ make_rtl_for_nonlocal_decl (tree decl, tree init, const char* asmspec)
     return;
 
   /* We defer emission of local statics until the corresponding
-     DECL_EXPR is expanded.  */
-  defer_p = DECL_FUNCTION_SCOPE_P (decl) || DECL_VIRTUAL_P (decl);
+     DECL_EXPR is expanded.  But with constexpr its function might never
+     be expanded, so go ahead and tell cgraph about the variable now.  */
+  defer_p = ((DECL_FUNCTION_SCOPE_P (decl)
+	      && !DECL_DECLARED_CONSTEXPR_P (DECL_CONTEXT (decl)))
+	     || DECL_VIRTUAL_P (decl));
 
   /* Defer template instantiations.  */
   if (DECL_LANG_SPECIFIC (decl)
@@ -6497,6 +6507,19 @@ is_concept_var (tree decl)
 	  // Not all variables have DECL_LANG_SPECIFIC.
           && DECL_LANG_SPECIFIC (decl)
           && DECL_DECLARED_CONCEPT_P (decl));
+}
+
+/* A helper function to be called via walk_tree.  If any label exists
+   under *TP, it is (going to be) forced.  Set has_forced_label_in_static.  */
+
+static tree
+notice_forced_label_r (tree *tp, int *walk_subtrees, void *)
+{
+  if (TYPE_P (*tp))
+    *walk_subtrees = 0;
+  if (TREE_CODE (*tp) == LABEL_DECL)
+    cfun->has_forced_label_in_static = 1;
+  return NULL_TREE;
 }
 
 /* Finish processing of a declaration;
@@ -6744,13 +6767,17 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	  && !DECL_ARTIFICIAL (decl))
 	{
 	  push_local_name (decl);
-	  if (DECL_CONSTRUCTOR_P (current_function_decl)
-	      || DECL_DESTRUCTOR_P (current_function_decl))
-	    /* Normally local_decls is populated during GIMPLE lowering,
-	       but [cd]tors are never actually compiled directly.  We need
-	       to put statics on the list so we can deal with the label
-	       address extension.  FIXME.  */
-	    add_local_decl (cfun, decl);
+	  /* Normally has_forced_label_in_static is set during GIMPLE
+	     lowering, but [cd]tors are never actually compiled directly.
+	     We need to set this early so we can deal with the label
+	     address extension.  */
+	  if ((DECL_CONSTRUCTOR_P (current_function_decl)
+	       || DECL_DESTRUCTOR_P (current_function_decl))
+	      && init)
+	    {
+	      walk_tree (&init, notice_forced_label_r, NULL, NULL);
+	      add_local_decl (cfun, decl);
+	    }
 	  /* And make sure it's in the symbol table for
 	     c_parse_final_cleanups to find.  */
 	  varpool_node::get_create (decl);
@@ -14146,9 +14173,7 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
   if (DECL_DESTRUCTOR_P (decl1)
       || (DECL_CONSTRUCTOR_P (decl1)
 	  && targetm.cxx.cdtor_returns_this ()))
-    {
-      cdtor_label = create_artificial_label (input_location);
-    }
+    cdtor_label = create_artificial_label (input_location);
 
   start_fname_decls ();
 
@@ -14404,35 +14429,6 @@ finish_destructor_body (void)
      and member cleanups will be run when the function returns.  */
   add_stmt (build_stmt (input_location, LABEL_EXPR, cdtor_label));
 
-  /* In a virtual destructor, we must call delete.  */
-  if (DECL_VIRTUAL_P (current_function_decl))
-    {
-      tree if_stmt;
-      tree virtual_size = cxx_sizeof (current_class_type);
-
-      /* [class.dtor]
-
-      At the point of definition of a virtual destructor (including
-      an implicit definition), non-placement operator delete shall
-      be looked up in the scope of the destructor's class and if
-      found shall be accessible and unambiguous.  */
-      exprstmt = build_op_delete_call (DELETE_EXPR, current_class_ptr,
-				       virtual_size,
-				       /*global_p=*/false,
-				       /*placement=*/NULL_TREE,
-				       /*alloc_fn=*/NULL_TREE,
-				       tf_warning_or_error);
-
-      if_stmt = begin_if_stmt ();
-      finish_if_stmt_cond (build2 (BIT_AND_EXPR, integer_type_node,
-				   current_in_charge_parm,
-				   integer_one_node),
-			   if_stmt);
-      finish_expr_stmt (exprstmt);
-      finish_then_clause (if_stmt);
-      finish_if_stmt (if_stmt);
-    }
-
   if (targetm.cxx.cdtor_returns_this ())
     {
       tree val;
@@ -14576,9 +14572,6 @@ finish_function (int flags)
 
   if (c_dialect_objc ())
     objc_finish_function ();
-
-  gcc_assert (!defer_mark_used_calls);
-  defer_mark_used_calls = true;
 
   record_key_method_defined (fndecl);
 
@@ -14828,17 +14821,6 @@ finish_function (int flags)
 
   /* Clean up.  */
   current_function_decl = NULL_TREE;
-
-  defer_mark_used_calls = false;
-  if (deferred_mark_used_calls)
-    {
-      unsigned int i;
-      tree decl;
-
-      FOR_EACH_VEC_SAFE_ELT (deferred_mark_used_calls, i, decl)
-	mark_used (decl);
-      vec_free (deferred_mark_used_calls);
-    }
 
   invoke_plugin_callbacks (PLUGIN_FINISH_PARSE_FUNCTION, fndecl);
   return fndecl;
