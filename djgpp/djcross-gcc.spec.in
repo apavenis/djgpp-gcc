@@ -455,6 +455,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri Apr 15 2016 Andris Pavenis <andris.pavenis@iki.fi>
+- Use gcc-6-branch
+
 * Wed Mar 09 2016 Andris Pavenis <andris.pavenis@iki.fi>
 - Use MPFR-3.1.4
 - Do not remove tests for Linux build
