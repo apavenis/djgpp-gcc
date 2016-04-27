@@ -455,6 +455,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Wed Apr 27 2016 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-6.1.0
+
 * Fri Apr 15 2016 Andris Pavenis <andris.pavenis@iki.fi>
 - Use gcc-6-branch
 
