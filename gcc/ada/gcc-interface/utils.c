@@ -239,17 +239,24 @@ static tree convert_to_fat_pointer (tree, tree);
 static unsigned int scale_by_factor_of (tree, unsigned int);
 static bool potential_alignment_gap (tree, tree, tree);
 
-/* A linked list used as a queue to defer the initialization of the
-   DECL_CONTEXT attribute of ..._DECL nodes and of the TYPE_CONTEXT attribute
-   of ..._TYPE nodes.  */
+/* Linked list used as a queue to defer the initialization of the DECL_CONTEXT
+   of ..._DECL nodes and of the TYPE_CONTEXT of ..._TYPE nodes.  */
 struct deferred_decl_context_node
 {
-  tree decl;		    /* The ..._DECL node to work on.  */
-  Entity_Id gnat_scope;     /* The corresponding entity's Scope attribute.  */
-  int force_global;	    /* force_global value when pushing DECL. */
-  vec<tree, va_heap, vl_ptr> types;	    /* A list of ..._TYPE nodes to propagate the
-			       context to.  */
-  struct deferred_decl_context_node *next;  /* The next queue item.  */
+  /* The ..._DECL node to work on.  */
+  tree decl;
+
+  /* The corresponding entity's Scope.  */
+  Entity_Id gnat_scope;
+
+  /* The value of force_global when DECL was pushed.  */
+  int force_global;
+
+  /* The list of ..._TYPE nodes to propagate the context to.  */
+  vec<tree> types;
+
+  /* The next queue item.  */
+  struct deferred_decl_context_node *next;
 };
 
 static struct deferred_decl_context_node *deferred_decl_context_queue = NULL;
@@ -904,7 +911,7 @@ make_aligning_type (tree type, unsigned int align, tree size,
 			     pos, 1, -1);
   TYPE_FIELDS (record_type) = field;
 
-  TYPE_ALIGN (record_type) = base_align;
+  SET_TYPE_ALIGN (record_type, base_align);
   TYPE_USER_ALIGN (record_type) = 1;
 
   TYPE_SIZE (record_type)
@@ -963,7 +970,7 @@ make_packable_type (tree type, bool in_record)
   if (in_record && size <= MAX_FIXED_MODE_SIZE)
     {
       align = ceil_pow2 (size);
-      TYPE_ALIGN (new_type) = align;
+      SET_TYPE_ALIGN (new_type, align);
       new_size = (size + align - 1) & -align;
     }
   else
@@ -983,7 +990,7 @@ make_packable_type (tree type, bool in_record)
 	return type;
 
       align = new_size & -new_size;
-      TYPE_ALIGN (new_type) = MIN (TYPE_ALIGN (type), align);
+      SET_TYPE_ALIGN (new_type, MIN (TYPE_ALIGN (type), align));
     }
 
   TYPE_USER_ALIGN (new_type) = 1;
@@ -1217,7 +1224,8 @@ lookup_and_insert_pad_type (tree type)
    IS_COMPONENT_TYPE is true if this is being done for the component type of
    an array.  IS_USER_TYPE is true if the original type needs to be completed.
    DEFINITION is true if this type is being defined.  SET_RM_SIZE is true if
-   the RM size of the resulting type is to be set to SIZE too.  */
+   the RM size of the resulting type is to be set to SIZE too; in this case,
+   the padded type is canonicalized before being returned.  */
 
 tree
 maybe_pad_type (tree type, tree size, unsigned int align,
@@ -1280,8 +1288,6 @@ maybe_pad_type (tree type, tree size, unsigned int align,
      type and name.  */
   record = make_node (RECORD_TYPE);
   TYPE_PADDING_P (record) = 1;
-  if (gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL)
-    SET_TYPE_DEBUG_TYPE (record, type);
 
   /* ??? Padding types around packed array implementation types will be
      considered as root types in the array descriptor language hook (see
@@ -1295,7 +1301,7 @@ maybe_pad_type (tree type, tree size, unsigned int align,
   else if (Present (gnat_entity))
     TYPE_NAME (record) = create_concat_name (gnat_entity, "PAD");
 
-  TYPE_ALIGN (record) = align ? align : orig_align;
+  SET_TYPE_ALIGN (record, align ? align : orig_align);
   TYPE_SIZE (record) = size ? size : orig_size;
   TYPE_SIZE_UNIT (record)
     = convert (sizetype,
@@ -1337,8 +1343,11 @@ maybe_pad_type (tree type, tree size, unsigned int align,
 			     bitsize_zero_node, 0, 1);
   DECL_INTERNAL_P (field) = 1;
 
-  /* Do not emit debug info until after the auxiliary record is built.  */
+  /* We will output additional debug info manually below.  */
   finish_record_type (record, field, 1, false);
+
+  if (gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL)
+    SET_TYPE_DEBUG_TYPE (record, type);
 
   /* Set the RM size if requested.  */
   if (set_rm_size)
@@ -1408,8 +1417,6 @@ maybe_pad_type (tree type, tree size, unsigned int align,
 	  add_parallel_type (record, marker);
 	}
     }
-
-  rest_of_record_type_compilation (record);
 
 built:
   /* If a simple size was explicitly given, maybe issue a warning.  */
@@ -1650,7 +1657,7 @@ finish_fat_pointer_type (tree record_type, tree field_list)
 {
   /* Make sure we can put it into a register.  */
   if (STRICT_ALIGNMENT)
-    TYPE_ALIGN (record_type) = MIN (BIGGEST_ALIGNMENT, 2 * POINTER_SIZE);
+    SET_TYPE_ALIGN (record_type, MIN (BIGGEST_ALIGNMENT, 2 * POINTER_SIZE));
 
   /* Show what it really is.  */
   TYPE_FAT_POINTER_P (record_type) = 1;
@@ -1672,7 +1679,7 @@ finish_fat_pointer_type (tree record_type, tree field_list)
    laid out already; only set the sizes and alignment.  If REP_LEVEL is two,
    this record is derived from a parent record and thus inherits its layout;
    only make a pass on the fields to finalize them.  DEBUG_INFO_P is true if
-   we need to write debug information about this type.  */
+   additional debug info needs to be output for this type.  */
 
 void
 finish_record_type (tree record_type, tree field_list, int rep_level,
@@ -1697,7 +1704,8 @@ finish_record_type (tree record_type, tree field_list, int rep_level,
      that just means some initializations; otherwise, layout the record.  */
   if (rep_level > 0)
     {
-      TYPE_ALIGN (record_type) = MAX (BITS_PER_UNIT, TYPE_ALIGN (record_type));
+      SET_TYPE_ALIGN (record_type, MAX (BITS_PER_UNIT,
+					TYPE_ALIGN (record_type)));
 
       if (!had_size_unit)
 	TYPE_SIZE_UNIT (record_type) = size_zero_node;
@@ -1775,7 +1783,7 @@ finish_record_type (tree record_type, tree field_list, int rep_level,
 		 maximum alignment, if any.  */
 	      if (TYPE_ALIGN (record_type) >= align)
 		{
-		  DECL_ALIGN (field) = MAX (DECL_ALIGN (field), align);
+		  SET_DECL_ALIGN (field, MAX (DECL_ALIGN (field), align));
 		  DECL_BIT_FIELD (field) = 0;
 		}
 	      else if (!had_align
@@ -1784,8 +1792,8 @@ finish_record_type (tree record_type, tree field_list, int rep_level,
 		       && (!TYPE_MAX_ALIGN (record_type)
 			   || TYPE_MAX_ALIGN (record_type) >= align))
 		{
-		  TYPE_ALIGN (record_type) = align;
-		  DECL_ALIGN (field) = MAX (DECL_ALIGN (field), align);
+		  SET_TYPE_ALIGN (record_type, align);
+		  SET_DECL_ALIGN (field, MAX (DECL_ALIGN (field), align));
 		  DECL_BIT_FIELD (field) = 0;
 		}
 	    }
@@ -1808,8 +1816,8 @@ finish_record_type (tree record_type, tree field_list, int rep_level,
       /* A type must be as aligned as its most aligned field that is not
 	 a bit-field.  But this is already enforced by layout_type.  */
       if (rep_level > 0 && !DECL_BIT_FIELD (field))
-	TYPE_ALIGN (record_type)
-	  = MAX (TYPE_ALIGN (record_type), DECL_ALIGN (field));
+	SET_TYPE_ALIGN (record_type,
+			MAX (TYPE_ALIGN (record_type), DECL_ALIGN (field)));
 
       switch (code)
 	{
@@ -1926,10 +1934,9 @@ has_parallel_type (tree type)
   return DECL_PARALLEL_TYPE (decl) != NULL_TREE;
 }
 
-/* Wrap up compilation of RECORD_TYPE, i.e. output all the debug information
-   associated with it.  It need not be invoked directly in most cases since
-   finish_record_type takes care of doing so, but this can be necessary if
-   a parallel type is to be attached to the record type.  */
+/* Wrap up compilation of RECORD_TYPE, i.e. output additional debug info
+   associated with it.  It need not be invoked directly in most cases as
+   finish_record_type takes care of doing so.  */
 
 void
 rest_of_record_type_compilation (tree record_type)
@@ -1980,7 +1987,7 @@ rest_of_record_type_compilation (tree record_type)
 	= concat_name (orig_name, TREE_CODE (record_type) == QUAL_UNION_TYPE
 				  ? "XVU" : "XVE");
       TYPE_NAME (new_record_type) = new_name;
-      TYPE_ALIGN (new_record_type) = BIGGEST_ALIGNMENT;
+      SET_TYPE_ALIGN (new_record_type, BIGGEST_ALIGNMENT);
       TYPE_STUB_DECL (new_record_type)
 	= create_type_stub_decl (new_name, new_record_type);
       DECL_IGNORED_P (TYPE_STUB_DECL (new_record_type))
@@ -2071,8 +2078,8 @@ rest_of_record_type_compilation (tree record_type)
 	      field_type = build_pointer_type (field_type);
 	      if (align != 0 && TYPE_ALIGN (field_type) > align)
 		{
-		  field_type = copy_node (field_type);
-		  TYPE_ALIGN (field_type) = align;
+		  field_type = copy_type (field_type);
+		  SET_TYPE_ALIGN (field_type, align);
 		}
 	      var = true;
 	    }
@@ -2283,10 +2290,10 @@ copy_type (tree type)
      aliased with TREE_CHAIN.  */
   TYPE_STUB_DECL (new_type) = TYPE_STUB_DECL (type);
 
-  TYPE_POINTER_TO (new_type) = 0;
-  TYPE_REFERENCE_TO (new_type) = 0;
+  TYPE_POINTER_TO (new_type) = NULL_TREE;
+  TYPE_REFERENCE_TO (new_type) = NULL_TREE;
   TYPE_MAIN_VARIANT (new_type) = new_type;
-  TYPE_NEXT_VARIANT (new_type) = 0;
+  TYPE_NEXT_VARIANT (new_type) = NULL_TREE;
   TYPE_CANONICAL (new_type) = new_type;
 
   return new_type;
@@ -2620,7 +2627,7 @@ create_field_decl (tree name, tree type, tree record_type, tree size, tree pos,
 		 || (!pos
 		     && AGGREGATE_TYPE_P (type)
 		     && aggregate_type_contains_array_p (type))))
-    DECL_ALIGN (field_decl) = BITS_PER_UNIT;
+    SET_DECL_ALIGN (field_decl, BITS_PER_UNIT);
 
   /* If a size is specified, use it.  Otherwise, if the record type is packed
      compute a size to use, which may differ from the object's natural size.
@@ -2667,9 +2674,9 @@ create_field_decl (tree name, tree type, tree record_type, tree size, tree pos,
 	{
 	  if (TYPE_ALIGN (record_type) != 0
 	      && TYPE_ALIGN (record_type) < TYPE_ALIGN (type))
-	    DECL_ALIGN (field_decl) = TYPE_ALIGN (record_type);
+	    SET_DECL_ALIGN (field_decl, TYPE_ALIGN (record_type));
 	  else
-	    DECL_ALIGN (field_decl) = TYPE_ALIGN (type);
+	    SET_DECL_ALIGN (field_decl, TYPE_ALIGN (type));
 	}
     }
 
@@ -2685,10 +2692,10 @@ create_field_decl (tree name, tree type, tree record_type, tree size, tree pos,
 	 : packed && TYPE_MODE (type) != BLKmode ? BITS_PER_UNIT : 0);
 
     if (bit_align > DECL_ALIGN (field_decl))
-      DECL_ALIGN (field_decl) = bit_align;
+      SET_DECL_ALIGN (field_decl, bit_align);
     else if (!bit_align && TYPE_ALIGN (type) > DECL_ALIGN (field_decl))
       {
-	DECL_ALIGN (field_decl) = TYPE_ALIGN (type);
+	SET_DECL_ALIGN (field_decl, TYPE_ALIGN (type));
 	DECL_USER_ALIGN (field_decl) = TYPE_USER_ALIGN (type);
       }
   }
@@ -3430,14 +3437,14 @@ gnat_signed_or_unsigned_type_for (int unsignedp, tree type_node)
 
   if (TREE_CODE (type_node) == INTEGER_TYPE && TYPE_MODULAR_P (type_node))
     {
-      type = copy_node (type);
+      type = copy_type (type);
       TREE_TYPE (type) = type_node;
     }
   else if (TREE_TYPE (type_node)
 	   && TREE_CODE (TREE_TYPE (type_node)) == INTEGER_TYPE
 	   && TYPE_MODULAR_P (TREE_TYPE (type_node)))
     {
-      type = copy_node (type);
+      type = copy_type (type);
       TREE_TYPE (type) = TREE_TYPE (type_node);
     }
 

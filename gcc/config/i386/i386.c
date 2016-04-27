@@ -6490,6 +6490,9 @@ ix86_in_large_data_p (tree exp)
   return false;
 }
 
+/* i386-specific section flag to mark large sections.  */
+#define SECTION_LARGE SECTION_MACH_DEP
+
 /* Switch to the appropriate section for output of DECL.
    DECL is either a `VAR_DECL' node or a constant of some sort.
    RELOC indicates whether forming the initial value of DECL requires
@@ -6502,7 +6505,7 @@ x86_64_elf_select_section (tree decl, int reloc,
   if (ix86_in_large_data_p (decl))
     {
       const char *sname = NULL;
-      unsigned int flags = SECTION_WRITE;
+      unsigned int flags = SECTION_WRITE | SECTION_LARGE;
       switch (categorize_decl_for_section (decl, reloc))
 	{
 	case SECCAT_DATA:
@@ -6529,7 +6532,7 @@ x86_64_elf_select_section (tree decl, int reloc,
 	case SECCAT_RODATA_MERGE_STR_INIT:
 	case SECCAT_RODATA_MERGE_CONST:
 	  sname = ".lrodata";
-	  flags = 0;
+	  flags &= ~SECTION_WRITE;
 	  break;
 	case SECCAT_SRODATA:
 	case SECCAT_SDATA:
@@ -6563,6 +6566,9 @@ static unsigned int ATTRIBUTE_UNUSED
 x86_64_elf_section_type_flags (tree decl, const char *name, int reloc)
 {
   unsigned int flags = default_section_type_flags (decl, name, reloc);
+
+  if (ix86_in_large_data_p (decl))
+    flags |= SECTION_LARGE;
 
   if (decl == NULL_TREE
       && (strcmp (name, ".ldata.rel.ro") == 0
@@ -6642,19 +6648,27 @@ x86_64_elf_unique_section (tree decl, int reloc)
 }
 
 #ifdef COMMON_ASM_OP
+
+#ifndef LARGECOMM_SECTION_ASM_OP
+#define LARGECOMM_SECTION_ASM_OP "\t.largecomm\t"
+#endif
+
 /* This says how to output assembler code to declare an
    uninitialized external linkage data object.
 
-   For medium model x86-64 we need to use .largecomm opcode for
+   For medium model x86-64 we need to use LARGECOMM_SECTION_ASM_OP opcode for
    large objects.  */
 void
-x86_elf_aligned_common (FILE *file,
+x86_elf_aligned_decl_common (FILE *file, tree decl,
 			const char *name, unsigned HOST_WIDE_INT size,
 			int align)
 {
   if ((ix86_cmodel == CM_MEDIUM || ix86_cmodel == CM_MEDIUM_PIC)
       && size > (unsigned int)ix86_section_threshold)
-    fputs ("\t.largecomm\t", file);
+    {
+      switch_to_section (get_named_section (decl, ".lbss", 0));
+      fputs (LARGECOMM_SECTION_ASM_OP, file);
+    }
   else
     fputs (COMMON_ASM_OP, file);
   assemble_name (file, name);
@@ -7316,18 +7330,6 @@ ix86_legitimate_combined_insn (rtx_insn *insn)
 	  int offset = 0;
 	  bool win;
 	  int j;
-
-	  /* For pre-AVX disallow unaligned loads/stores where the
-	     instructions don't support it.  */
-	  if (!TARGET_AVX
-	      && VECTOR_MODE_P (mode)
-	      && misaligned_operand (op, mode))
-	    {
-	      unsigned int min_align = get_attr_ssememalign (insn);
-	      if (min_align == 0
-		  || MEM_ALIGN (op) < min_align)
-		return false;
-	    }
 
 	  /* A unary operator may be accepted by the predicate, but it
 	     is irrelevant for matching constraints.  */
@@ -10774,11 +10776,11 @@ standard_80387_constant_rtx (int idx)
 				       XFmode);
 }
 
-/* Return 1 if X is all 0s and 2 if x is all 1s
+/* Return 1 if X is all bits 0 and 2 if X is all bits 1
    in supported SSE/AVX vector mode.  */
 
 int
-standard_sse_constant_p (rtx x)
+standard_sse_constant_p (rtx x, machine_mode pred_mode)
 {
   machine_mode mode;
 
@@ -10786,33 +10788,37 @@ standard_sse_constant_p (rtx x)
     return 0;
 
   mode = GET_MODE (x);
-  
-  if (x == const0_rtx || x == CONST0_RTX (mode))
+
+  if (x == const0_rtx || const0_operand (x, mode))
     return 1;
-  if (vector_all_ones_operand (x, mode))
-    switch (mode)
-      {
-      case V16QImode:
-      case V8HImode:
-      case V4SImode:
-      case V2DImode:
-	if (TARGET_SSE2)
-	  return 2;
-      case V32QImode:
-      case V16HImode:
-      case V8SImode:
-      case V4DImode:
-	if (TARGET_AVX2)
-	  return 2;
-      case V64QImode:
-      case V32HImode:
-      case V16SImode:
-      case V8DImode:
-	if (TARGET_AVX512F)
-	  return 2;
-      default:
-	break;
-      }
+
+  if (x == constm1_rtx || vector_all_ones_operand (x, mode))
+    {
+      /* VOIDmode integer constant, get mode from the predicate.  */
+      if (mode == VOIDmode)
+	mode = pred_mode;
+
+      switch (GET_MODE_SIZE (mode))
+	{
+	case 64:
+	  if (TARGET_AVX512F)
+	    return 2;
+	  break;
+	case 32:
+	  if (TARGET_AVX2)
+	    return 2;
+	  break;
+	case 16:
+	  if (TARGET_SSE2)
+	    return 2;
+	  break;
+	case 0:
+	  /* VOIDmode */
+	  gcc_unreachable ();
+	default:
+	  break;
+	}
+    }
 
   return 0;
 }
@@ -10823,53 +10829,79 @@ standard_sse_constant_p (rtx x)
 const char *
 standard_sse_constant_opcode (rtx_insn *insn, rtx x)
 {
-  switch (standard_sse_constant_p (x))
+  machine_mode mode;
+
+  gcc_assert (TARGET_SSE);
+
+  mode = GET_MODE (x);
+
+  if (x == const0_rtx || const0_operand (x, mode))
     {
-    case 1:
       switch (get_attr_mode (insn))
 	{
 	case MODE_XI:
 	  return "vpxord\t%g0, %g0, %g0";
-	case MODE_V16SF:
-	  return TARGET_AVX512DQ ? "vxorps\t%g0, %g0, %g0"
-				 : "vpxord\t%g0, %g0, %g0";
-	case MODE_V8DF:
-	  return TARGET_AVX512DQ ? "vxorpd\t%g0, %g0, %g0"
-				 : "vpxorq\t%g0, %g0, %g0";
+	case MODE_OI:
+	  return (TARGET_AVX512VL
+		  ? "vpxord\t%x0, %x0, %x0"
+		  : "vpxor\t%x0, %x0, %x0");
 	case MODE_TI:
-	  return TARGET_AVX512VL ? "vpxord\t%t0, %t0, %t0"
-				 : "%vpxor\t%0, %d0";
+	  return (TARGET_AVX512VL
+		  ? "vpxord\t%t0, %t0, %t0"
+		  : "%vpxor\t%0, %d0");
+
+	case MODE_V8DF:
+	  return (TARGET_AVX512DQ
+		  ? "vxorpd\t%g0, %g0, %g0"
+		  : "vpxorq\t%g0, %g0, %g0");
+	case MODE_V4DF:
+	  return "vxorpd\t%x0, %x0, %x0";
 	case MODE_V2DF:
 	  return "%vxorpd\t%0, %d0";
+
+	case MODE_V16SF:
+	  return (TARGET_AVX512DQ
+		  ? "vxorps\t%g0, %g0, %g0"
+		  : "vpxord\t%g0, %g0, %g0");
+	case MODE_V8SF:
+	  return "vxorps\t%x0, %x0, %x0";
 	case MODE_V4SF:
 	  return "%vxorps\t%0, %d0";
 
+	default:
+	  gcc_unreachable ();
+	}
+    }
+  else if (x == constm1_rtx || vector_all_ones_operand (x, mode))
+    {
+      enum attr_mode insn_mode = get_attr_mode (insn);
+      
+      switch (insn_mode)
+	{
+	case MODE_XI:
+	case MODE_V8DF:
+	case MODE_V16SF:
+	  gcc_assert (TARGET_AVX512F);
+	  return "vpternlogd\t{$0xFF, %g0, %g0, %g0|%g0, %g0, %g0, 0xFF}";
+
 	case MODE_OI:
-	  return TARGET_AVX512VL ? "vpxord\t%x0, %x0, %x0"
-				 : "vpxor\t%x0, %x0, %x0";
 	case MODE_V4DF:
-	  return "vxorpd\t%x0, %x0, %x0";
 	case MODE_V8SF:
-	  return "vxorps\t%x0, %x0, %x0";
+	  gcc_assert (TARGET_AVX2);
+	  /* FALLTHRU */
+	case MODE_TI:
+	case MODE_V2DF:
+	case MODE_V4SF:
+	  gcc_assert (TARGET_SSE2);
+	  return (TARGET_AVX
+		  ? "vpcmpeqd\t%0, %0, %0"
+		  : "pcmpeqd\t%0, %0");
 
 	default:
-	  break;
+	  gcc_unreachable ();
 	}
+   }
 
-    case 2:
-      if (TARGET_AVX512VL
-	  || get_attr_mode (insn) == MODE_XI
-	  || get_attr_mode (insn) == MODE_V8DF
-	  || get_attr_mode (insn) == MODE_V16SF)
-	return "vpternlogd\t{$0xFF, %g0, %g0, %g0|%g0, %g0, %g0, 0xFF}";
-      if (TARGET_AVX)
-	return "vpcmpeqd\t%0, %0, %0";
-      else
-	return "pcmpeqd\t%0, %0";
-
-    default:
-      break;
-    }
   gcc_unreachable ();
 }
 
@@ -11706,7 +11738,6 @@ ix86_emit_save_reg_using_mov (machine_mode mode, unsigned int regno,
 {
   struct machine_function *m = cfun->machine;
   rtx reg = gen_rtx_REG (mode, regno);
-  rtx unspec = NULL_RTX;
   rtx mem, addr, base, insn;
   unsigned int align;
 
@@ -11717,13 +11748,7 @@ ix86_emit_save_reg_using_mov (machine_mode mode, unsigned int regno,
   align = MIN (GET_MODE_ALIGNMENT (mode), INCOMING_STACK_BOUNDARY);
   set_mem_align (mem, align);
 
-  /* SSE saves are not within re-aligned local stack frame.
-     In case INCOMING_STACK_BOUNDARY is misaligned, we have
-     to emit unaligned store.  */
-  if (mode == V4SFmode && align < 128)
-    unspec = gen_rtx_UNSPEC (mode, gen_rtvec (1, reg), UNSPEC_STOREU);
-
-  insn = emit_insn (gen_rtx_SET (mem, unspec ? unspec : reg));
+  insn = emit_insn (gen_rtx_SET (mem, reg));
   RTX_FRAME_RELATED_P (insn) = 1;
 
   base = addr;
@@ -11770,8 +11795,6 @@ ix86_emit_save_reg_using_mov (machine_mode mode, unsigned int regno,
       mem = gen_rtx_MEM (mode, addr);
       add_reg_note (insn, REG_CFA_OFFSET, gen_rtx_SET (mem, reg));
     }
-  else if (unspec)
-    add_reg_note (insn, REG_CFA_EXPRESSION, gen_rtx_SET (mem, reg));
 }
 
 /* Emit code to save registers using MOV insns.
@@ -13323,18 +13346,7 @@ ix86_emit_restore_sse_regs_using_mov (HOST_WIDE_INT cfa_offset,
 	/* The location is aligned up to INCOMING_STACK_BOUNDARY.  */
 	align = MIN (GET_MODE_ALIGNMENT (V4SFmode), INCOMING_STACK_BOUNDARY);
 	set_mem_align (mem, align);
-
-	/* SSE saves are not within re-aligned local stack frame.
-	   In case INCOMING_STACK_BOUNDARY is misaligned, we have
-	   to emit unaligned load.  */
-	if (align < 128)
-	  {
-	    rtx unspec = gen_rtx_UNSPEC (V4SFmode, gen_rtvec (1, mem),
-					 UNSPEC_LOADU);
-	    emit_insn (gen_rtx_SET (reg, unspec));
-	  }
-	else
-	  emit_insn (gen_rtx_SET (reg, mem));
+	emit_insn (gen_rtx_SET (reg, mem));
 
 	ix86_add_cfa_restore_note (NULL, reg, cfa_offset);
 
@@ -14100,7 +14112,7 @@ ix86_decompose_address (rtx addr, struct ix86_address *out)
       else if (GET_CODE (addr) == AND
 	       && const_32bit_mask (XEXP (addr, 1), DImode))
 	{
-	  addr = simplify_gen_subreg (SImode, XEXP (addr, 0), DImode, 0);
+	  addr = lowpart_subreg (SImode, XEXP (addr, 0), DImode);
 	  if (addr == NULL_RTX)
 	    return 0;
 
@@ -14392,7 +14404,7 @@ darwin_local_data_pic (rtx disp)
    satisfies CONSTANT_P.  */
 
 static bool
-ix86_legitimate_constant_p (machine_mode, rtx x)
+ix86_legitimate_constant_p (machine_mode mode, rtx x)
 {
   /* Pointer bounds constants are not valid.  */
   if (POINTER_BOUNDS_MODE_P (GET_MODE (x)))
@@ -14458,13 +14470,25 @@ ix86_legitimate_constant_p (machine_mode, rtx x)
 #endif
       break;
 
+    case CONST_INT:
     case CONST_WIDE_INT:
-      if (!TARGET_64BIT && !standard_sse_constant_p (x))
-	return false;
+      switch (mode)
+	{
+	case TImode:
+	  if (TARGET_64BIT)
+	    return true;
+	  /* FALLTHRU */
+	case OImode:
+	case XImode:
+	  if (!standard_sse_constant_p (x, mode))
+	    return false;
+	default:
+	  break;
+	}
       break;
 
     case CONST_VECTOR:
-      if (!standard_sse_constant_p (x))
+      if (!standard_sse_constant_p (x, mode))
 	return false;
 
     default:
@@ -16211,8 +16235,7 @@ ix86_delegitimize_address (rtx x)
 	  x = XVECEXP (XEXP (x, 0), 0, 0);
 	  if (GET_MODE (orig_x) != GET_MODE (x) && MEM_P (orig_x))
 	    {
-	      x = simplify_gen_subreg (GET_MODE (orig_x), x,
-				       GET_MODE (x), 0);
+	      x = lowpart_subreg (GET_MODE (orig_x), x, GET_MODE (x));
 	      if (x == NULL_RTX)
 		return orig_x;
 	    }
@@ -16303,7 +16326,7 @@ ix86_delegitimize_address (rtx x)
     }
   if (GET_MODE (orig_x) != Pmode && MEM_P (orig_x))
     {
-      result = simplify_gen_subreg (GET_MODE (orig_x), result, Pmode, 0);
+      result = lowpart_subreg (GET_MODE (orig_x), result, Pmode);
       if (result == NULL_RTX)
 	return orig_x;
     }
@@ -18791,7 +18814,7 @@ ix86_expand_vector_move (machine_mode mode, rtx operands[])
       && (CONSTANT_P (op1)
 	  || (SUBREG_P (op1)
 	      && CONSTANT_P (SUBREG_REG (op1))))
-      && !standard_sse_constant_p (op1))
+      && !standard_sse_constant_p (op1, mode))
     op1 = validize_mem (force_const_mem (mode, op1));
 
   /* We need to check memory alignment for SSE mode since attribute
@@ -18838,70 +18861,79 @@ ix86_avx256_split_vector_move_misalign (rtx op0, rtx op1)
 {
   rtx m;
   rtx (*extract) (rtx, rtx, rtx);
-  rtx (*load_unaligned) (rtx, rtx);
-  rtx (*store_unaligned) (rtx, rtx);
   machine_mode mode;
 
-  switch (GET_MODE (op0))
+  if ((MEM_P (op1) && !TARGET_AVX256_SPLIT_UNALIGNED_LOAD)
+      || (MEM_P (op0) && !TARGET_AVX256_SPLIT_UNALIGNED_STORE))
+    {
+      emit_insn (gen_rtx_SET (op0, op1));
+      return;
+    }
+
+  rtx orig_op0 = NULL_RTX;
+  mode = GET_MODE (op0);
+  switch (GET_MODE_CLASS (mode))
+    {
+    case MODE_VECTOR_INT:
+    case MODE_INT:
+      if (mode != V32QImode)
+	{
+	  if (!MEM_P (op0))
+	    {
+	      orig_op0 = op0;
+	      op0 = gen_reg_rtx (V32QImode);
+	    }
+	  else
+	    op0 = gen_lowpart (V32QImode, op0);
+	  op1 = gen_lowpart (V32QImode, op1);
+	  mode = V32QImode;
+	}
+      break;
+    case MODE_VECTOR_FLOAT:
+      break;
+    default:
+      gcc_unreachable ();
+    }
+
+  switch (mode)
     {
     default:
       gcc_unreachable ();
     case V32QImode:
       extract = gen_avx_vextractf128v32qi;
-      load_unaligned = gen_avx_loaddquv32qi;
-      store_unaligned = gen_avx_storedquv32qi;
       mode = V16QImode;
       break;
     case V8SFmode:
       extract = gen_avx_vextractf128v8sf;
-      load_unaligned = gen_avx_loadups256;
-      store_unaligned = gen_avx_storeups256;
       mode = V4SFmode;
       break;
     case V4DFmode:
       extract = gen_avx_vextractf128v4df;
-      load_unaligned = gen_avx_loadupd256;
-      store_unaligned = gen_avx_storeupd256;
       mode = V2DFmode;
       break;
     }
 
   if (MEM_P (op1))
     {
-      if (TARGET_AVX256_SPLIT_UNALIGNED_LOAD
-	  && optimize_insn_for_speed_p ())
-	{
-	  rtx r = gen_reg_rtx (mode);
-	  m = adjust_address (op1, mode, 0);
-	  emit_move_insn (r, m);
-	  m = adjust_address (op1, mode, 16);
-	  r = gen_rtx_VEC_CONCAT (GET_MODE (op0), r, m);
-	  emit_move_insn (op0, r);
-	}
-      /* Normal *mov<mode>_internal pattern will handle
-	 unaligned loads just fine if misaligned_operand
-	 is true, and without the UNSPEC it can be combined
-	 with arithmetic instructions.  */
-      else if (misaligned_operand (op1, GET_MODE (op1)))
-	emit_insn (gen_rtx_SET (op0, op1));
-      else
-	emit_insn (load_unaligned (op0, op1));
+      rtx r = gen_reg_rtx (mode);
+      m = adjust_address (op1, mode, 0);
+      emit_move_insn (r, m);
+      m = adjust_address (op1, mode, 16);
+      r = gen_rtx_VEC_CONCAT (GET_MODE (op0), r, m);
+      emit_move_insn (op0, r);
     }
   else if (MEM_P (op0))
     {
-      if (TARGET_AVX256_SPLIT_UNALIGNED_STORE
-	  && optimize_insn_for_speed_p ())
-	{
-	  m = adjust_address (op0, mode, 0);
-	  emit_insn (extract (m, op1, const0_rtx));
-	  m = adjust_address (op0, mode, 16);
-	  emit_insn (extract (m, op1, const1_rtx));
-	}
-      else
-	emit_insn (store_unaligned (op0, op1));
+      m = adjust_address (op0, mode, 0);
+      emit_insn (extract (m, op1, const0_rtx));
+      m = adjust_address (op0, mode, 16);
+      emit_insn (extract (m, op1, const1_rtx));
     }
   else
     gcc_unreachable ();
+
+  if (orig_op0)
+    emit_move_insn (orig_op0, gen_lowpart (GET_MODE (orig_op0), op0));
 }
 
 /* Implement the movmisalign patterns for SSE.  Non-SSE modes go
@@ -18959,141 +18991,49 @@ ix86_avx256_split_vector_move_misalign (rtx op0, rtx op1)
 void
 ix86_expand_vector_move_misalign (machine_mode mode, rtx operands[])
 {
-  rtx op0, op1, orig_op0 = NULL_RTX, m;
-  rtx (*load_unaligned) (rtx, rtx);
-  rtx (*store_unaligned) (rtx, rtx);
+  rtx op0, op1, m;
 
   op0 = operands[0];
   op1 = operands[1];
 
-  if (GET_MODE_SIZE (mode) == 64)
+  /* Use unaligned load/store for AVX512 or when optimizing for size.  */
+  if (GET_MODE_SIZE (mode) == 64 || optimize_insn_for_size_p ())
     {
-      switch (GET_MODE_CLASS (mode))
-	{
-	case MODE_VECTOR_INT:
-	case MODE_INT:
-	  if (GET_MODE (op0) != V16SImode)
-	    {
-	      if (!MEM_P (op0))
-		{
-		  orig_op0 = op0;
-		  op0 = gen_reg_rtx (V16SImode);
-		}
-	      else
-		op0 = gen_lowpart (V16SImode, op0);
-	    }
-	  op1 = gen_lowpart (V16SImode, op1);
-	  /* FALLTHRU */
-
-	case MODE_VECTOR_FLOAT:
-	  switch (GET_MODE (op0))
-	    {
-	    default:
-	      gcc_unreachable ();
-	    case V16SImode:
-	      load_unaligned = gen_avx512f_loaddquv16si;
-	      store_unaligned = gen_avx512f_storedquv16si;
-	      break;
-	    case V16SFmode:
-	      load_unaligned = gen_avx512f_loadups512;
-	      store_unaligned = gen_avx512f_storeups512;
-	      break;
-	    case V8DFmode:
-	      load_unaligned = gen_avx512f_loadupd512;
-	      store_unaligned = gen_avx512f_storeupd512;
-	      break;
-	    }
-
-	  if (MEM_P (op1))
-	    emit_insn (load_unaligned (op0, op1));
-	  else if (MEM_P (op0))
-	    emit_insn (store_unaligned (op0, op1));
-	  else
-	    gcc_unreachable ();
-	  if (orig_op0)
-	    emit_move_insn (orig_op0, gen_lowpart (GET_MODE (orig_op0), op0));
-	  break;
-
-	default:
-	  gcc_unreachable ();
-	}
-
+      emit_insn (gen_rtx_SET (op0, op1));
       return;
     }
 
-  if (TARGET_AVX
-      && GET_MODE_SIZE (mode) == 32)
+  if (TARGET_AVX)
     {
-      switch (GET_MODE_CLASS (mode))
-	{
-	case MODE_VECTOR_INT:
-	case MODE_INT:
-	  if (GET_MODE (op0) != V32QImode)
-	    {
-	      if (!MEM_P (op0))
-		{
-		  orig_op0 = op0;
-		  op0 = gen_reg_rtx (V32QImode);
-		}
-	      else
-		op0 = gen_lowpart (V32QImode, op0);
-	    }
-	  op1 = gen_lowpart (V32QImode, op1);
-	  /* FALLTHRU */
+      if (GET_MODE_SIZE (mode) == 32)
+	ix86_avx256_split_vector_move_misalign (op0, op1);
+      else
+	/* Always use 128-bit mov<mode>_internal pattern for AVX.  */
+	emit_insn (gen_rtx_SET (op0, op1));
+      return;
+    }
 
-	case MODE_VECTOR_FLOAT:
-	  ix86_avx256_split_vector_move_misalign (op0, op1);
-	  if (orig_op0)
-	    emit_move_insn (orig_op0, gen_lowpart (GET_MODE (orig_op0), op0));
-	  break;
+  if (TARGET_SSE_UNALIGNED_LOAD_OPTIMAL
+      || TARGET_SSE_PACKED_SINGLE_INSN_OPTIMAL)
+    {
+      emit_insn (gen_rtx_SET (op0, op1));
+      return;
+    }
 
-	default:
-	  gcc_unreachable ();
-	}
-
+  /* ??? If we have typed data, then it would appear that using
+     movdqu is the only way to get unaligned data loaded with
+     integer type.  */
+  if (TARGET_SSE2 && GET_MODE_CLASS (mode) == MODE_VECTOR_INT)
+    {
+      emit_insn (gen_rtx_SET (op0, op1));
       return;
     }
 
   if (MEM_P (op1))
     {
-      /* Normal *mov<mode>_internal pattern will handle
-	 unaligned loads just fine if misaligned_operand
-	 is true, and without the UNSPEC it can be combined
-	 with arithmetic instructions.  */
-      if (TARGET_AVX
-	  && (GET_MODE_CLASS (mode) == MODE_VECTOR_INT
-	      || GET_MODE_CLASS (mode) == MODE_VECTOR_FLOAT)
-	  && misaligned_operand (op1, GET_MODE (op1)))
-	emit_insn (gen_rtx_SET (op0, op1));
-      /* ??? If we have typed data, then it would appear that using
-	 movdqu is the only way to get unaligned data loaded with
-	 integer type.  */
-      else if (TARGET_SSE2 && GET_MODE_CLASS (mode) == MODE_VECTOR_INT)
-	{
-	  if (GET_MODE (op0) != V16QImode)
-	    {
-	      orig_op0 = op0;
-	      op0 = gen_reg_rtx (V16QImode);
-	    }
-	  op1 = gen_lowpart (V16QImode, op1);
-	  /* We will eventually emit movups based on insn attributes.  */
-	  emit_insn (gen_sse2_loaddquv16qi (op0, op1));
-	  if (orig_op0)
-	    emit_move_insn (orig_op0, gen_lowpart (GET_MODE (orig_op0), op0));
-	}
-      else if (TARGET_SSE2 && mode == V2DFmode)
+      if (TARGET_SSE2 && mode == V2DFmode)
         {
           rtx zero;
-
-	  if (TARGET_AVX
-	      || TARGET_SSE_UNALIGNED_LOAD_OPTIMAL
-	      || TARGET_SSE_PACKED_SINGLE_INSN_OPTIMAL
-	      || optimize_insn_for_size_p ())
-	    {
-	      /* We will eventually emit movups based on insn attributes.  */
-	      emit_insn (gen_sse2_loadupd (op0, op1));
-	      return;
-	    }
 
 	  /* When SSE registers are split into halves, we can avoid
 	     writing to the top half twice.  */
@@ -19124,24 +19064,6 @@ ix86_expand_vector_move_misalign (machine_mode mode, rtx operands[])
         {
 	  rtx t;
 
-	  if (TARGET_AVX
-	      || TARGET_SSE_UNALIGNED_LOAD_OPTIMAL
-	      || TARGET_SSE_PACKED_SINGLE_INSN_OPTIMAL
-	      || optimize_insn_for_size_p ())
-	    {
-	      if (GET_MODE (op0) != V4SFmode)
-		{
-		  orig_op0 = op0;
-		  op0 = gen_reg_rtx (V4SFmode);
-		}
-	      op1 = gen_lowpart (V4SFmode, op1);
-	      emit_insn (gen_sse_loadups (op0, op1));
-	      if (orig_op0)
-		emit_move_insn (orig_op0,
-				gen_lowpart (GET_MODE (orig_op0), op0));
-	      return;
-            }
-
 	  if (mode != V4SFmode)
 	    t = gen_reg_rtx (V4SFmode);
 	  else
@@ -19162,49 +19084,22 @@ ix86_expand_vector_move_misalign (machine_mode mode, rtx operands[])
     }
   else if (MEM_P (op0))
     {
-      if (TARGET_SSE2 && GET_MODE_CLASS (mode) == MODE_VECTOR_INT)
-        {
-	  op0 = gen_lowpart (V16QImode, op0);
-	  op1 = gen_lowpart (V16QImode, op1);
-	  /* We will eventually emit movups based on insn attributes.  */
-	  emit_insn (gen_sse2_storedquv16qi (op0, op1));
-	}
-      else if (TARGET_SSE2 && mode == V2DFmode)
+      if (TARGET_SSE2 && mode == V2DFmode)
 	{
-	  if (TARGET_AVX
-	      || TARGET_SSE_UNALIGNED_STORE_OPTIMAL
-	      || TARGET_SSE_PACKED_SINGLE_INSN_OPTIMAL
-	      || optimize_insn_for_size_p ())
-	    /* We will eventually emit movups based on insn attributes.  */
-	    emit_insn (gen_sse2_storeupd (op0, op1));
-	  else
-	    {
-	      m = adjust_address (op0, DFmode, 0);
-	      emit_insn (gen_sse2_storelpd (m, op1));
-	      m = adjust_address (op0, DFmode, 8);
-	      emit_insn (gen_sse2_storehpd (m, op1));
-	    }
+	  m = adjust_address (op0, DFmode, 0);
+	  emit_insn (gen_sse2_storelpd (m, op1));
+	  m = adjust_address (op0, DFmode, 8);
+	  emit_insn (gen_sse2_storehpd (m, op1));
 	}
       else
 	{
 	  if (mode != V4SFmode)
 	    op1 = gen_lowpart (V4SFmode, op1);
 
-	  if (TARGET_AVX
-	      || TARGET_SSE_UNALIGNED_STORE_OPTIMAL
-	      || TARGET_SSE_PACKED_SINGLE_INSN_OPTIMAL
-	      || optimize_insn_for_size_p ())
-	    {
-	      op0 = gen_lowpart (V4SFmode, op0);
-	      emit_insn (gen_sse_storeups (op0, op1));
-	    }
-	  else
-	    {
-	      m = adjust_address (op0, V2SFmode, 0);
-	      emit_insn (gen_sse_storelps (m, op1));
-	      m = adjust_address (op0, V2SFmode, 8);
-	      emit_insn (gen_sse_storehps (m, op1));
-	    }
+	  m = adjust_address (op0, V2SFmode, 0);
+	  emit_insn (gen_sse_storelps (m, op1));
+	  m = adjust_address (op0, V2SFmode, 8);
+	  emit_insn (gen_sse_storehps (m, op1));
 	}
     }
   else
@@ -19580,9 +19475,9 @@ ix86_split_idivmod (machine_mode mode, rtx operands[],
   emit_label (qimode_label);
   /* Don't use operands[0] for result of 8bit divide since not all
      registers support QImode ZERO_EXTRACT.  */
-  tmp0 = simplify_gen_subreg (HImode, scratch, mode, 0);
-  tmp1 = simplify_gen_subreg (HImode, operands[2], mode, 0);
-  tmp2 = simplify_gen_subreg (QImode, operands[3], mode, 0);
+  tmp0 = lowpart_subreg (HImode, scratch, mode);
+  tmp1 = lowpart_subreg (HImode, operands[2], mode);
+  tmp2 = lowpart_subreg (QImode, operands[3], mode);
   emit_insn (gen_udivmodhiqi3 (tmp0, tmp1, tmp2));
 
   if (signed_p)
@@ -21016,7 +20911,7 @@ ix86_split_copysign_const (rtx operands[])
   mode = GET_MODE (dest);
   vmode = GET_MODE (mask);
 
-  dest = simplify_gen_subreg (vmode, dest, mode, 0);
+  dest = lowpart_subreg (vmode, dest, mode);
   x = gen_rtx_AND (vmode, dest, mask);
   emit_insn (gen_rtx_SET (dest, x));
 
@@ -21062,7 +20957,7 @@ ix86_split_copysign_var (rtx operands[])
       emit_insn (gen_rtx_SET (scratch, x));
 
       dest = mask;
-      op0 = simplify_gen_subreg (vmode, op0, mode, 0);
+      op0 = lowpart_subreg (vmode, op0, mode);
       x = gen_rtx_NOT (vmode, dest);
       x = gen_rtx_AND (vmode, x, op0);
       emit_insn (gen_rtx_SET (dest, x));
@@ -21076,21 +20971,21 @@ ix86_split_copysign_var (rtx operands[])
       else						/* alternative 2,4 */
 	{
           gcc_assert (REGNO (mask) == REGNO (scratch));
-          op1 = simplify_gen_subreg (vmode, op1, mode, 0);
+          op1 = lowpart_subreg (vmode, op1, mode);
 	  x = gen_rtx_AND (vmode, scratch, op1);
 	}
       emit_insn (gen_rtx_SET (scratch, x));
 
       if (REGNO (op0) == REGNO (dest))			/* alternative 1,2 */
 	{
-	  dest = simplify_gen_subreg (vmode, op0, mode, 0);
+	  dest = lowpart_subreg (vmode, op0, mode);
 	  x = gen_rtx_AND (vmode, dest, nmask);
 	}
       else						/* alternative 3,4 */
 	{
           gcc_assert (REGNO (nmask) == REGNO (dest));
 	  dest = nmask;
-	  op0 = simplify_gen_subreg (vmode, op0, mode, 0);
+	  op0 = lowpart_subreg (vmode, op0, mode);
 	  x = gen_rtx_AND (vmode, dest, op0);
 	}
       emit_insn (gen_rtx_SET (dest, x));
@@ -32655,9 +32550,9 @@ static const struct builtin_description bdesc_special_args[] =
   { OPTION_MASK_ISA_XSAVEC | OPTION_MASK_ISA_64BIT, CODE_FOR_nothing, "__builtin_ia32_xsavec64", IX86_BUILTIN_XSAVEC64, UNKNOWN, (int) VOID_FTYPE_PVOID_INT64 },
 
   /* SSE */
-  { OPTION_MASK_ISA_SSE, CODE_FOR_sse_storeups, "__builtin_ia32_storeups", IX86_BUILTIN_STOREUPS, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V4SF },
+  { OPTION_MASK_ISA_SSE, CODE_FOR_movv4sf_internal, "__builtin_ia32_storeups", IX86_BUILTIN_STOREUPS, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V4SF },
   { OPTION_MASK_ISA_SSE, CODE_FOR_sse_movntv4sf, "__builtin_ia32_movntps", IX86_BUILTIN_MOVNTPS, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V4SF },
-  { OPTION_MASK_ISA_SSE, CODE_FOR_sse_loadups, "__builtin_ia32_loadups", IX86_BUILTIN_LOADUPS, UNKNOWN, (int) V4SF_FTYPE_PCFLOAT },
+  { OPTION_MASK_ISA_SSE, CODE_FOR_movv4sf_internal, "__builtin_ia32_loadups", IX86_BUILTIN_LOADUPS, UNKNOWN, (int) V4SF_FTYPE_PCFLOAT },
 
   { OPTION_MASK_ISA_SSE, CODE_FOR_sse_loadhps_exp, "__builtin_ia32_loadhps", IX86_BUILTIN_LOADHPS, UNKNOWN, (int) V4SF_FTYPE_V4SF_PCV2SF },
   { OPTION_MASK_ISA_SSE, CODE_FOR_sse_loadlps_exp, "__builtin_ia32_loadlps", IX86_BUILTIN_LOADLPS, UNKNOWN, (int) V4SF_FTYPE_V4SF_PCV2SF },
@@ -32671,14 +32566,14 @@ static const struct builtin_description bdesc_special_args[] =
   /* SSE2 */
   { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_lfence, "__builtin_ia32_lfence", IX86_BUILTIN_LFENCE, UNKNOWN, (int) VOID_FTYPE_VOID },
   { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_mfence, 0, IX86_BUILTIN_MFENCE, UNKNOWN, (int) VOID_FTYPE_VOID },
-  { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_storeupd, "__builtin_ia32_storeupd", IX86_BUILTIN_STOREUPD, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V2DF },
-  { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_storedquv16qi, "__builtin_ia32_storedqu", IX86_BUILTIN_STOREDQU, UNKNOWN, (int) VOID_FTYPE_PCHAR_V16QI },
+  { OPTION_MASK_ISA_SSE2, CODE_FOR_movv2df_internal, "__builtin_ia32_storeupd", IX86_BUILTIN_STOREUPD, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V2DF },
+  { OPTION_MASK_ISA_SSE2, CODE_FOR_movv16qi_internal, "__builtin_ia32_storedqu", IX86_BUILTIN_STOREDQU, UNKNOWN, (int) VOID_FTYPE_PCHAR_V16QI },
   { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_movntv2df, "__builtin_ia32_movntpd", IX86_BUILTIN_MOVNTPD, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V2DF },
   { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_movntv2di, "__builtin_ia32_movntdq", IX86_BUILTIN_MOVNTDQ, UNKNOWN, (int) VOID_FTYPE_PV2DI_V2DI },
   { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_movntisi, "__builtin_ia32_movnti", IX86_BUILTIN_MOVNTI, UNKNOWN, (int) VOID_FTYPE_PINT_INT },
   { OPTION_MASK_ISA_SSE2 | OPTION_MASK_ISA_64BIT, CODE_FOR_sse2_movntidi, "__builtin_ia32_movnti64", IX86_BUILTIN_MOVNTI64, UNKNOWN, (int) VOID_FTYPE_PLONGLONG_LONGLONG },
-  { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_loadupd, "__builtin_ia32_loadupd", IX86_BUILTIN_LOADUPD, UNKNOWN, (int) V2DF_FTYPE_PCDOUBLE },
-  { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_loaddquv16qi, "__builtin_ia32_loaddqu", IX86_BUILTIN_LOADDQU, UNKNOWN, (int) V16QI_FTYPE_PCCHAR },
+  { OPTION_MASK_ISA_SSE2, CODE_FOR_movv2df_internal, "__builtin_ia32_loadupd", IX86_BUILTIN_LOADUPD, UNKNOWN, (int) V2DF_FTYPE_PCDOUBLE },
+  { OPTION_MASK_ISA_SSE2, CODE_FOR_movv16qi_internal, "__builtin_ia32_loaddqu", IX86_BUILTIN_LOADDQU, UNKNOWN, (int) V16QI_FTYPE_PCCHAR },
 
   { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_loadhpd_exp, "__builtin_ia32_loadhpd", IX86_BUILTIN_LOADHPD, UNKNOWN, (int) V2DF_FTYPE_V2DF_PCDOUBLE },
   { OPTION_MASK_ISA_SSE2, CODE_FOR_sse2_loadlpd_exp, "__builtin_ia32_loadlpd", IX86_BUILTIN_LOADLPD, UNKNOWN, (int) V2DF_FTYPE_V2DF_PCDOUBLE },
@@ -32703,12 +32598,12 @@ static const struct builtin_description bdesc_special_args[] =
   { OPTION_MASK_ISA_AVX, CODE_FOR_avx_vbroadcastf128_v4df, "__builtin_ia32_vbroadcastf128_pd256", IX86_BUILTIN_VBROADCASTPD256, UNKNOWN, (int) V4DF_FTYPE_PCV2DF },
   { OPTION_MASK_ISA_AVX, CODE_FOR_avx_vbroadcastf128_v8sf, "__builtin_ia32_vbroadcastf128_ps256", IX86_BUILTIN_VBROADCASTPS256, UNKNOWN, (int) V8SF_FTYPE_PCV4SF },
 
-  { OPTION_MASK_ISA_AVX, CODE_FOR_avx_loadupd256, "__builtin_ia32_loadupd256", IX86_BUILTIN_LOADUPD256, UNKNOWN, (int) V4DF_FTYPE_PCDOUBLE },
-  { OPTION_MASK_ISA_AVX, CODE_FOR_avx_loadups256, "__builtin_ia32_loadups256", IX86_BUILTIN_LOADUPS256, UNKNOWN, (int) V8SF_FTYPE_PCFLOAT },
-  { OPTION_MASK_ISA_AVX, CODE_FOR_avx_storeupd256, "__builtin_ia32_storeupd256", IX86_BUILTIN_STOREUPD256, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V4DF },
-  { OPTION_MASK_ISA_AVX, CODE_FOR_avx_storeups256, "__builtin_ia32_storeups256", IX86_BUILTIN_STOREUPS256, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V8SF },
-  { OPTION_MASK_ISA_AVX, CODE_FOR_avx_loaddquv32qi, "__builtin_ia32_loaddqu256", IX86_BUILTIN_LOADDQU256, UNKNOWN, (int) V32QI_FTYPE_PCCHAR },
-  { OPTION_MASK_ISA_AVX, CODE_FOR_avx_storedquv32qi, "__builtin_ia32_storedqu256", IX86_BUILTIN_STOREDQU256, UNKNOWN, (int) VOID_FTYPE_PCHAR_V32QI },
+  { OPTION_MASK_ISA_AVX, CODE_FOR_movv4df_internal, "__builtin_ia32_loadupd256", IX86_BUILTIN_LOADUPD256, UNKNOWN, (int) V4DF_FTYPE_PCDOUBLE },
+  { OPTION_MASK_ISA_AVX, CODE_FOR_movv8sf_internal, "__builtin_ia32_loadups256", IX86_BUILTIN_LOADUPS256, UNKNOWN, (int) V8SF_FTYPE_PCFLOAT },
+  { OPTION_MASK_ISA_AVX, CODE_FOR_movv4df_internal, "__builtin_ia32_storeupd256", IX86_BUILTIN_STOREUPD256, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V4DF },
+  { OPTION_MASK_ISA_AVX, CODE_FOR_movv8sf_internal, "__builtin_ia32_storeups256", IX86_BUILTIN_STOREUPS256, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V8SF },
+  { OPTION_MASK_ISA_AVX, CODE_FOR_movv32qi_internal, "__builtin_ia32_loaddqu256", IX86_BUILTIN_LOADDQU256, UNKNOWN, (int) V32QI_FTYPE_PCCHAR },
+  { OPTION_MASK_ISA_AVX, CODE_FOR_movv32qi_internal, "__builtin_ia32_storedqu256", IX86_BUILTIN_STOREDQU256, UNKNOWN, (int) VOID_FTYPE_PCHAR_V32QI },
   { OPTION_MASK_ISA_AVX, CODE_FOR_avx_lddqu256, "__builtin_ia32_lddqu256", IX86_BUILTIN_LDDQU256, UNKNOWN, (int) V32QI_FTYPE_PCCHAR },
 
   { OPTION_MASK_ISA_AVX, CODE_FOR_avx_movntv4di, "__builtin_ia32_movntdq256", IX86_BUILTIN_MOVNTDQ256, UNKNOWN, (int) VOID_FTYPE_PV4DI_V4DI },
@@ -32748,10 +32643,10 @@ static const struct builtin_description bdesc_special_args[] =
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_expandv8df_maskz, "__builtin_ia32_expandloaddf512_maskz", IX86_BUILTIN_EXPANDPDLOAD512Z, UNKNOWN, (int) V8DF_FTYPE_PCV8DF_V8DF_UQI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_expandv8di_mask, "__builtin_ia32_expandloaddi512_mask", IX86_BUILTIN_PEXPANDQLOAD512, UNKNOWN, (int) V8DI_FTYPE_PCV8DI_V8DI_UQI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_expandv8di_maskz, "__builtin_ia32_expandloaddi512_maskz", IX86_BUILTIN_PEXPANDQLOAD512Z, UNKNOWN, (int) V8DI_FTYPE_PCV8DI_V8DI_UQI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loaddquv16si_mask, "__builtin_ia32_loaddqusi512_mask", IX86_BUILTIN_LOADDQUSI512, UNKNOWN, (int) V16SI_FTYPE_PCV16SI_V16SI_UHI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loaddquv8di_mask, "__builtin_ia32_loaddqudi512_mask", IX86_BUILTIN_LOADDQUDI512, UNKNOWN, (int) V8DI_FTYPE_PCV8DI_V8DI_UQI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadupd512_mask, "__builtin_ia32_loadupd512_mask", IX86_BUILTIN_LOADUPD512, UNKNOWN, (int) V8DF_FTYPE_PCV8DF_V8DF_UQI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadups512_mask, "__builtin_ia32_loadups512_mask", IX86_BUILTIN_LOADUPS512, UNKNOWN, (int) V16SF_FTYPE_PCV16SF_V16SF_UHI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadv16si_mask, "__builtin_ia32_loaddqusi512_mask", IX86_BUILTIN_LOADDQUSI512, UNKNOWN, (int) V16SI_FTYPE_PCINT_V16SI_UHI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadv8di_mask, "__builtin_ia32_loaddqudi512_mask", IX86_BUILTIN_LOADDQUDI512, UNKNOWN, (int) V8DI_FTYPE_PCINT64_V8DI_UQI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadv8df_mask, "__builtin_ia32_loadupd512_mask", IX86_BUILTIN_LOADUPD512, UNKNOWN, (int) V8DF_FTYPE_PCDOUBLE_V8DF_UQI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadv16sf_mask, "__builtin_ia32_loadups512_mask", IX86_BUILTIN_LOADUPS512, UNKNOWN, (int) V16SF_FTYPE_PCFLOAT_V16SF_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadv16sf_mask, "__builtin_ia32_loadaps512_mask", IX86_BUILTIN_LOADAPS512, UNKNOWN, (int) V16SF_FTYPE_PCV16SF_V16SF_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadv16si_mask, "__builtin_ia32_movdqa32load512_mask", IX86_BUILTIN_MOVDQA32LOAD512, UNKNOWN, (int) V16SI_FTYPE_PCV16SI_V16SI_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_loadv8df_mask, "__builtin_ia32_loadapd512_mask", IX86_BUILTIN_LOADAPD512, UNKNOWN, (int) V8DF_FTYPE_PCV8DF_V8DF_UQI },
@@ -32760,9 +32655,9 @@ static const struct builtin_description bdesc_special_args[] =
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_movntv8df, "__builtin_ia32_movntpd512", IX86_BUILTIN_MOVNTPD512, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V8DF },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_movntv8di, "__builtin_ia32_movntdq512", IX86_BUILTIN_MOVNTDQ512, UNKNOWN, (int) VOID_FTYPE_PV8DI_V8DI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_movntdqa, "__builtin_ia32_movntdqa512", IX86_BUILTIN_MOVNTDQA512, UNKNOWN, (int) V8DI_FTYPE_PV8DI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storedquv16si_mask, "__builtin_ia32_storedqusi512_mask", IX86_BUILTIN_STOREDQUSI512, UNKNOWN, (int) VOID_FTYPE_PV16SI_V16SI_UHI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storedquv8di_mask, "__builtin_ia32_storedqudi512_mask", IX86_BUILTIN_STOREDQUDI512, UNKNOWN, (int) VOID_FTYPE_PV8DI_V8DI_UQI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storeupd512_mask, "__builtin_ia32_storeupd512_mask", IX86_BUILTIN_STOREUPD512, UNKNOWN, (int) VOID_FTYPE_PV8DF_V8DF_UQI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storev16si_mask, "__builtin_ia32_storedqusi512_mask", IX86_BUILTIN_STOREDQUSI512, UNKNOWN, (int) VOID_FTYPE_PINT_V16SI_UHI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storev8di_mask, "__builtin_ia32_storedqudi512_mask", IX86_BUILTIN_STOREDQUDI512, UNKNOWN, (int) VOID_FTYPE_PINT64_V8DI_UQI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storev8df_mask, "__builtin_ia32_storeupd512_mask", IX86_BUILTIN_STOREUPD512, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V8DF_UQI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_us_truncatev8div8si2_mask_store, "__builtin_ia32_pmovusqd512mem_mask", IX86_BUILTIN_PMOVUSQD512_MEM, UNKNOWN, (int) VOID_FTYPE_PV8SI_V8DI_UQI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_ss_truncatev8div8si2_mask_store, "__builtin_ia32_pmovsqd512mem_mask", IX86_BUILTIN_PMOVSQD512_MEM, UNKNOWN, (int) VOID_FTYPE_PV8SI_V8DI_UQI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_truncatev8div8si2_mask_store, "__builtin_ia32_pmovqd512mem_mask", IX86_BUILTIN_PMOVQD512_MEM, UNKNOWN, (int) VOID_FTYPE_PV8SI_V8DI_UQI },
@@ -32778,7 +32673,7 @@ static const struct builtin_description bdesc_special_args[] =
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_us_truncatev16siv16qi2_mask_store, "__builtin_ia32_pmovusdb512mem_mask", IX86_BUILTIN_PMOVUSDB512_MEM, UNKNOWN, (int) VOID_FTYPE_PV16QI_V16SI_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_ss_truncatev16siv16qi2_mask_store, "__builtin_ia32_pmovsdb512mem_mask", IX86_BUILTIN_PMOVSDB512_MEM, UNKNOWN, (int) VOID_FTYPE_PV16QI_V16SI_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_truncatev16siv16qi2_mask_store, "__builtin_ia32_pmovdb512mem_mask", IX86_BUILTIN_PMOVDB512_MEM, UNKNOWN, (int) VOID_FTYPE_PV16QI_V16SI_UHI },
-  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storeups512_mask, "__builtin_ia32_storeups512_mask", IX86_BUILTIN_STOREUPS512, UNKNOWN, (int) VOID_FTYPE_PV16SF_V16SF_UHI },
+  { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storev16sf_mask, "__builtin_ia32_storeups512_mask", IX86_BUILTIN_STOREUPS512, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V16SF_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storev16sf_mask, "__builtin_ia32_storeaps512_mask", IX86_BUILTIN_STOREAPS512, UNKNOWN, (int) VOID_FTYPE_PV16SF_V16SF_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storev16si_mask, "__builtin_ia32_movdqa32store512_mask", IX86_BUILTIN_MOVDQA32STORE512, UNKNOWN, (int) VOID_FTYPE_PV16SI_V16SI_UHI },
   { OPTION_MASK_ISA_AVX512F, CODE_FOR_avx512f_storev8df_mask, "__builtin_ia32_storeapd512_mask", IX86_BUILTIN_STOREAPD512, UNKNOWN, (int) VOID_FTYPE_PV8DF_V8DF_UQI },
@@ -32807,16 +32702,16 @@ static const struct builtin_description bdesc_special_args[] =
   { OPTION_MASK_ISA_RTM, CODE_FOR_xtest, "__builtin_ia32_xtest", IX86_BUILTIN_XTEST, UNKNOWN, (int) INT_FTYPE_VOID },
 
   /* AVX512BW */
-  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_loaddquv32hi_mask, "__builtin_ia32_loaddquhi512_mask", IX86_BUILTIN_LOADDQUHI512_MASK, UNKNOWN, (int) V32HI_FTYPE_PCV32HI_V32HI_USI },
-  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512f_loaddquv64qi_mask, "__builtin_ia32_loaddquqi512_mask", IX86_BUILTIN_LOADDQUQI512_MASK, UNKNOWN, (int) V64QI_FTYPE_PCV64QI_V64QI_UDI },
-  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_storedquv32hi_mask, "__builtin_ia32_storedquhi512_mask", IX86_BUILTIN_STOREDQUHI512_MASK, UNKNOWN, (int) VOID_FTYPE_PV32HI_V32HI_USI },
-  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_storedquv64qi_mask, "__builtin_ia32_storedquqi512_mask", IX86_BUILTIN_STOREDQUQI512_MASK, UNKNOWN, (int) VOID_FTYPE_PV64QI_V64QI_UDI },
+  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_loadv32hi_mask, "__builtin_ia32_loaddquhi512_mask", IX86_BUILTIN_LOADDQUHI512_MASK, UNKNOWN, (int) V32HI_FTYPE_PCSHORT_V32HI_USI },
+  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_loadv64qi_mask, "__builtin_ia32_loaddquqi512_mask", IX86_BUILTIN_LOADDQUQI512_MASK, UNKNOWN, (int) V64QI_FTYPE_PCCHAR_V64QI_UDI },
+  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_storev32hi_mask, "__builtin_ia32_storedquhi512_mask", IX86_BUILTIN_STOREDQUHI512_MASK, UNKNOWN, (int) VOID_FTYPE_PSHORT_V32HI_USI },
+  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_storev64qi_mask, "__builtin_ia32_storedquqi512_mask", IX86_BUILTIN_STOREDQUQI512_MASK, UNKNOWN, (int) VOID_FTYPE_PCHAR_V64QI_UDI },
 
   /* AVX512VL */
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loaddquv16hi_mask, "__builtin_ia32_loaddquhi256_mask", IX86_BUILTIN_LOADDQUHI256_MASK, UNKNOWN, (int) V16HI_FTYPE_PCV16HI_V16HI_UHI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loaddquv8hi_mask, "__builtin_ia32_loaddquhi128_mask", IX86_BUILTIN_LOADDQUHI128_MASK, UNKNOWN, (int) V8HI_FTYPE_PCV8HI_V8HI_UQI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx_loaddquv32qi_mask, "__builtin_ia32_loaddquqi256_mask", IX86_BUILTIN_LOADDQUQI256_MASK, UNKNOWN, (int) V32QI_FTYPE_PCV32QI_V32QI_USI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_sse2_loaddquv16qi_mask, "__builtin_ia32_loaddquqi128_mask", IX86_BUILTIN_LOADDQUQI128_MASK, UNKNOWN, (int) V16QI_FTYPE_PCV16QI_V16QI_UHI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv16hi_mask, "__builtin_ia32_loaddquhi256_mask", IX86_BUILTIN_LOADDQUHI256_MASK, UNKNOWN, (int) V16HI_FTYPE_PCSHORT_V16HI_UHI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv8hi_mask, "__builtin_ia32_loaddquhi128_mask", IX86_BUILTIN_LOADDQUHI128_MASK, UNKNOWN, (int) V8HI_FTYPE_PCSHORT_V8HI_UQI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv32qi_mask, "__builtin_ia32_loaddquqi256_mask", IX86_BUILTIN_LOADDQUQI256_MASK, UNKNOWN, (int) V32QI_FTYPE_PCCHAR_V32QI_USI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv16qi_mask, "__builtin_ia32_loaddquqi128_mask", IX86_BUILTIN_LOADDQUQI128_MASK, UNKNOWN, (int) V16QI_FTYPE_PCCHAR_V16QI_UHI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv4di_mask, "__builtin_ia32_movdqa64load256_mask", IX86_BUILTIN_MOVDQA64LOAD256_MASK, UNKNOWN, (int) V4DI_FTYPE_PCV4DI_V4DI_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv2di_mask, "__builtin_ia32_movdqa64load128_mask", IX86_BUILTIN_MOVDQA64LOAD128_MASK, UNKNOWN, (int) V2DI_FTYPE_PCV2DI_V2DI_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv8si_mask, "__builtin_ia32_movdqa32load256_mask", IX86_BUILTIN_MOVDQA32LOAD256_MASK, UNKNOWN, (int) V8SI_FTYPE_PCV8SI_V8SI_UQI },
@@ -32833,26 +32728,26 @@ static const struct builtin_description bdesc_special_args[] =
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev2df_mask, "__builtin_ia32_storeapd128_mask", IX86_BUILTIN_STOREAPD128_MASK, UNKNOWN, (int) VOID_FTYPE_PV2DF_V2DF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev8sf_mask, "__builtin_ia32_storeaps256_mask", IX86_BUILTIN_STOREAPS256_MASK, UNKNOWN, (int) VOID_FTYPE_PV8SF_V8SF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev4sf_mask, "__builtin_ia32_storeaps128_mask", IX86_BUILTIN_STOREAPS128_MASK, UNKNOWN, (int) VOID_FTYPE_PV4SF_V4SF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx_loadupd256_mask, "__builtin_ia32_loadupd256_mask", IX86_BUILTIN_LOADUPD256_MASK, UNKNOWN, (int) V4DF_FTYPE_PCV4DF_V4DF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_sse2_loadupd_mask, "__builtin_ia32_loadupd128_mask", IX86_BUILTIN_LOADUPD128_MASK, UNKNOWN, (int) V2DF_FTYPE_PCV2DF_V2DF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx_loadups256_mask, "__builtin_ia32_loadups256_mask", IX86_BUILTIN_LOADUPS256_MASK, UNKNOWN, (int) V8SF_FTYPE_PCV8SF_V8SF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_sse_loadups_mask, "__builtin_ia32_loadups128_mask", IX86_BUILTIN_LOADUPS128_MASK, UNKNOWN, (int) V4SF_FTYPE_PCV4SF_V4SF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storeupd256_mask, "__builtin_ia32_storeupd256_mask", IX86_BUILTIN_STOREUPD256_MASK, UNKNOWN, (int) VOID_FTYPE_PV4DF_V4DF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storeupd_mask, "__builtin_ia32_storeupd128_mask", IX86_BUILTIN_STOREUPD128_MASK, UNKNOWN, (int) VOID_FTYPE_PV2DF_V2DF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storeups256_mask, "__builtin_ia32_storeups256_mask", IX86_BUILTIN_STOREUPS256_MASK, UNKNOWN, (int) VOID_FTYPE_PV8SF_V8SF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storeups_mask, "__builtin_ia32_storeups128_mask", IX86_BUILTIN_STOREUPS128_MASK, UNKNOWN, (int) VOID_FTYPE_PV4SF_V4SF_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loaddquv4di_mask, "__builtin_ia32_loaddqudi256_mask", IX86_BUILTIN_LOADDQUDI256_MASK, UNKNOWN, (int) V4DI_FTYPE_PCV4DI_V4DI_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loaddquv2di_mask, "__builtin_ia32_loaddqudi128_mask", IX86_BUILTIN_LOADDQUDI128_MASK, UNKNOWN, (int) V2DI_FTYPE_PCV2DI_V2DI_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx_loaddquv8si_mask, "__builtin_ia32_loaddqusi256_mask", IX86_BUILTIN_LOADDQUSI256_MASK, UNKNOWN, (int) V8SI_FTYPE_PCV8SI_V8SI_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_sse2_loaddquv4si_mask, "__builtin_ia32_loaddqusi128_mask", IX86_BUILTIN_LOADDQUSI128_MASK, UNKNOWN, (int) V4SI_FTYPE_PCV4SI_V4SI_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv4di_mask, "__builtin_ia32_storedqudi256_mask", IX86_BUILTIN_STOREDQUDI256_MASK, UNKNOWN, (int) VOID_FTYPE_PV4DI_V4DI_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv2di_mask, "__builtin_ia32_storedqudi128_mask", IX86_BUILTIN_STOREDQUDI128_MASK, UNKNOWN, (int) VOID_FTYPE_PV2DI_V2DI_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv8si_mask, "__builtin_ia32_storedqusi256_mask", IX86_BUILTIN_STOREDQUSI256_MASK, UNKNOWN, (int) VOID_FTYPE_PV8SI_V8SI_UQI },
-  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv4si_mask, "__builtin_ia32_storedqusi128_mask", IX86_BUILTIN_STOREDQUSI128_MASK, UNKNOWN, (int) VOID_FTYPE_PV4SI_V4SI_UQI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv16hi_mask, "__builtin_ia32_storedquhi256_mask", IX86_BUILTIN_STOREDQUHI256_MASK, UNKNOWN, (int) VOID_FTYPE_PV16HI_V16HI_UHI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv8hi_mask, "__builtin_ia32_storedquhi128_mask", IX86_BUILTIN_STOREDQUHI128_MASK, UNKNOWN, (int) VOID_FTYPE_PV8HI_V8HI_UQI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv32qi_mask, "__builtin_ia32_storedquqi256_mask", IX86_BUILTIN_STOREDQUQI256_MASK, UNKNOWN, (int) VOID_FTYPE_PV32QI_V32QI_USI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storedquv16qi_mask, "__builtin_ia32_storedquqi128_mask", IX86_BUILTIN_STOREDQUQI128_MASK, UNKNOWN, (int) VOID_FTYPE_PV16QI_V16QI_UHI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv4df_mask, "__builtin_ia32_loadupd256_mask", IX86_BUILTIN_LOADUPD256_MASK, UNKNOWN, (int) V4DF_FTYPE_PCDOUBLE_V4DF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv2df_mask, "__builtin_ia32_loadupd128_mask", IX86_BUILTIN_LOADUPD128_MASK, UNKNOWN, (int) V2DF_FTYPE_PCDOUBLE_V2DF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv8sf_mask, "__builtin_ia32_loadups256_mask", IX86_BUILTIN_LOADUPS256_MASK, UNKNOWN, (int) V8SF_FTYPE_PCFLOAT_V8SF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv4sf_mask, "__builtin_ia32_loadups128_mask", IX86_BUILTIN_LOADUPS128_MASK, UNKNOWN, (int) V4SF_FTYPE_PCFLOAT_V4SF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev4df_mask, "__builtin_ia32_storeupd256_mask", IX86_BUILTIN_STOREUPD256_MASK, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V4DF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev2df_mask, "__builtin_ia32_storeupd128_mask", IX86_BUILTIN_STOREUPD128_MASK, UNKNOWN, (int) VOID_FTYPE_PDOUBLE_V2DF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev8sf_mask, "__builtin_ia32_storeups256_mask", IX86_BUILTIN_STOREUPS256_MASK, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V8SF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev4sf_mask, "__builtin_ia32_storeups128_mask", IX86_BUILTIN_STOREUPS128_MASK, UNKNOWN, (int) VOID_FTYPE_PFLOAT_V4SF_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv4di_mask, "__builtin_ia32_loaddqudi256_mask", IX86_BUILTIN_LOADDQUDI256_MASK, UNKNOWN, (int) V4DI_FTYPE_PCINT64_V4DI_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv2di_mask, "__builtin_ia32_loaddqudi128_mask", IX86_BUILTIN_LOADDQUDI128_MASK, UNKNOWN, (int) V2DI_FTYPE_PCINT64_V2DI_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv8si_mask, "__builtin_ia32_loaddqusi256_mask", IX86_BUILTIN_LOADDQUSI256_MASK, UNKNOWN, (int) V8SI_FTYPE_PCINT_V8SI_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv4si_mask, "__builtin_ia32_loaddqusi128_mask", IX86_BUILTIN_LOADDQUSI128_MASK, UNKNOWN, (int) V4SI_FTYPE_PCINT_V4SI_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev4di_mask, "__builtin_ia32_storedqudi256_mask", IX86_BUILTIN_STOREDQUDI256_MASK, UNKNOWN, (int) VOID_FTYPE_PINT64_V4DI_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev2di_mask, "__builtin_ia32_storedqudi128_mask", IX86_BUILTIN_STOREDQUDI128_MASK, UNKNOWN, (int) VOID_FTYPE_PINT64_V2DI_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev8si_mask, "__builtin_ia32_storedqusi256_mask", IX86_BUILTIN_STOREDQUSI256_MASK, UNKNOWN, (int) VOID_FTYPE_PINT_V8SI_UQI },
+  { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev4si_mask, "__builtin_ia32_storedqusi128_mask", IX86_BUILTIN_STOREDQUSI128_MASK, UNKNOWN, (int) VOID_FTYPE_PINT_V4SI_UQI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev16hi_mask, "__builtin_ia32_storedquhi256_mask", IX86_BUILTIN_STOREDQUHI256_MASK, UNKNOWN, (int) VOID_FTYPE_PSHORT_V16HI_UHI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev8hi_mask, "__builtin_ia32_storedquhi128_mask", IX86_BUILTIN_STOREDQUHI128_MASK, UNKNOWN, (int) VOID_FTYPE_PSHORT_V8HI_UQI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev32qi_mask, "__builtin_ia32_storedquqi256_mask", IX86_BUILTIN_STOREDQUQI256_MASK, UNKNOWN, (int) VOID_FTYPE_PCHAR_V32QI_USI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_storev16qi_mask, "__builtin_ia32_storedquqi128_mask", IX86_BUILTIN_STOREDQUQI128_MASK, UNKNOWN, (int) VOID_FTYPE_PCHAR_V16QI_UHI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_compressstorev4df_mask, "__builtin_ia32_compressstoredf256_mask", IX86_BUILTIN_COMPRESSPDSTORE256, UNKNOWN, (int) VOID_FTYPE_PV4DF_V4DF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_compressstorev2df_mask, "__builtin_ia32_compressstoredf128_mask", IX86_BUILTIN_COMPRESSPDSTORE128, UNKNOWN, (int) VOID_FTYPE_PV2DF_V2DF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_compressstorev8sf_mask, "__builtin_ia32_compressstoresf256_mask", IX86_BUILTIN_COMPRESSPSSTORE256, UNKNOWN, (int) VOID_FTYPE_PV8SF_V8SF_UQI },
@@ -33984,10 +33879,10 @@ static const struct builtin_description bdesc_args[] =
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv2df_mask, "__builtin_ia32_movapd128_mask", IX86_BUILTIN_MOVAPD128_MASK, UNKNOWN, (int) V2DF_FTYPE_V2DF_V2DF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv8sf_mask, "__builtin_ia32_movaps256_mask", IX86_BUILTIN_MOVAPS256_MASK, UNKNOWN, (int) V8SF_FTYPE_V8SF_V8SF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv4sf_mask, "__builtin_ia32_movaps128_mask", IX86_BUILTIN_MOVAPS128_MASK, UNKNOWN, (int) V4SF_FTYPE_V4SF_V4SF_UQI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loaddquv16hi_mask, "__builtin_ia32_movdquhi256_mask", IX86_BUILTIN_MOVDQUHI256_MASK, UNKNOWN, (int) V16HI_FTYPE_V16HI_V16HI_UHI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loaddquv8hi_mask, "__builtin_ia32_movdquhi128_mask", IX86_BUILTIN_MOVDQUHI128_MASK, UNKNOWN, (int) V8HI_FTYPE_V8HI_V8HI_UQI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx_loaddquv32qi_mask, "__builtin_ia32_movdquqi256_mask", IX86_BUILTIN_MOVDQUQI256_MASK, UNKNOWN, (int) V32QI_FTYPE_V32QI_V32QI_USI },
-  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_sse2_loaddquv16qi_mask, "__builtin_ia32_movdquqi128_mask", IX86_BUILTIN_MOVDQUQI128_MASK, UNKNOWN, (int) V16QI_FTYPE_V16QI_V16QI_UHI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv16hi_mask, "__builtin_ia32_movdquhi256_mask", IX86_BUILTIN_MOVDQUHI256_MASK, UNKNOWN, (int) V16HI_FTYPE_V16HI_V16HI_UHI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv8hi_mask, "__builtin_ia32_movdquhi128_mask", IX86_BUILTIN_MOVDQUHI128_MASK, UNKNOWN, (int) V8HI_FTYPE_V8HI_V8HI_UQI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv32qi_mask, "__builtin_ia32_movdquqi256_mask", IX86_BUILTIN_MOVDQUQI256_MASK, UNKNOWN, (int) V32QI_FTYPE_V32QI_V32QI_USI },
+  { OPTION_MASK_ISA_AVX512BW | OPTION_MASK_ISA_AVX512VL, CODE_FOR_avx512vl_loadv16qi_mask, "__builtin_ia32_movdquqi128_mask", IX86_BUILTIN_MOVDQUQI128_MASK, UNKNOWN, (int) V16QI_FTYPE_V16QI_V16QI_UHI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_sminv4sf3_mask, "__builtin_ia32_minps_mask", IX86_BUILTIN_MINPS128_MASK, UNKNOWN, (int) V4SF_FTYPE_V4SF_V4SF_V4SF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_smaxv4sf3_mask, "__builtin_ia32_maxps_mask", IX86_BUILTIN_MAXPS128_MASK, UNKNOWN, (int) V4SF_FTYPE_V4SF_V4SF_V4SF_UQI },
   { OPTION_MASK_ISA_AVX512VL, CODE_FOR_sminv2df3_mask, "__builtin_ia32_minpd_mask", IX86_BUILTIN_MINPD128_MASK, UNKNOWN, (int) V2DF_FTYPE_V2DF_V2DF_V2DF_UQI },
@@ -34729,8 +34624,8 @@ static const struct builtin_description bdesc_args[] =
   { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_packssdw_mask, "__builtin_ia32_packssdw512_mask",  IX86_BUILTIN_PACKSSDW512, UNKNOWN, (int) V32HI_FTYPE_V16SI_V16SI_V32HI_USI },
   { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_palignrv4ti, "__builtin_ia32_palignr512", IX86_BUILTIN_PALIGNR512, UNKNOWN, (int) V8DI_FTYPE_V8DI_V8DI_INT_CONVERT },
   { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_palignrv64qi_mask, "__builtin_ia32_palignr512_mask", IX86_BUILTIN_PALIGNR512_MASK, UNKNOWN, (int) V8DI_FTYPE_V8DI_V8DI_INT_V8DI_UDI_CONVERT },
-  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_loaddquv32hi_mask, "__builtin_ia32_movdquhi512_mask", IX86_BUILTIN_MOVDQUHI512_MASK, UNKNOWN, (int) V32HI_FTYPE_V32HI_V32HI_USI },
-  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512f_loaddquv64qi_mask, "__builtin_ia32_movdquqi512_mask", IX86_BUILTIN_MOVDQUQI512_MASK, UNKNOWN, (int) V64QI_FTYPE_V64QI_V64QI_UDI },
+  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_loadv32hi_mask, "__builtin_ia32_movdquhi512_mask", IX86_BUILTIN_MOVDQUHI512_MASK, UNKNOWN, (int) V32HI_FTYPE_V32HI_V32HI_USI },
+  { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_loadv64qi_mask, "__builtin_ia32_movdquqi512_mask", IX86_BUILTIN_MOVDQUQI512_MASK, UNKNOWN, (int) V64QI_FTYPE_V64QI_V64QI_UDI },
   { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512f_psadbw, "__builtin_ia32_psadbw512", IX86_BUILTIN_PSADBW512, UNKNOWN, (int) V8DI_FTYPE_V64QI_V64QI },
   { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_dbpsadbwv32hi_mask, "__builtin_ia32_dbpsadbw512_mask", IX86_BUILTIN_DBPSADBW512, UNKNOWN, (int) V32HI_FTYPE_V64QI_V64QI_INT_V32HI_USI },
   { OPTION_MASK_ISA_AVX512BW, CODE_FOR_avx512bw_vec_dupv64qi_mask, "__builtin_ia32_pbroadcastb512_mask", IX86_BUILTIN_PBROADCASTB512, UNKNOWN, (int) V64QI_FTYPE_V16QI_V64QI_UDI },
@@ -39115,7 +39010,7 @@ ix86_expand_args_builtin (const struct builtin_description *d,
   else
     {
       real_target = gen_reg_rtx (tmode);
-      target = simplify_gen_subreg (rmode, real_target, tmode, 0);
+      target = lowpart_subreg (rmode, real_target, tmode);
     }
 
   for (i = 0; i < nargs; i++)
@@ -39132,7 +39027,7 @@ ix86_expand_args_builtin (const struct builtin_description *d,
 	     count.  If count doesn't match, we put it in register.  */
 	  if (!match)
 	    {
-	      op = simplify_gen_subreg (SImode, op, GET_MODE (op), 0);
+	      op = lowpart_subreg (SImode, op, GET_MODE (op));
 	      if (!insn_p->operand[i + 1].predicate (op, mode))
 		op = copy_to_reg (op);
 	    }
@@ -39288,7 +39183,7 @@ ix86_expand_args_builtin (const struct builtin_description *d,
 	  else
 	    {
 	      op = copy_to_reg (op);
-	      op = simplify_gen_subreg (mode, op, GET_MODE (op), 0);
+	      op = lowpart_subreg (mode, op, GET_MODE (op));
 	    }
 	}
 
@@ -39662,7 +39557,7 @@ ix86_expand_round_builtin (const struct builtin_description *d,
 	  else
 	    {
 	      op = copy_to_reg (op);
-	      op = simplify_gen_subreg (mode, op, GET_MODE (op), 0);
+	      op = lowpart_subreg (mode, op, GET_MODE (op));
 	    }
 	}
 
@@ -39895,12 +39790,24 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
     case VOID_FTYPE_PV16QI_V2DI_UQI:
     case VOID_FTYPE_PV16QI_V8SI_UQI:
     case VOID_FTYPE_PV16QI_V4SI_UQI:
-    case VOID_FTYPE_PV8HI_V8HI_UQI:
-    case VOID_FTYPE_PV16HI_V16HI_UHI:
-    case VOID_FTYPE_PV32HI_V32HI_USI:
-    case VOID_FTYPE_PV16QI_V16QI_UHI:
-    case VOID_FTYPE_PV32QI_V32QI_USI:
-    case VOID_FTYPE_PV64QI_V64QI_UDI:
+    case VOID_FTYPE_PCHAR_V64QI_UDI:
+    case VOID_FTYPE_PCHAR_V32QI_USI:
+    case VOID_FTYPE_PCHAR_V16QI_UHI:
+    case VOID_FTYPE_PSHORT_V32HI_USI:
+    case VOID_FTYPE_PSHORT_V16HI_UHI:
+    case VOID_FTYPE_PSHORT_V8HI_UQI:
+    case VOID_FTYPE_PINT_V16SI_UHI:
+    case VOID_FTYPE_PINT_V8SI_UQI:
+    case VOID_FTYPE_PINT_V4SI_UQI:
+    case VOID_FTYPE_PINT64_V8DI_UQI:
+    case VOID_FTYPE_PINT64_V4DI_UQI:
+    case VOID_FTYPE_PINT64_V2DI_UQI:
+    case VOID_FTYPE_PDOUBLE_V8DF_UQI:
+    case VOID_FTYPE_PDOUBLE_V4DF_UQI:
+    case VOID_FTYPE_PDOUBLE_V2DF_UQI:
+    case VOID_FTYPE_PFLOAT_V16SF_UHI:
+    case VOID_FTYPE_PFLOAT_V8SF_UQI:
+    case VOID_FTYPE_PFLOAT_V4SF_UQI:
       nargs = 2;
       klass = store;
       /* Reserve memory operand for target.  */
@@ -39918,15 +39825,6 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
     case V2DI_FTYPE_PCV2DI_V2DI_UQI:
     case V4DI_FTYPE_PCV4DI_V4DI_UQI:
     case V8DI_FTYPE_PCV8DI_V8DI_UQI:
-    case V8HI_FTYPE_PCV8HI_V8HI_UQI:
-    case V16HI_FTYPE_PCV16HI_V16HI_UHI:
-    case V32HI_FTYPE_PCV32HI_V32HI_USI:
-    case V16QI_FTYPE_PCV16QI_V16QI_UHI:
-    case V32QI_FTYPE_PCV32QI_V32QI_USI:
-    case V64QI_FTYPE_PCV64QI_V64QI_UDI:
-      nargs = 3;
-      klass = load;
-      memory = 0;
       switch (icode)
 	{
 	/* These builtins and instructions require the memory
@@ -39954,6 +39852,27 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
 	default:
 	  break;
 	}
+    case V64QI_FTYPE_PCCHAR_V64QI_UDI:
+    case V32QI_FTYPE_PCCHAR_V32QI_USI:
+    case V16QI_FTYPE_PCCHAR_V16QI_UHI:
+    case V32HI_FTYPE_PCSHORT_V32HI_USI:
+    case V16HI_FTYPE_PCSHORT_V16HI_UHI:
+    case V8HI_FTYPE_PCSHORT_V8HI_UQI:
+    case V16SI_FTYPE_PCINT_V16SI_UHI:
+    case V8SI_FTYPE_PCINT_V8SI_UQI:
+    case V4SI_FTYPE_PCINT_V4SI_UQI:
+    case V8DI_FTYPE_PCINT64_V8DI_UQI:
+    case V4DI_FTYPE_PCINT64_V4DI_UQI:
+    case V2DI_FTYPE_PCINT64_V2DI_UQI:
+    case V8DF_FTYPE_PCDOUBLE_V8DF_UQI:
+    case V4DF_FTYPE_PCDOUBLE_V4DF_UQI:
+    case V2DF_FTYPE_PCDOUBLE_V2DF_UQI:
+    case V16SF_FTYPE_PCFLOAT_V16SF_UHI:
+    case V8SF_FTYPE_PCFLOAT_V8SF_UQI:
+    case V4SF_FTYPE_PCFLOAT_V4SF_UQI:
+      nargs = 3;
+      klass = load;
+      memory = 0;
       break;
     case VOID_FTYPE_UINT_UINT_UINT:
     case VOID_FTYPE_UINT64_UINT_UINT:
@@ -40060,7 +39979,7 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
 	      else
 	        {
 	          op = copy_to_reg (op);
-	          op = simplify_gen_subreg (mode, op, GET_MODE (op), 0);
+	          op = lowpart_subreg (mode, op, GET_MODE (op));
 	        }
 	    }
 	}
@@ -41276,9 +41195,9 @@ rdseed_step:
       op1 = expand_normal (arg1);
 
       op0 = copy_to_reg (op0);
-      op0 = simplify_gen_subreg (mode0, op0, GET_MODE (op0), 0);
+      op0 = lowpart_subreg (mode0, op0, GET_MODE (op0));
       op1 = copy_to_reg (op1);
-      op1 = simplify_gen_subreg (mode0, op1, GET_MODE (op1), 0);
+      op1 = lowpart_subreg (mode0, op1, GET_MODE (op1));
 
       target = gen_reg_rtx (QImode);
       emit_insn (gen_rtx_SET (target, const0_rtx));
@@ -41669,7 +41588,7 @@ rdseed_step:
       else
 	{
 	  op3 = copy_to_reg (op3);
-	  op3 = simplify_gen_subreg (mode3, op3, GET_MODE (op3), 0);
+	  op3 = lowpart_subreg (mode3, op3, GET_MODE (op3));
 	}
       if (!insn_data[icode].operand[5].predicate (op4, mode4))
 	{
@@ -41844,7 +41763,7 @@ rdseed_step:
       else
 	{
 	  op1 = copy_to_reg (op1);
-	  op1 = simplify_gen_subreg (mode1, op1, GET_MODE (op1), 0);
+	  op1 = lowpart_subreg (mode1, op1, GET_MODE (op1));
 	}
 
       if (!insn_data[icode].operand[2].predicate (op2, mode2))
@@ -41892,7 +41811,7 @@ rdseed_step:
       else
 	{
 	  op0 = copy_to_reg (op0);
-	  op0 = simplify_gen_subreg (mode0, op0, GET_MODE (op0), 0);
+	  op0 = lowpart_subreg (mode0, op0, GET_MODE (op0));
 	}
 
       if (!insn_data[icode].operand[1].predicate (op1, mode1))
@@ -43816,8 +43735,8 @@ ix86_rtx_costs (rtx x, machine_mode mode, int outer_code_i, int opno,
 	}
       if (SSE_FLOAT_MODE_P (mode))
 	{
-    case CONST_VECTOR:
-	  switch (standard_sse_constant_p (x))
+	case CONST_VECTOR:
+	  switch (standard_sse_constant_p (x, mode))
 	    {
 	    case 0:
 	      break;

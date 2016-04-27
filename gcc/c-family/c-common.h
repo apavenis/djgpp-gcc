@@ -790,6 +790,7 @@ extern void check_function_arguments_recurse (void (*)
 					      unsigned HOST_WIDE_INT);
 extern bool check_builtin_function_arguments (tree, int, tree *);
 extern void check_function_format (tree, int, tree *);
+extern tree handle_unused_attribute (tree *, tree, tree, int, bool *);
 extern tree handle_format_attribute (tree *, tree, tree, int, bool *);
 extern tree handle_format_arg_attribute (tree *, tree, tree, int, bool *);
 extern bool attribute_takes_identifier_p (const_tree);
@@ -902,6 +903,7 @@ extern void c_parse_file (void);
 extern void c_parse_final_cleanups (void);
 
 extern void warn_for_omitted_condop (location_t, tree);
+extern void warn_for_memset (location_t, tree, tree, int);
 
 /* These macros provide convenient access to the various _STMT nodes.  */
 
@@ -1369,7 +1371,6 @@ extern enum stv_conv scalar_to_vector (location_t loc, enum tree_code code,
 				       tree op0, tree op1, bool);
 
 /* In c-cilkplus.c  */
-extern tree c_finish_cilk_clauses (tree);
 extern tree c_validate_cilk_plus_loop (tree *, int *, void *);
 extern bool c_check_cilk_loop (location_t, tree);
 

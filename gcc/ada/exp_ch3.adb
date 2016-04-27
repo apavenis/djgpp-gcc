@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2015, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2016, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -225,6 +225,9 @@ package body Exp_Ch3 is
    --    _Task_Name : String
    --
    --  The caller must append additional entries for discriminants if required.
+
+   function Inline_Init_Proc (Typ : Entity_Id) return Boolean;
+   --  Returns true if the initialization procedure of Typ should be inlined
 
    function In_Runtime (E : Entity_Id) return Boolean;
    --  Check if E is defined in the RTL (in a child of Ada or System). Used
@@ -756,14 +759,10 @@ package body Exp_Ch3 is
             Set_Debug_Info_Off (Proc_Id);
          end if;
 
-         --  Set inlined unless tasks are around, in which case we do not
-         --  want to inline, because nested stuff may cause difficulties in
-         --  inter-unit inlining, and furthermore there is in any case no
-         --  point in inlining such complex init procs.
+         --  Set Inlined on Init_Proc if it is set on the Init_Proc of the
+         --  component type itself (see also Build_Record_Init_Proc).
 
-         if not Has_Task (Proc_Id) then
-            Set_Is_Inlined (Proc_Id);
-         end if;
+         Set_Is_Inlined (Proc_Id, Inline_Init_Proc (Comp_Type));
 
          --  Associate Init_Proc with type, and determine if the procedure
          --  is null (happens because of the Initialize_Scalars pragma case,
@@ -1721,7 +1720,7 @@ package body Exp_Ch3 is
       Decls     : constant List_Id  := New_List;
       Discr_Map : constant Elist_Id := New_Elmt_List;
       Loc       : constant Source_Ptr := Sloc (Rec_Ent);
-      Counter   : Int := 0;
+      Counter   : Nat := 0;
       Proc_Id   : Entity_Id;
       Rec_Type  : Entity_Id;
       Set_Tag   : Entity_Id := Empty;
@@ -3592,25 +3591,16 @@ package body Exp_Ch3 is
          Build_Offset_To_Top_Functions;
          Build_CPP_Init_Procedure;
          Build_Init_Procedure;
-         Set_Is_Public (Proc_Id, Is_Public (Rec_Ent));
 
-         --  The initialization of protected records is not worth inlining.
-         --  In addition, when compiled for another unit for inlining purposes,
-         --  it may make reference to entities that have not been elaborated
-         --  yet. Similar considerations apply to task types.
-
-         if not Is_Concurrent_Type (Rec_Type)
-           and then not Has_Task (Rec_Type)
-         then
-            Set_Is_Inlined  (Proc_Id);
-         end if;
-
+         Set_Is_Public      (Proc_Id, Is_Public (Rec_Ent));
          Set_Is_Internal    (Proc_Id);
          Set_Has_Completion (Proc_Id);
 
          if not Debug_Generated_Code then
             Set_Debug_Info_Off (Proc_Id);
          end if;
+
+         Set_Is_Inlined (Proc_Id, Inline_Init_Proc (Rec_Type));
 
          --  Do not build an aggregate if Modify_Tree_For_C, this isn't
          --  needed and may generate early references to non frozen types
@@ -6346,11 +6336,49 @@ package body Exp_Ch3 is
 
       function Rewrite_As_Renaming return Boolean is
       begin
-         return not Aliased_Present (N)
-           and then Is_Entity_Name (Expr_Q)
-           and then Ekind (Entity (Expr_Q)) = E_Variable
-           and then OK_To_Rename (Entity (Expr_Q))
-           and then Is_Entity_Name (Obj_Def);
+         --  If the object declaration appears in the form
+
+         --    Obj : Ctrl_Typ := Func (...);
+
+         --  where Ctrl_Typ is controlled but not immutably limited type, then
+         --  the expansion of the function call should use a dereference of the
+         --  result to reference the value on the secondary stack.
+
+         --    Obj : Ctrl_Typ renames Func (...).all;
+
+         --  As a result, the call avoids an extra copy. This an optimization,
+         --  but it is required for passing ACATS tests in some cases where it
+         --  would otherwise make two copies. The RM allows removing redunant
+         --  Adjust/Finalize calls, but does not allow insertion of extra ones.
+
+         --  This part is disabled for now, because it breaks GPS builds
+
+         return (False -- ???
+             and then Nkind (Expr_Q) = N_Explicit_Dereference
+             and then not Comes_From_Source (Expr_Q)
+             and then Nkind (Original_Node (Expr_Q)) = N_Function_Call
+             and then Nkind (Object_Definition (N)) in N_Has_Entity
+             and then (Needs_Finalization (Entity (Object_Definition (N)))))
+
+           --  If the initializing expression is for a variable with attribute
+           --  OK_To_Rename set, then transform:
+
+           --     Obj : Typ := Expr;
+
+           --  into
+
+           --     Obj : Typ renames Expr;
+
+           --  provided that Obj is not aliased. The aliased case has to be
+           --  excluded in general because Expr will not be aliased in
+           --  general.
+
+           or else
+             (not Aliased_Present (N)
+               and then Is_Entity_Name (Expr_Q)
+               and then Ekind (Entity (Expr_Q)) = E_Variable
+               and then OK_To_Rename (Entity (Expr_Q))
+               and then Is_Entity_Name (Obj_Def));
       end Rewrite_As_Renaming;
 
       --  Local variables
@@ -7003,58 +7031,9 @@ package body Exp_Ch3 is
                Insert_After_And_Analyze (Init_After, Stat);
             end;
          end if;
-
-         --  Final transformation, if the initializing expression is an entity
-         --  for a variable with OK_To_Rename set, then we transform:
-
-         --     X : typ := expr;
-
-         --  into
-
-         --     X : typ renames expr
-
-         --  provided that X is not aliased. The aliased case has to be
-         --  excluded in general because Expr will not be aliased in general.
-
-         if Rewrite_As_Renaming then
-            Rewrite (N,
-              Make_Object_Renaming_Declaration (Loc,
-                Defining_Identifier => Defining_Identifier (N),
-                Subtype_Mark        => Obj_Def,
-                Name                => Expr_Q));
-
-            --  We do not analyze this renaming declaration, because all its
-            --  components have already been analyzed, and if we were to go
-            --  ahead and analyze it, we would in effect be trying to generate
-            --  another declaration of X, which won't do.
-
-            Set_Renamed_Object (Defining_Identifier (N), Expr_Q);
-            Set_Analyzed (N);
-
-            --  We do need to deal with debug issues for this renaming
-
-            --  First, if entity comes from source, then mark it as needing
-            --  debug information, even though it is defined by a generated
-            --  renaming that does not come from source.
-
-            if Comes_From_Source (Defining_Identifier (N)) then
-               Set_Debug_Info_Needed (Defining_Identifier (N));
-            end if;
-
-            --  Now call the routine to generate debug info for the renaming
-
-            declare
-               Decl : constant Node_Id := Debug_Renaming_Declaration (N);
-            begin
-               if Present (Decl) then
-                  Insert_Action (N, Decl);
-               end if;
-            end;
-         end if;
       end if;
 
-      if Nkind (N) = N_Object_Declaration
-        and then Nkind (Obj_Def) = N_Access_Definition
+      if Nkind (Obj_Def) = N_Access_Definition
         and then not Is_Local_Anonymous_Access (Etype (Def_Id))
       then
          --  An Ada 2012 stand-alone object of an anonymous access type
@@ -7130,6 +7109,49 @@ package body Exp_Ch3 is
                Analyze (DIC_Call);
             end if;
          end;
+      end if;
+
+      --  Final transformation - turn the object declaration into a renaming
+      --  if appropriate. If this is the completion of a deferred constant
+      --  declaration, then this transformation generates what would be
+      --  illegal code if written by hand, but that's OK.
+
+      if Present (Expr) then
+         if Rewrite_As_Renaming then
+            Rewrite (N,
+              Make_Object_Renaming_Declaration (Loc,
+                Defining_Identifier => Defining_Identifier (N),
+                Subtype_Mark        => Obj_Def,
+                Name                => Expr_Q));
+
+            --  We do not analyze this renaming declaration, because all its
+            --  components have already been analyzed, and if we were to go
+            --  ahead and analyze it, we would in effect be trying to generate
+            --  another declaration of X, which won't do.
+
+            Set_Renamed_Object (Defining_Identifier (N), Expr_Q);
+            Set_Analyzed (N);
+
+            --  We do need to deal with debug issues for this renaming
+
+            --  First, if entity comes from source, then mark it as needing
+            --  debug information, even though it is defined by a generated
+            --  renaming that does not come from source.
+
+            if Comes_From_Source (Defining_Identifier (N)) then
+               Set_Debug_Info_Needed (Defining_Identifier (N));
+            end if;
+
+            --  Now call the routine to generate debug info for the renaming
+
+            declare
+               Decl : constant Node_Id := Debug_Renaming_Declaration (N);
+            begin
+               if Present (Decl) then
+                  Insert_Action (N, Decl);
+               end if;
+            end;
+         end if;
       end if;
 
    --  Exception on library entity not available
@@ -8227,6 +8249,34 @@ package body Exp_Ch3 is
 
       end if;
    end Has_New_Non_Standard_Rep;
+
+   ----------------------
+   -- Inline_Init_Proc --
+   ----------------------
+
+   function Inline_Init_Proc (Typ : Entity_Id) return Boolean is
+   begin
+      --  The initialization proc of protected records is not worth inlining.
+      --  In addition, when compiled for another unit for inlining purposes,
+      --  it may make reference to entities that have not been elaborated yet.
+      --  The initialization proc of records that need finalization contains
+      --  a nested clean-up procedure that makes it impractical to inline as
+      --  well, except for simple controlled types themselves. And similar
+      --  considerations apply to task types.
+
+      if Is_Concurrent_Type (Typ) then
+         return False;
+
+      elsif Needs_Finalization (Typ) and then not Is_Controlled (Typ) then
+         return False;
+
+      elsif Has_Task (Typ) then
+         return False;
+
+      else
+         return True;
+      end if;
+   end Inline_Init_Proc;
 
    ----------------
    -- In_Runtime --
@@ -9590,11 +9640,13 @@ package body Exp_Ch3 is
                   exit;
 
                --  If the parent is not an interface type and has an abstract
-               --  equality function, the inherited equality is abstract as
-               --  well, and no body can be created for it.
+               --  equality function explicitly defined in the sources, then
+               --  the inherited equality is abstract as well, and no body can
+               --  be created for it.
 
                elsif not Is_Interface (Etype (Tag_Typ))
                  and then Present (Alias (Node (Prim)))
+                 and then Comes_From_Source (Alias (Node (Prim)))
                  and then Is_Abstract_Subprogram (Alias (Node (Prim)))
                then
                   Eq_Needed := False;

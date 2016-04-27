@@ -43,7 +43,6 @@ static tree verify_stmt_tree_r (tree *, int *, void *);
 static tree build_local_temp (tree);
 
 static tree handle_java_interface_attribute (tree *, tree, tree, int, bool *);
-static tree handle_com_interface_attribute (tree *, tree, tree, int, bool *);
 static tree handle_init_priority_attribute (tree *, tree, tree, int, bool *);
 static tree handle_abi_tag_attribute (tree *, tree, tree, int, bool *);
 
@@ -295,6 +294,45 @@ bool
 xvalue_p (const_tree ref)
 {
   return (lvalue_kind (ref) == clk_rvalueref);
+}
+
+/* C++-specific version of stabilize_reference.  */
+
+tree
+cp_stabilize_reference (tree ref)
+{
+  switch (TREE_CODE (ref))
+    {
+    /* We need to treat specially anything stabilize_reference doesn't
+       handle specifically.  */
+    case VAR_DECL:
+    case PARM_DECL:
+    case RESULT_DECL:
+    CASE_CONVERT:
+    case FLOAT_EXPR:
+    case FIX_TRUNC_EXPR:
+    case INDIRECT_REF:
+    case COMPONENT_REF:
+    case BIT_FIELD_REF:
+    case ARRAY_REF:
+    case ARRAY_RANGE_REF:
+    case ERROR_MARK:
+      break;
+    default:
+      cp_lvalue_kind kind = lvalue_kind (ref);
+      if ((kind & ~clk_class) != clk_none)
+	{
+	  tree type = unlowered_expr_type (ref);
+	  bool rval = !!(kind & clk_rvalueref);
+	  type = cp_build_reference_type (type, rval);
+	  /* This inhibits warnings in, eg, cxx_mark_addressable
+	     (c++/60955).  */
+	  warning_sentinel s (extra_warnings);
+	  ref = build_static_cast (type, ref, tf_error);
+	}
+    }
+
+  return stabilize_reference (ref);
 }
 
 /* Test whether DECL is a builtin that may appear in a
@@ -1075,7 +1113,7 @@ cp_build_qualified_type_real (tree type,
 	    {
 	      t = build_variant_type_copy (t);
 	      TYPE_NAME (t) = TYPE_NAME (type);
-	      TYPE_ALIGN (t) = TYPE_ALIGN (type);
+	      SET_TYPE_ALIGN (t, TYPE_ALIGN (type));
 	      TYPE_USER_ALIGN (t) = TYPE_USER_ALIGN (type);
 	    }
 	}
@@ -3542,12 +3580,20 @@ const struct attribute_spec cxx_attribute_table[] =
        affects_type_identity } */
   { "java_interface", 0, 0, false, false, false,
     handle_java_interface_attribute, false },
-  { "com_interface",  0, 0, false, false, false,
-    handle_com_interface_attribute, false },
   { "init_priority",  1, 1, true,  false, false,
     handle_init_priority_attribute, false },
   { "abi_tag", 1, -1, false, false, false,
     handle_abi_tag_attribute, true },
+  { NULL,	      0, 0, false, false, false, NULL, false }
+};
+
+/* Table of C++ standard attributes.  */
+const struct attribute_spec std_attribute_table[] =
+{
+  /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
+       affects_type_identity } */
+  { "maybe_unused", 0, 0, false, false, false,
+    handle_unused_attribute, false },
   { NULL,	      0, 0, false, false, false, NULL, false }
 };
 
@@ -3572,35 +3618,6 @@ handle_java_interface_attribute (tree* node,
   if (!(flags & (int) ATTR_FLAG_TYPE_IN_PLACE))
     *node = build_variant_type_copy (*node);
   TYPE_JAVA_INTERFACE (*node) = 1;
-
-  return NULL_TREE;
-}
-
-/* Handle a "com_interface" attribute; arguments as in
-   struct attribute_spec.handler.  */
-static tree
-handle_com_interface_attribute (tree* node,
-				tree name,
-				tree /*args*/,
-				int /*flags*/,
-				bool* no_add_attrs)
-{
-  static int warned;
-
-  *no_add_attrs = true;
-
-  if (DECL_P (*node)
-      || !CLASS_TYPE_P (*node)
-      || *node != TYPE_MAIN_VARIANT (*node))
-    {
-      warning (OPT_Wattributes, "%qE attribute can only be applied "
-	       "to class definitions", name);
-      return NULL_TREE;
-    }
-
-  if (!warned++)
-    warning (0, "%qE is obsolete; g++ vtables are now COM-compatible by default",
-	     name);
 
   return NULL_TREE;
 }
@@ -4058,6 +4075,7 @@ void
 init_tree (void)
 {
   list_hash_table = hash_table<list_hasher>::create_ggc (61);
+  register_scoped_attributes (std_attribute_table, NULL);
 }
 
 /* Returns the kind of special function that DECL (a FUNCTION_DECL)
