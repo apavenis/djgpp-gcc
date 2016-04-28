@@ -806,10 +806,6 @@ proper position among the other output files.  */
 #define POST_LINK_SPEC ""
 #endif
 
-#ifndef POST_LINK_SPEC
-#define POST_LINK_SPEC ""
-#endif
-
 /*  This is the spec to use, once the code for creating the vtable
     verification runtime library, libvtv.so, has been created.  Currently
     the vtable verification runtime functions are in libstdc++, so we use
