@@ -55,29 +55,6 @@ extern int mkstemps (char *, int);
 #define DIR_SEPARATOR '/'
 #endif
 
-#if defined (_WIN32) || defined (__MSDOS__) \
-    || defined (__DJGPP__) || defined (__OS2__)
-#  define HAVE_DOS_BASED_FILE_SYSTEM
-#  ifndef DIR_SEPARATOR_2 
-#    define DIR_SEPARATOR_2 '\\'
-#  endif
-#endif
-
-/* Define IS_DIR_SEPARATOR. VMS uses '::', ':', '[...]' and '<...>' to
-   separate the different components of a file specification.  It's a
-   bit of a stretch to call ':', ']' and '>' directory separators, so
-   just define the test to find the file name component.  */
-#ifdef VMS
-#  define IS_DIR_SEPARATOR(ch) ((ch) == ':' || (ch) == ']' || (ch) == '>')
-#else
-#  ifndef DIR_SEPARATOR_2
-#    define IS_DIR_SEPARATOR(ch) ((ch) == DIR_SEPARATOR)
-#  else
-#    define IS_DIR_SEPARATOR(ch) \
-	(((ch) == DIR_SEPARATOR) || ((ch) == DIR_SEPARATOR_2))
-#  endif
-#endif
-
 /* Name of temporary file.
    mktemp requires 6 trailing X's.  */
 #define TEMP_FILE "ccXXXXXX"
@@ -166,7 +143,7 @@ choose_tmpdir (void)
       len = strlen (base);
       tmpdir = XNEWVEC (char, len + 2);
       strcpy (tmpdir, base);
-      if (len>0 && !IS_DIR_SEPARATOR(tmpdir[len-1]))   
+      if (len>0 && !IS_DIR_SEPARATOR(tmpdir[len-1]))
           tmpdir[len] = DIR_SEPARATOR;
       tmpdir[len+1] = '\0';
       memoized_tmpdir = tmpdir;
