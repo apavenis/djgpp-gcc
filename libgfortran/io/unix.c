@@ -1129,7 +1129,7 @@ tempfile_open (const char *tempdir, char **fname)
 
 #ifdef HAVE_MKSTEMP
 #ifdef __DJGPP__
-  /* Default filename is too long for DOS. */
+  /* Default filename is too long for DOS */
   snprintf (template, tempdirlen + 23, "%s/gfXXXXXX", tempdir);
 #else
   snprintf (template, tempdirlen + 23, "%s%sgfortrantmpXXXXXX", 
