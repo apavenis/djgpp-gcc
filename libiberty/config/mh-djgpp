@@ -1,3 +1,1 @@
 EXTRA_OFILES=asprintf.o mempcpy.o mkstemps.o sigsetmask.o strndup.o strverscmp.o vasprintf.o
-# Only DJGPP v2.04pre have snprinf() and vsnprintf(). Therefore take also them
-EXTRA_OFILES+=snprintf.o vsnprintf.o
