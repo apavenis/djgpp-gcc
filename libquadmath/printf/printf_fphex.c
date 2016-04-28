@@ -30,11 +30,6 @@
 #include "_itoa.h"
 #include "_itowa.h"
 
-#if defined(__DJGPP__) && __DJGPP__==2 && __DJGPP_MINOR__<4
-/* Have to somehow pull in ssize_t from sys/djtypes.h */
-#include <unistd.h>
-#endif
-
 
 /* Macros for doing the actual output.  */
 
