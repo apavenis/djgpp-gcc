@@ -441,7 +441,7 @@ __gnat_readlink (char *path ATTRIBUTE_UNUSED,
 		 char *buf ATTRIBUTE_UNUSED,
 		 size_t bufsiz ATTRIBUTE_UNUSED)
 {
-#if defined (_WIN32)		\
+#if defined (_WIN32) \
   || defined(__vxworks) || defined (__PikeOS__)
   return -1;
 #else
