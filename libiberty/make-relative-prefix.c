@@ -66,6 +66,7 @@ relative prefix can be found, return @code{NULL}.
 
 #include "ansidecl.h"
 #include "libiberty.h"
+#include "filenames.h"
 
 #ifndef R_OK
 #define R_OK 4

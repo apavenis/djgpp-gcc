@@ -48,6 +48,7 @@ Boston, MA 02110-1301, USA.  */
 #endif
 
 #include "libiberty.h"
+#include "filenames.h"
 extern int mkstemps (char *, int);
 
 /* '/' works just fine on MS-DOS based systems.  */
