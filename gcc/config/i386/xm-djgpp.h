@@ -32,7 +32,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #undef PREFIX_INCLUDE_DIR
 
-/* Search for as.exe and ld.exe in DJGPP's binary directory.  */ 
+/* Search for as.exe and ld.exe in DJGPP's binary directory.  */
 #undef MD_EXEC_PREFIX
 #define MD_EXEC_PREFIX "/dev/env/DJDIR/bin/"
 
@@ -40,7 +40,7 @@ along with GCC; see the file COPYING3.  If not see
 #undef MD_STARTFILE_PREFIX
 #define MD_STARTFILE_PREFIX "/dev/env/DJDIR/lib/"
 
-/* Make sure that gcc will not look for .h files in /usr/local/include 
+/* Make sure that gcc will not look for .h files in /usr/local/include
    unless user explicitly requests it.  */
 #undef LOCAL_INCLUDE_DIR
 
@@ -102,7 +102,7 @@ along with GCC; see the file COPYING3.  If not see
       _fixpath ((PATH), fixed_path);		\
       strcat (fixed_path, "/");			\
       (PATH) = xstrdup (fixed_path);		\
-    } 
+    }
 
 /* Rename libstdc++ to libstdcxx as the first name is not valid for DOS */
 #define LIBSTDCXX "stdcxx"

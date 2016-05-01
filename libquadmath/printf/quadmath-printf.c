@@ -24,11 +24,6 @@ Boston, MA 02110-1301, USA.  */
 #include <stdio.h>
 #include "quadmath-printf.h"
 
-#if defined(__DJGPP__) && __DJGPP__==2 && __DJGPP_MINOR__<4
-/* Have to somehow pull in ssize_t from sys/djtypes.h */
-#include <unistd.h>
-#endif
-
 /* Read a simple integer from a string and update the string pointer.
    It is assumed that the first character is a digit.  */
 static unsigned int

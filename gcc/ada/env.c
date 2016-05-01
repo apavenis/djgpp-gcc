@@ -278,8 +278,6 @@ void __gnat_unsetenv (char *name)
   sprintf (expression, "%s=", name);
   putenv (expression);
   free (expression);
-#elif defined (__DJGPP__) && __DJGPP__==2 && __DJGPP_MINOR__<4
-  putenv(name);
 #else
   unsetenv (name);
 #endif
