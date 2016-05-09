@@ -216,8 +216,6 @@ If You modify some source files You may also need
    NOTE: Building GCC-@GCCVER@ using DJGPP versions earlier than 2.05 is
    not supported ans is not tried.
 
-There are no DJGPP ports of corresponding autoconf and automake versions.
-
 -  You should have sh.exe in DJGPP bin directory as symbolic link to
    bash.exe (type 'ln -s bash.exe sh.exe' in that directory)
 
