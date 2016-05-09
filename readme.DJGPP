@@ -8,7 +8,7 @@ and FAQ where needed.
 
 Requirements to use this binary release:
     -  DJGPP-@DJVER@.
-    -  binutils-2.22 or above (Earlier versions may NOT work and are not tested)
+    -  binutils-2.22 or above (Earlier versions will NOT work)
 
 Requirements to build gcc-@GCCVER@ from sources:
 
@@ -178,7 +178,7 @@ Requirements
 -  On windows Vista (and perhaps later versions) a registry hack to
    allow DPMI clients to use more that 32 MB of memory must be used
 
--  recent CVS version DJGPP v2.04
+-  DJGPP v2.05 or above
 
 -  many GNU utilities and libraries (the list may be incomplete)
 
@@ -214,23 +214,19 @@ Requirements
    it. See http://www.info-zip.org for additional information
    about INFO-ZIP. You can find DJGPP compiled binary there.
 
--  Working DJGPP installation of course:
-   -  recent CVS version of DJGPP-2.04 is required
-   -  the beta version from ftp://ftp.delorie.com/pub/djgpp/beta/v2
-      is too old.
+-  Working DJGPP installation of course with DJGPP v2.05 or above
 
-Earlier requirement to have rebuilt stubify.exe with default stack size
-increased to 1.5 MB or more is no more required as the stack size
-reserving is now done using _stklen where required.
+It is required to rebuild stubify.exe with larger stack size (1.5MB is enough, the default 512KB is not).
+For some versions _stklen were set directly as static variable to 1.5 MB. Unfortunately it
+did not work OK in all cases (like cross-native build of DJGP port of GCC). So these tricks are no more
+used.
 
 If You modify some source files You may also need
 	autoconf-2.64
 	automake-1.11
 	(No ports available for DJGPP yet. I did all patching GCC sources
 	and updating autoconf and automake related stuff in Linux)
-
-   NOTE: Building GCC-@GCCVER@ using DJGPP v2.03 patchlevel 2 requires rebuilding
-   several DJGPP packets before building GCC.
+There are no DJGPP ports of corresponding autoconf and automake versions.
 
 -  You should have sh.exe in DJGPP bin directory as symbolic link to
    bash.exe (type 'ln -s bash.exe sh.exe' in that directory)
