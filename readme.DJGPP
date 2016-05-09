@@ -8,7 +8,7 @@ and FAQ where needed.
 
 Requirements to use this binary release:
     -  DJGPP-@DJVER@.
-    -  binutils-2.22 or above (Earlier versions may NOT work and are not tested)
+    -  binutils-2.22 or above (Earlier versions will NOT work)
 
 Requirements to build gcc-@GCCVER@ from sources:
 
@@ -164,7 +164,7 @@ Requirements
 -  On windows Vista (and perhaps later versions) a registry hack to
    allow DPMI clients to use more that 32 MB of memory must be used
 
--  DJGPP v2.05
+-  DJGPP v2.05 or above
 
 -  many GNU utilities and libraries (the list may be incomplete)
 
@@ -200,12 +200,12 @@ Requirements
    it. See http://www.info-zip.org for additional information
    about INFO-ZIP. You can find DJGPP compiled binary there.
 
--  Working DJGPP installation of course:
-   -  DJGPP-2.05 is required
+-  Working DJGPP installation of course with DJGPP v2.05 or above
 
-Earlier requirement to have rebuilt stubify.exe with default stack size
-increased to 1.5 MB or more is no more required as the stack size
-reserving is now done using _stklen where required.
+It is required to rebuild stubify.exe with larger stack size (1.5MB is enough, the default 512KB is not).
+For some versions _stklen were set directly as static variable to 1.5 MB. Unfortunately it
+did not work OK in all cases (like cross-native build of DJGP port of GCC). So these tricks are no more
+used.
 
 If You modify some source files You may also need
 	autoconf-2.64
@@ -215,6 +215,8 @@ If You modify some source files You may also need
 
    NOTE: Building GCC-@GCCVER@ using DJGPP versions earlier than 2.05 is
    not supported ans is not tried.
+
+There are no DJGPP ports of corresponding autoconf and automake versions.
 
 -  You should have sh.exe in DJGPP bin directory as symbolic link to
    bash.exe (type 'ln -s bash.exe sh.exe' in that directory)
