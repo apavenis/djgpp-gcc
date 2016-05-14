@@ -20,12 +20,13 @@ Archive djcross-gcc-@GCCVER@.tar.bz2 contains script which modifies
 original gcc-@GCCVER@ sources for DJGPP. You don't need it unless You
 want to recreate GCC source archive for DJGPP. If You are using this
 archive and original sources of gcc-@GCCVER@.tar.gz, then You don't
-need gcc@GCCVER3@s.zip. Running these scripts under DJGPP has not been
-tested for a long time and is unlikely to succeed.
+need gcc@GCCVER3@s.zip. Running these scripts under DJGPP requires
+using versions of GNU Autoconf and Automake not ported to DJGPP. As result
+one should use different system (like Linux) for it.
 
 The source archive gcc@GCCVER3@s.zip contains all the sources to build
-all compilers (C, C++, Objective C, Objective C++, GNU Fortran) and also C++
-and Fortran libraries (libstdcxx.a, libgpp.a and libg2c.a).
+all compilers (C, C++, Ada, Objective C, Objective C++, GNU Fortran) and also
+also all required libraries.
 
 Most users don't need source archives at all.
 
@@ -48,9 +49,6 @@ Binary archives are split into 4 parts:
 
   ada@GCCVER3@b.zip : The GNU Ada compiler and development files
 
-  Unforunately native Ada compiler is not included (built gnatmake.exe does not
-  work and as result an attempt to bootstrap also Ada compiler fails).
-
 The archive gcc@GCCVER3@b.zip is required by all other binary packages
 
 Binary packages includes following documentation files:
@@ -69,34 +67,20 @@ Binary packages includes following documentation files:
 	info/gfortran.info - documentation of the GNU Fortran compiler
 
 
-Before you install gcc-@GCCVER@ binaries
-======================================
-
-You should remove previous installation of gcc or egcs completely
-(unless You really know what You are doing).
-
-Make sure You don't have following files from earlier versions
-(relative paths against to DJGPP directory are given):
-	bin/cc1.exe		(from gcc272b.zip or gcc2721b.zip)
-	bin/cc1plus.exe		(from gpp272b.zip or gpp2721b.zip)
-	lib/libgcc.a		(from gcc272b.zip or gcc2721b.zip)
-	lib/libobjc.a
-	lib/specs		(from djdev201.zip or djdev202.zip)
-	lib/libstdcxx.a
-	lib/libgpp.a
-
-Following packages are required for binaries:
-	binutils-2.16 or above. Linker script is no more included in DJGPP
-	    release of GCC and all earlier binutils releases for DJGPP
-	    had incompatible scripts. SO PLEASE UPGRADE.
-
-	DJGPP-@DJVER@ (djdev203.zip)
-
-
 Installing binaries of gcc-@GCCVER@
 =================================
 
-Needed archives for different programming languages
+You should remove previous installation of gcc completely
+(unless You really know what You are doing).
+
+Following packages are required for binaries:
+	binutils-2.22 or above. Linker script is no more included in DJGPP
+	    release of GCC and all earlier binutils releases for DJGPP
+	    had incompatible scripts. SO PLEASE UPGRADE.
+
+	DJGPP-@DJVER@ (djdev205.zip)
+
+Rrquired packages for different programming languages
 	C 			: gcc@GCCVER3@b.zip
 
 	C++			: gcc@GCCVER3@b.zip, gpp@GCCVER3@b.zip
@@ -107,7 +91,7 @@ Needed archives for different programming languages
 
         Ada                     : gcc@GCCVER3@b.zip, ada@GCCVER3@b.zip
 
-Of course for ALL languages You also need at least binutils (bnu216b.zip
+Of course for ALL languages You also need at least binutils (bnu222b.zip
 or newer) and @DJDEV@.zip (or newer when it will be released)
 
 Unzip all the zip files from that directory, preserving the
@@ -118,8 +102,7 @@ or
 	unzip386 @DJDEV@
 
 
-NOTE:   For debugging GDB version 6.3 or above is recommended.
-        (gdb-6.3 is not released for DJGPP yet though).
+NOTE:   For debugging GDB version 7.11 or above is recommended.
 
 
 1. Only long filenames
@@ -143,28 +126,17 @@ Use an unzip program which can restore the long filenames and follow
 the instructions under 2. when the unzipper knows about long filenames.
 
 
-Note for users of C++ IO classes fstream, ifstream, ofstream
-============================================================
-
-There is a regression against earlier versions of GCC (gcc-2.95.3 and
-earlier): Member functions tellp(), tellg(), seekp() and seekg()
-are broken when stream is opened not in binary mode. If You are going
-to use any similar functions You should open stream in binary mode.
-
-Don't ask me when it will be fixed as I don't know that. I'm also
-not sure I'll spend much time trying to fix that.
-
-
 Rebuilding gcc-@GCCVER@ from the sources
 ======================================
 
 Requirements
 ------------
 
--  Long filename support. I built it in DOS session under Windows Vista
-   Business SP3. Other 32 bit Windows versions beginning with Win95
-   should be hopefully OK. I have not however tested myself whether
-   it can be build under Win98, Win2k or Win2K.
+-  Long filename support. I built it in DOS session under Windows 10 Home
+   32 bit or Windows Vista Business 32 bit. Other 32 bit Windows versions
+   beginning with Win95 should be hopefully OK. I have not however tested
+   myself whether it can be build under Win98, Win2k or Win2K, WinXP
+   or Win 7.
 
 -  plenty of physical RAM available. I guess that 1 GB should
    be enough (I had more on build machine)
@@ -195,12 +167,12 @@ Requirements
 	GNU Texinfo 4.8 or above
 	GNU tar 1.1.2 or above
 	GNU binutils 2.22 (required, older versions cannot be used!!!)
-	recent GNU GMP 5.0.1 version (versions 5.0.X or newer are OK)
+	recent GNU GMP version (versions 6.1.0 is OK)
         recent MPFR versions (versions 3.0.0 or newer are OK)
 	recent MPC versions (versions 1.0.0 or newer are OK)
 	Zlib-1.2.5 or above (Warning configure does not check for presence
 	     one only gets build error later)
-	working GNU C compiler (perhaps not earlier than gcc-4.1).
+	working GNU C compiler (perhaps not earlier than gcc-4.4.
 
 -  one may need to increase DOS transfer buffer size to 24 KB or
    32 KB for some executables (GNU Make and ld) to optimize lower
@@ -214,19 +186,21 @@ Requirements
    it. See http://www.info-zip.org for additional information
    about INFO-ZIP. You can find DJGPP compiled binary there.
 
--  Working DJGPP installation of course with DJGPP v2.05 or above
-
 It is required to rebuild stubify.exe with larger stack size (1.5MB is enough, the default 512KB is not).
 For some versions _stklen were set directly as static variable to 1.5 MB. Unfortunately it
 did not work OK in all cases (like cross-native build of DJGP port of GCC). So these tricks are no more
 used.
+
+-  Working DJGPP installation of course:
+   - DJGPP v2.05 is required (earlier versions are not supported)
+   - one needs to rebuild stubify.exe to increase stack size to 1.5MB
+     (edit src/stub/stub.asm from djlsr205.zip and rebuild stubify.exe)
 
 If You modify some source files You may also need
 	autoconf-2.64
 	automake-1.11
 	(No ports available for DJGPP yet. I did all patching GCC sources
 	and updating autoconf and automake related stuff in Linux)
-There are no DJGPP ports of corresponding autoconf and automake versions.
 
 -  You should have sh.exe in DJGPP bin directory as symbolic link to
    bash.exe (type 'ln -s bash.exe sh.exe' in that directory)
