@@ -188,6 +188,6 @@ tar cjf rpm/SOURCES/${dest}.tar.bz2 ${dest}
 for file in $ext_files ; do cp -v ext/$file rpm/SOURCES; done
 
 rpmbuild --bs --define "_topdir $(pwd)/rpm" --bs $dest/djcross-gcc-$sver2.spec
-mv -v rpm/SRPMS/djcross-gcc-$ver1-1ap.src.rpm ./ && rm -rf rpm
+mv -v rpm/SRPMS/djcross-gcc-$ver1-*ap.src.rpm ./ && rm -rf rpm
 
 
