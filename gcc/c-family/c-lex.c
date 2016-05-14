@@ -347,7 +347,8 @@ c_common_has_attribute (cpp_reader *pfile)
 		result = 200809;
 	      else if (is_attribute_p ("deprecated", attr_name))
 		result = 201309;
-	      else if (is_attribute_p ("maybe_unused", attr_name))
+	      else if (is_attribute_p ("maybe_unused", attr_name)
+		       || is_attribute_p ("nodiscard", attr_name))
 		result = 201603;
 	      if (result)
 		attr_name = NULL_TREE;
@@ -388,6 +389,9 @@ c_lex_with_flags (tree *value, location_t *loc, unsigned char *cpp_flags,
   enum cpp_ttype type;
   unsigned char add_flags = 0;
   enum overflow_type overflow = OT_NONE;
+  time_t source_date_epoch = get_source_date_epoch ();
+
+  cpp_init_source_date_epoch (parse_in, source_date_epoch);
 
   timevar_push (TV_CPP);
  retry:

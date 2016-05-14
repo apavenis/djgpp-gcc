@@ -868,6 +868,14 @@ Valid choices are 'yes' and 'no'.]) ;;
   esac
 ], [enable_tls=''])
 
+AC_ARG_ENABLE(vtable-verify,
+[AS_HELP_STRING([--enable-vtable-verify],
+		[enable vtable verification feature])],,
+[enable_vtable_verify=no])
+vtable_verify=`if test x$enable_vtable_verify = xyes; then echo 1; else echo 0; fi`
+AC_DEFINE_UNQUOTED(ENABLE_VTABLE_VERIFY, $vtable_verify,
+[Define 0/1 if vtable verification feature is enabled.])
+
 AC_ARG_ENABLE(objc-gc,
 [AS_HELP_STRING([--enable-objc-gc],
 		[enable the use of Boehm's garbage collector with
@@ -3088,6 +3096,12 @@ foo:	.long	25
 	tls_first_major=2
 	tls_first_minor=13
 	tls_as_opt=--fatal-warnings
+	;;
+  arc*-*-*)
+    conftest_s='
+	add_s r0,r0, @foo@tpoff'
+	tls_first_major=2
+	tls_first_minor=23
 	;;
   cris-*-*|crisv32-*-*)
     conftest_s='

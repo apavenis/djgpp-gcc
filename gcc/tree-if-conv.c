@@ -106,6 +106,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "cfgloop.h"
 #include "tree-data-ref.h"
 #include "tree-scalar-evolution.h"
+#include "tree-ssa-loop.h"
+#include "tree-ssa-loop-niter.h"
 #include "tree-ssa-loop-ivopts.h"
 #include "tree-ssa-address.h"
 #include "dbgcnt.h"
@@ -113,10 +115,22 @@ along with GCC; see the file COPYING3.  If not see
 #include "varasm.h"
 #include "builtins.h"
 #include "params.h"
- 
+#include "cfganal.h"
+
+/* Only handle PHIs with no more arguments unless we are asked to by
+   simd pragma.  */
+#define MAX_PHI_ARG_NUM \
+  ((unsigned) PARAM_VALUE (PARAM_MAX_TREE_IF_CONVERSION_PHI_ARGS))
+
 /* Indicate if new load/store that needs to be predicated is introduced
    during if conversion.  */
 static bool any_pred_load_store;
+
+/* Indicate if there are any complicated PHIs that need to be handled in
+   if-conversion.  Complicated PHI has more than two arguments and can't
+   be degenerated to two arguments PHI.  See more information in comment
+   before phi_convertible_by_degenerating_args.  */
+static bool any_complicated_phi;
 
 /* Hash for struct innermost_loop_behavior.  It depends on the user to
    free the memory.  */
@@ -171,9 +185,6 @@ innermost_loop_behavior_hash::equal (const value_type &e1,
 
 /* List of basic blocks in if-conversion-suitable order.  */
 static basic_block *ifc_bbs;
-
-/* Apply more aggressive (extended) if-conversion if true.  */
-static bool aggressive_if_conv;
 
 /* Hash table to store <DR's innermost loop behavior, DR> pairs.  */
 static hash_map<innermost_loop_behavior_hash,
@@ -408,24 +419,6 @@ fold_or_predicates (location_t loc, tree c1, tree c2)
   return fold_build2_loc (loc, TRUTH_OR_EXPR, boolean_type_node, c1, c2);
 }
 
-/* Returns true if N is either a constant or a SSA_NAME.  */
-
-static bool
-constant_or_ssa_name (tree n)
-{
-  switch (TREE_CODE (n))
-    {
-      case SSA_NAME:
-      case INTEGER_CST:
-      case REAL_CST:
-      case COMPLEX_CST:
-      case VECTOR_CST:
-	return true;
-      default:
-	return false;
-    }
-}
-
 /* Returns either a COND_EXPR or the folded expression if the folded
    expression is a MIN_EXPR, a MAX_EXPR, an ABS_EXPR,
    a constant or a SSA_NAME. */
@@ -446,22 +439,21 @@ fold_build_cond_expr (tree type, tree cond, tree rhs, tree lhs)
 	  && (integer_zerop (op1)))
 	cond = op0;
     }
-  cond_expr = fold_ternary (COND_EXPR, type, cond,
-			    rhs, lhs);
+  cond_expr = fold_ternary (COND_EXPR, type, cond, rhs, lhs);
 
   if (cond_expr == NULL_TREE)
     return build3 (COND_EXPR, type, cond, rhs, lhs);
 
   STRIP_USELESS_TYPE_CONVERSION (cond_expr);
 
-  if (constant_or_ssa_name (cond_expr))
+  if (is_gimple_val (cond_expr))
     return cond_expr;
 
   if (TREE_CODE (cond_expr) == ABS_EXPR)
     {
       rhs1 = TREE_OPERAND (cond_expr, 1);
       STRIP_USELESS_TYPE_CONVERSION (rhs1);
-      if (constant_or_ssa_name (rhs1))
+      if (is_gimple_val (rhs1))
 	return build1 (ABS_EXPR, type, rhs1);
     }
 
@@ -472,8 +464,7 @@ fold_build_cond_expr (tree type, tree cond, tree rhs, tree lhs)
       STRIP_USELESS_TYPE_CONVERSION (lhs1);
       rhs1 = TREE_OPERAND (cond_expr, 1);
       STRIP_USELESS_TYPE_CONVERSION (rhs1);
-      if (constant_or_ssa_name (rhs1)
-	  && constant_or_ssa_name (lhs1))
+      if (is_gimple_val (rhs1) && is_gimple_val (lhs1))
 	return build2 (TREE_CODE (cond_expr), type, lhs1, rhs1);
     }
   return build3 (COND_EXPR, type, cond, rhs, lhs);
@@ -639,13 +630,9 @@ phi_convertible_by_degenerating_args (gphi *phi)
 }
 
 /* Return true when PHI is if-convertible.  PHI is part of loop LOOP
-   and it belongs to basic block BB.
-
-   PHI is not if-convertible if:
-   - it has more than 2 arguments.
-
-   When the aggressive_if_conv is set, PHI can have more than
-   two arguments.  */
+   and it belongs to basic block BB.  Note at this point, it is sure
+   that PHI is if-convertible.  This function updates global variable
+   ANY_COMPLICATED_PHI if PHI is complicated.  */
 
 static bool
 if_convertible_phi_p (struct loop *loop, basic_block bb, gphi *phi)
@@ -656,17 +643,10 @@ if_convertible_phi_p (struct loop *loop, basic_block bb, gphi *phi)
       print_gimple_stmt (dump_file, phi, 0, TDF_SLIM);
     }
 
-  if (bb != loop->header)
-    {
-      if (gimple_phi_num_args (phi) > 2
-	  && !aggressive_if_conv
-	  && !phi_convertible_by_degenerating_args (phi))
-	{
-	  if (dump_file && (dump_flags & TDF_DETAILS))
-	    fprintf (dump_file, "Phi can't be predicated by single cond.\n");
-	  return false;
-        }
-    }
+  if (bb != loop->header
+      && gimple_phi_num_args (phi) > 2
+      && !phi_convertible_by_degenerating_args (phi))
+    any_complicated_phi = true;
 
   return true;
 }
@@ -740,6 +720,105 @@ hash_memrefs_baserefs_and_store_DRs_read_written_info (data_reference_p a)
     }
 }
 
+/* Return TRUE if can prove the index IDX of an array reference REF is
+   within array bound.  Return false otherwise.  */
+
+static bool
+idx_within_array_bound (tree ref, tree *idx, void *dta)
+{
+  bool overflow;
+  widest_int niter, valid_niter, delta, wi_step;
+  tree ev, init, step;
+  tree low, high;
+  struct loop *loop = (struct loop*) dta;
+
+  /* Only support within-bound access for array references.  */
+  if (TREE_CODE (ref) != ARRAY_REF)
+    return false;
+
+  /* For arrays at the end of the structure, we are not guaranteed that they
+     do not really extend over their declared size.  However, for arrays of
+     size greater than one, this is unlikely to be intended.  */
+  if (array_at_struct_end_p (ref))
+    return false;
+
+  ev = analyze_scalar_evolution (loop, *idx);
+  ev = instantiate_parameters (loop, ev);
+  init = initial_condition (ev);
+  step = evolution_part_in_loop_num (ev, loop->num);
+
+  if (!init || TREE_CODE (init) != INTEGER_CST
+      || (step && TREE_CODE (step) != INTEGER_CST))
+    return false;
+
+  low = array_ref_low_bound (ref);
+  high = array_ref_up_bound (ref);
+
+  /* The case of nonconstant bounds could be handled, but it would be
+     complicated.  */
+  if (TREE_CODE (low) != INTEGER_CST
+      || !high || TREE_CODE (high) != INTEGER_CST)
+    return false;
+
+  /* Check if the intial idx is within bound.  */
+  if (wi::to_widest (init) < wi::to_widest (low)
+      || wi::to_widest (init) > wi::to_widest (high))
+    return false;
+
+  /* The idx is always within bound.  */
+  if (!step || integer_zerop (step))
+    return true;
+
+  if (!max_loop_iterations (loop, &niter))
+    return false;
+
+  if (wi::to_widest (step) < 0)
+    {
+      delta = wi::to_widest (init) - wi::to_widest (low);
+      wi_step = -wi::to_widest (step);
+    }
+  else
+    {
+      delta = wi::to_widest (high) - wi::to_widest (init);
+      wi_step = wi::to_widest (step);
+    }
+
+  valid_niter = wi::div_floor (delta, wi_step, SIGNED, &overflow);
+  /* The iteration space of idx is within array bound.  */
+  if (!overflow && niter <= valid_niter)
+    return true;
+
+  return false;
+}
+
+/* Return TRUE if ref is a within bound array reference.  */
+
+static bool
+ref_within_array_bound (gimple *stmt, tree ref)
+{
+  struct loop *loop = loop_containing_stmt (stmt);
+
+  gcc_assert (loop != NULL);
+  return for_each_index (&ref, idx_within_array_bound, loop);
+}
+
+
+/* Given a memory reference expression T, return TRUE if base object
+   it refers to is writable.  The base object of a memory reference
+   is the main object being referenced, which is returned by function
+   get_base_address.  */
+
+static bool
+base_object_writable (tree ref)
+{
+  tree base_tree = get_base_address (ref);
+
+  return (base_tree
+	  && DECL_P (base_tree)
+	  && decl_binds_to_current_def_p (base_tree)
+	  && !TREE_READONLY (base_tree));
+}
+
 /* Return true when the memory references of STMT won't trap in the
    if-converted code.  There are two things that we have to check for:
 
@@ -787,8 +866,13 @@ ifcvt_memrefs_wont_trap (gimple *stmt, vec<data_reference_p> drs)
   if (DR_W_UNCONDITIONALLY (*master_dr))
     return true;
 
-  /* If a is unconditionally accessed then ... */
-  if (DR_RW_UNCONDITIONALLY (*master_dr))
+  /* If a is unconditionally accessed then ...
+
+     Even a is conditional access, we can treat it as an unconditional
+     one if it's an array reference and all its index are within array
+     bound.  */
+  if (DR_RW_UNCONDITIONALLY (*master_dr)
+      || ref_within_array_bound (stmt, DR_REF (a)))
     {
       /* an unconditional read won't trap.  */
       if (DR_IS_READ (a))
@@ -799,16 +883,11 @@ ifcvt_memrefs_wont_trap (gimple *stmt, vec<data_reference_p> drs)
       if (base_master_dr
 	  && DR_BASE_W_UNCONDITIONALLY (*base_master_dr))
 	return PARAM_VALUE (PARAM_ALLOW_STORE_DATA_RACES);
-      else
-	{
-	  /* or the base is know to be not readonly.  */
-	  tree base_tree = get_base_address (DR_REF (a));
-	  if (DECL_P (base_tree)
-	      && decl_binds_to_current_def_p (base_tree)
-	      && ! TREE_READONLY (base_tree))
-	    return PARAM_VALUE (PARAM_ALLOW_STORE_DATA_RACES);
-	}
+      /* or the base is known to be not readonly.  */
+      else if (base_object_writable (DR_REF (a)))
+	return PARAM_VALUE (PARAM_ALLOW_STORE_DATA_RACES);
     }
+
   return false;
 }
 
@@ -1012,8 +1091,6 @@ has_pred_critical_p (basic_block bb)
    - it is after the exit block but before the latch,
    - its edges are not normal.
 
-   Last restriction is valid if aggressive_if_conv is false.
-
    EXIT_BB is the basic block containing the exit of the LOOP.  BB is
    inside LOOP.  */
 
@@ -1061,19 +1138,6 @@ if_convertible_bb_p (struct loop *loop, basic_block bb, basic_block exit_bb)
 	  fprintf (dump_file, "Difficult to handle edges\n");
 	return false;
       }
-
-  /* At least one incoming edge has to be non-critical as otherwise edge
-     predicates are not equal to basic-block predicates of the edge
-     source.  This check is skipped if aggressive_if_conv is true.  */
-  if (!aggressive_if_conv
-      && EDGE_COUNT (bb->preds) > 1
-      && bb != loop->header
-      && all_preds_critical_p (bb))
-    {
-      if (dump_file && (dump_flags & TDF_DETAILS))
-	fprintf (dump_file, "only critical predecessors\n");
-      return false;
-    }
 
   return true;
 }
@@ -2380,11 +2444,16 @@ version_loop_for_if_conversion (struct loop *loop)
   return true;
 }
 
-/* Performs splitting of critical edges if aggressive_if_conv is true.
-   Returns false if loop won't be if converted and true otherwise.  */
+/* Performs splitting of critical edges.  Skip splitting and return false
+   if LOOP will not be converted because:
+
+     - LOOP is not well formed.
+     - LOOP has PHI with more than MAX_PHI_ARG_NUM arguments.
+
+   Last restriction is valid only if AGGRESSIVE_IF_CONV is false.  */
 
 static bool
-ifcvt_split_critical_edges (struct loop *loop)
+ifcvt_split_critical_edges (struct loop *loop, bool aggressive_if_conv)
 {
   basic_block *body;
   basic_block bb;
@@ -2393,30 +2462,50 @@ ifcvt_split_critical_edges (struct loop *loop)
   gimple *stmt;
   edge e;
   edge_iterator ei;
+  auto_vec<edge> critical_edges;
 
-  if (num <= 2)
-    return false;
-  if (loop->inner)
-    return false;
-  if (!single_exit (loop))
+  /* Loop is not well formed.  */
+  if (num <= 2 || loop->inner || !single_exit (loop))
     return false;
 
   body = get_loop_body (loop);
   for (i = 0; i < num; i++)
     {
       bb = body[i];
-      if (bb == loop->latch
-	  || bb_with_exit_edge_p (loop, bb))
+      if (!aggressive_if_conv
+	  && phi_nodes (bb)
+	  && EDGE_COUNT (bb->preds) > MAX_PHI_ARG_NUM)
+	{
+	  if (dump_file && (dump_flags & TDF_DETAILS))
+	    fprintf (dump_file,
+		     "BB %d has complicated PHI with more than %u args.\n",
+		     bb->index, MAX_PHI_ARG_NUM);
+
+	  free (body);
+	  return false;
+	}
+      if (bb == loop->latch || bb_with_exit_edge_p (loop, bb))
 	continue;
+
       stmt = last_stmt (bb);
       /* Skip basic blocks not ending with conditional branch.  */
-      if (!(stmt && gimple_code (stmt) == GIMPLE_COND))
+      if (!stmt || gimple_code (stmt) != GIMPLE_COND)
 	continue;
+
       FOR_EACH_EDGE (e, ei, bb->succs)
 	if (EDGE_CRITICAL_P (e) && e->dest->loop_father == loop)
-	  split_edge (e);
+	  critical_edges.safe_push (e);
     }
   free (body);
+
+  while (critical_edges.length () > 0)
+    {
+      e = critical_edges.pop ();
+      /* Don't split if bb can be predicated along non-critical edge.  */
+      if (EDGE_COUNT (e->dest->preds) > 2 || all_preds_critical_p (e->dest))
+	split_edge (e);
+    }
+
   return true;
 }
 
@@ -2472,6 +2561,9 @@ ifcvt_walk_pattern_tree (tree var, vec<gimple *> *defuse_list,
   tree rhs1, rhs2;
   enum tree_code code;
   gimple *def_stmt;
+
+  if (TREE_CODE (var) != SSA_NAME)
+    return;
 
   def_stmt = SSA_NAME_DEF_STMT (var);
   if (gimple_code (def_stmt) != GIMPLE_ASSIGN)
@@ -2713,12 +2805,16 @@ static unsigned int
 tree_if_conversion (struct loop *loop)
 {
   unsigned int todo = 0;
+  bool aggressive_if_conv;
+
   ifc_bbs = NULL;
   any_pred_load_store = false;
+  any_complicated_phi = false;
 
-  /* Set up aggressive if-conversion for loops marked with simd pragma.  */
+  /* Apply more aggressive if-conversion when loop or its outer loop were
+     marked with simd pragma.  When that's the case, we try to if-convert
+     loop containing PHIs with more than MAX_PHI_ARG_NUM arguments.  */
   aggressive_if_conv = loop->force_vectorize;
-  /* Check either outer loop was marked with simd pragma.  */
   if (!aggressive_if_conv)
     {
       struct loop *outer_loop = loop_outer (loop);
@@ -2726,20 +2822,20 @@ tree_if_conversion (struct loop *loop)
 	aggressive_if_conv = true;
     }
 
-  if (aggressive_if_conv)
-    if (!ifcvt_split_critical_edges (loop))
-      goto cleanup;
+  if (!ifcvt_split_critical_edges (loop, aggressive_if_conv))
+    goto cleanup;
 
   if (!if_convertible_loop_p (loop)
       || !dbg_cnt (if_conversion_tree))
     goto cleanup;
 
-  if (any_pred_load_store
+  if ((any_pred_load_store || any_complicated_phi)
       && ((!flag_tree_loop_vectorize && !loop->force_vectorize)
 	  || loop->dont_vectorize))
     goto cleanup;
 
-  if (any_pred_load_store && !version_loop_for_if_conversion (loop))
+  if ((any_pred_load_store || any_complicated_phi)
+      && !version_loop_for_if_conversion (loop))
     goto cleanup;
 
   /* Now all statements are if-convertible.  Combine all the basic
@@ -2749,11 +2845,8 @@ tree_if_conversion (struct loop *loop)
 
   /* Delete dead predicate computations and repair tree correspondent
      to bool pattern to delete multiple uses of predicates.  */
-  if (aggressive_if_conv)
-    {
-      ifcvt_local_dce (loop->header);
-      ifcvt_repair_bool_pattern (loop->header);
-    }
+  ifcvt_local_dce (loop->header);
+  ifcvt_repair_bool_pattern (loop->header);
 
   todo |= TODO_cleanup_cfg;
   mark_virtual_operands_for_renaming (cfun);
@@ -2823,12 +2916,22 @@ pass_if_conversion::execute (function *fun)
   if (number_of_loops (fun) <= 1)
     return 0;
 
+  /* If there are infinite loops, during CDI_POST_DOMINATORS computation
+     we can pick pretty much random bb inside of the infinite loop that
+     has the fake edge.  If we are unlucky enough, this can confuse the
+     add_to_predicate_list post-dominator check to optimize as if that
+     bb or some other one is a join block when it actually is not.
+     See PR70916.  */
+  connect_infinite_loops_to_exit ();
+
   FOR_EACH_LOOP (loop, 0)
     if (flag_tree_loop_if_convert == 1
 	|| flag_tree_loop_if_convert_stores == 1
 	|| ((flag_tree_loop_vectorize || loop->force_vectorize)
 	    && !loop->dont_vectorize))
       todo |= tree_if_conversion (loop);
+
+  remove_fake_exit_edges ();
 
   if (flag_checking)
     {

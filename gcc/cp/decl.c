@@ -1389,38 +1389,14 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
   if (DECL_P (olddecl)
       && TREE_CODE (newdecl) == FUNCTION_DECL
       && TREE_CODE (olddecl) == FUNCTION_DECL
-      && (DECL_UNINLINABLE (newdecl) || DECL_UNINLINABLE (olddecl)))
+      && diagnose_mismatched_attributes (olddecl, newdecl))
     {
-      if (DECL_DECLARED_INLINE_P (newdecl)
-	  && DECL_UNINLINABLE (newdecl)
-	  && lookup_attribute ("noinline", DECL_ATTRIBUTES (newdecl)))
-	/* Already warned elsewhere.  */;
-      else if (DECL_DECLARED_INLINE_P (olddecl)
-	       && DECL_UNINLINABLE (olddecl)
-	       && lookup_attribute ("noinline", DECL_ATTRIBUTES (olddecl)))
-	/* Already warned.  */;
-      else if (DECL_DECLARED_INLINE_P (newdecl)
-	       && DECL_UNINLINABLE (olddecl)
-	       && lookup_attribute ("noinline", DECL_ATTRIBUTES (olddecl)))
-	{
-	  if (warning_at (DECL_SOURCE_LOCATION (newdecl),
-			  OPT_Wattributes, "function %qD redeclared as inline",
-			  newdecl))
-	    inform (DECL_SOURCE_LOCATION (olddecl),
-		    "previous declaration of %qD with attribute noinline",
-		    olddecl);
-	}
-      else if (DECL_DECLARED_INLINE_P (olddecl)
-	       && DECL_UNINLINABLE (newdecl)
-	       && lookup_attribute ("noinline", DECL_ATTRIBUTES (newdecl)))
-	{
-	  if (warning_at (DECL_SOURCE_LOCATION (newdecl),
-			  OPT_Wattributes, "function %qD redeclared with "
-			  "attribute noinline", newdecl))
-	    inform (DECL_SOURCE_LOCATION (olddecl),
-		    "previous declaration of %qD was inline",
-		    olddecl);
-	}
+      if (DECL_INITIAL (olddecl))
+	inform (DECL_SOURCE_LOCATION (olddecl),
+		"previous definition of %q+D was here", olddecl);
+      else
+	inform (DECL_SOURCE_LOCATION (olddecl),
+		"previous declaration of %qD was here", olddecl);
     }
 
   /* Check for redeclaration and other discrepancies.  */
@@ -10393,8 +10369,11 @@ grokdeclarator (const cp_declarator *declarator,
 	      && (decl_context == NORMAL || decl_context == FIELD)
 	      && at_function_scope_p ()
 	      && variably_modified_type_p (type, NULL_TREE))
-	    /* Force evaluation of the SAVE_EXPR.  */
-	    finish_expr_stmt (TYPE_SIZE (type));
+	    {
+	      TYPE_NAME (type) = build_decl (UNKNOWN_LOCATION, TYPE_DECL,
+					     NULL_TREE, type);
+	      add_decl_expr (TYPE_NAME (type));
+	    }
 
 	  if (declarator->kind == cdk_reference)
 	    {
@@ -11419,7 +11398,8 @@ grokdeclarator (const cp_declarator *declarator,
 	      }
 	    else if (current_function_decl)
 	      {
-		/* FIXME need arm citation */
+		/* 7.1.1: There can be no static function declarations within a
+		   block.  */
 		error ("cannot declare static function inside another function");
 		invalid_static = 1;
 	      }
