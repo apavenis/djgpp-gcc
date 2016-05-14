@@ -47,7 +47,7 @@
 Name: djcross-gcc
 Summary:  GCC cross-compiler for target i586-pc-msdosdjgpp
 Version: %{rpm_version}
-Release: 1ap
+Release: 2ap
 
 License: GPL
 Group: Development/Tools
