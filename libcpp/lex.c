@@ -502,6 +502,13 @@ init_vectorized_lexer (void)
   search_line_fast_type impl = search_line_acc_char;
   int minimum = 0;
 
+// [FIXME][DJGPP] Using SSE here causes preprocessor to randomly
+// [FIXME][DJGPP] fail when run under Windows 10 32 bit (and maybe
+// [FIXME][DJGPP] some other systems (I have observed similar
+// [FIXME][DJGPP] behavior earlier with DJGPP v2.03p2 under Windows
+// [FIXME][DJGPP] Vista
+#ifndef __DJGPP__
+
 #if defined(__SSE4_2__)
   minimum = 3;
 #elif defined(__SSE2__)
@@ -527,6 +534,8 @@ init_vectorized_lexer (void)
 	  || (edx & (bit_MMXEXT | bit_CMOV)) == (bit_MMXEXT | bit_CMOV))
 	impl = search_line_mmx;
     }
+
+#endif // __DJGPP__
 
   search_line_fast = impl;
 }
