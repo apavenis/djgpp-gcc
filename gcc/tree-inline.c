@@ -872,7 +872,7 @@ is_parm (tree decl)
 static unsigned short
 remap_dependence_clique (copy_body_data *id, unsigned short clique)
 {
-  if (clique == 0)
+  if (clique == 0 || processing_debug_stmt)
     return 0;
   if (!id->dependence_map)
     id->dependence_map
@@ -4111,7 +4111,7 @@ estimate_num_insns (gimple stmt, eni_weights *weights)
 	      return 0;
 	    else if (is_inexpensive_builtin (decl))
 	      return weights->target_builtin_call_cost;
-	    else if (DECL_BUILT_IN_CLASS (decl) == BUILT_IN_NORMAL)
+	    else if (gimple_call_builtin_p (stmt, BUILT_IN_NORMAL))
 	      {
 		/* We canonicalize x * x to pow (x, 2.0) with -ffast-math, so
 		   specialize the cheap expansion we do here.
