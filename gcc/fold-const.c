@@ -836,11 +836,10 @@ split_tree (location_t loc, tree in, tree type, enum tree_code code,
 	*minus_litp = *litp, *litp = 0;
       if (neg_conp_p)
 	*conp = negate_expr (*conp);
-      if (neg_var_p)
+      if (neg_var_p && var)
 	{
-	  /* Convert to TYPE before negating a pointer type expr.  */
-	  if (var && POINTER_TYPE_P (TREE_TYPE (var)))
-	    var = fold_convert_loc (loc, type, var);
+	  /* Convert to TYPE before negating.  */
+	  var = fold_convert_loc (loc, type, var);
 	  var = negate_expr (var);
 	}
     }
@@ -863,10 +862,12 @@ split_tree (location_t loc, tree in, tree type, enum tree_code code,
       else if (*minus_litp)
 	*litp = *minus_litp, *minus_litp = 0;
       *conp = negate_expr (*conp);
-      /* Convert to TYPE before negating a pointer type expr.  */
-      if (var && POINTER_TYPE_P (TREE_TYPE (var)))
-	var = fold_convert_loc (loc, type, var);
-      var = negate_expr (var);
+      if (var)
+	{
+	  /* Convert to TYPE before negating.  */
+	  var = fold_convert_loc (loc, type, var);
+	  var = negate_expr (var);
+	}
     }
 
   return var;
@@ -13548,6 +13549,9 @@ tree_single_nonzero_warnv_p (tree t, bool *strict_overflow_p)
 
 	if (!DECL_P (base))
 	  base = get_base_address (base);
+
+	if (base && TREE_CODE (base) == TARGET_EXPR)
+	  base = TARGET_EXPR_SLOT (base);
 
 	if (!base)
 	  return false;
