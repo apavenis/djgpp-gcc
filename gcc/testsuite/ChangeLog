@@ -1,3 +1,153 @@
+2016-05-13  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc.dg/vect/tree-vect.h (check_vect): Handle AVX2,
+	remove XOP handling.
+	* gcc.dg/vect/pr66636.c (foo): Add __attribute__((noinline,noclone)).
+
+2016-05-13  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2016-04-27  Richard Biener  <rguenther@suse.de>
+
+	PR ipa/70760
+	* g++.dg/ipa/ipa-pta-2.C: New testcase.
+
+	2016-05-06  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/70931
+	* gfortran.dg/pr70931.f90: New testcase.
+
+	2016-05-06  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/70941
+	* gcc.dg/torture/pr70941.c: New testcase.
+
+	2016-05-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/70941
+	* gcc.dg/torture/pr70941.c (abort): Remove prototype.
+	(a, b, c, d): Change type from char to signed char.
+	(main): Compare against (signed char) -1634678893 instead of
+	hardcoded -109.  Use __builtin_abort instead of abort.
+
+2016-05-12  Ilya Enkovich  <ilya.enkovich@intel.com>
+
+	Backport from mainline r236171.
+	2016-05-12  Ilya Enkovich  <ilya.enkovich@intel.com>
+
+	PR tree-optimization/71006
+	* gcc.dg/pr71006.c: New test.
+
+2016-05-12  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2016-05-12  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/70830
+	* gcc.target/arm/interrupt-1.c: Change dg-compile to dg-assemble.
+	Add -save-temps to dg-options.
+	Scan for ldmfd rather than pop instruction.
+	* gcc.target/arm/interrupt-2.c: Likewise.
+	* gcc.target/arm/pr70830.c: New test.
+
+2016-05-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/70855
+	* gfortran.dg/gomp/pr70855.f90: New test.
+
+2016-05-11  Ilya Enkovich  <ilya.enkovich@intel.com>
+
+	Backport from mainline r236088.
+	2016-05-10  Ilya Enkovich  <ilya.enkovich@intel.com>
+
+	PR middle-end/70877
+	* gcc.target/i386/pr70877.c: New test.
+
+2016-05-11  Ilya Enkovich  <ilya.enkovich@intel.com>
+
+	Backport from mainline r236086.
+	2016-05-10  Ilya Enkovich  <ilya.enkovich@intel.com>
+
+	PR tree-optimization/70876
+	* gcc.target/i386/pr70876.c: New test.
+
+2016-05-10  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	Backport from mainline
+	2016-05-10  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	PR target/70963
+	* gcc.target/powerpc/pr70963.c: New.
+
+2016-05-10  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2016-05-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/70916
+	* gcc.c-torture/compile/pr70916.c: New test.
+
+2016-05-10  Yuri Rumyantsev  <ysrumyan@gmail.com>
+
+	Backport from mainline r235962.
+	2016-05-06  Yuri Rumyantsev  <ysrumyan@gmail.com>
+
+	PR debug/70935
+	* gcc.dg/torture/pr70935.c: New test.
+
+2016-05-09  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc.target/i386/fabsneg-1.c New test.
+
+2016-05-07  Tom de Vries  <tom@codesourcery.com>
+
+	backport:
+	2016-05-07  Tom de Vries  <tom@codesourcery.com>
+
+	PR tree-optimization/70956
+	* gcc.dg/graphite/pr70956.c: New test.
+
+2016-05-06  Marek Polacek  <polacek@redhat.com>
+
+	Backported from mainline
+	2016-05-06  Marek Polacek  <polacek@redhat.com>
+
+	PR sanitizer/70875
+	* gcc.dg/ubsan/bounds-3.c: New test.
+
+2016-05-06  Marek Polacek  <polacek@redhat.com>
+
+	Backported from mainline
+	2016-04-29  Marek Polacek  <polacek@redhat.com>
+
+	PR sanitizer/70342
+	* g++.dg/ubsan/null-7.C: New test.
+
+2016-05-03  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* gnat.dg/debug5.adb: New testcase.
+
+2016-04-29  Cesar Philippidis  <cesar@codesourcery.com>
+
+	PR middle-end/70626
+	* c-c++-common/goacc/combined-reduction.c: New test.
+	* gfortran.dg/goacc/reduction-2.f95: Add check for kernels reductions.
+
+2016-04-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/70858
+	* gcc.target/i386/pr70858.c: New test.
+
+2016-04-28  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/70540
+	* g++.dg/cpp0x/auto48.C: New.
+
+2016-04-27  Dominique d'Humieres  <dominiq@lps.ens.fr>
+
+	* gfortran.dg/submodule_14.f08: Add cleanup-submodules.
+	* gfortran.dg/submodule_15.f08: Likewise.
+
 2016-04-27  H.J. Lu  <hongjiu.lu@intel.com>
 
 	Backported from mainline
