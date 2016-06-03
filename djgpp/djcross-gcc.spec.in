@@ -457,6 +457,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri Jun 03 2016 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to gcc-5.4.0
+- Use mpfr-3.1.4
+
 * Sat Dec  5 2015 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-5.3.0
 - Use gmp-6.1.0 and mpfr-3.1.3
