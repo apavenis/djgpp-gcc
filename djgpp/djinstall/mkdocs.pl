@@ -51,6 +51,7 @@ close $fd;
 system 'cp -v $(find '.$build_dir.' -name libquadmath-vers.texi)'." $src_dir/libquadmath/";
 
 BuildHtml ("$src_dir/gcc/fortran/gfortran.texi", "gfortran.html", "gcc/doc/include gcc/fortran", "gcc");
+BuildHtml ("$src_dir/gcc/fortran/gfc-internals.texi", "gfc-internals.html", "gcc/doc/include gcc/fortran", "gcc");
 BuildHtml ("$src_dir/gcc/doc/cpp.texi", "cpp.html", "gcc/doc/include gcc/fortran", "gcc");
 BuildHtml ("$src_dir/gcc/doc/gcc.texi", "gcc.html", "gcc/doc/include gcc/fortran", "gcc");
 BuildHtml ("$src_dir/gcc/doc/install.texi", "gccinstall.html", "gcc/doc/include gcc/fortran", "gcc");
@@ -60,7 +61,7 @@ BuildHtml ("$src_dir/libiberty/libiberty.texi", "libiberty.html", "libiberty", "
 BuildHtml ("$src_dir/libquadmath/libquadmath.texi", "libquadmath.html", "libquadmath gcc/doc/include", "libquadmath");
 BuildHtml ("$src_dir/gcc/ada/gnat-style.texi", "gnat-style.html", "gcc/doc/include gcc/ada", "gcc/ada");
 BuildHtml ("$src_dir/gcc/ada/gnat_rm.texi", "gnat_rm.html", "gcc/doc/include gcc/ada", "gcc/ada");
-BuildHtml ("$build_dir/gcc/doc/gnat_ugn.texi", "gnat_ugn.html", "gcc/doc/include gcc/ada", "gcc/ada");
+BuildHtml ("$src_dir/gcc/ada/gnat_ugn.texi", "gnat_ugn.html", "gcc/doc/include gcc/ada", "gcc/ada");
 
 my $gcc_mft;
 my $gfor_mft;
