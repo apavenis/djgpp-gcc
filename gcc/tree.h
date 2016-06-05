@@ -661,6 +661,11 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 #define CALL_EXPR_TAILCALL(NODE) \
   (CALL_EXPR_CHECK (NODE)->base.addressable_flag)
 
+/* Set on a CALL_EXPR if the call has been marked as requiring tail call
+   optimization for correctness.  */
+#define CALL_EXPR_MUST_TAIL_CALL(NODE) \
+  (CALL_EXPR_CHECK (NODE)->base.static_flag)
+
 /* Used as a temporary field on a CASE_LABEL_EXPR to indicate that the
    CASE_LOW operand has been processed.  */
 #define CASE_LOW_SEEN(NODE) \
@@ -4746,6 +4751,17 @@ ptrofftype_p (tree type)
   return (INTEGRAL_TYPE_P (type)
 	  && TYPE_PRECISION (type) == TYPE_PRECISION (sizetype)
 	  && TYPE_UNSIGNED (type) == TYPE_UNSIGNED (sizetype));
+}
+
+/* Return true if the argument is a complete type or an array
+   of unknown bound (whose type is incomplete but) whose elements
+   have complete type.  */
+static inline bool
+complete_or_array_type_p (const_tree type)
+{
+  return COMPLETE_TYPE_P (type)
+         || (TREE_CODE (type) == ARRAY_TYPE
+	     && COMPLETE_TYPE_P (TREE_TYPE (type)));
 }
 
 extern tree strip_float_extensions (tree);

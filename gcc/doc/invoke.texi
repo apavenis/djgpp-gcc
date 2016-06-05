@@ -297,7 +297,8 @@ Objective-C and Objective-C++ Dialects}.
 -Wsuggest-attribute=@r{[}pure@r{|}const@r{|}noreturn@r{|}format@r{]} @gol
 -Wsuggest-final-types @gol -Wsuggest-final-methods -Wsuggest-override @gol
 -Wmissing-format-attribute -Wsubobject-linkage @gol
--Wswitch  -Wswitch-default  -Wswitch-enum -Wswitch-bool -Wsync-nand @gol
+-Wswitch  -Wswitch-bool  -Wswitch-default  -Wswitch-enum @gol
+-Wswitch-unreachable  -Wsync-nand @gol
 -Wsystem-headers  -Wtautological-compare  -Wtrampolines  -Wtrigraphs @gol
 -Wtype-limits  -Wundef @gol
 -Wuninitialized  -Wunknown-pragmas  -Wunsafe-loop-optimizations @gol
@@ -369,9 +370,9 @@ Objective-C and Objective-C++ Dialects}.
 -flto-partition=@var{alg} -fmerge-all-constants @gol
 -fmerge-constants -fmodulo-sched -fmodulo-sched-allow-regmoves @gol
 -fmove-loop-invariants -fno-branch-count-reg @gol
--fno-defer-pop -fno-function-cse -fno-guess-branch-probability @gol
--fno-inline -fno-math-errno -fno-peephole -fno-peephole2 @gol
--fno-sched-interblock -fno-sched-spec -fno-signed-zeros @gol
+-fno-defer-pop -fno-fp-int-builtin-inexact -fno-function-cse @gol
+-fno-guess-branch-probability -fno-inline -fno-math-errno -fno-peephole @gol
+-fno-peephole2 -fno-sched-interblock -fno-sched-spec -fno-signed-zeros @gol
 -fno-toplevel-reorder -fno-trapping-math -fno-zero-initialized-in-bss @gol
 -fomit-frame-pointer -foptimize-sibling-calls @gol
 -fpartial-inlining -fpeel-loops -fpredictive-commoning @gol
@@ -1172,7 +1173,7 @@ See RS/6000 and PowerPC Options.
 -msse2avx -mfentry -mrecord-mcount -mnop-mcount -m8bit-idiv @gol
 -mavx256-split-unaligned-load -mavx256-split-unaligned-store @gol
 -malign-data=@var{type} -mstack-protector-guard=@var{guard} @gol
--mmitigate-rop}
+-mmitigate-rop -mgeneral-regs-only}
 
 @emph{x86 Windows Options}
 @gccoptlist{-mconsole -mcygwin -mno-cygwin -mdll @gol
@@ -4054,8 +4055,12 @@ Warn whenever a function is defined with a return type that defaults
 to @code{int}.  Also warn about any @code{return} statement with no
 return value in a function whose return type is not @code{void}
 (falling off the end of the function body is considered returning
-without a value), and about a @code{return} statement with an
-expression in a function whose return type is @code{void}.
+without a value).
+
+For C only, warn about a @code{return} statement with an expression in a
+function whose return type is @code{void}, unless the expression type is
+also @code{void}.  As a GNU extension, the latter case is accepted
+without a warning unless @option{-Wpedantic} is used.
 
 For C++, a function without return type always produces a diagnostic
 message, even when @option{-Wno-return-type} is specified.  The only
@@ -4138,6 +4143,39 @@ expression to a type other than @code{bool}.  For example:
 @group
 switch ((int) (a == 4))
   @{
+  @dots{}
+  @}
+@end group
+@end smallexample
+This warning is enabled by default for C and C++ programs.
+
+@item -Wswitch-unreachable
+@opindex Wswitch-unreachable
+@opindex Wno-switch-unreachable
+Warn whenever a @code{switch} statement contains statements between the
+controlling expression and the first case label, which will never be
+executed.  For example:
+@smallexample
+@group
+switch (cond)
+  @{
+   i = 15;
+  @dots{}
+   case 5:
+  @dots{}
+  @}
+@end group
+@end smallexample
+@option{-Wswitch-unreachable} does not warn if the statement between the
+controlling expression and the first case label is just a declaration:
+@smallexample
+@group
+switch (cond)
+  @{
+   int i;
+  @dots{}
+   case 5:
+   i = 5;
   @dots{}
   @}
 @end group
@@ -6304,7 +6342,8 @@ by @option{-O2} and also turns on the @option{-finline-functions},
 @option{-fgcse-after-reload}, @option{-ftree-loop-vectorize},
 @option{-ftree-loop-distribute-patterns}, @option{-fsplit-paths}
 @option{-ftree-slp-vectorize}, @option{-fvect-cost-model},
-@option{-ftree-partial-pre} and @option{-fipa-cp-clone} options.
+@option{-ftree-partial-pre}, @option{-fpeel-loops}
+and @option{-fipa-cp-clone} options.
 
 @item -O0
 @opindex O0
@@ -8497,6 +8536,24 @@ The default is @option{-fno-signaling-nans}.
 This option is experimental and does not currently guarantee to
 disable all GCC optimizations that affect signaling NaN behavior.
 
+@item -fno-fp-int-builtin-inexact
+@opindex fno-fp-int-builtin-inexact
+Do not allow the built-in functions @code{ceil}, @code{floor},
+@code{round} and @code{trunc}, and their @code{float} and @code{long
+double} variants, to generate code that raises the ``inexact''
+floating-point exception for noninteger arguments.  ISO C99 and C11
+allow these functions to raise the ``inexact'' exception, but ISO/IEC
+TS 18661-1:2014, the C bindings to IEEE 754-2008, does not allow these
+functions to do so.
+
+The default is @option{-ffp-int-builtin-inexact}, allowing the
+exception to be raised.  This option does nothing unless
+@option{-ftrapping-math} is in effect.
+
+Even if @option{-fno-fp-int-builtin-inexact} is used, if the functions
+generate a call to a library function then the ``inexact'' exception
+may be raised if the library implementation does not follow TS 18661.
+
 @item -fsingle-precision-constant
 @opindex fsingle-precision-constant
 Treat floating-point constants as single precision instead of
@@ -8588,7 +8645,7 @@ debug information format adopted by the target, however, it can
 make debugging impossible, since variables no longer stay in
 a ``home register''.
 
-Enabled by default with @option{-funroll-loops} and @option{-fpeel-loops}.
+Enabled by default with @option{-funroll-loops}.
 
 @item -fschedule-fusion
 @opindex fschedule-fusion
@@ -8627,10 +8684,11 @@ the loop is entered.  This usually makes programs run more slowly.
 @item -fpeel-loops
 @opindex fpeel-loops
 Peels loops for which there is enough information that they do not
-roll much (from profile feedback).  It also turns on complete loop peeling
-(i.e.@: complete removal of loops with small constant number of iterations).
+roll much (from profile feedback or static analysis).  It also turns on
+complete loop peeling (i.e.@: complete removal of loops with small constant
+number of iterations).
 
-Enabled with @option{-fprofile-use}.
+Enabled with @option{-O3} and/or @option{-fprofile-use}.
 
 @item -fmove-loop-invariants
 @opindex fmove-loop-invariants
@@ -12872,9 +12930,9 @@ These options are defined for AArch64 implementations:
 @item -mabi=@var{name}
 @opindex mabi
 Generate code for the specified data model.  Permissible values
-are @samp{ilp32} for SysV-like data model where int, long int and pointer
-are 32-bit, and @samp{lp64} for SysV-like data model where int is 32-bit,
-but long int and pointer are 64-bit.
+are @samp{ilp32} for SysV-like data model where int, long int and pointers
+are 32 bits, and @samp{lp64} for SysV-like data model where int is 32 bits,
+but long int and pointers are 64 bits.
 
 The default depends on the specific target configuration.  Note that
 the LP64 and ILP32 ABIs are not link-compatible; you must compile your
@@ -12899,25 +12957,24 @@ Generate little-endian code.  This is the default when GCC is configured for an
 @item -mcmodel=tiny
 @opindex mcmodel=tiny
 Generate code for the tiny code model.  The program and its statically defined
-symbols must be within 1GB of each other.  Pointers are 64 bits.  Programs can
-be statically or dynamically linked.  This model is not fully implemented and
-mostly treated as @samp{small}.
+symbols must be within 1MB of each other.  Programs can be statically or
+dynamically linked.
 
 @item -mcmodel=small
 @opindex mcmodel=small
 Generate code for the small code model.  The program and its statically defined
-symbols must be within 4GB of each other.  Pointers are 64 bits.  Programs can
-be statically or dynamically linked.  This is the default code model.
+symbols must be within 4GB of each other.  Programs can be statically or
+dynamically linked.  This is the default code model.
 
 @item -mcmodel=large
 @opindex mcmodel=large
 Generate code for the large code model.  This makes no assumptions about
-addresses and sizes of sections.  Pointers are 64 bits.  Programs can be
-statically linked only.
+addresses and sizes of sections.  Programs can be statically linked only.
 
 @item -mstrict-align
 @opindex mstrict-align
-Do not assume that unaligned memory references are handled by the system.
+Avoid generating memory accesses that may not be aligned on a natural object
+boundary as described in the architecture specification.
 
 @item -momit-leaf-frame-pointer
 @itemx -mno-omit-leaf-frame-pointer
@@ -12939,7 +12996,7 @@ of TLS variables.
 @item -mtls-size=@var{size}
 @opindex mtls-size
 Specify bit size of immediate TLS offsets.  Valid values are 12, 24, 32, 48.
-This option depends on binutils higher than 2.25.
+This option requires binutils 2.26 or newer.
 
 @item -mfix-cortex-a53-835769
 @itemx -mno-fix-cortex-a53-835769
@@ -12959,12 +13016,13 @@ corresponding flag to the linker.
 
 @item -mlow-precision-recip-sqrt
 @item -mno-low-precision-recip-sqrt
-@opindex -mlow-precision-recip-sqrt
-@opindex -mno-low-precision-recip-sqrt
-When calculating the reciprocal square root approximation,
-uses one less step than otherwise, thus reducing latency and precision.
-This is only relevant if @option{-ffast-math} enables the reciprocal square root
-approximation, which in turn depends on the target processor.
+@opindex mlow-precision-recip-sqrt
+@opindex mno-low-precision-recip-sqrt
+Enable or disable reciprocal square root approximation.
+This option only has an effect if @option{-ffast-math} or
+@option{-funsafe-math-optimizations} is used as well.  Enabling this reduces
+precision of reciprocal square root results to about 16 bits for
+single precision and to 32 bits for double precision.
 
 @item -march=@var{name}
 @opindex march
@@ -13001,17 +13059,15 @@ Specify the name of the target processor for which GCC should tune the
 performance of the code.  Permissible values for this option are:
 @samp{generic}, @samp{cortex-a35}, @samp{cortex-a53}, @samp{cortex-a57},
 @samp{cortex-a72}, @samp{exynos-m1}, @samp{qdf24xx}, @samp{thunderx},
-@samp{xgene1}.
+@samp{xgene1}, @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53},
+@samp{native}.
 
-Additionally, this option can specify that GCC should tune the performance
-of the code for a big.LITTLE system.  Permissible values for this
-option are: @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53}.
+The values @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53}
+specify that GCC should tune for a big.LITTLE system.
 
 Additionally on native AArch64 GNU/Linux systems the value
-@samp{native} is available.  This option causes the compiler to pick
-the architecture of and tune the performance of the code for the
-processor of the host system.  This option has no effect if the
-compiler is unable to recognize the architecture of the host system.
+@samp{native} tunes performance to the host system.  This option has no effect
+if the compiler is unable to recognize the processor of the host system.
 
 Where none of @option{-mtune=}, @option{-mcpu=} or @option{-march=}
 are specified, the code is tuned to perform well across a range
@@ -13031,12 +13087,6 @@ documented in the sub-section on
 Feature Modifiers}.  Where conflicting feature modifiers are
 specified, the right-most feature is used.
 
-Additionally on native AArch64 GNU/Linux systems the value
-@samp{native} is available.  This option causes the compiler to tune
-the performance of the code for the processor of the host system.
-This option has no effect if the compiler is unable to recognize the
-architecture of the host system.
-
 GCC uses @var{name} to determine what kind of instructions it can emit when
 generating assembly code (as if by @option{-march}) and to determine
 the target processor for which to tune for performance (as if
@@ -13054,11 +13104,11 @@ across releases.
 This option is only intended to be useful when developing GCC.
 
 @item -mpc-relative-literal-loads
-@opindex mpcrelativeliteralloads
-Enable PC relative literal loads. If this option is used, literal
-pools are assumed to have a range of up to 1MiB and an appropriate
-instruction sequence is used. This option has no impact when used
-with @option{-mcmodel=tiny}.
+@opindex mpc-relative-literal-loads
+Enable PC-relative literal loads.  With this option literal pools are
+accessed using a single instruction and emitted after each function.  This
+limits the maximum size of functions to 1MB.  This is enabled by default for
+@option{-mcmodel=tiny}.
 
 @end table
 
@@ -13089,9 +13139,9 @@ Enable Large System Extension instructions.  This is on by default for
 
 @end table
 
-That is, @option{crypto} implies @option{simd} implies @option{fp}.
-Conversely, @option{nofp} (or equivalently, @option{-mgeneral-regs-only})
-implies @option{nosimd} implies @option{nocrypto}.
+Feature @option{crypto} implies @option{simd}, which implies @option{fp}.
+Conversely, @option{nofp} implies @option{nosimd}, which implies
+@option{nocrypto}.
 
 @node Adapteva Epiphany Options
 @subsection Adapteva Epiphany Options
@@ -18130,7 +18180,7 @@ IEEE 754 floating-point data.
 
 The @option{-mnan=legacy} option selects the legacy encoding.  In this
 case quiet NaNs (qNaNs) are denoted by the first bit of their trailing
-significand field being 0, whereas signalling NaNs (sNaNs) are denoted
+significand field being 0, whereas signaling NaNs (sNaNs) are denoted
 by the first bit of their trailing significand field being 1.
 
 The @option{-mnan=2008} option selects the IEEE 754-2008 encoding.  In
@@ -24271,6 +24321,12 @@ Try to avoid generating code sequences that contain unintended return
 opcodes, to mitigate against certain forms of attack. At the moment,
 this option is limited in what it can do and should not be relied
 on to provide serious protection.
+
+@item -mgeneral-regs-only
+@opindex mgeneral-regs-only
+Generate code that uses only the general-purpose registers.  This
+prevents the compiler from using floating-point, vector, mask and bound
+registers.
 
 @end table
 

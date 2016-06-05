@@ -281,7 +281,6 @@ unsigned const char omp_clause_num_ops[] =
   1, /* OMP_CLAUSE_USE_DEVICE_PTR  */
   1, /* OMP_CLAUSE_IS_DEVICE_PTR  */
   2, /* OMP_CLAUSE__CACHE_  */
-  1, /* OMP_CLAUSE_DEVICE_RESIDENT  */
   2, /* OMP_CLAUSE_GANG  */
   1, /* OMP_CLAUSE_ASYNC  */
   1, /* OMP_CLAUSE_WAIT  */
@@ -353,7 +352,6 @@ const char * const omp_clause_code_name[] =
   "use_device_ptr",
   "is_device_ptr",
   "_cache_",
-  "device_resident",
   "gang",
   "async",
   "wait",
@@ -5418,7 +5416,7 @@ free_lang_data_in_decl (tree decl)
 	      DECL_INITIAL (decl) = error_mark_node;
 	    }
 	}
-      if (gimple_has_body_p (decl))
+      if (gimple_has_body_p (decl) || (node && node->thunk.thunk_p))
 	{
 	  tree t;
 
@@ -10603,6 +10601,13 @@ build_common_builtin_nodes (void)
 			BUILT_IN_STACK_RESTORE,
 			"__builtin_stack_restore", ECF_NOTHROW | ECF_LEAF);
 
+  ftype = build_function_type_list (integer_type_node, const_ptr_type_node,
+				    const_ptr_type_node, size_type_node,
+				    NULL_TREE);
+  local_define_builtin ("__builtin_memcmp_eq", ftype, BUILT_IN_MEMCMP_EQ,
+			"__builtin_memcmp_eq",
+			ECF_PURE | ECF_NOTHROW | ECF_LEAF);
+
   /* If there's a possibility that we might use the ARM EABI, build the
     alternate __cxa_end_cleanup node used to resume from C++ and Java.  */
   if (targetm.arm_eabi_unwinder)
@@ -11764,7 +11769,6 @@ walk_tree_1 (tree *tp, walk_tree_fn func, void *data,
 	  WALK_SUBTREE (OMP_CLAUSE_OPERAND (*tp, 1));
 	  /* FALLTHRU */
 
-	case OMP_CLAUSE_DEVICE_RESIDENT:
 	case OMP_CLAUSE_ASYNC:
 	case OMP_CLAUSE_WAIT:
 	case OMP_CLAUSE_WORKER:
@@ -13076,9 +13080,29 @@ array_at_struct_end_p (tree ref)
       ref = TREE_OPERAND (ref, 0);
     }
 
+  tree size = NULL;
+
+  if (TREE_CODE (ref) == MEM_REF
+      && TREE_CODE (TREE_OPERAND (ref, 0)) == ADDR_EXPR)
+    {
+      size = TYPE_SIZE (TREE_TYPE (ref));
+      ref = TREE_OPERAND (TREE_OPERAND (ref, 0), 0);
+    }
+
   /* If the reference is based on a declared entity, the size of the array
      is constrained by its given domain.  (Do not trust commons PR/69368).  */
   if (DECL_P (ref)
+      /* Be sure the size of MEM_REF target match.  For example:
+
+	   char buf[10];
+	   struct foo *str = (struct foo *)&buf;
+
+	   str->trailin_array[2] = 1;
+
+	 is valid because BUF allocate enough space.  */
+
+      && (!size || (DECL_SIZE (ref) != NULL
+		    && operand_equal_p (DECL_SIZE (ref), size, 0)))
       && !(flag_unconstrained_commons
 	   && TREE_CODE (ref) == VAR_DECL && DECL_COMMON (ref)))
     return false;

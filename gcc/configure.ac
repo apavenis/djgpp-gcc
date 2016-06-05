@@ -35,6 +35,9 @@ AC_CANONICAL_BUILD
 AC_CANONICAL_HOST
 AC_CANONICAL_TARGET
 
+# Determine the noncanonical host name, for Ada.
+ACX_NONCANONICAL_HOST
+
 # Determine the noncanonical target name, for directory use.
 ACX_NONCANONICAL_TARGET
 
@@ -2032,7 +2035,7 @@ elif test "x$TARGET_SYSTEM_ROOT" != x; then
 fi
 
 if test x$host != x$target || test "x$TARGET_SYSTEM_ROOT" != x; then
-  if test "x$with_headers" != x; then
+  if test "x$with_headers" != x && test "x$with_headers" != xyes; then
     target_header_dir=$with_headers
   elif test "x$with_sysroot" = x; then
     target_header_dir="${test_exec_prefix}/${target_noncanonical}/sys-include"

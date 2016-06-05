@@ -2351,8 +2351,17 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
 	}
       else
 	{
-	  if (DECL_PENDING_INLINE_INFO (newdecl) == 0)
-	    DECL_PENDING_INLINE_INFO (newdecl) = DECL_PENDING_INLINE_INFO (olddecl);
+	  if (DECL_PENDING_INLINE_P (olddecl))
+	    {
+	      DECL_PENDING_INLINE_P (newdecl) = 1;
+	      DECL_PENDING_INLINE_INFO (newdecl)
+		= DECL_PENDING_INLINE_INFO (olddecl);
+	    }
+	  else if (DECL_PENDING_INLINE_P (newdecl))
+	    ;
+	  else if (DECL_SAVED_FUNCTION_DATA (newdecl) == NULL)
+	    DECL_SAVED_FUNCTION_DATA (newdecl)
+	      = DECL_SAVED_FUNCTION_DATA (olddecl);
 
 	  DECL_DECLARED_INLINE_P (newdecl) |= DECL_DECLARED_INLINE_P (olddecl);
 
@@ -5305,10 +5314,7 @@ layout_var_decl (tree decl)
     complete_type (type);
   if (!DECL_SIZE (decl)
       && TREE_TYPE (decl) != error_mark_node
-      && (COMPLETE_TYPE_P (type)
-	  || (TREE_CODE (type) == ARRAY_TYPE
-	      && !TYPE_DOMAIN (type)
-	      && COMPLETE_TYPE_P (TREE_TYPE (type)))))
+      && complete_or_array_type_p (type))
     layout_decl (decl, 0);
 
   if (!DECL_EXTERNAL (decl) && DECL_SIZE (decl) == NULL_TREE)
@@ -6609,6 +6615,13 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
                                                    adc_variable_type);
       if (type == error_mark_node)
 	return;
+      if (TREE_CODE (type) == FUNCTION_TYPE)
+	{
+	  error ("initializer for %<decltype(auto) %D%> has function type "
+		 "(did you forget the %<()%> ?)", decl);
+	  TREE_TYPE (decl) = error_mark_node;
+	  return;
+	}
       cp_apply_type_quals_to_decl (cp_type_quals (type), decl);
     }
 
@@ -8577,6 +8590,9 @@ build_ptrmem_type (tree class_type, tree member_type)
 static int
 check_static_variable_definition (tree decl, tree type)
 {
+  /* Avoid redundant diagnostics on out-of-class definitions.  */
+  if (!current_class_type || !TYPE_BEING_DEFINED (current_class_type))
+    return 0;
   /* Can't check yet if we don't know the type.  */
   if (dependent_type_p (type))
     return 0;
@@ -8587,15 +8603,17 @@ check_static_variable_definition (tree decl, tree type)
   else if (cxx_dialect >= cxx11 && !INTEGRAL_OR_ENUMERATION_TYPE_P (type))
     {
       if (!COMPLETE_TYPE_P (type))
-	error ("in-class initialization of static data member %q#D of "
-	       "incomplete type", decl);
+	error_at (DECL_SOURCE_LOCATION (decl),
+		  "in-class initialization of static data member %q#D of "
+		  "incomplete type", decl);
       else if (literal_type_p (type))
-	permerror (input_location,
+	permerror (DECL_SOURCE_LOCATION (decl),
 		   "%<constexpr%> needed for in-class initialization of "
 		   "static data member %q#D of non-integral type", decl);
       else
-	error ("in-class initialization of static data member %q#D of "
-	       "non-literal type", decl);
+	error_at (DECL_SOURCE_LOCATION (decl),
+		  "in-class initialization of static data member %q#D of "
+		  "non-literal type", decl);
       return 1;
     }
 
@@ -8607,17 +8625,20 @@ check_static_variable_definition (tree decl, tree type)
      required.  */
   if (!ARITHMETIC_TYPE_P (type) && TREE_CODE (type) != ENUMERAL_TYPE)
     {
-      error ("invalid in-class initialization of static data member "
-	     "of non-integral type %qT",
-	     type);
+      error_at (DECL_SOURCE_LOCATION (decl),
+		"invalid in-class initialization of static data member "
+		"of non-integral type %qT",
+		type);
       return 1;
     }
   else if (!CP_TYPE_CONST_P (type))
-    error ("ISO C++ forbids in-class initialization of non-const "
-	   "static member %qD",
-	   decl);
+    error_at (DECL_SOURCE_LOCATION (decl),
+	      "ISO C++ forbids in-class initialization of non-const "
+	      "static member %qD",
+	      decl);
   else if (!INTEGRAL_OR_ENUMERATION_TYPE_P (type))
-    pedwarn (input_location, OPT_Wpedantic, "ISO C++ forbids initialization of member constant "
+    pedwarn (DECL_SOURCE_LOCATION (decl), OPT_Wpedantic,
+	     "ISO C++ forbids initialization of member constant "
 	     "%qD of non-integral type %qT", decl, type);
 
   return 0;
@@ -9247,7 +9268,6 @@ grokdeclarator (const cp_declarator *declarator,
   bool late_return_type_p = false;
   bool array_parameter_p = false;
   source_location saved_loc = input_location;
-  const char *errmsg;
   tree reqs = NULL_TREE;
 
   signed_p = decl_spec_seq_has_spec_p (declspecs, ds_signed);
@@ -10046,12 +10066,6 @@ grokdeclarator (const cp_declarator *declarator,
 		/* We now know that the TYPE_QUALS don't apply to the
 		   decl, but to its return type.  */
 		type_quals = TYPE_UNQUALIFIED;
-	      }
-	    errmsg = targetm.invalid_return_type (type);
-	    if (errmsg)
-	      {
-		error (errmsg);
-		type = integer_type_node;
 	      }
 
 	    /* Error about some types functions can't return.  */
@@ -11165,8 +11179,7 @@ grokdeclarator (const cp_declarator *declarator,
 	  }
 	else if (!staticp && !dependent_type_p (type)
 		 && !COMPLETE_TYPE_P (complete_type (type))
-		 && (TREE_CODE (type) != ARRAY_TYPE
-		     || !COMPLETE_TYPE_P (TREE_TYPE (type))
+		 && (!complete_or_array_type_p (type)
 		     || initialized == 0))
 	  {
 	    if (TREE_CODE (type) != ARRAY_TYPE
@@ -11686,7 +11699,6 @@ grokparms (tree parmlist, tree *parms)
       tree type = NULL_TREE;
       tree init = TREE_PURPOSE (parm);
       tree decl = TREE_VALUE (parm);
-      const char *errmsg;
 
       if (parm == void_list_node)
 	break;
@@ -11727,14 +11739,6 @@ grokparms (tree parmlist, tree *parms)
 	  type = error_mark_node;
 	  TREE_TYPE (decl) = error_mark_node;
 	  init = NULL_TREE;
-	}
-
-      if (type != error_mark_node
-	  && (errmsg = targetm.invalid_parameter_type (type)))
-	{
-	  error (errmsg);
-	  type = error_mark_node;
-	  TREE_TYPE (decl) = error_mark_node;
 	}
 
       if (type != error_mark_node)
@@ -12798,7 +12802,7 @@ xref_tag_1 (enum tag_types tag_code, tree name,
 	       && CLASSTYPE_IS_TEMPLATE (t))
 	{
 	  error ("redeclaration of %qT as a non-template", t);
-	  error ("previous declaration %q+D", t);
+	  inform (location_of (t), "previous declaration %qD", t);
 	  return error_mark_node;
 	}
 
@@ -13154,16 +13158,16 @@ start_enum (tree name, tree enumtype, tree underlying_type,
 	{
 	  error_at (input_location, "scoped/unscoped mismatch "
 		    "in enum %q#T", enumtype);
-	  error_at (DECL_SOURCE_LOCATION (TYPE_MAIN_DECL (enumtype)),
-		    "previous definition here");
+	  inform (DECL_SOURCE_LOCATION (TYPE_MAIN_DECL (enumtype)),
+		  "previous definition here");
 	  enumtype = error_mark_node;
 	}
       else if (ENUM_FIXED_UNDERLYING_TYPE_P (enumtype) != !! underlying_type)
 	{
 	  error_at (input_location, "underlying type mismatch "
 		    "in enum %q#T", enumtype);
-	  error_at (DECL_SOURCE_LOCATION (TYPE_MAIN_DECL (enumtype)),
-		    "previous definition here");
+	  inform (DECL_SOURCE_LOCATION (TYPE_MAIN_DECL (enumtype)),
+		  "previous definition here");
 	  enumtype = error_mark_node;
 	}
       else if (underlying_type && ENUM_UNDERLYING_TYPE (enumtype)
@@ -13174,8 +13178,8 @@ start_enum (tree name, tree enumtype, tree underlying_type,
 	{
 	  error_at (input_location, "different underlying type "
 		    "in enum %q#T", enumtype);
-	  error_at (DECL_SOURCE_LOCATION (TYPE_MAIN_DECL (enumtype)),
-		    "previous definition here");
+	  inform (DECL_SOURCE_LOCATION (TYPE_MAIN_DECL (enumtype)),
+		  "previous definition here");
 	  underlying_type = NULL_TREE;
 	}
     }
@@ -13361,6 +13365,19 @@ finish_enum_value_list (tree enumtype)
 
       use_short_enum = flag_short_enums
         || lookup_attribute ("packed", TYPE_ATTRIBUTES (enumtype));
+
+      /* If the precision of the type was specified with an attribute and it
+	 was too small, give an error.  Otherwise, use it.  */
+      if (TYPE_PRECISION (enumtype))
+	{
+	  if (precision > TYPE_PRECISION (enumtype))
+	    error ("specified mode too small for enumeral values");
+	  else
+	    {
+	      use_short_enum = true;
+	      precision = TYPE_PRECISION (enumtype);
+	    }
+	}
 
       for (itk = (use_short_enum ? itk_char : itk_int);
            itk != itk_none;

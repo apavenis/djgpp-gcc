@@ -371,15 +371,15 @@
   [(set_attr "type" "neon<fp>_mul_<Vetype>_scalar<q>")]
 )
 
-(define_insn "*aarch64_mul3_elt_to_128df"
-  [(set (match_operand:V2DF 0 "register_operand" "=w")
-     (mult:V2DF
-       (vec_duplicate:V2DF
-	 (match_operand:DF 2 "register_operand" "w"))
-      (match_operand:V2DF 1 "register_operand" "w")))]
+(define_insn "*aarch64_mul3_elt_from_dup<mode>"
+ [(set (match_operand:VMUL 0 "register_operand" "=w")
+    (mult:VMUL
+      (vec_duplicate:VMUL
+	    (match_operand:<VEL> 1 "register_operand" "<h_con>"))
+      (match_operand:VMUL 2 "register_operand" "w")))]
   "TARGET_SIMD"
-  "fmul\\t%0.2d, %1.2d, %2.d[0]"
-  [(set_attr "type" "neon_fp_mul_d_scalar_q")]
+  "<f>mul\t%0.<Vtype>, %2.<Vtype>, %1.<Vetype>[0]";
+  [(set_attr "type" "neon<fp>_mul_<Vetype>_scalar<q>")]
 )
 
 (define_insn "aarch64_rsqrte_<mode>2"
@@ -1579,16 +1579,16 @@
   [(set_attr "type" "neon_fp_mla_<Vetype>_scalar<q>")]
 )
 
-(define_insn "*aarch64_fma4_elt_to_128df"
-  [(set (match_operand:V2DF 0 "register_operand" "=w")
-    (fma:V2DF
-      (vec_duplicate:V2DF
-	  (match_operand:DF 1 "register_operand" "w"))
-      (match_operand:V2DF 2 "register_operand" "w")
-      (match_operand:V2DF 3 "register_operand" "0")))]
+(define_insn "*aarch64_fma4_elt_from_dup<mode>"
+  [(set (match_operand:VMUL 0 "register_operand" "=w")
+    (fma:VMUL
+      (vec_duplicate:VMUL
+	  (match_operand:<VEL> 1 "register_operand" "w"))
+      (match_operand:VMUL 2 "register_operand" "w")
+      (match_operand:VMUL 3 "register_operand" "0")))]
   "TARGET_SIMD"
-  "fmla\\t%0.2d, %2.2d, %1.2d[0]"
-  [(set_attr "type" "neon_fp_mla_d_scalar_q")]
+  "fmla\t%0.<Vtype>, %2.<Vtype>, %1.<Vetype>[0]"
+  [(set_attr "type" "neon<fp>_mla_<Vetype>_scalar<q>")]
 )
 
 (define_insn "*aarch64_fma4_elt_to_64v2df"
@@ -1656,17 +1656,17 @@
   [(set_attr "type" "neon_fp_mla_<Vetype>_scalar<q>")]
 )
 
-(define_insn "*aarch64_fnma4_elt_to_128df"
-  [(set (match_operand:V2DF 0 "register_operand" "=w")
-    (fma:V2DF
-      (neg:V2DF
-        (match_operand:V2DF 2 "register_operand" "w"))
-      (vec_duplicate:V2DF
-	(match_operand:DF 1 "register_operand" "w"))
-      (match_operand:V2DF 3 "register_operand" "0")))]
+(define_insn "*aarch64_fnma4_elt_from_dup<mode>"
+  [(set (match_operand:VMUL 0 "register_operand" "=w")
+    (fma:VMUL
+      (neg:VMUL
+        (match_operand:VMUL 2 "register_operand" "w"))
+      (vec_duplicate:VMUL
+	(match_operand:<VEL> 1 "register_operand" "w"))
+      (match_operand:VMUL 3 "register_operand" "0")))]
   "TARGET_SIMD"
-  "fmls\\t%0.2d, %2.2d, %1.2d[0]"
-  [(set_attr "type" "neon_fp_mla_d_scalar_q")]
+  "fmls\t%0.<Vtype>, %2.<Vtype>, %1.<Vetype>[0]"
+  [(set_attr "type" "neon<fp>_mla_<Vetype>_scalar<q>")]
 )
 
 (define_insn "*aarch64_fnma4_elt_to_64v2df"
@@ -1919,16 +1919,6 @@
   }
 )
 
-(define_insn "aarch64_vmls<mode>"
-  [(set (match_operand:VDQF 0 "register_operand" "=w")
-       (minus:VDQF (match_operand:VDQF 1 "register_operand" "0")
-		   (mult:VDQF (match_operand:VDQF 2 "register_operand" "w")
-			      (match_operand:VDQF 3 "register_operand" "w"))))]
-  "TARGET_SIMD"
- "fmls\\t%0.<Vtype>, %2.<Vtype>, %3.<Vtype>"
-  [(set_attr "type" "neon_fp_mla_<Vetype>_scalar<q>")]
-)
-
 ;; FP Max/Min
 ;; Max/Min are introduced by idiom recognition by GCC's mid-end.  An
 ;; expression like:
@@ -1989,19 +1979,6 @@
   }
 )
 
-(define_expand "reduc_plus_scal_<mode>"
-  [(match_operand:<VEL> 0 "register_operand" "=w")
-   (match_operand:V2F 1 "register_operand" "w")]
-  "TARGET_SIMD"
-  {
-    rtx elt = GEN_INT (ENDIAN_LANE_N (<MODE>mode, 0));
-    rtx scratch = gen_reg_rtx (<MODE>mode);
-    emit_insn (gen_aarch64_reduc_plus_internal<mode> (scratch, operands[1]));
-    emit_insn (gen_aarch64_get_lane<mode> (operands[0], scratch, elt));
-    DONE;
-  }
-)
-
 (define_insn "aarch64_reduc_plus_internal<mode>"
  [(set (match_operand:VDQV 0 "register_operand" "=w")
        (unspec:VDQV [(match_operand:VDQV 1 "register_operand" "w")]
@@ -2020,9 +1997,9 @@
   [(set_attr "type" "neon_reduc_add")]
 )
 
-(define_insn "aarch64_reduc_plus_internal<mode>"
- [(set (match_operand:V2F 0 "register_operand" "=w")
-       (unspec:V2F [(match_operand:V2F 1 "register_operand" "w")]
+(define_insn "reduc_plus_scal_<mode>"
+ [(set (match_operand:<VEL> 0 "register_operand" "=w")
+       (unspec:<VEL> [(match_operand:V2F 1 "register_operand" "w")]
 		   UNSPEC_FADDV))]
  "TARGET_SIMD"
  "faddp\\t%<Vetype>0, %1.<Vtype>"
@@ -2645,7 +2622,7 @@
 (define_insn "*aarch64_combinez<mode>"
   [(set (match_operand:<VDBL> 0 "register_operand" "=w,w,w")
         (vec_concat:<VDBL>
-	   (match_operand:VD_BHSI 1 "general_operand" "w,r,m")
+	   (match_operand:VD_BHSI 1 "general_operand" "w,?r,m")
 	   (match_operand:VD_BHSI 2 "aarch64_simd_imm_zero" "Dz,Dz,Dz")))]
   "TARGET_SIMD && !BYTES_BIG_ENDIAN"
   "@
@@ -2661,7 +2638,7 @@
   [(set (match_operand:<VDBL> 0 "register_operand" "=w,w,w")
         (vec_concat:<VDBL>
 	   (match_operand:VD_BHSI 2 "aarch64_simd_imm_zero" "Dz,Dz,Dz")
-	   (match_operand:VD_BHSI 1 "general_operand" "w,r,m")))]
+	   (match_operand:VD_BHSI 1 "general_operand" "w,?r,m")))]
   "TARGET_SIMD && BYTES_BIG_ENDIAN"
   "@
    mov\\t%0.8b, %1.8b
@@ -4662,7 +4639,7 @@
    ld1\\t{%S0.16b - %<Vendreg>0.16b}, %1"
   [(set_attr "type" "multiple,neon_store<nregs>_<nregs>reg_q,\
 		     neon_load<nregs>_<nregs>reg_q")
-   (set (attr "length") (symbol_ref "aarch64_simd_attr_length_move (insn)"))]
+   (set_attr "length" "<insn_count>,4,4")]
 )
 
 (define_insn "aarch64_be_ld1<mode>"
@@ -4695,7 +4672,7 @@
    stp\\t%q1, %R1, %0
    ldp\\t%q0, %R0, %1"
   [(set_attr "type" "multiple,neon_stp_q,neon_ldp_q")
-   (set (attr "length") (symbol_ref "aarch64_simd_attr_length_move (insn)"))]
+   (set_attr "length" "8,4,4")]
 )
 
 (define_insn "*aarch64_be_movci"
@@ -4706,7 +4683,7 @@
        || register_operand (operands[1], CImode))"
   "#"
   [(set_attr "type" "multiple")
-   (set (attr "length") (symbol_ref "aarch64_simd_attr_length_move (insn)"))]
+   (set_attr "length" "12,4,4")]
 )
 
 (define_insn "*aarch64_be_movxi"
@@ -4717,7 +4694,7 @@
        || register_operand (operands[1], XImode))"
   "#"
   [(set_attr "type" "multiple")
-   (set (attr "length") (symbol_ref "aarch64_simd_attr_length_move (insn)"))]
+   (set_attr "length" "16,4,4")]
 )
 
 (define_split
@@ -5424,13 +5401,25 @@
   [(set_attr "type" "crypto_aese")]
 )
 
+;; When AES/AESMC fusion is enabled we want the register allocation to
+;; look like:
+;;    AESE Vn, _
+;;    AESMC Vn, Vn
+;; So prefer to tie operand 1 to operand 0 when fusing.
+
 (define_insn "aarch64_crypto_aes<aesmc_op>v16qi"
-  [(set (match_operand:V16QI 0 "register_operand" "=w")
-	(unspec:V16QI [(match_operand:V16QI 1 "register_operand" "w")]
+  [(set (match_operand:V16QI 0 "register_operand" "=w,w")
+	(unspec:V16QI [(match_operand:V16QI 1 "register_operand" "0,w")]
 	 CRYPTO_AESMC))]
   "TARGET_SIMD && TARGET_CRYPTO"
   "aes<aesmc_op>\\t%0.16b, %1.16b"
-  [(set_attr "type" "crypto_aesmc")]
+  [(set_attr "type" "crypto_aesmc")
+   (set_attr_alternative "enabled"
+     [(if_then_else (match_test
+		       "aarch64_fusion_enabled_p (AARCH64_FUSE_AES_AESMC)")
+		     (const_string "yes" )
+		     (const_string "no"))
+      (const_string "yes")])]
 )
 
 ;; sha1
