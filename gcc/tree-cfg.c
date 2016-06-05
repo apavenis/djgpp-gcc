@@ -3385,11 +3385,9 @@ verify_gimple_call (gcall *stmt)
       return true;
     }
 
-  if (lhs
-      && gimple_call_ctrl_altering_p (stmt)
+  if (gimple_call_ctrl_altering_p (stmt)
       && gimple_call_noreturn_p (stmt)
-      && TREE_CODE (TYPE_SIZE_UNIT (TREE_TYPE (lhs))) == INTEGER_CST
-      && !TREE_ADDRESSABLE (TREE_TYPE (lhs)))
+      && should_remove_lhs_p (lhs))
     {
       error ("LHS in noreturn call");
       return true;
@@ -4132,6 +4130,53 @@ verify_gimple_assign_ternary (gassign *stmt)
 	  return true;
 	}
 
+      return false;
+
+    case BIT_INSERT_EXPR:
+      if (! useless_type_conversion_p (lhs_type, rhs1_type))
+	{
+	  error ("type mismatch in BIT_INSERT_EXPR");
+	  debug_generic_expr (lhs_type);
+	  debug_generic_expr (rhs1_type);
+	  return true;
+	}
+      if (! ((INTEGRAL_TYPE_P (rhs1_type)
+	      && INTEGRAL_TYPE_P (rhs2_type))
+	     || (VECTOR_TYPE_P (rhs1_type)
+		 && types_compatible_p (TREE_TYPE (rhs1_type), rhs2_type))))
+	{
+	  error ("not allowed type combination in BIT_INSERT_EXPR");
+	  debug_generic_expr (rhs1_type);
+	  debug_generic_expr (rhs2_type);
+	  return true;
+	}
+      if (! tree_fits_uhwi_p (rhs3)
+	  || ! tree_fits_uhwi_p (TYPE_SIZE (rhs2_type)))
+	{
+	  error ("invalid position or size in BIT_INSERT_EXPR");
+	  return true;
+	}
+      if (INTEGRAL_TYPE_P (rhs1_type))
+	{
+	  unsigned HOST_WIDE_INT bitpos = tree_to_uhwi (rhs3);
+	  if (bitpos >= TYPE_PRECISION (rhs1_type)
+	      || (bitpos + TYPE_PRECISION (rhs2_type)
+		  > TYPE_PRECISION (rhs1_type)))
+	    {
+	      error ("insertion out of range in BIT_INSERT_EXPR");
+	      return true;
+	    }
+	}
+      else if (VECTOR_TYPE_P (rhs1_type))
+	{
+	  unsigned HOST_WIDE_INT bitpos = tree_to_uhwi (rhs3);
+	  unsigned HOST_WIDE_INT bitsize = tree_to_uhwi (TYPE_SIZE (rhs2_type));
+	  if (bitpos % bitsize != 0)
+	    {
+	      error ("vector insertion not at element boundary");
+	      return true;
+	    }
+	}
       return false;
 
     case DOT_PROD_EXPR:
@@ -7734,6 +7779,11 @@ print_loop (FILE *file, struct loop *loop, int indent, int verbosity)
     {
       fprintf (file, ", upper_bound = ");
       print_decu (loop->nb_iterations_upper_bound, file);
+    }
+  if (loop->any_likely_upper_bound)
+    {
+      fprintf (file, ", likely_upper_bound = ");
+      print_decu (loop->nb_iterations_likely_upper_bound, file);
     }
 
   if (loop->any_estimate)

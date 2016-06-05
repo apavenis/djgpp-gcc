@@ -565,6 +565,38 @@
     }
 })
 
+;; Return 1 if the operand is a CONST_VECTOR or VEC_DUPLICATE of a constant
+;; that can loaded with a XXSPLTIB instruction and then a VUPKHSB, VECSB2W or
+;; VECSB2D instruction.
+
+(define_predicate "xxspltib_constant_split"
+  (match_code "const_vector,vec_duplicate,const_int")
+{
+  int value = 256;
+  int num_insns = -1;
+
+  if (!xxspltib_constant_p (op, mode, &num_insns, &value))
+    return false;
+
+  return num_insns > 1;
+})
+
+
+;; Return 1 if the operand is a CONST_VECTOR that can loaded directly with a
+;; XXSPLTIB instruction.
+
+(define_predicate "xxspltib_constant_nosplit"
+  (match_code "const_vector,vec_duplicate,const_int")
+{
+  int value = 256;
+  int num_insns = -1;
+
+  if (!xxspltib_constant_p (op, mode, &num_insns, &value))
+    return false;
+
+  return num_insns == 1;
+})
+
 ;; Return 1 if the operand is a CONST_VECTOR and can be loaded into a
 ;; vector register without using memory.
 (define_predicate "easy_vector_constant"
@@ -583,7 +615,14 @@
 
   if (VECTOR_MEM_ALTIVEC_OR_VSX_P (mode))
     {
-      if (zero_constant (op, mode))
+      int value = 256;
+      int num_insns = -1;
+
+      if (zero_constant (op, mode) || all_ones_constant (op, mode))
+	return true;
+
+      if (TARGET_P9_VECTOR
+          && xxspltib_constant_p (op, mode, &num_insns, &value))
 	return true;
 
       return easy_altivec_constant (op, mode);
@@ -661,6 +700,11 @@
 (define_predicate "zero_constant"
   (and (match_code "const_int,const_double,const_wide_int,const_vector")
        (match_test "op == CONST0_RTX (mode)")))
+
+;; Return 1 if operand is constant -1 (scalars and vectors).
+(define_predicate "all_ones_constant"
+  (and (match_code "const_int,const_double,const_wide_int,const_vector")
+       (match_test "op == CONSTM1_RTX (mode) && !FLOAT_MODE_P (mode)")))
 
 ;; Return 1 if operand is 0.0.
 (define_predicate "zero_fp_constant"
@@ -1024,6 +1068,10 @@
 	mode = V2DFmode;
       else if (mode == DImode)
 	mode = V2DImode;
+      else if (mode == SImode && TARGET_P9_VECTOR)
+	mode = V4SImode;
+      else if (mode == SFmode && TARGET_P9_VECTOR)
+	mode = V4SFmode;
       else
 	gcc_unreachable ();
       return memory_address_addr_space_p (mode, XEXP (op, 0),
@@ -1060,10 +1108,6 @@
 ;; Return true if operand is an equality operator.
 (define_special_predicate "equality_operator"
   (match_code "eq,ne"))
-
-;; Return true if operand is MIN or MAX operator.
-(define_predicate "min_max_operator"
-  (match_code "smin,smax,umin,umax"))
 
 ;; Return 1 if OP is a comparison operation that is valid for a branch
 ;; instruction.  We check the opcode against the mode of the CC value.
@@ -1106,6 +1150,11 @@
 (define_predicate "scc_rev_comparison_operator"
   (and (match_operand 0 "branch_comparison_operator")
        (match_code "ne,le,ge,leu,geu,ordered")))
+
+;; Return 1 if OP is a comparison operator suitable for vector/scalar
+;; comparisons that generate a -1/0 mask.
+(define_predicate "fpmask_comparison_operator"
+  (match_code "eq,gt,ge"))
 
 ;; Return 1 if OP is a comparison operation that is valid for a branch
 ;; insn, which is true if the corresponding bit in the CC register is set.
