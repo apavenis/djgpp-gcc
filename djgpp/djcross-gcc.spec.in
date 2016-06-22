@@ -57,8 +57,8 @@ Source1: ftp://ftp.gnu.org/gnu/gcc/gcc-%{gcc_version}/gcc-%{gcc_source_name}.tar
 Source2: ftp://ftp.gmplib.org/pub/gmp-%{gmp_version}/gmp-%{gmp_version}.tar.bz2
 Source3: http://mpfr.loria.fr/mpfr-%{mpfr_version}/mpfr-%{mpfr_version}.tar.bz2
 Source4: http://www.multiprecision.org/mpc/download/mpc-%{mpc_version}.tar.gz
-Source5: ftp://ftp.gnu.org/gnu/autoconf/autoconf-%{autoconf_version}.tar.bz2
-Source6: ftp://ftp.gnu.org/gnu/automake/automake-%{automake_version}.tar.bz2
+Source5: ftp://ftp.gnu.org/gnu/autoconf/autoconf-%{autoconf_version}.tar.gz
+Source6: ftp://ftp.gnu.org/gnu/automake/automake-%{automake_version}.tar.gz
 
 Buildroot: %{_tmppath}/%{name}-%{version}-root
 BuildArch: i686 x86_64
@@ -181,7 +181,7 @@ cd $RPM_BUILD_DIR/%{name}-%{version}/autoconf-%{autoconf_version}
 make all install
 
 cd $RPM_BUILD_DIR/%{name}-%{version} || exit 1
-tar xjf $RPM_SOURCE_DIR/automake-%{automake_version}.tar.bz2 || exit 1
+tar xzf $RPM_SOURCE_DIR/automake-%{automake_version}.tar.gz || exit 1
 cd $RPM_BUILD_DIR/%{name}-%{version}/automake-%{automake_version}
 ./configure --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst
 make all install
