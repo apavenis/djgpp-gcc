@@ -1,7 +1,7 @@
 #! /bin/sh
 
 gcc_src_ext=xz
-gmp_version=6.1.0
+gmp_version=6.1.1
 mpfr_version=3.1.4
 mpc_version=1.0.3
 autoconf_version=2.64
