@@ -2149,6 +2149,7 @@ package body Sem_Ch6 is
       Body_Id      : Entity_Id           := Defining_Entity (Body_Spec);
       Prev_Id      : constant Entity_Id  := Current_Entity_In_Scope (Body_Id);
       Exch_Views   : Elist_Id            := No_Elist;
+      Desig_View   : Entity_Id           := Empty;
       Conformant   : Boolean;
       HSS          : Node_Id;
       Prot_Typ     : Entity_Id := Empty;
@@ -2914,13 +2915,10 @@ package body Sem_Ch6 is
       --  Start of processing for Exchange_Limited_Views
 
       begin
-         if No (Subp_Id) then
-            return No_Elist;
-
          --  Do not process subprogram bodies as they already use the non-
          --  limited view of types.
 
-         elsif not Ekind_In (Subp_Id, E_Function, E_Procedure) then
+         if not Ekind_In (Subp_Id, E_Function, E_Procedure) then
             return No_Elist;
          end if;
 
@@ -3665,31 +3663,6 @@ package body Sem_Ch6 is
          Set_SPARK_Pragma_Inherited (Body_Id);
       end if;
 
-      --  If the return type is an anonymous access type whose designated type
-      --  is the limited view of a class-wide type and the non-limited view is
-      --  available, update the return type accordingly.
-
-      if Ada_Version >= Ada_2005 and then Comes_From_Source (N) then
-         declare
-            Etyp : Entity_Id;
-            Rtyp : Entity_Id;
-
-         begin
-            Rtyp := Etype (Current_Scope);
-
-            if Ekind (Rtyp) = E_Anonymous_Access_Type then
-               Etyp := Directly_Designated_Type (Rtyp);
-
-               if Is_Class_Wide_Type (Etyp)
-                 and then From_Limited_With (Etyp)
-               then
-                  Set_Directly_Designated_Type
-                    (Etype (Current_Scope), Available_View (Etyp));
-               end if;
-            end if;
-         end;
-      end if;
-
       --  If this is the proper body of a stub, we must verify that the stub
       --  conforms to the body, and to the previous spec if one was present.
       --  We know already that the body conforms to that spec. This test is
@@ -3918,8 +3891,33 @@ package body Sem_Ch6 is
       --  of a subprogram body may use the parameter and result profile of the
       --  spec, swap any limited views with their non-limited counterpart.
 
-      if Ada_Version >= Ada_2012 then
+      if Ada_Version >= Ada_2012 and then Present (Spec_Id) then
          Exch_Views := Exchange_Limited_Views (Spec_Id);
+      end if;
+
+      --  If the return type is an anonymous access type whose designated type
+      --  is the limited view of a class-wide type and the non-limited view is
+      --  available, update the return type accordingly.
+
+      if Ada_Version >= Ada_2005 and then Present (Spec_Id) then
+         declare
+            Etyp : Entity_Id;
+            Rtyp : Entity_Id;
+
+         begin
+            Rtyp := Etype (Spec_Id);
+
+            if Ekind (Rtyp) = E_Anonymous_Access_Type then
+               Etyp := Directly_Designated_Type (Rtyp);
+
+               if Is_Class_Wide_Type (Etyp)
+                 and then From_Limited_With (Etyp)
+               then
+                  Desig_View := Etyp;
+                  Set_Directly_Designated_Type (Rtyp, Available_View (Etyp));
+               end if;
+            end if;
+         end;
       end if;
 
       --  Analyze any aspect specifications that appear on the subprogram body
@@ -4191,6 +4189,10 @@ package body Sem_Ch6 is
          Restore_Limited_Views (Exch_Views);
       end if;
 
+      if Present (Desig_View) then
+         Set_Directly_Designated_Type (Etype (Spec_Id), Desig_View);
+      end if;
+
       Ghost_Mode := Save_Ghost_Mode;
    end Analyze_Subprogram_Body_Helper;
 
@@ -4426,6 +4428,34 @@ package body Sem_Ch6 is
    --  both subprogram bodies and subprogram declarations (specs).
 
    function Analyze_Subprogram_Specification (N : Node_Id) return Entity_Id is
+      function Is_Invariant_Procedure_Or_Body (E : Entity_Id) return Boolean;
+      --  Determine whether entity E denotes the spec or body of an invariant
+      --  procedure.
+
+      ------------------------------------
+      -- Is_Invariant_Procedure_Or_Body --
+      ------------------------------------
+
+      function Is_Invariant_Procedure_Or_Body (E : Entity_Id) return Boolean is
+         Decl : constant Node_Id := Unit_Declaration_Node (E);
+         Spec : Entity_Id;
+
+      begin
+         if Nkind (Decl) = N_Subprogram_Body then
+            Spec := Corresponding_Spec (Decl);
+         else
+            Spec := E;
+         end if;
+
+         return
+           Present (Spec)
+             and then Ekind (Spec) = E_Procedure
+             and then (Is_Partial_Invariant_Procedure (Spec)
+                        or else Is_Invariant_Procedure (Spec));
+      end Is_Invariant_Procedure_Or_Body;
+
+      --  Local variables
+
       Designator : constant Entity_Id := Defining_Entity (N);
       Formals    : constant List_Id   := Parameter_Specifications (N);
 
@@ -4485,7 +4515,27 @@ package body Sem_Ch6 is
          --  Same processing for an access parameter whose designated type is
          --  derived from a synchronized interface.
 
-         if Ada_Version >= Ada_2005 then
+         --  This modification is not done for invariant procedures because
+         --  the corresponding record may not necessarely be visible when the
+         --  concurrent type acts as the full view of a private type.
+
+         --    package Pack is
+         --       type Prot is private with Type_Invariant => ...;
+         --       procedure ConcInvariant (Obj : Prot);
+         --    private
+         --       protected type Prot is ...;
+         --       type Concurrent_Record_Prot is record ...;
+         --       procedure ConcInvariant (Obj : Prot) is
+         --          ...
+         --       end ConcInvariant;
+         --    end Pack;
+
+         --  In the example above, both the spec and body of the invariant
+         --  procedure must utilize the private type as the controlling type.
+
+         if Ada_Version >= Ada_2005
+           and then not Is_Invariant_Procedure_Or_Body (Designator)
+         then
             declare
                Formal     : Entity_Id;
                Formal_Typ : Entity_Id;
@@ -11145,6 +11195,16 @@ package body Sem_Ch6 is
       --  actual subtypes (small optimization).
 
       if Ekind (Subp) = E_Procedure and then Is_Null_Init_Proc (Subp) then
+         return;
+      end if;
+
+      --  The subtype declarations may freeze the formals. The body generated
+      --  for an expression function is not a freeze point, so do not emit
+      --  these declarations (small loss of efficiency in rare cases).
+
+      if Nkind (N) = N_Subprogram_Body
+        and then Was_Expression_Function (N)
+      then
          return;
       end if;
 

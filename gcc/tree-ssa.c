@@ -1292,6 +1292,18 @@ non_rewritable_lvalue_p (tree lhs)
       if (integer_zerop (TREE_OPERAND (lhs, 1))
 	  && DECL_P (decl)
 	  && DECL_SIZE (decl) == TYPE_SIZE (TREE_TYPE (lhs))
+	  /* If the dynamic type of the decl has larger precision than
+	     the decl itself we can't use the decls type for SSA rewriting.  */
+	  && ((! INTEGRAL_TYPE_P (TREE_TYPE (decl))
+	       || compare_tree_int (DECL_SIZE (decl),
+				    TYPE_PRECISION (TREE_TYPE (decl))) == 0)
+	      || (INTEGRAL_TYPE_P (TREE_TYPE (lhs))
+		  && (TYPE_PRECISION (TREE_TYPE (decl))
+		      >= TYPE_PRECISION (TREE_TYPE (lhs)))))
+	  /* Make sure we are not re-writing non-float copying into float
+	     copying as that can incur normalization.  */
+	  && (! FLOAT_TYPE_P (TREE_TYPE (decl))
+	      || types_compatible_p (TREE_TYPE (lhs), TREE_TYPE (decl)))
 	  && (TREE_THIS_VOLATILE (decl) == TREE_THIS_VOLATILE (lhs)))
 	return false;
 
