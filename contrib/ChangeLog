@@ -1,3 +1,41 @@
+2016-06-24  Martin Liska  <mliska@suse.cz>
+
+	* analyze_brprob.py: Parse and display average number
+	of loop iterations.
+
+2016-06-23  Andi Kleen  <ak@linux.intel.com>
+
+	* gen_autofdo_event.py: New file to regenerate
+	gcc-auto-profile.
+
+2016-06-21  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config-list.mk: Stop testing mep-elf.
+
+2016-06-21  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config-list.mk: Stop testing avr-rtems.
+
+2016-06-21  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config-list.mk: Stop testing m32r-rtems.
+
+2016-06-21  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config-list.mk: Remove h8300-rtems support.
+
+2016-06-21  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config-list.mk: stop testing knetbsd.
+
+2016-06-21  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config-list.mk: Stop testing openbsd3.0.
+
+2016-06-21  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config-list.mk: Remove interix target.
+
 2016-06-21  David Edelsohn  <dje.gcc@gmail.com>
 
 	* config-list.mk: Remove rs6000-ibm-aix4.3, rs6000-ibm-aix5.1,

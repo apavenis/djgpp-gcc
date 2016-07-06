@@ -2152,10 +2152,12 @@ again:
 	{
 	  vinfo = vinfo_for_stmt (SLP_TREE_SCALAR_STMTS (node)[0]);
 	  vinfo = vinfo_for_stmt (STMT_VINFO_GROUP_FIRST_ELEMENT (vinfo));
+	  bool single_element_p = !STMT_VINFO_GROUP_NEXT_ELEMENT (vinfo);
 	  size = STMT_VINFO_GROUP_SIZE (vinfo);
 	  vectype = STMT_VINFO_VECTYPE (vinfo);
 	  if (! vect_load_lanes_supported (vectype, size)
-	      && ! vect_grouped_load_supported (vectype, size))
+	      && ! vect_grouped_load_supported (vectype, single_element_p,
+						size))
 	    return false;
 	}
     }
@@ -6968,6 +6970,9 @@ vect_transform_loop (loop_vec_info loop_vinfo)
   FOR_EACH_VEC_ELT (LOOP_VINFO_SLP_INSTANCES (loop_vinfo), i, instance)
     vect_free_slp_instance (instance);
   LOOP_VINFO_SLP_INSTANCES (loop_vinfo).release ();
+  /* Clear-up safelen field since its value is invalid after vectorization
+     since vectorized loop can have loop-carried dependencies.  */
+  loop->safelen = 0;
 }
 
 /* The code below is trying to perform simple optimization - revert
