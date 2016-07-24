@@ -166,11 +166,11 @@ package body Sem_Prag is
      Table_Increment      => 100,
      Table_Name           => "Name_Externals");
 
-   --------------------------------------------------------
-   -- Handling of inherited classwide pre/postconditions --
-   --------------------------------------------------------
+   ---------------------------------------------------------
+   -- Handling of inherited class-wide pre/postconditions --
+   ---------------------------------------------------------
 
-   --  Following AI12-0113, the expression for a classwide condition is
+   --  Following AI12-0113, the expression for a class-wide condition is
    --  transformed for a subprogram that inherits it, by replacing calls
    --  to primitive operations of the original controlling type into the
    --  corresponding overriding operations of the derived type. The following
@@ -3932,7 +3932,7 @@ package body Sem_Prag is
       --    Enabled:    inlining is requested/required for the subprogram
 
       procedure Process_Inline (Status : Inline_Status);
-      --  Common processing for Inline, Inline_Always and No_Inline. Parameter
+      --  Common processing for No_Inline, Inline and Inline_Always. Parameter
       --  indicates the inline status specified by the pragma.
 
       procedure Process_Interface_Name
@@ -8791,21 +8791,20 @@ package body Sem_Prag is
          --  processing the arguments of the pragma.
 
          procedure Make_Inline (Subp : Entity_Id);
-         --  Subp is the defining unit name of the subprogram declaration. Set
-         --  the flag, as well as the flag in the corresponding body, if there
-         --  is one present.
+         --  Subp is the defining unit name of the subprogram declaration. If
+         --  the pragma is valid, call Set_Inline_Flags on Subp, as well as on
+         --  the corresponding body, if there is one present.
 
          procedure Set_Inline_Flags (Subp : Entity_Id);
-         --  Sets Is_Inlined and Has_Pragma_Inline flags for Subp and also
-         --  Has_Pragma_Inline_Always for the Inline_Always case.
+         --  Set Has_Pragma_{No_Inline,Inline,Inline_Always} flag on Subp.
+         --  Also set or clear Is_Inlined flag on Subp depending on Status.
 
          function Inlining_Not_Possible (Subp : Entity_Id) return Boolean;
          --  Returns True if it can be determined at this stage that inlining
          --  is not possible, for example if the body is available and contains
          --  exception handlers, we prevent inlining, since otherwise we can
          --  get undefined symbols at link time. This function also emits a
-         --  warning if front-end inlining is enabled and the pragma appears
-         --  too late.
+         --  warning if the pragma appears too late.
          --
          --  ??? is business with link symbols still valid, or does it relate
          --  to front end ZCX which is being phased out ???
@@ -8827,9 +8826,7 @@ package body Sem_Prag is
             elsif Nkind (Decl) = N_Subprogram_Declaration
               and then Present (Corresponding_Body (Decl))
             then
-               if Front_End_Inlining
-                 and then Analyzed (Corresponding_Body (Decl))
-               then
+               if Analyzed (Corresponding_Body (Decl)) then
                   Error_Msg_N ("pragma appears too late, ignored??", N);
                   return True;
 
@@ -8879,6 +8876,7 @@ package body Sem_Prag is
             --  If inlining is not possible, for now do not treat as an error
 
             elsif Status /= Suppressed
+              and then Front_End_Inlining
               and then Inlining_Not_Possible (Subp)
             then
                Applies := True;
@@ -9048,9 +9046,7 @@ package body Sem_Prag is
                   end if;
                end if;
 
-               if not Has_Pragma_Inline (Subp) then
-                  Set_Has_Pragma_Inline (Subp);
-               end if;
+               Set_Has_Pragma_Inline (Subp);
             end if;
 
             --  Then adjust the Is_Inlined flag. It can never be set if the
@@ -16398,7 +16394,23 @@ package body Sem_Prag is
 
             if not GNATprove_Mode then
 
-               --  Inline status is Enabled if inlining option is active
+               --  Inline status is Enabled if option -gnatn is specified.
+               --  However this status determines only the value of the
+               --  Is_Inlined flag on the subprogram and does not prevent
+               --  the pragma itself from being recorded for later use,
+               --  in particular for a later modification of Is_Inlined
+               --  independently of the -gnatn option.
+
+               --  In other words, if -gnatn is specified for a unit, then
+               --  all Inline pragmas processed for the compilation of this
+               --  unit, including those in the spec of other units, are
+               --  activated, so subprograms will be inlined across units.
+
+               --  If -gnatn is not specified, no Inline pragma is activated
+               --  here, which means that subprograms will not be inlined
+               --  across units. The Is_Inlined flag will nevertheless be
+               --  set later when bodies are analyzed, so subprograms will
+               --  be inlined within the unit.
 
                if Inline_Active then
                   Process_Inline (Enabled);
@@ -20327,7 +20339,7 @@ package body Sem_Prag is
 
             else
                Error_Pragma_Arg
-                 ("pragma% applies only to formal access to classwide types",
+                 ("pragma% applies only to formal access-to-class-wide types",
                   Arg1);
             end if;
          end Remote_Access_Type;
@@ -26389,19 +26401,23 @@ package body Sem_Prag is
       return False;
    end Appears_In;
 
-   --------------------------------
-   -- Build_Classwide_Expression --
-   --------------------------------
+   ---------------------------------
+   -- Build_Class_Wide_Expression --
+   ---------------------------------
 
-   procedure Build_Classwide_Expression
+   procedure Build_Class_Wide_Expression
      (Prag        : Node_Id;
       Subp        : Entity_Id;
+      Par_Subp    : Entity_Id;
       Adjust_Sloc : Boolean)
    is
+      Par_Formal  : Entity_Id;
+      Subp_Formal : Entity_Id;
+
       function Replace_Entity (N : Node_Id) return Traverse_Result;
       --  Replace reference to formal of inherited operation or to primitive
       --  operation of root type, with corresponding entity for derived type,
-      --  when constructing the classwide condition of an overridding
+      --  when constructing the class-wide condition of an overriding
       --  subprogram.
 
       --------------------
@@ -26500,11 +26516,22 @@ package body Sem_Prag is
       procedure Replace_Condition_Entities is
         new Traverse_Proc (Replace_Entity);
 
-   --  Start of processing for Build_Classwide_Expression
+   --  Start of processing for Build_Class_Wide_Expression
 
    begin
+      --  Add mapping from old formals to new formals
+
+      Par_Formal := First_Formal (Par_Subp);
+      Subp_Formal  := First_Formal (Subp);
+
+      while Present (Par_Formal) and then Present (Subp_Formal) loop
+         Primitives_Mapping.Set (Par_Formal, Subp_Formal);
+         Next_Formal (Par_Formal);
+         Next_Formal (Subp_Formal);
+      end loop;
+
       Replace_Condition_Entities (Prag);
-   end Build_Classwide_Expression;
+   end Build_Class_Wide_Expression;
 
    -----------------------------------
    -- Build_Pragma_Check_Equivalent --
@@ -26555,10 +26582,8 @@ package body Sem_Prag is
       Loc          : constant Source_Ptr := Sloc (Prag);
       Prag_Nam     : constant Name_Id    := Pragma_Name (Prag);
       Check_Prag   : Node_Id;
-      Inher_Formal : Entity_Id;
       Msg_Arg      : Node_Id;
       Nam          : Name_Id;
-      Subp_Formal  : Entity_Id;
 
    --  Start of processing for Build_Pragma_Check_Equivalent
 
@@ -26573,16 +26598,6 @@ package body Sem_Prag is
 
          Update_Primitives_Mapping (Inher_Id, Subp_Id);
 
-         --  Add mapping from old formals to new formals.
-
-         Inher_Formal := First_Formal (Inher_Id);
-         Subp_Formal  := First_Formal (Subp_Id);
-         while Present (Inher_Formal) and then Present (Subp_Formal) loop
-            Primitives_Mapping.Set (Inher_Formal, Subp_Formal);
-            Next_Formal (Inher_Formal);
-            Next_Formal (Subp_Formal);
-         end loop;
-
          --  Use generic machinery to copy inherited pragma, as if it were an
          --  instantiation, resetting source locations appropriately, so that
          --  expressions inside the inherited pragma use chained locations.
@@ -26592,9 +26607,13 @@ package body Sem_Prag is
          Set_Copied_Sloc_For_Inherited_Pragma
            (Unit_Declaration_Node (Subp_Id), Inher_Id);
          Check_Prag := New_Copy_Tree (Source => Prag);
-         Build_Classwide_Expression (Check_Prag, Subp_Id, Adjust_Sloc => True);
 
-      --  Otherwise simply copy the original pragma
+         --  Build the inherited class-wide condition
+
+         Build_Class_Wide_Expression
+           (Check_Prag, Subp_Id, Inher_Id, Adjust_Sloc => True);
+
+      --  If not an inherited condition simply copy the original pragma
 
       else
          Check_Prag := New_Copy_Tree (Source => Prag);
@@ -29301,7 +29320,8 @@ package body Sem_Prag is
       Subp_Id  : Entity_Id)
    is
       function Overridden_Ancestor (S : Entity_Id) return Entity_Id;
-      --  ??? what does this routine do?
+      --  Locate the primitive operation with the name of S whose controlling
+      --  type is the dispatching type of Inher_Id.
 
       -------------------------
       -- Overridden_Ancestor --
@@ -29333,7 +29353,7 @@ package body Sem_Prag is
       Old_Prim : Entity_Id;
       Prim     : Entity_Id;
 
-   --  Start of processing for Primitive_Mapping
+   --  Start of processing for Update_Primitives_Mapping
 
    begin
       --  If the types are already in the map, it has been previously built for

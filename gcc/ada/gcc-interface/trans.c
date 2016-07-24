@@ -2181,7 +2181,7 @@ Attribute_to_gnu (Node_Id gnat_node, tree *gnu_result_type_p, int attribute)
 			  && TREE_CODE (gnu_prefix) == FIELD_DECL));
 
 	get_inner_reference (gnu_prefix, &bitsize, &bitpos, &gnu_offset,
-			     &mode, &unsignedp, &reversep, &volatilep, false);
+			     &mode, &unsignedp, &reversep, &volatilep);
 
 	if (TREE_CODE (gnu_prefix) == COMPONENT_REF)
 	  {
@@ -4374,7 +4374,6 @@ Call_to_gnu (Node_Id gnat_node, tree *gnu_result_type_p, tree gnu_target,
       Node_Id gnat_name = suppress_type_conversion
 			  ? Expression (gnat_actual) : gnat_actual;
       tree gnu_name = gnat_to_gnu (gnat_name), gnu_name_type;
-      tree gnu_actual;
 
       /* If it's possible we may need to use this expression twice, make sure
 	 that any side-effects are handled via SAVE_EXPRs; likewise if we need
@@ -4504,7 +4503,7 @@ Call_to_gnu (Node_Id gnat_node, tree *gnu_result_type_p, tree gnu_target,
 	}
 
       /* Start from the real object and build the actual.  */
-      gnu_actual = gnu_name;
+      tree gnu_actual = gnu_name;
 
       /* If atomic access is required for an In or In Out actual parameter,
 	 build the atomic load.  */
@@ -4524,15 +4523,18 @@ Call_to_gnu (Node_Id gnat_node, tree *gnu_result_type_p, tree gnu_target,
       /* Put back the conversion we suppressed above in the computation of the
 	 real object.  And even if we didn't suppress any conversion there, we
 	 may have suppressed a conversion to the Etype of the actual earlier,
-	 since the parent is a procedure call, so put it back here.  */
-      if (suppress_type_conversion
-	  && Nkind (gnat_actual) == N_Unchecked_Type_Conversion)
-	gnu_actual
-	  = unchecked_convert (gnat_to_gnu_type (Etype (gnat_actual)),
-			       gnu_actual, No_Truncation (gnat_actual));
+	 since the parent is a procedure call, so put it back here.  Note that
+	 we might have a dummy type here if the actual is the dereference of a
+	 pointer to it, but that's OK if the formal is passed by reference.  */
+      tree gnu_actual_type = gnat_to_gnu_type (Etype (gnat_actual));
+      if (TYPE_IS_DUMMY_P (gnu_actual_type))
+	gcc_assert (is_true_formal_parm && DECL_BY_REF_P (gnu_formal));
+      else if (suppress_type_conversion
+	       && Nkind (gnat_actual) == N_Unchecked_Type_Conversion)
+	gnu_actual = unchecked_convert (gnu_actual_type, gnu_actual,
+				        No_Truncation (gnat_actual));
       else
-	gnu_actual
-	  = convert (gnat_to_gnu_type (Etype (gnat_actual)), gnu_actual);
+	gnu_actual = convert (gnu_actual_type, gnu_actual);
 
       /* Make sure that the actual is in range of the formal's type.  */
       if (Ekind (gnat_formal) != E_Out_Parameter
@@ -8012,7 +8014,7 @@ void
 add_decl_expr (tree gnu_decl, Entity_Id gnat_entity)
 {
   tree type = TREE_TYPE (gnu_decl);
-  tree gnu_stmt, gnu_init, t;
+  tree gnu_stmt, gnu_init;
 
   /* If this is a variable that Gigi is to ignore, we may have been given
      an ERROR_MARK.  So test for it.  We also might have been given a
@@ -8059,15 +8061,6 @@ add_decl_expr (tree gnu_decl, Entity_Id gnat_entity)
 	      && !initializer_constant_valid_p (gnu_init,
 						TREE_TYPE (gnu_init)))))
     {
-      /* If GNU_DECL has a padded type, convert it to the unpadded
-	 type so the assignment is done properly.  */
-      if (TYPE_IS_PADDING_P (type))
-	t = convert (TREE_TYPE (TYPE_FIELDS (type)), gnu_decl);
-      else
-	t = gnu_decl;
-
-      gnu_stmt = build_binary_op (INIT_EXPR, NULL_TREE, t, gnu_init);
-
       DECL_INITIAL (gnu_decl) = NULL_TREE;
       if (TREE_READONLY (gnu_decl))
 	{
@@ -8075,6 +8068,12 @@ add_decl_expr (tree gnu_decl, Entity_Id gnat_entity)
 	  DECL_READONLY_ONCE_ELAB (gnu_decl) = 1;
 	}
 
+      /* If GNU_DECL has a padded type, convert it to the unpadded
+	 type so the assignment is done properly.  */
+      if (TYPE_IS_PADDING_P (type))
+	gnu_decl = convert (TREE_TYPE (TYPE_FIELDS (type)), gnu_decl);
+
+      gnu_stmt = build_binary_op (INIT_EXPR, NULL_TREE, gnu_decl, gnu_init);
       add_stmt_with_node (gnu_stmt, gnat_entity);
     }
 }

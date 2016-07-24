@@ -4731,11 +4731,13 @@ altivec_resolve_overloaded_builtin (location_t loc, tree fndecl,
  
   /* vec_lvsl and vec_lvsr are deprecated for use with LE element order.  */
   if (fcode == ALTIVEC_BUILTIN_VEC_LVSL && !VECTOR_ELT_ORDER_BIG)
-    warning (OPT_Wdeprecated, "vec_lvsl is deprecated for little endian; use \
-assignment for unaligned loads and stores");
+    warning (OPT_Wdeprecated,
+	     "vec_lvsl is deprecated for little endian; use "
+	     "assignment for unaligned loads and stores");
   else if (fcode == ALTIVEC_BUILTIN_VEC_LVSR && !VECTOR_ELT_ORDER_BIG)
-    warning (OPT_Wdeprecated, "vec_lvsr is deprecated for little endian; use \
-assignment for unaligned loads and stores");
+    warning (OPT_Wdeprecated,
+	     "vec_lvsr is deprecated for little endian; use "
+	     "assignment for unaligned loads and stores");
 
   if (fcode == ALTIVEC_BUILTIN_VEC_MUL)
     {
@@ -5281,10 +5283,11 @@ assignment for unaligned loads and stores");
      are able to honor __restrict__, for example.  We may want to
      consider this for all memory access built-ins.
 
-     When -maltivec=be is specified, simply punt to existing
-     built-in processing.  */
+     When -maltivec=be is specified, or the wrong number of arguments
+     is provided, simply punt to existing built-in processing.  */
   if (fcode == ALTIVEC_BUILTIN_VEC_LD
-      && (BYTES_BIG_ENDIAN || !VECTOR_ELT_ORDER_BIG))
+      && (BYTES_BIG_ENDIAN || !VECTOR_ELT_ORDER_BIG)
+      && nargs == 2)
     {
       tree arg0 = (*arglist)[0];
       tree arg1 = (*arglist)[1];
@@ -5354,7 +5357,8 @@ assignment for unaligned loads and stores");
 
   /* Similarly for stvx.  */
   if (fcode == ALTIVEC_BUILTIN_VEC_ST
-      && (BYTES_BIG_ENDIAN || !VECTOR_ELT_ORDER_BIG))
+      && (BYTES_BIG_ENDIAN || !VECTOR_ELT_ORDER_BIG)
+      && nargs == 3)
     {
       tree arg0 = (*arglist)[0];
       tree arg1 = (*arglist)[1];
