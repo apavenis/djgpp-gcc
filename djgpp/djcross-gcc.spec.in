@@ -459,6 +459,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Wed Aug  3 2016 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-4.9.4
+- Use gmp-6.1.1, mpfr-3.1.4
+
 * Sat Jun 27 2015 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-4.9.3
 
