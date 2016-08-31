@@ -29,6 +29,7 @@ cat > sysinfo.c <<EOF
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ucontext.h>
 #include <netinet/in.h>
 /* <netinet/tcp.h> needs u_char/u_short, but <sys/bsd_types> is only
    included by <netinet/in.h> if _SGIAPI (i.e. _SGI_SOURCE
@@ -1474,6 +1475,9 @@ grep '^const _CLONE_' gen-sysinfo.go | \
 # of glibc.
 if ! grep '^const CLONE_NEWUSER ' ${OUT} > /dev/null 2>&1; then
   echo "const CLONE_NEWUSER = 0x10000000" >> ${OUT}
+fi
+if ! grep '^const CLONE_NEWNET ' ${OUT} > /dev/null 2>&1; then
+  echo "const CLONE_NEWNET = 0x40000000" >> ${OUT}
 fi
 
 # Struct sizes.

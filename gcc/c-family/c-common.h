@@ -102,6 +102,20 @@ enum rid
   RID_EXTENSION, RID_IMAGPART, RID_REALPART, RID_LABEL,      RID_CHOOSE_EXPR,
   RID_TYPES_COMPATIBLE_P,      RID_BUILTIN_COMPLEX,	     RID_BUILTIN_SHUFFLE,
   RID_DFLOAT32, RID_DFLOAT64, RID_DFLOAT128,
+
+  /* TS 18661-3 keywords, in the same sequence as the TI_* values.  */
+  RID_FLOAT16,
+  RID_FLOATN_NX_FIRST = RID_FLOAT16,
+  RID_FLOAT32,
+  RID_FLOAT64,
+  RID_FLOAT128,
+  RID_FLOAT32X,
+  RID_FLOAT64X,
+  RID_FLOAT128X,
+#define CASE_RID_FLOATN_NX						\
+  case RID_FLOAT16: case RID_FLOAT32: case RID_FLOAT64: case RID_FLOAT128: \
+  case RID_FLOAT32X: case RID_FLOAT64X: case RID_FLOAT128X
+
   RID_FRACT, RID_ACCUM, RID_AUTO_TYPE, RID_BUILTIN_CALL_WITH_STATIC_CHAIN,
 
   /* C11 */
@@ -833,7 +847,8 @@ extern void overflow_warning (location_t, tree);
 extern bool warn_if_unused_value (const_tree, location_t);
 extern void warn_logical_operator (location_t, enum tree_code, tree,
 				   enum tree_code, tree, enum tree_code, tree);
-extern void warn_logical_not_parentheses (location_t, enum tree_code, tree);
+extern void warn_logical_not_parentheses (location_t, enum tree_code, tree,
+					  tree);
 extern void warn_tautological_cmp (location_t, enum tree_code, tree, tree);
 extern void check_main_parameter_types (tree decl);
 extern bool c_determine_visibility (tree);
@@ -1109,6 +1124,43 @@ extern time_t cb_get_source_date_epoch (cpp_reader *pfile);
    "Dec 31 9999 23:59:59 UTC", which is the latest date that __DATE__ and
    __TIME__ can store.  */
 #define MAX_SOURCE_DATE_EPOCH HOST_WIDE_INT_C (253402300799)
+
+/* Callback for libcpp for offering spelling suggestions for misspelled
+   directives.  */
+extern const char *cb_get_suggestion (cpp_reader *, const char *,
+				      const char *const *);
+
+extern GTY(()) string_concat_db *g_string_concat_db;
+
+/* libcpp can calculate location information about a range of characters
+   within a string literal, but doing so is non-trivial.
+
+   This class encapsulates such a source location, so that it can be
+   passed around (e.g. within c-format.c).  It is effectively a deferred
+   call into libcpp.  If needed by a diagnostic, the actual source_range
+   can be calculated by calling the get_range method.  */
+
+class substring_loc
+{
+ public:
+  substring_loc (location_t fmt_string_loc, tree string_type,
+		 int caret_idx, int start_idx, int end_idx)
+  : m_fmt_string_loc (fmt_string_loc), m_string_type (string_type),
+    m_caret_idx (caret_idx), m_start_idx (start_idx), m_end_idx (end_idx) {}
+
+  void set_caret_index (int caret_idx) { m_caret_idx = caret_idx; }
+
+  const char *get_location (location_t *out_loc) const;
+
+  location_t get_fmt_string_loc () const { return m_fmt_string_loc; }
+
+ private:
+  location_t m_fmt_string_loc;
+  tree m_string_type;
+  int m_caret_idx;
+  int m_start_idx;
+  int m_end_idx;
+};
 
 /* In c-gimplify.c  */
 extern void c_genericize (tree);
@@ -1503,5 +1555,12 @@ extern bool valid_array_size_p (location_t, tree, tree);
 
 extern bool cilk_ignorable_spawn_rhs_op (tree);
 extern bool cilk_recognize_spawn (tree, tree *);
+
+#if CHECKING_P
+namespace selftest {
+  extern void c_format_c_tests (void);
+  extern void run_c_tests (void);
+} // namespace selftest
+#endif /* #if CHECKING_P */
 
 #endif /* ! GCC_C_COMMON_H */

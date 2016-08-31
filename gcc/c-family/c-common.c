@@ -45,6 +45,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-iterator.h"
 #include "opts.h"
 #include "gimplify.h"
+#include "substring-locations.h"
+#include "spellcheck.h"
 
 cpp_reader *parse_in;		/* Declared in c-pragma.h.  */
 
@@ -353,6 +355,8 @@ static tree handle_tls_model_attribute (tree *, tree, tree, int,
 					bool *);
 static tree handle_no_instrument_function_attribute (tree *, tree,
 						     tree, int, bool *);
+static tree handle_no_profile_instrument_function_attribute (tree *, tree,
+							     tree, int, bool *);
 static tree handle_malloc_attribute (tree *, tree, tree, int, bool *);
 static tree handle_returns_twice_attribute (tree *, tree, tree, int, bool *);
 static tree handle_no_limit_stack_attribute (tree *, tree, tree, int,
@@ -430,6 +434,13 @@ const struct c_common_resword c_common_reswords[] =
   { "_Cilk_sync",       RID_CILK_SYNC,  0 },
   { "_Cilk_for",        RID_CILK_FOR,   0 },
   { "_Imaginary",	RID_IMAGINARY, D_CONLY },
+  { "_Float16",         RID_FLOAT16,   D_CONLY },
+  { "_Float32",         RID_FLOAT32,   D_CONLY },
+  { "_Float64",         RID_FLOAT64,   D_CONLY },
+  { "_Float128",        RID_FLOAT128,  D_CONLY },
+  { "_Float32x",        RID_FLOAT32X,  D_CONLY },
+  { "_Float64x",        RID_FLOAT64X,  D_CONLY },
+  { "_Float128x",       RID_FLOAT128X, D_CONLY },
   { "_Decimal32",       RID_DFLOAT32,  D_CONLY | D_EXT },
   { "_Decimal64",       RID_DFLOAT64,  D_CONLY | D_EXT },
   { "_Decimal128",      RID_DFLOAT128, D_CONLY | D_EXT },
@@ -717,6 +728,9 @@ const struct attribute_spec c_common_attribute_table[] =
   { "no_instrument_function", 0, 0, true,  false, false,
 			      handle_no_instrument_function_attribute,
 			      false },
+  { "no_profile_instrument_function",  0, 0, true, false, false,
+			      handle_no_profile_instrument_function_attribute,
+			      false },
   { "malloc",                 0, 0, true,  false, false,
 			      handle_malloc_attribute, false },
   { "returns_twice",          0, 0, true,  false, false,
@@ -748,7 +762,7 @@ const struct attribute_spec c_common_attribute_table[] =
   { "deprecated",             0, 1, false, false, false,
 			      handle_deprecated_attribute, false },
   { "vector_size",	      1, 1, false, true, false,
-			      handle_vector_size_attribute, false },
+			      handle_vector_size_attribute, true },
   { "visibility",	      1, 1, false, false, false,
 			      handle_visibility_attribute, false },
   { "tls_model",	      1, 1, true,  false, false,
@@ -1093,6 +1107,67 @@ fix_string_type (tree value)
   TREE_STATIC (value) = 1;
   return value;
 }
+
+/* Given a string of type STRING_TYPE, determine what kind of string
+   token would give an equivalent execution encoding: CPP_STRING,
+   CPP_STRING16, or CPP_STRING32.  Return CPP_OTHER in case of error.
+   This may not be exactly the string token type that initially created
+   the string, since CPP_WSTRING is indistinguishable from the 16/32 bit
+   string type at this point.
+
+   This effectively reverses part of the logic in lex_string and
+   fix_string_type.  */
+
+static enum cpp_ttype
+get_cpp_ttype_from_string_type (tree string_type)
+{
+  gcc_assert (string_type);
+  if (TREE_CODE (string_type) != ARRAY_TYPE)
+    return CPP_OTHER;
+
+  tree element_type = TREE_TYPE (string_type);
+  if (TREE_CODE (element_type) != INTEGER_TYPE)
+    return CPP_OTHER;
+
+  int bits_per_character = TYPE_PRECISION (element_type);
+  switch (bits_per_character)
+    {
+    case 8:
+      return CPP_STRING;  /* It could have also been CPP_UTF8STRING.  */
+    case 16:
+      return CPP_STRING16;
+    case 32:
+      return CPP_STRING32;
+    }
+
+  return CPP_OTHER;
+}
+
+/* The global record of string concatentations, for use in
+   extracting locations within string literals.  */
+
+GTY(()) string_concat_db *g_string_concat_db;
+
+/* Attempt to determine the source location of the substring.
+   If successful, return NULL and write the source location to *OUT_LOC.
+   Otherwise return an error message.  Error messages are intended
+   for GCC developers (to help debugging) rather than for end-users.  */
+
+const char *
+substring_loc::get_location (location_t *out_loc) const
+{
+  gcc_assert (out_loc);
+
+  enum cpp_ttype tok_type = get_cpp_ttype_from_string_type (m_string_type);
+  if (tok_type == CPP_OTHER)
+    return "unrecognized string type";
+
+  return get_source_location_for_substring (parse_in, g_string_concat_db,
+					    m_fmt_string_loc, tok_type,
+					    m_caret_idx, m_start_idx, m_end_idx,
+					    out_loc);
+}
+
 
 /* Fold X for consideration by one of the warning functions when checking
    whether an expression has a constant value.  */
@@ -1406,15 +1481,17 @@ warn_tautological_cmp (location_t loc, enum tree_code code, tree lhs, tree rhs)
 
 /* Warn about logical not used on the left hand side operand of a comparison.
    This function assumes that the LHS is inside of TRUTH_NOT_EXPR.
-   Do not warn if RHS is of a boolean type.  */
+   Do not warn if RHS is of a boolean type, a logical operator, or
+   a comparison.  */
 
 void
 warn_logical_not_parentheses (location_t location, enum tree_code code,
-			      tree rhs)
+			      tree lhs, tree rhs)
 {
   if (TREE_CODE_CLASS (code) != tcc_comparison
       || TREE_TYPE (rhs) == NULL_TREE
-      || TREE_CODE (TREE_TYPE (rhs)) == BOOLEAN_TYPE)
+      || TREE_CODE (TREE_TYPE (rhs)) == BOOLEAN_TYPE
+      || truth_value_p (TREE_CODE (rhs)))
     return;
 
   /* Don't warn for !x == 0 or !y != 0, those are equivalent to
@@ -1423,9 +1500,21 @@ warn_logical_not_parentheses (location_t location, enum tree_code code,
       && integer_zerop (rhs))
     return;
 
-  warning_at (location, OPT_Wlogical_not_parentheses,
-	      "logical not is only applied to the left hand side of "
-	      "comparison");
+  if (warning_at (location, OPT_Wlogical_not_parentheses,
+		  "logical not is only applied to the left hand side of "
+		  "comparison")
+      && EXPR_HAS_LOCATION (lhs))
+    {
+      location_t lhs_loc = EXPR_LOCATION (lhs);
+      rich_location richloc (line_table, lhs_loc);
+      richloc.add_fixit_insert (lhs_loc, "(");
+      location_t finish = get_finish (lhs_loc);
+      location_t next_loc
+	= linemap_position_for_loc_and_offset (line_table, finish, 1);
+      richloc.add_fixit_insert (next_loc, ")");
+      inform_at_rich_loc (&richloc, "add parentheses around left hand side "
+			  "expression to silence this warning");
+    }
 }
 
 /* Warn if EXP contains any computations whose results are not used.
@@ -3410,6 +3499,11 @@ c_common_type_for_mode (machine_mode mode, int unsignedp)
   if (mode == TYPE_MODE (long_double_type_node))
     return long_double_type_node;
 
+  for (i = 0; i < NUM_FLOATN_NX_TYPES; i++)
+    if (FLOATN_NX_TYPE_NODE (i) != NULL_TREE
+	&& mode == TYPE_MODE (FLOATN_NX_TYPE_NODE (i)))
+      return FLOATN_NX_TYPE_NODE (i);
+
   if (mode == TYPE_MODE (void_type_node))
     return void_type_node;
 
@@ -3434,6 +3528,11 @@ c_common_type_for_mode (machine_mode mode, int unsignedp)
 	return complex_double_type_node;
       if (mode == TYPE_MODE (complex_long_double_type_node))
 	return complex_long_double_type_node;
+
+      for (i = 0; i < NUM_FLOATN_NX_TYPES; i++)
+	if (COMPLEX_FLOATN_NX_TYPE_NODE (i) != NULL_TREE
+	    && mode == TYPE_MODE (COMPLEX_FLOATN_NX_TYPE_NODE (i)))
+	  return COMPLEX_FLOATN_NX_TYPE_NODE (i);
 
       if (mode == TYPE_MODE (complex_integer_type_node) && !unsignedp)
 	return complex_integer_type_node;
@@ -4586,8 +4685,9 @@ c_common_truthvalue_conversion (location_t location, tree expr)
       if (!TREE_NO_WARNING (expr)
 	  && warn_parentheses)
 	{
-	  warning (OPT_Wparentheses,
-		   "suggest parentheses around assignment used as truth value");
+	  warning_at (location, OPT_Wparentheses,
+		      "suggest parentheses around assignment used as "
+		      "truth value");
 	  TREE_NO_WARNING (expr) = 1;
 	}
       break;
@@ -5337,6 +5437,12 @@ c_common_nodes_and_builtins (void)
   record_builtin_type (RID_DOUBLE, NULL, double_type_node);
   record_builtin_type (RID_MAX, "long double", long_double_type_node);
 
+  if (!c_dialect_cxx ())
+    for (i = 0; i < NUM_FLOATN_NX_TYPES; i++)
+      if (FLOATN_NX_TYPE_NODE (i) != NULL_TREE)
+	record_builtin_type ((enum rid) (RID_FLOATN_NX_FIRST + i), NULL,
+			     FLOATN_NX_TYPE_NODE (i));
+
   /* Only supported decimal floating point extension if the target
      actually supports underlying modes. */
   if (targetm.scalar_mode_supported_p (SDmode)
@@ -5425,6 +5531,20 @@ c_common_nodes_and_builtins (void)
     (build_decl (UNKNOWN_LOCATION,
 		 TYPE_DECL, get_identifier ("complex long double"),
 		 complex_long_double_type_node));
+
+  if (!c_dialect_cxx ())
+    for (i = 0; i < NUM_FLOATN_NX_TYPES; i++)
+      if (COMPLEX_FLOATN_NX_TYPE_NODE (i) != NULL_TREE)
+	{
+	  char buf[30];
+	  sprintf (buf, "complex _Float%d%s", floatn_nx_types[i].n,
+		   floatn_nx_types[i].extended ? "x" : "");
+	  lang_hooks.decls.pushdecl
+	    (build_decl (UNKNOWN_LOCATION,
+			 TYPE_DECL,
+			 get_identifier (buf),
+			 COMPLEX_FLOATN_NX_TYPE_NODE (i)));
+	}
 
   if (c_dialect_cxx ())
     /* For C++, make fileptr_type_node a distinct void * type until
@@ -5688,16 +5808,19 @@ build_va_arg (location_t loc, tree expr, tree type)
 {
   tree va_type = TREE_TYPE (expr);
   tree canon_va_type = (va_type == error_mark_node
-			? NULL_TREE
+			? error_mark_node
 			: targetm.canonical_va_list_type (va_type));
 
   if (va_type == error_mark_node
       || canon_va_type == NULL_TREE)
     {
+      if (canon_va_type == NULL_TREE)
+	error_at (loc, "first argument to %<va_arg%> not of type %<va_list%>");
+
       /* Let's handle things neutrallly, if expr:
 	 - has undeclared type, or
 	 - is not an va_list type.  */
-      return build_va_arg_1 (loc, type, expr);
+      return build_va_arg_1 (loc, type, error_mark_node);
     }
 
   if (TREE_CODE (canon_va_type) != ARRAY_TYPE)
@@ -5711,12 +5834,7 @@ build_va_arg (location_t loc, tree expr, tree type)
       /* Verify that &ap is still recognized as having va_list type.  */
       tree canon_expr_type
 	= targetm.canonical_va_list_type (TREE_TYPE (expr));
-      if (canon_expr_type == NULL_TREE)
-	{
-	  error_at (loc,
-		    "first argument to %<va_arg%> not of type %<va_list%>");
-	  return error_mark_node;
-	}
+      gcc_assert (canon_expr_type != NULL_TREE);
 
       return build_va_arg_1 (loc, type, expr);
     }
@@ -5784,18 +5902,16 @@ build_va_arg (location_t loc, tree expr, tree type)
       /* Verify that &ap is still recognized as having va_list type.  */
       tree canon_expr_type
 	= targetm.canonical_va_list_type (TREE_TYPE (expr));
-      if (canon_expr_type == NULL_TREE)
-	{
-	  error_at (loc,
-		    "first argument to %<va_arg%> not of type %<va_list%>");
-	  return error_mark_node;
-	}
+      gcc_assert (canon_expr_type != NULL_TREE);
     }
   else
     {
       /* Case 2b: va_list is pointer to array elem type.  */
       gcc_assert (POINTER_TYPE_P (va_type));
-      gcc_assert (TREE_TYPE (va_type) == TREE_TYPE (canon_va_type));
+
+      /* Comparison as in std_canonical_va_list_type.  */
+      gcc_assert (TYPE_MAIN_VARIANT (TREE_TYPE (va_type))
+		  == TYPE_MAIN_VARIANT (TREE_TYPE (canon_va_type)));
 
       /* Don't take the address.  We've already got '&ap'.  */
       ;
@@ -7679,7 +7795,7 @@ check_user_alignment (const_tree align, bool allow_zero)
       error ("requested alignment is not a positive power of 2");
       return -1;
     }
-  else if (i >= HOST_BITS_PER_INT - BITS_PER_UNIT_LOG)
+  else if (i >= HOST_BITS_PER_INT - LOG2_BITS_PER_UNIT)
     {
       error ("requested alignment is too large");
       return -1;
@@ -8293,6 +8409,22 @@ handle_no_instrument_function_attribute (tree *node, tree name,
   return NULL_TREE;
 }
 
+/* Handle a "no_profile_instrument_function" attribute; arguments as in
+   struct attribute_spec.handler.  */
+
+static tree
+handle_no_profile_instrument_function_attribute (tree *node, tree name, tree,
+						 int, bool *no_add_attrs)
+{
+  if (TREE_CODE (*node) != FUNCTION_DECL)
+    {
+      warning (OPT_Wattributes, "%qE attribute ignored", name);
+      *no_add_attrs = true;
+    }
+
+  return NULL_TREE;
+}
+
 /* Handle a "malloc" attribute; arguments as in
    struct attribute_spec.handler.  */
 
@@ -8349,7 +8481,8 @@ handle_alloc_align_attribute (tree *node, tree, tree args, int,
 {
   unsigned arg_count = type_num_arguments (*node);
   tree position = TREE_VALUE (args);
-  if (position && TREE_CODE (position) != IDENTIFIER_NODE)
+  if (position && TREE_CODE (position) != IDENTIFIER_NODE
+      && TREE_CODE (position) != FUNCTION_DECL)
     position = default_conversion (position);
 
   if (!tree_fits_uhwi_p (position)
@@ -10996,6 +11129,20 @@ get_atomic_generic_size (location_t loc, tree function,
 		    function);
 	  return 0;
 	}
+      else if (TYPE_SIZE_UNIT (TREE_TYPE (type))
+	       && TREE_CODE ((TYPE_SIZE_UNIT (TREE_TYPE (type))))
+		  != INTEGER_CST)
+	{
+	  error_at (loc, "argument %d of %qE must be a pointer to a constant "
+		    "size type", x + 1, function);
+	  return 0;
+	}
+      else if (FUNCTION_POINTER_TYPE_P (type))
+	{
+	  error_at (loc, "argument %d of %qE must not be a pointer to a "
+		    "function", x + 1, function);
+	  return 0;
+	}
       tree type_size = TYPE_SIZE_UNIT (TREE_TYPE (type));
       size = type_size ? tree_to_uhwi (type_size) : 0;
       if (size != size_0)
@@ -11854,7 +12001,7 @@ warn_for_memset (location_t loc, tree arg0, tree arg2,
       if (TREE_CODE (arg0) == ADDR_EXPR)
 	arg0 = TREE_OPERAND (arg0, 0);
       tree type = TREE_TYPE (arg0);
-      if (TREE_CODE (type) == ARRAY_TYPE)
+      if (type != NULL_TREE && TREE_CODE (type) == ARRAY_TYPE)
 	{
 	  tree elt_type = TREE_TYPE (type);
 	  tree domain = TYPE_DOMAIN (type);
@@ -12423,6 +12570,7 @@ keyword_begins_type_specifier (enum rid keyword)
     case RID_LONG:
     case RID_SHORT:
     case RID_SIGNED:
+    CASE_RID_FLOATN_NX:
     case RID_DFLOAT32:
     case RID_DFLOAT64:
     case RID_DFLOAT128:
@@ -12624,7 +12772,7 @@ scalar_to_vector (location_t loc, enum tree_code code, tree op0, tree op1,
       case BIT_XOR_EXPR:
       case BIT_AND_EXPR:
 	integer_only_op = true;
-	/* ... fall through ...  */
+	/* fall through */
 
       case VEC_COND_EXPR:
 
@@ -12847,6 +12995,22 @@ cb_get_source_date_epoch (cpp_reader *pfile ATTRIBUTE_UNUSED)
     }
 
   return (time_t) epoch;
+}
+
+/* Callback for libcpp for offering spelling suggestions for misspelled
+   directives.  GOAL is an unrecognized string; CANDIDATES is a
+   NULL-terminated array of candidate strings.  Return the closest
+   match to GOAL within CANDIDATES, or NULL if none are good
+   suggestions.  */
+
+const char *
+cb_get_suggestion (cpp_reader *, const char *goal,
+		   const char *const *candidates)
+{
+  best_match<const char *, const char *> bm (goal);
+  while (*candidates)
+    bm.consider (*candidates++);
+  return bm.get_best_meaningful_candidate ();
 }
 
 /* Check and possibly warn if two declarations have contradictory

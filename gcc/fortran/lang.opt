@@ -424,6 +424,10 @@ fdec
 Fortran
 Enable all DEC language extensions.
 
+fdec-intrinsic-ints
+Fortran Var(flag_dec_intrinsic_ints)
+Enable kind-specific variants of integer intrinsic functions.
+
 fdec-structure
 Fortran
 Enable support for DEC STRUCTURE/RECORD.
@@ -523,6 +527,10 @@ Specify that no implicit typing is allowed, unless overridden by explicit IMPLIC
 finit-character=
 Fortran RejectNegative Joined UInteger
 -finit-character=<n>	Initialize local character variables to ASCII value n.
+
+finit-derived
+Fortran Var(flag_init_derived)
+Initialize components of derived type variables according to other init flags.
 
 finit-integer=
 Fortran RejectNegative Joined

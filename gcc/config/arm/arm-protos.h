@@ -54,6 +54,8 @@ extern rtx arm_simd_vect_par_cnst_half (machine_mode mode, bool high);
 extern bool arm_simd_check_vect_par_cnst_half_p (rtx op, machine_mode mode,
 						 bool high);
 #ifdef RTX_CODE
+extern void arm_gen_unlikely_cbranch (enum rtx_code, machine_mode cc_mode,
+				      rtx label_ref);
 extern bool arm_vector_mode_supported_p (machine_mode);
 extern bool arm_small_register_classes_for_mode_p (machine_mode);
 extern int arm_hard_regno_mode_ok (unsigned int, machine_mode);
@@ -260,7 +262,7 @@ struct tune_params
 {
   bool (*rtx_costs) (rtx, RTX_CODE, RTX_CODE, int *, bool);
   const struct cpu_cost_table *insn_extra_cost;
-  bool (*sched_adjust_cost) (rtx_insn *, rtx, rtx_insn *, int *);
+  bool (*sched_adjust_cost) (rtx_insn *, int, rtx_insn *, int *);
   int (*branch_cost) (bool, bool);
   /* Vectorizer costs.  */
   const struct cpu_vec_costs* vec_costs;

@@ -602,7 +602,6 @@ extern int rs6000_vector_align[];
 #define TARGET_DIRECT_MOVE_128	(TARGET_P9_VECTOR && TARGET_DIRECT_MOVE \
 				 && TARGET_POWERPC64)
 #define TARGET_VEXTRACTUB	(TARGET_P9_VECTOR && TARGET_DIRECT_MOVE \
-				 && TARGET_UPPER_REGS_DF \
 				 && TARGET_UPPER_REGS_DI && TARGET_POWERPC64)
 
 /* Byte/char syncs were added as phased in for ISA 2.06B, but are not present
@@ -760,6 +759,16 @@ extern int rs6000_vector_align[];
 				 && TARGET_FPRS				\
 				 && TARGET_SINGLE_FLOAT			\
 				 && TARGET_DOUBLE_FLOAT)
+
+/* Macro to say whether we can do optimizations where we need to do parts of
+   the calculation in 64-bit GPRs and then is transfered to the vector
+   registers.  Do not allow -maltivec=be for these optimizations, because it
+   adds to the complexity of the code.  */
+#define TARGET_DIRECT_MOVE_64BIT	(TARGET_DIRECT_MOVE		\
+					 && TARGET_P8_VECTOR		\
+					 && TARGET_POWERPC64		\
+					 && TARGET_UPPER_REGS_DI	\
+					 && (rs6000_altivec_element_order != 2))
 
 /* Whether the various reciprocal divide/square root estimate instructions
    exist, and whether we should automatically generate code for the instruction
@@ -983,10 +992,10 @@ enum data_align { align_abi, align_opt, align_both };
    aligned to 4 or 8 bytes.  */
 #define SLOW_UNALIGNED_ACCESS(MODE, ALIGN)				\
   (STRICT_ALIGNMENT							\
-   || (SCALAR_FLOAT_MODE_NOT_VECTOR_P (MODE) && (ALIGN) < 32)		\
-   || (!TARGET_EFFICIENT_UNALIGNED_VSX                                  \
-       && ((VECTOR_MODE_P (MODE) || FLOAT128_VECTOR_P (MODE))		\
-	   && (((int)(ALIGN)) < VECTOR_ALIGN (MODE)))))
+   || (!TARGET_EFFICIENT_UNALIGNED_VSX					\
+       && ((SCALAR_FLOAT_MODE_NOT_VECTOR_P (MODE) && (ALIGN) < 32)	\
+	   || ((VECTOR_MODE_P (MODE) || FLOAT128_VECTOR_P (MODE))	\
+	       && (int) (ALIGN) < VECTOR_ALIGN (MODE)))))
 
 
 /* Standard register usage.  */
@@ -1111,7 +1120,7 @@ enum data_align { align_abi, align_opt, align_both };
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, \
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-   1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1,	   \
+   0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1,	   \
    /* AltiVec registers.  */			   \
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
@@ -1266,6 +1275,8 @@ enum data_align { align_abi, align_opt, align_both };
    && ((MODE) == VOIDmode || ALTIVEC_OR_VSX_VECTOR_MODE (MODE))		\
    && FP_REGNO_P (REGNO)						\
    ? V2DFmode								\
+   : TARGET_E500_DOUBLE && (MODE) == SImode				\
+   ? SImode								\
    : TARGET_E500_DOUBLE && ((MODE) == VOIDmode || (MODE) == DFmode)	\
    ? DFmode								\
    : !TARGET_E500_DOUBLE && FLOAT128_IBM_P (MODE) && FP_REGNO_P (REGNO)	\

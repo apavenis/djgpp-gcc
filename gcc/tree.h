@@ -234,6 +234,9 @@ as_internal_fn (combined_fn code)
 /* Helper macros for math builtins.  */
 
 #define CASE_FLT_FN(FN) case FN: case FN##F: case FN##L
+#define CASE_FLT_FN_FLOATN_NX(FN)			   \
+  case FN##F16: case FN##F32: case FN##F64: case FN##F128: \
+  case FN##F32X: case FN##F64X: case FN##F128X
 #define CASE_FLT_FN_REENT(FN) case FN##_R: case FN##F_R: case FN##L_R
 #define CASE_INT_FN(FN) case FN: case FN##L: case FN##LL: case FN##IMAX
 
@@ -3605,6 +3608,22 @@ tree_operand_check_code (const_tree __t, enum tree_code __code, int __i,
 #define double_type_node		global_trees[TI_DOUBLE_TYPE]
 #define long_double_type_node		global_trees[TI_LONG_DOUBLE_TYPE]
 
+/* Nodes for particular _FloatN and _FloatNx types in sequence.  */
+#define FLOATN_TYPE_NODE(IDX)		global_trees[TI_FLOATN_TYPE_FIRST + (IDX)]
+#define FLOATN_NX_TYPE_NODE(IDX)	global_trees[TI_FLOATN_NX_TYPE_FIRST + (IDX)]
+#define FLOATNX_TYPE_NODE(IDX)		global_trees[TI_FLOATNX_TYPE_FIRST + (IDX)]
+
+/* Names for individual types (code should normally iterate over all
+   such types; these are only for back-end use, or in contexts such as
+   *.def where iteration is not possible).  */
+#define float16_type_node		global_trees[TI_FLOAT16_TYPE]
+#define float32_type_node		global_trees[TI_FLOAT32_TYPE]
+#define float64_type_node		global_trees[TI_FLOAT64_TYPE]
+#define float128_type_node		global_trees[TI_FLOAT128_TYPE]
+#define float32x_type_node		global_trees[TI_FLOAT32X_TYPE]
+#define float64x_type_node		global_trees[TI_FLOAT64X_TYPE]
+#define float128x_type_node		global_trees[TI_FLOAT128X_TYPE]
+
 #define float_ptr_type_node		global_trees[TI_FLOAT_PTR_TYPE]
 #define double_ptr_type_node		global_trees[TI_DOUBLE_PTR_TYPE]
 #define long_double_ptr_type_node	global_trees[TI_LONG_DOUBLE_PTR_TYPE]
@@ -3614,6 +3633,8 @@ tree_operand_check_code (const_tree __t, enum tree_code __code, int __i,
 #define complex_float_type_node		global_trees[TI_COMPLEX_FLOAT_TYPE]
 #define complex_double_type_node	global_trees[TI_COMPLEX_DOUBLE_TYPE]
 #define complex_long_double_type_node	global_trees[TI_COMPLEX_LONG_DOUBLE_TYPE]
+
+#define COMPLEX_FLOATN_NX_TYPE_NODE(IDX)	global_trees[TI_COMPLEX_FLOATN_NX_TYPE_FIRST + (IDX)]
 
 #define pointer_bounds_type_node        global_trees[TI_POINTER_BOUNDS_TYPE]
 
@@ -4235,6 +4256,8 @@ extern tree bit_position (const_tree);
 extern tree byte_position (const_tree);
 extern HOST_WIDE_INT int_byte_position (const_tree);
 
+/* Type for sizes of data-type.  */
+
 #define sizetype sizetype_tab[(int) stk_sizetype]
 #define bitsizetype sizetype_tab[(int) stk_bitsizetype]
 #define ssizetype sizetype_tab[(int) stk_ssizetype]
@@ -4244,12 +4267,15 @@ extern HOST_WIDE_INT int_byte_position (const_tree);
 #define bitsize_int(L) size_int_kind (L, stk_bitsizetype)
 #define sbitsize_int(L) size_int_kind (L, stk_sbitsizetype)
 
-/* Type for sizes of data-type.  */
+/* Log2 of BITS_PER_UNIT.  */
 
-#define BITS_PER_UNIT_LOG \
-  ((BITS_PER_UNIT > 1) + (BITS_PER_UNIT > 2) + (BITS_PER_UNIT > 4) \
-   + (BITS_PER_UNIT > 8) + (BITS_PER_UNIT > 16) + (BITS_PER_UNIT > 32) \
-   + (BITS_PER_UNIT > 64) + (BITS_PER_UNIT > 128) + (BITS_PER_UNIT > 256))
+#if BITS_PER_UNIT == 8
+#define LOG2_BITS_PER_UNIT 3
+#elif BITS_PER_UNIT == 16
+#define LOG2_BITS_PER_UNIT 4
+#else
+#error Unknown BITS_PER_UNIT
+#endif
 
 /* Concatenate two lists (chains of TREE_LIST nodes) X and Y
    by making the last node in X point to Y.
@@ -5400,8 +5426,8 @@ extern GTY(()) struct int_n_trees_t int_n_trees[NUM_INT_N_ENTS];
 
 inline HOST_WIDE_INT
 int_bit_position (const_tree field)
-{ 
-  return ((wi::to_offset (DECL_FIELD_OFFSET (field)) << BITS_PER_UNIT_LOG)
+{
+  return ((wi::to_offset (DECL_FIELD_OFFSET (field)) << LOG2_BITS_PER_UNIT)
 	  + wi::to_offset (DECL_FIELD_BIT_OFFSET (field))).to_shwi ();
 }
 
@@ -5425,16 +5451,6 @@ type_with_alias_set_p (const_tree t)
   return false;
 }
 
-extern location_t get_pure_location (location_t loc);
-
-/* Get the endpoint of any range encoded within location LOC.  */
-
-static inline location_t
-get_finish (location_t loc)
-{
-  return get_range_from_loc (line_table, loc).m_finish;
-}
-
 extern location_t set_block (location_t loc, tree block);
 
 extern void gt_ggc_mx (tree &);
@@ -5456,9 +5472,6 @@ get_decl_source_range (tree decl)
   location_t loc = DECL_SOURCE_LOCATION (decl);
   return get_range_from_loc (line_table, loc);
 }
-
-extern location_t
-make_location (location_t caret, location_t start, location_t finish);
 
 /* Return true if it makes sense to promote/demote from_type to to_type. */
 inline bool

@@ -677,6 +677,7 @@ gcov_profile_merge (struct gcov_info *tgt_profile, struct gcov_info *src_profile
     {
       gi_ptr = in_src_not_tgt[i];
       gcov_merge (gi_ptr, gi_ptr, w2 - 1);
+      gi_ptr->next = NULL;
       tgt_tail->next = gi_ptr;
       tgt_tail = gi_ptr;
     }
@@ -1395,7 +1396,8 @@ calculate_overlap (struct gcov_info *gcov_list1,
   return prg_val;
 }
 
-/* Computer the overlap score of two lists of gcov_info objects PROFILE1 and PROFILE2.
+/* Compute the overlap score of two lists of gcov_info objects PROFILE1 and
+   PROFILE2.
    Return 0 on success: without mismatch. Reutrn 1 on error.  */
 
 int

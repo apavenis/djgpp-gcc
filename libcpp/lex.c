@@ -619,6 +619,7 @@ search_line_fast (const uchar *s, const uchar *end ATTRIBUTE_UNUSED)
 	if (l != 0)
 	  break;
 	s += sizeof(unsigned long);
+	/* FALLTHRU */
       case 2:
 	l = u.l[i++];
 	if (l != 0)
@@ -1256,7 +1257,7 @@ forms_identifier_p (cpp_reader *pfile, int first,
       cppchar_t s;
       buffer->cur += 2;
       if (_cpp_valid_ucn (pfile, &buffer->cur, buffer->rlimit, 1 + !first,
-			  state, &s))
+			  state, &s, NULL, NULL))
 	return true;
       buffer->cur -= 2;
     }
@@ -2726,6 +2727,7 @@ _cpp_lex_direct (cpp_reader *pfile)
 	  }
 	buffer->cur++;
       }
+      /* FALLTHRU */
 
     default:
       create_literal (pfile, result, buffer->cur - 1, 1, CPP_OTHER);
@@ -3331,7 +3333,7 @@ cpp_token_val_index (const cpp_token *tok)
 	return CPP_TOKEN_FLD_SOURCE;
       else if (tok->type == CPP_PRAGMA)
 	return CPP_TOKEN_FLD_PRAGMA;
-      /* else fall through */
+      /* fall through */
     default:
       return CPP_TOKEN_FLD_NONE;
     }

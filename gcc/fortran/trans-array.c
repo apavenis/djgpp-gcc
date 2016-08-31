@@ -2239,7 +2239,8 @@ trans_array_constructor (gfc_ss * ss, locus * where)
 
   /* Do bounds-checking here and in gfc_trans_array_ctor_element only if no
      typespec was given for the array constructor.  */
-  typespec_chararray_ctor = (expr->ts.u.cl
+  typespec_chararray_ctor = (expr->ts.type == BT_CHARACTER
+			     && expr->ts.u.cl
 			     && expr->ts.u.cl->length_from_typespec);
 
   if ((gfc_option.rtcheck & GFC_RTCHECK_BOUNDS)
@@ -3332,7 +3333,7 @@ gfc_conv_array_ref (gfc_se * se, gfc_array_ref * ar, gfc_expr *expr,
 	  if (ref->type == REF_ARRAY && &ref->u.ar == ar)
 	    break;
 	  if (ref->type == REF_COMPONENT)
-	    len += 1 + strlen (ref->u.c.component->name);
+	    len += 2 + strlen (ref->u.c.component->name);
 	}
 
       var_name = XALLOCAVEC (char, len);
@@ -4041,6 +4042,7 @@ done:
 	      continue;
 	    }
 
+	  /* FALLTHRU */
 	case GFC_SS_CONSTRUCTOR:
 	case GFC_SS_FUNCTION:
 	  for (n = 0; n < ss->dimen; n++)
@@ -5431,12 +5433,19 @@ gfc_array_allocate (gfc_se * se, gfc_expr * expr, tree status, tree errmsg,
 
   if (ref->u.ar.type == AR_FULL && expr3 != NULL)
     {
+      gfc_ref *old_ref = ref;
       /* F08:C633: Array shape from expr3.  */
       ref = expr3->ref;
 
       /* Find the last reference in the chain.  */
       if (!retrieve_last_ref (&ref, &prev_ref))
-	return false;
+	{
+	  if (expr3->expr_type == EXPR_FUNCTION
+	      && gfc_expr_attr (expr3).dimension)
+	    ref = old_ref;
+	  else
+	    return false;
+	}
       alloc_w_e3_arr_spec = true;
     }
 
@@ -6103,7 +6112,12 @@ gfc_trans_dummy_array_bias (gfc_symbol * sym, tree tmpdesc,
       return;
     }
 
+  loc.nextc = NULL;
   gfc_save_backend_locus (&loc);
+  /* loc.nextc is not set by save_backend_locus but the location routines
+     depend on it.  */
+  if (loc.nextc == NULL)
+    loc.nextc = loc.lb->line;
   gfc_set_backend_locus (&sym->declared_at);
 
   /* Descriptor type.  */

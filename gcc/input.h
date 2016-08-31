@@ -24,6 +24,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "line-map.h"
 
 extern GTY(()) struct line_maps *line_table;
+extern GTY(()) struct line_maps *saved_line_table;
 
 /* A value which will never be used to represent a real location.  */
 #define UNKNOWN_LOCATION ((source_location) 0)
@@ -76,10 +77,72 @@ extern location_t input_location;
 #define from_macro_expansion_at(LOC) \
   ((linemap_location_from_macro_expansion_p (line_table, LOC)))
 
+static inline location_t
+get_pure_location (location_t loc)
+{
+  return get_pure_location (line_table, loc);
+}
+
+/* Get the start of any range encoded within location LOC.  */
+
+static inline location_t
+get_start (location_t loc)
+{
+  return get_range_from_loc (line_table, loc).m_start;
+}
+
+/* Get the endpoint of any range encoded within location LOC.  */
+
+static inline location_t
+get_finish (location_t loc)
+{
+  return get_range_from_loc (line_table, loc).m_finish;
+}
+
+extern location_t make_location (location_t caret,
+				 location_t start, location_t finish);
+
 void dump_line_table_statistics (void);
 
 void dump_location_info (FILE *stream);
 
 void diagnostics_file_cache_fini (void);
+
+void diagnostics_file_cache_forcibly_evict_file (const char *file_path);
+
+struct GTY(()) string_concat
+{
+  string_concat (int num, location_t *locs);
+
+  int m_num;
+  location_t * GTY ((atomic)) m_locs;
+};
+
+struct location_hash : int_hash <location_t, UNKNOWN_LOCATION> { };
+
+class GTY(()) string_concat_db
+{
+ public:
+  string_concat_db ();
+  void record_string_concatenation (int num, location_t *locs);
+
+  bool get_string_concatenation (location_t loc,
+				 int *out_num,
+				 location_t **out_locs);
+
+ private:
+  static location_t get_key_loc (location_t loc);
+
+  /* For the fields to be private, we must grant access to the
+     generated code in gtype-desc.c.  */
+
+  friend void ::gt_ggc_mx_string_concat_db (void *x_p);
+  friend void ::gt_pch_nx_string_concat_db (void *x_p);
+  friend void ::gt_pch_p_16string_concat_db (void *this_obj, void *x_p,
+					     gt_pointer_operator op,
+					     void *cookie);
+
+  hash_map <location_hash, string_concat *> *m_table;
+};
 
 #endif

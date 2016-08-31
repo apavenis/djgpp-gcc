@@ -1274,7 +1274,6 @@ vect_attempt_slp_rearrange_stmts (slp_instance slp_instn)
 {
   unsigned int group_size = SLP_INSTANCE_GROUP_SIZE (slp_instn);
   unsigned int i, j;
-  sbitmap load_index;
   unsigned int lidx;
   slp_tree node, load;
 
@@ -1294,29 +1293,20 @@ vect_attempt_slp_rearrange_stmts (slp_instance slp_instn)
 
   /* Check that the loads in the first sequence are different and there
      are no gaps between them.  */
-  load_index = sbitmap_alloc (group_size);
+  auto_sbitmap load_index (group_size);
   bitmap_clear (load_index);
   FOR_EACH_VEC_ELT (node->load_permutation, i, lidx)
     {
       if (lidx >= group_size)
-	{
-	  sbitmap_free (load_index);
-	  return false;
-	}
+	return false;
       if (bitmap_bit_p (load_index, lidx))
-	{
-	  sbitmap_free (load_index);
-	  return false;
-	}
+	return false;
+
       bitmap_set_bit (load_index, lidx);
     }
   for (i = 0; i < group_size; i++)
     if (!bitmap_bit_p (load_index, i))
-      {
-	sbitmap_free (load_index);
-	return false;
-      }
-  sbitmap_free (load_index);
+      return false;
 
   /* This permutation is valid for reduction.  Since the order of the
      statements in the nodes is not important unless they are memory
@@ -3204,24 +3194,32 @@ vect_get_slp_defs (vec<tree> ops, slp_tree slp_node,
 {
   gimple *first_stmt;
   int number_of_vects = 0, i;
-  unsigned int child_index = 0;
   HOST_WIDE_INT lhs_size_unit, rhs_size_unit;
   slp_tree child = NULL;
   vec<tree> vec_defs;
   tree oprnd;
-  bool vectorized_defs;
+  bool first_iteration = true;
 
   first_stmt = SLP_TREE_SCALAR_STMTS (slp_node)[0];
   FOR_EACH_VEC_ELT (ops, i, oprnd)
     {
+      bool vectorized_defs = false;
+
+      if (oprnd == NULL)
+	{
+	  vec_defs = vNULL;
+	  vec_defs.create (0);
+	  vec_oprnds->quick_push (vec_defs);
+	  continue;
+	}
+
       /* For each operand we check if it has vectorized definitions in a child
 	 node or we need to create them (for invariants and constants).  We
 	 check if the LHS of the first stmt of the next child matches OPRND.
 	 If it does, we found the correct child.  Otherwise, we call
-	 vect_get_constant_vectors (), and not advance CHILD_INDEX in order
-	 to check this child node for the next operand.  */
-      vectorized_defs = false;
-      if (SLP_TREE_CHILDREN (slp_node).length () > child_index)
+	 vect_get_constant_vectors ().  */
+      for (unsigned int child_index = 0;
+	   child_index < SLP_TREE_CHILDREN (slp_node).length (); child_index++)
         {
           child = SLP_TREE_CHILDREN (slp_node)[child_index];
 
@@ -3241,30 +3239,25 @@ vect_get_slp_defs (vec<tree> ops, slp_tree slp_node,
 		     statements.  */
 		  number_of_vects = SLP_TREE_NUMBER_OF_VEC_STMTS (child);
 		  vectorized_defs = true;
-		  child_index++;
+		  break;
 		}
 	    }
-	  else
-	    child_index++;
         }
 
-      if (!vectorized_defs)
-        {
-          if (i == 0)
-            {
-              number_of_vects = SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node);
-              /* Number of vector stmts was calculated according to LHS in
-                 vect_schedule_slp_instance (), fix it by replacing LHS with
-                 RHS, if necessary.  See vect_get_smallest_scalar_type () for
-                 details.  */
-              vect_get_smallest_scalar_type (first_stmt, &lhs_size_unit,
-                                             &rhs_size_unit);
-              if (rhs_size_unit != lhs_size_unit)
-                {
-                  number_of_vects *= rhs_size_unit;
-                  number_of_vects /= lhs_size_unit;
-                }
-            }
+      if (!vectorized_defs && first_iteration)
+	{
+	  number_of_vects = SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node);
+	  /* Number of vector stmts was calculated according to LHS in
+	     vect_schedule_slp_instance (), fix it by replacing LHS with
+	     RHS, if necessary.  See vect_get_smallest_scalar_type () for
+	     details.  */
+	  vect_get_smallest_scalar_type (first_stmt, &lhs_size_unit,
+					 &rhs_size_unit);
+	  if (rhs_size_unit != lhs_size_unit)
+	    {
+	      number_of_vects *= rhs_size_unit;
+	      number_of_vects /= lhs_size_unit;
+	    }
         }
 
       /* Allocate memory for vectorized defs.  */
@@ -3286,6 +3279,8 @@ vect_get_slp_defs (vec<tree> ops, slp_tree slp_node,
       /* For reductions, we only need initial values.  */
       if (reduc_index != -1)
         return;
+
+      first_iteration = false;
     }
 }
 

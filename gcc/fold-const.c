@@ -75,6 +75,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "md5.h"
 #include "case-cfn-macros.h"
 #include "stringpool.h"
+#include "tree-vrp.h"
 #include "tree-ssanames.h"
 #include "selftest.h"
 
@@ -1300,7 +1301,7 @@ const_binop (enum tree_code code, tree arg1, tree arg2)
 	    return do_mpc_arg2 (arg1, arg2, type,
                                 /* do_nonfinite= */ folding_initializer,
 				mpc_div);
-	  /* Fallthru ... */
+	  /* Fallthru. */
 	case TRUNC_DIV_EXPR:
 	case CEIL_DIV_EXPR:
 	case FLOOR_DIV_EXPR:
@@ -3696,7 +3697,7 @@ fold_truth_not_expr (location_t loc, tree arg)
       if (TREE_CODE (TREE_TYPE (arg)) == BOOLEAN_TYPE)
 	return build1_loc (loc, TRUTH_NOT_EXPR, type, arg);
 
-      /* ... fall through ...  */
+      /* fall through */
 
     case FLOAT_EXPR:
       loc1 = expr_location_or (TREE_OPERAND (arg, 0), loc);
@@ -5101,6 +5102,7 @@ fold_cond_expr_with_comparison (location_t loc, tree type,
       case UNLT_EXPR:
 	if (flag_trapping_math)
 	  break;
+	/* FALLTHRU */
       case LE_EXPR:
       case LT_EXPR:
 	if (TYPE_UNSIGNED (TREE_TYPE (arg1)))
@@ -10323,6 +10325,7 @@ fold_binary_loc (location_t loc,
       /* If first arg is constant zero, return it.  */
       if (integer_zerop (arg0))
 	return fold_convert_loc (loc, type, arg0);
+      /* FALLTHRU */
     case TRUTH_AND_EXPR:
       /* If either arg is constant true, drop it.  */
       if (TREE_CODE (arg0) == INTEGER_CST && ! integer_zerop (arg0))
@@ -10378,6 +10381,7 @@ fold_binary_loc (location_t loc,
       /* If first arg is constant true, return it.  */
       if (TREE_CODE (arg0) == INTEGER_CST && ! integer_zerop (arg0))
 	return fold_convert_loc (loc, type, arg0);
+      /* FALLTHRU */
     case TRUTH_OR_EXPR:
       /* If either arg is constant zero, drop it.  */
       if (TREE_CODE (arg0) == INTEGER_CST && integer_zerop (arg0))
@@ -11222,7 +11226,7 @@ contains_label_1 (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
     case GOTO_EXPR:
       *walk_subtrees = 0;
 
-      /* ... fall through ...  */
+      /* fall through */
 
     default:
       return NULL_TREE;
@@ -12538,6 +12542,9 @@ fold_build_call_array_initializer_loc (location_t loc, tree type, tree fn,
 int
 multiple_of_p (tree type, const_tree top, const_tree bottom)
 {
+  gimple *stmt;
+  tree t1, op1, op2;
+
   if (operand_equal_p (top, bottom, 0))
     return 1;
 
@@ -12554,19 +12561,31 @@ multiple_of_p (tree type, const_tree top, const_tree bottom)
       /* FALLTHRU */
 
     case MULT_EXPR:
-      return (multiple_of_p (type, TREE_OPERAND (top, 0), bottom)
-	      || multiple_of_p (type, TREE_OPERAND (top, 1), bottom));
+      return (multiple_of_p (type, TREE_OPERAND (top, 1), bottom)
+	      || multiple_of_p (type, TREE_OPERAND (top, 0), bottom));
+
+    case MINUS_EXPR:
+      /* It is impossible to prove if op0 - op1 is multiple of bottom
+	 precisely, so be conservative here checking if both op0 and op1
+	 are multiple of bottom.  Note we check the second operand first
+	 since it's usually simpler.  */
+      return (multiple_of_p (type, TREE_OPERAND (top, 1), bottom)
+	      && multiple_of_p (type, TREE_OPERAND (top, 0), bottom));
 
     case PLUS_EXPR:
-    case MINUS_EXPR:
-      return (multiple_of_p (type, TREE_OPERAND (top, 0), bottom)
-	      && multiple_of_p (type, TREE_OPERAND (top, 1), bottom));
+      /* The same as MINUS_EXPR, but handle cases like op0 + 0xfffffffd
+	 as op0 - 3 if the expression has unsigned type.  For example,
+	 (X / 3) + 0xfffffffd is multiple of 3, but 0xfffffffd is not.  */
+      op1 = TREE_OPERAND (top, 1);
+      if (TYPE_UNSIGNED (type)
+	  && TREE_CODE (op1) == INTEGER_CST && tree_int_cst_sign_bit (op1))
+	op1 = fold_build1 (NEGATE_EXPR, type, op1);
+      return (multiple_of_p (type, op1, bottom)
+	      && multiple_of_p (type, TREE_OPERAND (top, 0), bottom));
 
     case LSHIFT_EXPR:
       if (TREE_CODE (TREE_OPERAND (top, 1)) == INTEGER_CST)
 	{
-	  tree op1, t1;
-
 	  op1 = TREE_OPERAND (top, 1);
 	  /* const_binop may not detect overflow correctly,
 	     so check for it explicitly here.  */
@@ -12587,7 +12606,7 @@ multiple_of_p (tree type, const_tree top, const_tree bottom)
 	      < TYPE_PRECISION (TREE_TYPE (TREE_OPERAND (top, 0)))))
 	return 0;
 
-      /* .. fall through ...  */
+      /* fall through */
 
     case SAVE_EXPR:
       return multiple_of_p (type, TREE_OPERAND (top, 0), bottom);
@@ -12605,6 +12624,44 @@ multiple_of_p (tree type, const_tree top, const_tree bottom)
 	return 0;
       return wi::multiple_of_p (wi::to_widest (top), wi::to_widest (bottom),
 				SIGNED);
+
+    case SSA_NAME:
+      if (TREE_CODE (bottom) == INTEGER_CST
+	  && (stmt = SSA_NAME_DEF_STMT (top)) != NULL
+	  && gimple_code (stmt) == GIMPLE_ASSIGN)
+	{
+	  enum tree_code code = gimple_assign_rhs_code (stmt);
+
+	  /* Check for special cases to see if top is defined as multiple
+	     of bottom:
+
+	       top = (X & ~(bottom - 1) ; bottom is power of 2
+
+	     or
+
+	       Y = X % bottom
+	       top = X - Y.  */
+	  if (code == BIT_AND_EXPR
+	      && (op2 = gimple_assign_rhs2 (stmt)) != NULL_TREE
+	      && TREE_CODE (op2) == INTEGER_CST
+	      && integer_pow2p (bottom)
+	      && wi::multiple_of_p (wi::to_widest (op2),
+				    wi::to_widest (bottom), UNSIGNED))
+	    return 1;
+
+	  op1 = gimple_assign_rhs1 (stmt);
+	  if (code == MINUS_EXPR
+	      && (op2 = gimple_assign_rhs2 (stmt)) != NULL_TREE
+	      && TREE_CODE (op2) == SSA_NAME
+	      && (stmt = SSA_NAME_DEF_STMT (op2)) != NULL
+	      && gimple_code (stmt) == GIMPLE_ASSIGN
+	      && (code = gimple_assign_rhs_code (stmt)) == TRUNC_MOD_EXPR
+	      && operand_equal_p (op1, gimple_assign_rhs1 (stmt), 0)
+	      && operand_equal_p (bottom, gimple_assign_rhs2 (stmt), 0))
+	    return 1;
+	}
+
+      /* fall through */
 
     default:
       return 0;
@@ -13841,7 +13898,6 @@ fold_relational_const (enum tree_code code, tree type, tree op0, tree op1)
       if (!VECTOR_TYPE_P (type))
 	{
 	  /* Have vector comparison with scalar boolean result.  */
-	  bool result = true;
 	  gcc_assert ((code == EQ_EXPR || code == NE_EXPR)
 		      && VECTOR_CST_NELTS (op0) == VECTOR_CST_NELTS (op1));
 	  for (unsigned i = 0; i < VECTOR_CST_NELTS (op0); i++)
@@ -13849,11 +13905,12 @@ fold_relational_const (enum tree_code code, tree type, tree op0, tree op1)
 	      tree elem0 = VECTOR_CST_ELT (op0, i);
 	      tree elem1 = VECTOR_CST_ELT (op1, i);
 	      tree tmp = fold_relational_const (code, type, elem0, elem1);
-	      result &= integer_onep (tmp);
+	      if (tmp == NULL_TREE)
+		return NULL_TREE;
+	      if (integer_zerop (tmp))
+		return constant_boolean_node (false, type);
 	    }
-	  if (code == NE_EXPR)
-	    result = !result;
-	  return constant_boolean_node (result, type);
+	  return constant_boolean_node (true, type);
 	}
       unsigned count = VECTOR_CST_NELTS (op0);
       tree *elts =  XALLOCAVEC (tree, count);
@@ -14461,12 +14518,32 @@ test_arithmetic_folding ()
 				   x);
 }
 
+/* Verify that various binary operations on vectors are folded
+   correctly.  */
+
+static void
+test_vector_folding ()
+{
+  tree inner_type = integer_type_node;
+  tree type = build_vector_type (inner_type, 4);
+  tree zero = build_zero_cst (type);
+  tree one = build_one_cst (type);
+
+  /* Verify equality tests that return a scalar boolean result.  */
+  tree res_type = boolean_type_node;
+  ASSERT_FALSE (integer_nonzerop (fold_build2 (EQ_EXPR, res_type, zero, one)));
+  ASSERT_TRUE (integer_nonzerop (fold_build2 (EQ_EXPR, res_type, zero, zero)));
+  ASSERT_TRUE (integer_nonzerop (fold_build2 (NE_EXPR, res_type, zero, one)));
+  ASSERT_FALSE (integer_nonzerop (fold_build2 (NE_EXPR, res_type, one, one)));
+}
+
 /* Run all of the selftests within this file.  */
 
 void
 fold_const_c_tests ()
 {
   test_arithmetic_folding ();
+  test_vector_folding ();
 }
 
 } // namespace selftest

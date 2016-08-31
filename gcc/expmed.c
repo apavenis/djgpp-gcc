@@ -1581,6 +1581,7 @@ extract_bit_field_1 (rtx str_rtx, unsigned HOST_WIDE_INT bitsize,
 
       for (; new_mode != VOIDmode ; new_mode = GET_MODE_WIDER_MODE (new_mode))
 	if (GET_MODE_SIZE (new_mode) == GET_MODE_SIZE (GET_MODE (op0))
+	    && GET_MODE_UNIT_SIZE (new_mode) == GET_MODE_SIZE (tmode)
 	    && targetm.vector_mode_supported_p (new_mode))
 	  break;
       if (new_mode != VOIDmode)
@@ -3054,7 +3055,7 @@ expand_mult_const (machine_mode mode, rtx op0, HOST_WIDE_INT val,
 		   rtx target, const struct algorithm *alg,
 		   enum mult_variant variant)
 {
-  HOST_WIDE_INT val_so_far;
+  unsigned HOST_WIDE_INT val_so_far;
   rtx_insn *insn;
   rtx accum, tem;
   int opno;
@@ -3104,14 +3105,14 @@ expand_mult_const (machine_mode mode, rtx op0, HOST_WIDE_INT val,
 	  tem = expand_shift (LSHIFT_EXPR, mode, op0, log, NULL_RTX, 0);
 	  accum = force_operand (gen_rtx_PLUS (mode, accum, tem),
 				 add_target ? add_target : accum_target);
-	  val_so_far += HOST_WIDE_INT_1 << log;
+	  val_so_far += HOST_WIDE_INT_1U << log;
 	  break;
 
 	case alg_sub_t_m2:
 	  tem = expand_shift (LSHIFT_EXPR, mode, op0, log, NULL_RTX, 0);
 	  accum = force_operand (gen_rtx_MINUS (mode, accum, tem),
 				 add_target ? add_target : accum_target);
-	  val_so_far -= HOST_WIDE_INT_1 << log;
+	  val_so_far -= HOST_WIDE_INT_1U << log;
 	  break;
 
 	case alg_add_t2_m:
@@ -3187,7 +3188,7 @@ expand_mult_const (machine_mode mode, rtx op0, HOST_WIDE_INT val,
   nmode = GET_MODE_INNER (mode);
   val &= GET_MODE_MASK (nmode);
   val_so_far &= GET_MODE_MASK (nmode);
-  gcc_assert (val == val_so_far);
+  gcc_assert (val == (HOST_WIDE_INT) val_so_far);
 
   return accum;
 }
@@ -5172,7 +5173,7 @@ make_tree (tree type, rtx x)
       t = SYMBOL_REF_DECL (x);
       if (t)
 	return fold_convert (type, build_fold_addr_expr (t));
-      /* else fall through.  */
+      /* fall through.  */
 
     default:
       t = build_decl (RTL_LOCATION (x), VAR_DECL, NULL_TREE, type);

@@ -6,6 +6,8 @@
 
 #include "go-system.h"
 
+#include <fstream>
+
 #include "filenames.h"
 
 #include "go-c.h"
@@ -32,6 +34,7 @@ Gogo::Gogo(Backend* backend, Linemap* linemap, int, int pointer_size)
     file_block_names_(),
     imports_(),
     imported_unsafe_(false),
+    current_file_imported_unsafe_(false),
     packages_(),
     init_functions_(),
     var_deps_(),
@@ -449,6 +452,7 @@ Gogo::import_package(const std::string& filename,
   if (filename == "unsafe")
     {
       this->import_unsafe(local_name, is_local_name_exported, location);
+      this->current_file_imported_unsafe_ = true;
       return;
     }
 
@@ -511,40 +515,49 @@ Gogo::import_package(const std::string& filename,
   delete stream;
 }
 
+Import_init *
+Gogo::lookup_init(const std::string& init_name)
+{
+  Import_init tmp("", init_name, -1);
+  Import_init_set::iterator it = this->imported_init_fns_.find(&tmp);
+  return (it != this->imported_init_fns_.end()) ? *it : NULL;
+}
+
 // Add an import control function for an imported package to the list.
 
 void
 Gogo::add_import_init_fn(const std::string& package_name,
 			 const std::string& init_name, int prio)
 {
-  for (std::set<Import_init>::const_iterator p =
+  for (Import_init_set::iterator p =
 	 this->imported_init_fns_.begin();
        p != this->imported_init_fns_.end();
        ++p)
     {
-      if (p->init_name() == init_name)
+      Import_init *ii = (*p);
+      if (ii->init_name() == init_name)
 	{
 	  // If a test of package P1, built as part of package P1,
 	  // imports package P2, and P2 imports P1 (perhaps
 	  // indirectly), then we will see the same import name with
 	  // different import priorities.  That is OK, so don't give
 	  // an error about it.
-	  if (p->package_name() != package_name)
+	  if (ii->package_name() != package_name)
 	    {
 	      error("duplicate package initialization name %qs",
 		    Gogo::message_name(init_name).c_str());
-	      inform(UNKNOWN_LOCATION, "used by package %qs at priority %d",
-		     Gogo::message_name(p->package_name()).c_str(),
-		     p->priority());
-	      inform(UNKNOWN_LOCATION, " and by package %qs at priority %d",
-		     Gogo::message_name(package_name).c_str(), prio);
+	      inform(UNKNOWN_LOCATION, "used by package %qs",
+		     Gogo::message_name(ii->package_name()).c_str());
+	      inform(UNKNOWN_LOCATION, " and by package %qs",
+		     Gogo::message_name(package_name).c_str());
 	    }
-	  return;
+          ii->set_priority(prio);
+          return;
 	}
     }
 
-  this->imported_init_fns_.insert(Import_init(package_name, init_name,
-					      prio));
+  Import_init* nii = new Import_init(package_name, init_name, prio);
+  this->imported_init_fns_.insert(nii);
 }
 
 // Return whether we are at the global binding level.
@@ -579,6 +592,62 @@ Gogo::current_bindings() const
     return this->globals_;
 }
 
+void
+Gogo::update_init_priority(Import_init* ii,
+                           std::set<const Import_init *>* visited)
+{
+  visited->insert(ii);
+  int succ_prior = -1;
+
+  for (std::set<std::string>::const_iterator pci =
+           ii->precursors().begin();
+       pci != ii->precursors().end();
+       ++pci)
+    {
+      Import_init* succ = this->lookup_init(*pci);
+      if (visited->find(succ) == visited->end())
+        update_init_priority(succ, visited);
+      succ_prior = std::max(succ_prior, succ->priority());
+    }
+  if (ii->priority() <= succ_prior)
+    ii->set_priority(succ_prior + 1);
+}
+
+void
+Gogo::recompute_init_priorities()
+{
+  std::set<Import_init *> nonroots;
+
+  for (Import_init_set::const_iterator p =
+           this->imported_init_fns_.begin();
+       p != this->imported_init_fns_.end();
+       ++p)
+    {
+      const Import_init *ii = *p;
+      for (std::set<std::string>::const_iterator pci =
+               ii->precursors().begin();
+           pci != ii->precursors().end();
+           ++pci)
+        {
+          Import_init* ii = this->lookup_init(*pci);
+          nonroots.insert(ii);
+        }
+    }
+
+  // Recursively update priorities starting at roots.
+  std::set<const Import_init*> visited;
+  for (Import_init_set::iterator p =
+           this->imported_init_fns_.begin();
+       p != this->imported_init_fns_.end();
+       ++p)
+    {
+      Import_init* ii = *p;
+      if (nonroots.find(ii) != nonroots.end())
+        continue;
+      update_init_priority(ii, &visited);
+    }
+}
+
 // Add statements to INIT_STMTS which run the initialization
 // functions for imported packages.  This is only used for the "main"
 // package.
@@ -596,23 +665,27 @@ Gogo::init_imports(std::vector<Bstatement*>& init_stmts)
       Type::make_function_type(NULL, NULL, NULL, unknown_loc);
   Btype* fntype = func_type->get_backend_fntype(this);
 
+  // Recompute init priorities based on a walk of the init graph.
+  recompute_init_priorities();
+
   // We must call them in increasing priority order.
-  std::vector<Import_init> v;
-  for (std::set<Import_init>::const_iterator p =
+  std::vector<const Import_init*> v;
+  for (Import_init_set::const_iterator p =
 	 this->imported_init_fns_.begin();
        p != this->imported_init_fns_.end();
        ++p)
     v.push_back(*p);
-  std::sort(v.begin(), v.end());
+  std::sort(v.begin(), v.end(), priority_compare);
 
   // We build calls to the init functions, which take no arguments.
   std::vector<Bexpression*> empty_args;
-  for (std::vector<Import_init>::const_iterator p = v.begin();
+  for (std::vector<const Import_init*>::const_iterator p = v.begin();
        p != v.end();
        ++p)
     {
-      std::string user_name = p->package_name() + ".init";
-      const std::string& init_name(p->init_name());
+      const Import_init* ii = *p;
+      std::string user_name = ii->package_name() + ".init";
+      const std::string& init_name(ii->init_name());
 
       Bfunction* pfunc = this->backend()->function(fntype, user_name, init_name,
                                                    true, true, true, false,
@@ -2000,6 +2073,29 @@ Gogo::add_dot_import_object(Named_object* no)
   this->current_bindings()->add_named_object(no);
 }
 
+// Add a linkname.  This implements the go:linkname compiler directive.
+// We only support this for functions and function declarations.
+
+void
+Gogo::add_linkname(const std::string& go_name, bool is_exported,
+		   const std::string& ext_name, Location loc)
+{
+  Named_object* no =
+    this->package_->bindings()->lookup(this->pack_hidden_name(go_name,
+							      is_exported));
+  if (no == NULL)
+    error_at(loc, "%s is not defined", go_name.c_str());
+  else if (no->is_function())
+    no->func_value()->set_asm_name(ext_name);
+  else if (no->is_function_declaration())
+    no->func_declaration_value()->set_asm_name(ext_name);
+  else
+    error_at(loc,
+	     ("%s is not a function; "
+	      "//go:linkname is only supported for functions"),
+	     go_name.c_str());
+}
+
 // Mark all local variables used.  This is used when some types of
 // parse error occur.
 
@@ -2183,6 +2279,8 @@ Gogo::clear_file_scope()
         }
       package->clear_used();
     }
+
+  this->current_file_imported_unsafe_ = false;
 }
 
 // Queue up a type specific function for later writing.  These are
@@ -4299,21 +4397,6 @@ Gogo::check_return_statements()
   this->traverse(&traverse);
 }
 
-// Work out the package priority.  It is one more than the maximum
-// priority of an imported package.
-
-int
-Gogo::package_priority() const
-{
-  int priority = 0;
-  for (Packages::const_iterator p = this->packages_.begin();
-       p != this->packages_.end();
-       ++p)
-    if (p->second->priority() > priority)
-      priority = p->second->priority();
-  return priority + 1;
-}
-
 // Export identifiers as requested.
 
 void
@@ -4341,7 +4424,6 @@ Gogo::do_exports()
   exp.export_globals(this->package_name(),
 		     prefix,
 		     pkgpath,
-		     this->package_priority(),
 		     this->packages_,
 		     this->imports_,
 		     (this->need_init_fn_ && !this->is_main_package()
@@ -4349,6 +4431,131 @@ Gogo::do_exports()
 		      : ""),
 		     this->imported_init_fns_,
 		     this->package_->bindings());
+
+  if (!this->c_header_.empty() && !saw_errors())
+    this->write_c_header();
+}
+
+// Write the top level named struct types in C format to a C header
+// file.  This is used when building the runtime package, to share
+// struct definitions between C and Go.
+
+void
+Gogo::write_c_header()
+{
+  std::ofstream out;
+  out.open(this->c_header_.c_str());
+  if (out.fail())
+    {
+      error("cannot open %s: %m", this->c_header_.c_str());
+      return;
+    }
+
+  std::list<Named_object*> types;
+  Bindings* top = this->package_->bindings();
+  for (Bindings::const_definitions_iterator p = top->begin_definitions();
+       p != top->end_definitions();
+       ++p)
+    {
+      Named_object* no = *p;
+      if (no->is_type() && no->type_value()->struct_type() != NULL)
+	types.push_back(no);
+      if (no->is_const() && no->const_value()->type()->integer_type() != NULL)
+	{
+	  Numeric_constant nc;
+	  unsigned long val;
+	  if (no->const_value()->expr()->numeric_constant_value(&nc)
+	      && nc.to_unsigned_long(&val) == Numeric_constant::NC_UL_VALID)
+	    {
+	      out << "#define " << no->message_name() << ' ' << val
+		  << std::endl;
+	    }
+	}
+    }
+
+  std::vector<const Named_object*> written;
+  int loop = 0;
+  while (!types.empty())
+    {
+      Named_object* no = types.front();
+      types.pop_front();
+
+      std::vector<const Named_object*> requires;
+      std::vector<const Named_object*> declare;
+      if (!no->type_value()->struct_type()->can_write_to_c_header(&requires,
+								  &declare))
+	continue;
+
+      bool ok = true;
+      for (std::vector<const Named_object*>::const_iterator pr
+	     = requires.begin();
+	   pr != requires.end() && ok;
+	   ++pr)
+	{
+	  for (std::list<Named_object*>::const_iterator pt = types.begin();
+	       pt != types.end() && ok;
+	       ++pt)
+	    if (*pr == *pt)
+	      ok = false;
+	}
+      if (!ok)
+	{
+	  ++loop;
+	  if (loop > 10000)
+	    {
+	      // This should be impossible since the code parsed and
+	      // type checked.
+	      go_unreachable();
+	    }
+
+	  types.push_back(no);
+	  continue;
+	}
+
+      for (std::vector<const Named_object*>::const_iterator pd
+	     = declare.begin();
+	   pd != declare.end();
+	   ++pd)
+	{
+	  if (*pd == no)
+	    continue;
+
+	  std::vector<const Named_object*> drequires;
+	  std::vector<const Named_object*> ddeclare;
+	  if (!(*pd)->type_value()->struct_type()->
+	      can_write_to_c_header(&drequires, &ddeclare))
+	    continue;
+
+	  bool done = false;
+	  for (std::vector<const Named_object*>::const_iterator pw
+		 = written.begin();
+	       pw != written.end();
+	       ++pw)
+	    {
+	      if (*pw == *pd)
+		{
+		  done = true;
+		  break;
+		}
+	    }
+	  if (!done)
+	    {
+	      out << std::endl;
+	      out << "struct " << (*pd)->message_name() << ";" << std::endl;
+	      written.push_back(*pd);
+	    }
+	}
+
+      out << std::endl;
+      out << "struct " << no->message_name() << " {" << std::endl;
+      no->type_value()->struct_type()->write_to_c_header(out);
+      out << "};" << std::endl;
+      written.push_back(no);
+    }
+
+  out.close();
+  if (out.fail())
+    error("error writing to %s: %m", this->c_header_.c_str());
 }
 
 // Find the blocks in order to convert named types defined in blocks.
@@ -4439,7 +4646,7 @@ Function::Function(Function_type* type, Named_object* enclosing, Block* block,
   : type_(type), enclosing_(enclosing), results_(NULL),
     closure_var_(NULL), block_(block), location_(location), labels_(),
     local_type_count_(0), descriptor_(NULL), fndecl_(NULL), defer_stack_(NULL),
-    is_sink_(false), results_are_named_(false), nointerface_(false),
+    pragmas_(0), is_sink_(false), results_are_named_(false),
     is_unnamed_type_stub_method_(false), calls_recover_(false),
     is_recover_thunk_(false), has_recover_thunk_(false),
     calls_defer_retaddr_(false), is_type_specific_function_(false),
@@ -4509,6 +4716,24 @@ Function::update_result_variables()
        p != this->results_->end();
        ++p)
     (*p)->result_var_value()->set_function(this);
+}
+
+// Whether this method should not be included in the type descriptor.
+
+bool
+Function::nointerface() const
+{
+  go_assert(this->is_method());
+  return (this->pragmas_ & GOPRAGMA_NOINTERFACE) != 0;
+}
+
+// Record that this method should not be included in the type
+// descriptor.
+
+void
+Function::set_nointerface()
+{
+  this->pragmas_ |= GOPRAGMA_NOINTERFACE;
 }
 
 // Return the closure variable, creating it if necessary.
@@ -5016,6 +5241,12 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
             }
         }
 
+      if (!this->asm_name_.empty())
+	{
+	  asm_name = this->asm_name_;
+	  is_visible = true;
+	}
+
       // If a function calls the predeclared recover function, we
       // can't inline it, because recover behaves differently in a
       // function passed directly to defer.  If this is a recover
@@ -5032,17 +5263,26 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
       if (this->calls_defer_retaddr_)
 	is_inlinable = false;
 
+      // Check the //go:noinline compiler directive.
+      if ((this->pragmas_ & GOPRAGMA_NOINLINE) != 0)
+	is_inlinable = false;
+
       // If this is a thunk created to call a function which calls
       // the predeclared recover function, we need to disable
       // stack splitting for the thunk.
       bool disable_split_stack = this->is_recover_thunk_;
+
+      // Check the //go:nosplit compiler directive.
+      if ((this->pragmas_ & GOPRAGMA_NOSPLIT) != 0)
+	disable_split_stack = true;
 
       // This should go into a unique section if that has been
       // requested elsewhere, or if this is a nointerface function.
       // We want to put a nointerface function into a unique section
       // because there is a good chance that the linker garbage
       // collection can discard it.
-      bool in_unique_section = this->in_unique_section_ || this->nointerface_;
+      bool in_unique_section = (this->in_unique_section_
+				|| (this->is_method() && this->nointerface()));
 
       Btype* functype = this->type_->get_backend_fntype(gogo);
       this->fndecl_ =
@@ -7535,11 +7775,10 @@ Unnamed_label::get_goto(Translate_context* context, Location location)
 Package::Package(const std::string& pkgpath,
 		 const std::string& pkgpath_symbol, Location location)
   : pkgpath_(pkgpath), pkgpath_symbol_(pkgpath_symbol),
-    package_name_(), bindings_(new Bindings(NULL)), priority_(0),
+    package_name_(), bindings_(new Bindings(NULL)),
     location_(location)
 {
   go_assert(!pkgpath.empty());
-  
 }
 
 // Set the package name.
@@ -7578,16 +7817,6 @@ Package::set_pkgpath_symbol(const std::string& pkgpath_symbol)
     this->pkgpath_symbol_ = pkgpath_symbol;
   else
     go_assert(this->pkgpath_symbol_ == pkgpath_symbol);
-}
-
-// Set the priority.  We may see multiple priorities for an imported
-// package; we want to use the largest one.
-
-void
-Package::set_priority(int priority)
-{
-  if (priority > this->priority_)
-    this->priority_ = priority;
 }
 
 // Note that symbol from this package was and qualified by ALIAS.
