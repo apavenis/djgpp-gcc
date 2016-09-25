@@ -633,29 +633,7 @@ long __gnat_invalid_tzoff = 259273;
 
 /* Definition of __gnat_localtime_r used by a-calend.adb */
 
-#if defined (__DJGPP__)
-
-/* FIXME: this is draft version only. Fix me if that is not correct  */
-/*        or not complete (AP)                                       */
-
-extern void
-__gnat_localtime_tzoff (const time_t *, long *);
-
-void
-__gnat_localtime_tzoff (const time_t *timer, long *off)
-{
-  struct tm *tmp;
-
-  tmp = localtime (timer);
-  *off = (long) -tmp->tm_gmtoff;
-
-  /* Correct the offset if Daylight Saving Time is in effect */
-
-  if (tmp->tm_isdst > 0)
-    *off = *off + 3600;
-}
-
-#elif defined (__MINGW32__)
+#if defined (__MINGW32__)
 
 /* Reentrant localtime for Windows. */
 
@@ -847,7 +825,8 @@ __gnat_localtime_tzoff (const time_t *timer ATTRIBUTE_UNUSED,
    struct tm */
 
 #elif defined (__APPLE__) || defined (__FreeBSD__) || defined (__linux__) \
-  || defined (__GLIBC__) || defined (__DragonFly__) || defined (__OpenBSD__)
+  || defined (__GLIBC__) || defined (__DragonFly__) || defined (__OpenBSD__) \
+  || defined(__DJGPP__)
 {
   localtime_r (timer, &tp);
   *off = tp.tm_gmtoff;

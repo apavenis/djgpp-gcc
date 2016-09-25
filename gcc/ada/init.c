@@ -2518,29 +2518,6 @@ __gnat_install_handler (void)
 
 #elif defined (__DJGPP__)
 
-/***************************************/
-/* FIXME: this is only a draft version */
-/***************************************/
-
-struct timestruc_t
-{
-   time_t  tv_sec;
-   long    tv_nsec;
-};
-
-
-int
-nanosleep (struct timestruc_t *Rqtp, struct timestruc_t *Rmtp);
-
-int
-nanosleep (struct timestruc_t *Rqtp, struct timestruc_t *Rmtp)
-{
-    usleep (1000000*Rqtp->tv_sec+Rqtp->tv_nsec/1000);
-    if (Rmtp) { Rmtp->tv_sec = Rmtp->tv_nsec=0; }
-    return 0;
-}
-
-
 void
 __gnat_install_handler ()
 {

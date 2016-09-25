@@ -176,19 +176,20 @@ UINT CurrentCCSEncoding;
 #include <sys/wait.h>
 #endif
 
-#if defined(__DJGPP__) || defined (_WIN32)
-
+#if defined (__DJGPP__)
 #include <process.h>
 #include <signal.h>
 #include <dir.h>
-#if defined(__DJGPP__)
 #include <utime.h>
-#else
+#undef DIR_SEPARATOR
+#define DIR_SEPARATOR '\\'
+
+#elif defined (_WIN32)
+
 #include <windows.h>
 #include <accctrl.h>
 #include <aclapi.h>
 #include <tlhelp32.h>
-#endif
 #undef DIR_SEPARATOR
 #define DIR_SEPARATOR '\\'
 
@@ -553,7 +554,7 @@ __gnat_try_lock (char *dir, char *file)
 int
 __gnat_get_maximum_file_name_length (void)
 {
-#if defined(__DJGPP__)
+#if defined (__DJGPP__)
   return (_use_lfn(".")) ? -1 : 8;
 #else
   return -1;
@@ -579,7 +580,7 @@ __gnat_get_file_names_case_sensitive (void)
 	{
 	  /* By default, we suppose filesystems aren't case sensitive on
 	     Windows and Darwin (but they are on arm-darwin).  */
-#if defined (__DJGPP__) || defined (WINNT) \
+#if defined (WINNT) || defined (__DJGPP__) \
   || (defined (__APPLE__) && !(defined (__arm__) || defined (__arm64__)))
 	  file_names_case_sensitive_cache = 0;
 #else
@@ -595,7 +596,7 @@ __gnat_get_file_names_case_sensitive (void)
 int
 __gnat_get_env_vars_case_sensitive (void)
 {
-#if defined (__DJGPP__) || defined (WINNT)
+#if defined (WINNT) || defined (__DJGPP__)
  return 0;
 #else
  return 1;
@@ -605,11 +606,7 @@ __gnat_get_env_vars_case_sensitive (void)
 char
 __gnat_get_default_identifier_character_set (void)
 {
-#if defined (__DJGPP__)
-  return 'p';
-#else
   return '1';
-#endif
 }
 
 /* Return the current working directory.  */
@@ -1669,7 +1666,7 @@ __gnat_is_absolute_path (char *name, int length)
 #else
   return (length != 0) &&
      (*name == '/' || *name == DIR_SEPARATOR
-#if defined(__DJGPP__) || defined (WINNT)
+#if defined (WINNT) || defined(__DJGPP__)
       || (length > 1 && ISALPHA (name[0]) && name[1] == ':')
 #endif
 	  );
@@ -2630,14 +2627,6 @@ __gnat_portable_no_block_spawn (char *args[] ATTRIBUTE_UNUSED)
   return -1;
 
 #elif defined(__DJGPP__)
-  /* ??? For PC machines I (Franco) don't know the system calls to implement
-     this routine. So I'll fake it as follows. This routine will behave
-     exactly like the blocking portable_spawn and will systematically return
-     a pid of 0 unless the spawned task did not complete successfully, in
-     which case we return a pid of -1.  To synchronize with this the
-     portable_wait below systematically returns a pid of 0 and reports that
-     the subprocess terminated successfully. */
-
   if (spawnvp (P_WAIT, args[0], args) != 0)
     return -1;
   else
@@ -2687,8 +2676,8 @@ __gnat_portable_wait (int *process_status)
   pid = win32_wait (&status);
 
 #elif defined (__DJGPP__)
-  /* ??? See corresponding comment in portable_no_block_spawn.  */
-
+  /* Child process has already ended in case of DJGPP.
+     No need to do anything. Just return success. */
 #else
 
   pid = waitpid (-1, &status, 0);
