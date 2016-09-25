@@ -259,6 +259,7 @@ if $GLIBCXX_IS_NATIVE; then
   GCC_CHECK_TLS
 
   AC_CHECK_FUNCS(__cxa_thread_atexit_impl)
+  AC_CHECK_FUNCS(aligned_alloc posix_memalign memalign _aligned_malloc)
 
   # For iconv support.
   AM_ICONV
@@ -326,6 +327,7 @@ else
     AC_DEFINE(HAVE_TANHF)
 
     AC_DEFINE(HAVE_ICONV)
+    AC_DEFINE(HAVE_MEMALIGN)
   else
     GLIBCXX_CROSSCONFIG
   fi

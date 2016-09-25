@@ -190,6 +190,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "toplev.h"
 #include "debug.h"
 #include "symbol-summary.h"
+#include "tree-vrp.h"
 #include "ipa-prop.h"
 #include "gimple-pretty-print.h"
 #include "plugin.h"
@@ -2561,7 +2562,7 @@ symbol_table::finalize_compilation_unit (void)
 
       /* Clean up anything that needs cleaning up after initial debug
 	 generation.  */
-      (*debug_hooks->early_finish) ();
+      (*debug_hooks->early_finish) (main_input_filename);
     }
 
   /* Finally drive the pass manager.  */

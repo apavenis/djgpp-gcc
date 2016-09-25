@@ -1,3 +1,194 @@
+2016-09-24  Marek Polacek  <polacek@redhat.com>
+
+	PR c/77490
+	* typeck.c (cp_build_unary_op): Warn about bit not on expressions that
+	have boolean value.
+
+2016-09-23  Jakub Jelinek  <jakub@redhat.com>
+
+	Implement P0138R2, C++17 construction rules for enum class values
+	* cp-tree.h (is_direct_enum_init): Declare.
+	* decl.c (is_direct_enum_init): New function.
+	(reshape_init): Use it.
+	* typeck.c (convert_for_assignment): Likewise.
+
+	* Make-lang.in (check-c++1z): Pass RUNTESTFLAGS down to
+	make check-g++.
+
+	* constexpr.c (call_stack): Remove unnecessary
+	= vNULL initialization of file scope vec.
+
+	* name-lookup.c (store_bindings, store_class_bindings): Don't
+	initialize static local bindings_need_stored to vNULL.
+
+	* typeck2.c (process_init_constructor_record): Use
+	CONSTRUCTOR_NELTS (...) instead of
+	vec_safe_length (CONSTRUCTOR_ELTS (...)).
+	* decl.c (reshape_init_r): Likewise.
+	(check_initializer): Likewise.
+
+2016-09-22  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/71979
+	* class.c (build_base_path): Allow for lookup_base returning
+	NULL_TREE.
+
+2016-09-21  Jason Merrill  <jason@redhat.com>
+
+	Core 903
+	* call.c (null_ptr_cst_p): Check char_type_p.
+
+2016-09-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/77651
+	* init.c (build_new_1): Don't suggest to use -faligned-new if
+	aligned_new_threshold is non-zero.
+	(type_has_new_extended_alignment): Change aligned_new_threshhold
+	to aligned_new_threshold.
+	* call.c (second_parm_is_size_t, aligned_allocation_fn_p,
+	aligned_deallocation_fn_p, build_op_delete_call): Likewise.
+	* decl.c (cxx_init_decl_processing): Likewise.
+
+2016-09-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/77626
+	* constexpr.c (cxx_fold_indirect_ref): Don't call byte_position on
+	FIELD_DECLs with error_mark_node type.  Remove useless break; after
+	return.
+
+	PR c++/77638
+	* parser.c (cp_parser_template_declaration_after_parameter): For 2
+	argument operator"" template set ok to false for
+	parm == error_mark_node.
+
+	PR c++/77637
+	* parser.c (cp_parser_std_attribute_list): Reject ... without
+	preceding attribute.
+
+2016-09-19  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR c++/77434
+	* cvt.c (cp_convert_and_check): Suppress Wint-in-bool-context here.
+
+2016-09-16  Patrick Palka  <ppalka@gcc.gnu.org>
+
+	PR c++/77639
+	* parser.c (cp_parser_class_head): When
+	processing_template_parmlist, don't assume that the
+	class-head may start an explicit specialization.
+
+2016-09-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/77482
+	* error.c (dump_simple_decl): Only check DECL_DECLARED_CONCEPT_P
+	if DECL_LANG_SPECIFIC is non-NULL.  Fix up formatting.
+
+	PR c++/77338
+	* constexpr.c (cxx_eval_constant_expression) <case PARM_DECL>: Only
+	call is_really_empty_class on complete types.
+
+	PR c++/77375
+	* class.c (check_bases): Set CLASSTYPE_HAS_MUTABLE if any
+	TYPE_HAS_MUTABLE_P for any bases.
+
+2016-09-16  Jason Merrill  <jason@redhat.com>
+
+	* class.c (check_bases, set_one_vmethod_tm_attributes): Use
+	least_bit_hwi.
+	* decl.c (cxx_init_decl_processing): Use pow2p_hwi.
+	* parser.c (cp_parser_cilk_simd_vectorlength): Use pow2p_hwi.
+
+2016-09-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/77549
+	* name-lookup.c (consider_binding_level): Look through TREE_LIST
+	and OVERLOAD.
+
+2016-09-14  Marek Polacek  <polacek@redhat.com>
+
+	* typeck.c (cp_build_unary_op): Diagnose incrementing boolean
+	expressions.  Tweak an error message.
+
+2016-09-14  Marek Polacek  <polacek@redhat.com>
+
+	* cp-tree.h (cp_build_unary_op): Change nonconvert parameter type to
+	bool.
+	* decl2.c (one_static_initialization_or_destruction): Use true instead
+	of 1.
+	* init.c (build_vec_init): Use false instead of 0.
+	* pt.c (tsubst_copy_and_build): Likewise.
+	* semantics.c (simplify_loop_decl_cond): Likewise.
+	* typeck.c (rationalize_conditional_expr): Likewise.
+	(cp_build_binary_op): Use true instead of 1.
+	(cp_build_unary_op): Change nonconvert parameter type to bool.  Use true
+	instead of 1.
+	(build_unary_op): Change nonconvert parameter type to bool.
+	(unary_complex_lvalue): Use false instead of 0.
+
+2016-09-13  Jakub Jelinek  <jakub@redhat.com>
+
+	Implement P0028R4, C++17 using attribute namespaces without repetition
+	* parser.c (cp_parser_std_attribute): Add ATTR_NS argument.  Diagnose
+	non-NULL ATTR_NS with scoped attribute token.  Handle non-NULL
+	ATTR_NS with non-scoped attribute tokens.  Allow named ops in
+	identifier after ::.
+	(cp_parser_std_attribute_list): Add ATTR_NS argument, pass it down
+	to cp_parser_std_attribute calls.
+	(cp_parser_std_attribute_spec): Parse optional C++17
+	attribute-using-prefix, adjust grammar in function comment.
+
+	PR c++/77553
+	* constexpr.c (cxx_fold_pointer_plus_expression): New function.
+	(cxx_eval_binary_expression): Use it for POINTER_PLUS_EXPR.
+	(cxx_eval_pointer_plus_expression): Remove.
+	(cxx_eval_constant_expression) <case POINTER_PLUS_EXPR>: Don't
+	call cxx_eval_pointer_plus_expression.
+
+2016-09-13  David Malcolm  <dmalcolm@redhat.com>
+
+	* parser.c (cp_parser_class_specifier_1): Update for renaming of
+	add_fixit_insert to add_fixit_insert_before.
+	(cp_parser_class_head): Likewise.
+
+2016-09-12  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR c++/77496
+	* call.c (build_conditional_expr_1): Call warn_for_omitted_condop.
+	* class.c (instantiate_type): Look through the SAVE_EXPR.
+
+2016-09-09  Jason Merrill  <jason@redhat.com>
+
+	Implement P0035R4, C++17 new of over-aligned types.
+	* cp-tree.h (enum cp_tree_index): Add CPTI_ALIGN_TYPE.
+	(align_type_node): New macro.
+	* call.c (build_operator_new_call): Handle C++17 aligned new.
+	(second_parm_is_size_t, build_op_delete_call): Likewise.
+	(non_placement_deallocation_fn_p): Likewise. Rename to
+	usual_deallocation_fn_p.
+	(aligned_allocation_fn_p, aligned_deallocation_fn_p): New.
+	* decl.c (cxx_init_decl_processing): Add aligned new support.
+	* init.c (type_has_new_extended_alignment): New.
+	(build_new_1): Handle aligned new.
+	* tree.c (vec_copy_and_insert): New.
+
+2016-09-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/77396
+	* decl2.c (do_static_initialization_or_destruction): Only
+	call asan_dynamic_init_call if INITP is true.
+
+2016-09-01  Martin Sebor  <msebor@redhat.com>
+
+	* mangle.c: Increase buffer size to guarantee it fits the output
+	of the formatted function regardless of its arguments.
+
+2016-09-01  Marek Polacek  <polacek@redhat.com>
+
+	PR c/7652
+	* error.c (dump_type): Fix falls through comment.
+	(dump_decl): Likewise.
+	(dump_expr): Likewise.
+
 2016-08-30  David Malcolm  <dmalcolm@redhat.com>
 
 	* parser.c (cp_parser_enclosed_template_argument_list): Add fix-it
@@ -78,7 +269,7 @@
 	* semantics.c (finish_omp_clauses): Add FALLTHRU.
 	* tree.c (lvalue_kind): Likewise.
 
-2016-08-12  Alexandre Oliva <aoliva@redhat.com>
+2016-08-12  Alexandre Oliva  <aoliva@redhat.com>
 
 	PR debug/63240
 	* cp-objcp-common.c (cp_function_decl_defaulted): New.
@@ -287,7 +478,7 @@
 	* cp-gimplify.c (cp_fully_fold): Only maybe_constant_value in
 	C++11 and up.
 
-2016-07-30 Martin Sebor  <msebor@redhat.com>
+2016-07-30  Martin Sebor  <msebor@redhat.com>
 
 	PR c++/60760
 	PR c++/71091

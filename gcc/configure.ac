@@ -4520,7 +4520,7 @@ LCF0:
 	  gcc_cv_as_aix_dwloc, [2,21,0],,
 	  [	.dwsect 0xA0000
 	Lframe..0:
-		.vbyte 4,Lframe..0:
+		.vbyte 4,Lframe..0
 	  ],,
 	  [AC_DEFINE(HAVE_XCOFF_DWARF_EXTRAS, 1,
 	    [Define if your assembler supports AIX debug frame section label reference.])])
@@ -6239,6 +6239,27 @@ if test x"$ld_bndplt_support" = xyes; then
 	[Define if your linker supports -z bndplt])
 fi
 AC_MSG_RESULT($ld_bndplt_support)
+
+# Check linker supports '--push-state'/'--pop-state'
+ld_pushpopstate_support=no
+AC_MSG_CHECKING(linker --push-state/--pop-state options)
+if test x"$ld_is_gold" = xno; then
+  if test $in_tree_ld = yes ; then
+    if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 25 -o "$gcc_cv_gld_major_version" -gt 2; then
+      ld_pushpopstate_support=yes
+    fi
+  elif test x$gcc_cv_ld != x; then
+    # Check if linker supports --push-state/--pop-state options
+    if $gcc_cv_ld --help 2>/dev/null | grep -- '--push-state' > /dev/null; then
+      ld_pushpopstate_support=yes
+    fi
+  fi
+fi
+if test x"$ld_pushpopstate_support" = xyes; then
+  AC_DEFINE(HAVE_LD_PUSHPOPSTATE_SUPPORT, 1,
+	[Define if your linker supports --push-state/--pop-state])
+fi
+AC_MSG_RESULT($ld_pushpopstate_support)
 
 # Configure the subdirectories
 # AC_CONFIG_SUBDIRS($subdirs)

@@ -41,6 +41,7 @@ extern bool is_location_from_builtin_token (source_location);
 extern expanded_location expand_location (source_location);
 extern const char *location_get_source_line (const char *file_path, int line,
 					     int *line_size);
+extern bool location_missing_trailing_newline (const char *file_path);
 extern expanded_location expand_location_to_spelling_point (source_location);
 extern source_location expansion_point_location_if_in_system_header (source_location);
 extern source_location expansion_point_location (source_location);
@@ -76,6 +77,11 @@ extern location_t input_location;
    comes from a macro expansion, O otherwise.  */
 #define from_macro_expansion_at(LOC) \
   ((linemap_location_from_macro_expansion_p (line_table, LOC)))
+/* Return a positive value if LOCATION is the locus of a token that comes from
+   a macro definition, O otherwise.  This differs from from_macro_expansion_at
+   in its treatment of macro arguments, for which this returns false.  */
+#define from_macro_definition_at(LOC) \
+  ((linemap_location_from_macro_definition_p (line_table, LOC)))
 
 static inline location_t
 get_pure_location (location_t loc)

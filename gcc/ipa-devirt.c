@@ -122,6 +122,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "ipa-utils.h"
 #include "gimple-fold.h"
 #include "symbol-summary.h"
+#include "tree-vrp.h"
 #include "ipa-prop.h"
 #include "ipa-inline.h"
 #include "demangle.h"
@@ -2136,8 +2137,7 @@ get_odr_type (tree type, bool insert)
       /* Be sure we did not recorded any derived types; these may need
 	 renumbering too.  */
       gcc_assert (val->derived_types.length() == 0);
-      if (odr_types_ptr)
-	val->id = odr_types.length ();
+      val->id = odr_types.length ();
       vec_safe_push (odr_types_ptr, val);
     }
   return val;

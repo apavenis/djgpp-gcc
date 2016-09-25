@@ -1680,7 +1680,7 @@ build_ref_for_offset (location_t loc, tree base, HOST_WIDE_INT offset,
 
   misalign = (misalign + offset) & (align - 1);
   if (misalign != 0)
-    align = (misalign & -misalign);
+    align = least_bit_hwi (misalign);
   if (align != TYPE_ALIGN (exp_type))
     exp_type = build_aligned_type (exp_type, align);
 
@@ -3224,7 +3224,7 @@ sra_modify_constructor_assign (gimple *stmt, gimple_stmt_iterator *gsi)
 	return SRA_AM_MODIFIED;
     }
 
-  if (vec_safe_length (CONSTRUCTOR_ELTS (gimple_assign_rhs1 (stmt))) > 0)
+  if (CONSTRUCTOR_NELTS (gimple_assign_rhs1 (stmt)) > 0)
     {
       /* I have never seen this code path trigger but if it can happen the
 	 following should handle it gracefully.  */

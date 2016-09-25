@@ -1,3 +1,13 @@
+2016-09-23  Tamar Christina <tamar.christina@arm.com>
+
+	* MAINTAINERS (Write After Approval): Add myself.
+
+2016-09-12  Maciej W. Rozycki  <macro@imgtec.com>
+
+	* configure.ac: Check for the minimum in-tree MPFR version
+	handled.
+	* configure: Regenerate.
+
 2016-07-20  Yan-Ting Lin  <currygt52@gmail.com>
 
 	* configure.ac (nds32*-*-*): Remove entry to enable gdb.

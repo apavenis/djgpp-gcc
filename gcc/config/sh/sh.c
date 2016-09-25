@@ -5503,7 +5503,8 @@ gen_block_redirect (rtx_insn *jump, int addr, int need_block)
 
   else if (optimize && need_block >= 0)
     {
-      rtx_insn *next = next_active_insn (next_active_insn (dest));
+      rtx_insn *next = next_active_insn (as_a<rtx_insn *> (dest));
+      next = next_active_insn (next);
       if (next && JUMP_P (next)
 	  && GET_CODE (PATTERN (next)) == SET
 	  && recog_memoized (next) == CODE_FOR_jump_compact)
@@ -5694,7 +5695,7 @@ barrier_align (rtx_insn *barrier_or_label)
 	      ? 1 : align_jumps_log);
     }
 
-  rtx next = next_active_insn (barrier_or_label);
+  rtx_insn *next = next_active_insn (barrier_or_label);
 
   if (! next)
     return 0;
@@ -6395,9 +6396,8 @@ split_branches (rtx_insn *first)
 		/* We can't use JUMP_LABEL here because it might be undefined
 		   when not optimizing.  */
 		/* A syntax error might cause beyond to be NULL_RTX.  */
-		beyond
-		  = next_active_insn (XEXP (XEXP (SET_SRC (PATTERN (insn)), 1),
-					    0));
+		rtx temp = XEXP (XEXP (SET_SRC (PATTERN (insn)), 1), 0);
+		beyond = next_active_insn (as_a<rtx_insn *> (temp));
 
 		if (beyond
 		    && (JUMP_P (beyond)

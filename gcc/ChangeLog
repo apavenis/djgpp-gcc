@@ -1,3 +1,2234 @@
+2016-09-24  Aaron Sawdey  <acsawdey@linux.vnet.ibm.com>
+
+	* config/rs6000/rs6000.c (expand_block_compare, do_load_for_compare):
+	Change TARGET_LITTLE_ENDIAN to !BYTES_BIG_ENDIAN.
+
+2016-09-42  David Edelsohn  <dje.gcc@gmail.com>
+
+	* configure.ac (gcc_cv_as_aix_dwloc): Fix typo in assembly fragment.
+	* configure: Regenerate.
+
+2016-09-24  Marek Polacek  <polacek@redhat.com>
+
+	PR c/77490
+	* doc/invoke.texi: Document -Wbool-operation.
+
+2016-09-23  Aaron Sawdey  <acsawdey@linux.vnet.ibm.com>
+
+	* config/rs6000/rs6000.md (cmpmemsi): New define_expand.
+	* config/rs6000/rs6000.c (expand_block_compare): New function used by
+	cmpmemsi pattern to do builtin expansion of memcmp ().
+	(compute_current_alignment): Add helper function for
+	expand_block_compare used to compute alignment as the compare proceeds.
+	(select_block_compare_mode): Used by expand_block_compare to select
+	the mode used for reading the next chunk of bytes in the compare.
+	(do_load_for_compare): Used by expand_block_compare to emit the load
+	insns for the compare.
+	(rs6000_emit_dot_insn): Moved this function to avoid a forward
+	reference from expand_block_compare ().
+	* config/rs6000/rs6000-protos.h (expand_block_compare): Add a
+	prototype for this function.
+	* config/rs6000/rs6000.opt (mblock-compare-inline-limit): Add a new
+	target option for controlling how much code inline expansion of
+	memcmp() will be allowed to generate.
+
+2016-09-23  Jakub Jelinek  <jakub@redhat.com>
+
+	* hooks.c (hook_bool_bool_false, hook_bool_bool_gcc_optionsp_false,
+	hook_bool_mode_false, hook_bool_mode_true,
+	hook_bool_mode_const_rtx_false, hook_bool_mode_const_rtx_true,
+	hook_bool_mode_rtx_false, hook_bool_mode_rtx_true,
+	hook_bool_const_rtx_insn_const_rtx_insn_true,
+	hook_bool_mode_uhwi_false, hook_void_FILEptr_constcharptr,
+	hook_bool_FILEptr_rtx_false, hook_bool_gsiptr_false,
+	hook_bool_const_tree_hwi_hwi_const_tree_false,
+	hook_bool_const_tree_hwi_hwi_const_tree_true,
+	default_can_output_mi_thunk_no_vcall, hook_int_uint_mode_1,
+	hook_int_const_tree_0, hook_int_const_tree_const_tree_1,
+	hook_int_rtx_0, hook_int_rtx_bool_0, hook_void_tree,
+	hook_void_constcharptr, hook_void_tree_treeptr, hook_void_int_int,
+	hook_bool_tree_false, hook_bool_const_tree_false, hook_bool_tree_true,
+	hook_bool_const_tree_true, hook_bool_tree_tree_false,
+	hook_bool_tree_tree_true, hook_bool_tree_bool_false,
+	hook_bool_rtx_insn_true, hook_bool_rtx_false,
+	hook_bool_uintp_uintp_false,
+	hook_bool_rtx_mode_int_int_intp_bool_false, hook_rtx_rtx_null,
+	hook_rtx_tree_int_null, hook_uint_mode_0,
+	hook_constcharptr_const_tree_null, hook_tree_tree_int_treep_bool_null,
+	hook_tree_tree_tree_null, hook_tree_tree_tree_tree_null,
+	hook_constcharptr_const_rtx_insn_null,
+	hook_constcharptr_const_tree_const_tree_null,
+	hook_constcharptr_int_const_tree_null,
+	hook_constcharptr_int_const_tree_const_tree_null,
+	hook_tree_const_tree_null, hook_bool_rtx_insn_int_false,
+	hook_void_rtx_insn_int, hook_void_gcc_optionsp): For arguments with
+	ATTRIBUTE_UNUSED, remove parameter name as well as ATTRIBUTE_UNUSED.
+
+	* vec.h (vNULL): Extend comment to say = vNULL initialization
+	isn't needed for static vars.
+
+	* sel-sched-ir.c (sel_global_bb_info, sel_region_bb_info,
+	loop_nests, s_i_d, last_added_blocks): Remove unnecessary
+	= vNULL initialization of file scope vec.
+	* passes.c (pass_tab, enabled_pass_uid_range_tab,
+	disabled_pass_uid_range_tab): Likewise.
+	* haifa-sched.c (sched_luids, h_i_d): Likewise.
+	* tree-chkp-opt.c (check_infos): Likewise.
+	* sel-sched.c (vec_av_set, vec_temp_moveop_nops): Likewise.
+
+	* vec.h (vnull::operator vec): Add constexpr keyword for
+	C++11 and later.
+
+2016-09-23  Doug Gilmore  <doug.gilmore@imgtec.com>
+
+	PR tree-optimization/77654
+	* tree-ssa-loop-prefetch.c (issue_prefetch_ref): Add call
+	to duplicate_ssa_name_ptr_info.
+
+2016-09-23  David Malcolm  <dmalcolm@redhat.com>
+
+	PR preprocessor/77672
+	* input.c (selftest::test_lexer_string_locations_simple): Update
+	test to expect location information of the terminator character
+	at the location of the final closing quote.
+	(selftest::test_lexer_string_locations_hex): Likewise.
+	(selftest::test_lexer_string_locations_oct): Likewise.
+	(selftest::test_lexer_string_locations_letter_escape_1): Likewise.
+	(selftest::test_lexer_string_locations_letter_escape_2): Likewise.
+	(selftest::test_lexer_string_locations_ucn4): Likewise.
+	(selftest::test_lexer_string_locations_ucn8): Likewise.
+	(selftest::test_lexer_string_locations_u8): Likewise.
+	(selftest::test_lexer_string_locations_utf8_source): Likewise.
+	(selftest::test_lexer_string_locations_concatenation_1): Likewise.
+	(selftest::test_lexer_string_locations_concatenation_2): Likewise.
+	(selftest::test_lexer_string_locations_concatenation_3): Likewise.
+	(selftest::test_lexer_string_locations_macro): Likewise.
+	(selftest::test_lexer_string_locations_long_line): Likewise.
+
+2016-09-23  Richard Biener  <rguenther@suse.de>
+
+	* tree-ssa-sccvn.c (visit_reference_op_call): Value number
+	virtual definition to virtual use if the call devirtualizes
+	to a const or pure function.
+	(visit_use): Also visit calls we can devirtualize to a
+	const or pure function.
+
+2016-09-23  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/77697
+	* tree-ssa-forwprop.c (defcodefor_name): Remove bogus code,
+	signal error if we have sth ternary or unhandled.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm_neon.h (vabd_f16): New.
+	(vabdq_f16): New.
+	(vabs_f16): New.
+	(vabsq_f16): New.
+	(vadd_f16): New.
+	(vaddq_f16): New.
+	(vcage_f16): New.
+	(vcageq_f16): New.
+	(vcagt_f16): New.
+	(vcagtq_f16): New.
+	(vcale_f16): New.
+	(vcaleq_f16): New.
+	(vcalt_f16): New.
+	(vcaltq_f16): New.
+	(vceq_f16): New.
+	(vceqq_f16): New.
+	(vceqz_f16): New.
+	(vceqzq_f16): New.
+	(vcge_f16): New.
+	(vcgeq_f16): New.
+	(vcgez_f16): New.
+	(vcgezq_f16): New.
+	(vcgt_f16): New.
+	(vcgtq_f16): New.
+	(vcgtz_f16): New.
+	(vcgtzq_f16): New.
+	(vcle_f16): New.
+	(vcleq_f16): New.
+	(vclez_f16): New.
+	(vclezq_f16): New.
+	(vclt_f16): New.
+	(vcltq_f16): New.
+	(vcltz_f16): New.
+	(vcltzq_f16): New.
+	(vcvt_f16_s16): New.
+	(vcvt_f16_u16): New.
+	(vcvt_s16_f16): New.
+	(vcvt_u16_f16): New.
+	(vcvtq_f16_s16): New.
+	(vcvtq_f16_u16): New.
+	(vcvtq_s16_f16): New.
+	(vcvtq_u16_f16): New.
+	(vcvta_s16_f16): New.
+	(vcvta_u16_f16): New.
+	(vcvtaq_s16_f16): New.
+	(vcvtaq_u16_f16): New.
+	(vcvtm_s16_f16): New.
+	(vcvtm_u16_f16): New.
+	(vcvtmq_s16_f16): New.
+	(vcvtmq_u16_f16): New.
+	(vcvtn_s16_f16): New.
+	(vcvtn_u16_f16): New.
+	(vcvtnq_s16_f16): New.
+	(vcvtnq_u16_f16): New.
+	(vcvtp_s16_f16): New.
+	(vcvtp_u16_f16): New.
+	(vcvtpq_s16_f16): New.
+	(vcvtpq_u16_f16): New.
+	(vcvt_n_f16_s16): New.
+	(vcvt_n_f16_u16): New.
+	(vcvtq_n_f16_s16): New.
+	(vcvtq_n_f16_u16): New.
+	(vcvt_n_s16_f16): New.
+	(vcvt_n_u16_f16): New.
+	(vcvtq_n_s16_f16): New.
+	(vcvtq_n_u16_f16): New.
+	(vfma_f16): New.
+	(vfmaq_f16): New.
+	(vfms_f16): New.
+	(vfmsq_f16): New.
+	(vmax_f16): New.
+	(vmaxq_f16): New.
+	(vmaxnm_f16): New.
+	(vmaxnmq_f16): New.
+	(vmin_f16): New.
+	(vminq_f16): New.
+	(vminnm_f16): New.
+	(vminnmq_f16): New.
+	(vmul_f16): New.
+	(vmul_lane_f16): New.
+	(vmul_n_f16): New.
+	(vmulq_f16): New.
+	(vmulq_lane_f16): New.
+	(vmulq_n_f16): New.
+	(vneg_f16): New.
+	(vnegq_f16): New.
+	(vpadd_f16): New.
+	(vpmax_f16): New.
+	(vpmin_f16): New.
+	(vrecpe_f16): New.
+	(vrecpeq_f16): New.
+	(vrnd_f16): New.
+	(vrndq_f16): New.
+	(vrnda_f16): New.
+	(vrndaq_f16): New.
+	(vrndm_f16): New.
+	(vrndmq_f16): New.
+	(vrndn_f16): New.
+	(vrndnq_f16): New.
+	(vrndp_f16): New.
+	(vrndpq_f16): New.
+	(vrndx_f16): New.
+	(vrndxq_f16): New.
+	(vrsqrte_f16): New.
+	(vrsqrteq_f16): New.
+	(vrecps_f16): New.
+	(vrecpsq_f16): New.
+	(vrsqrts_f16): New.
+	(vrsqrtsq_f16): New.
+	(vsub_f16): New.
+	(vsubq_f16): New.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config.gcc (extra_headers): Add arm_fp16.h
+	* config/arm/arm_fp16.h: New.
+	* config/arm/arm_neon.h: Include "arm_fp16.h".
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm_neon_builtins.def (vadd): New (v8hf, v4hf
+	variants).
+	(vmulf): New (v8hf, v4hf variants).
+	(vfma): New (v8hf, v4hf variants).
+	(vfms): New (v8hf, v4hf variants).
+	(vsub): New (v8hf, v4hf variants).
+	(vcage): New (v8hf, v4hf variants).
+	(vcagt): New (v8hf, v4hf variants).
+	(vcale): New (v8hf, v4hf variants).
+	(vcalt): New (v8hf, v4hf variants).
+	(vceq): New (v8hf, v4hf variants).
+	(vcgt): New (v8hf, v4hf variants).
+	(vcge): New (v8hf, v4hf variants).
+	(vcle): New (v8hf, v4hf variants).
+	(vclt): New (v8hf, v4hf variants).
+	(vceqz): New (v8hf, v4hf variants).
+	(vcgez): New (v8hf, v4hf variants).
+	(vcgtz): New (v8hf, v4hf variants).
+	(vcltz): New (v8hf, v4hf variants).
+	(vclez): New (v8hf, v4hf variants).
+	(vabd): New (v8hf, v4hf variants).
+	(vmaxf): New (v8hf, v4hf variants).
+	(vmaxnm): New (v8hf, v4hf variants).
+	(vminf): New (v8hf, v4hf variants).
+	(vminnm): New (v8hf, v4hf variants).
+	(vpmaxf): New (v4hf variant).
+	(vpminf): New (v4hf variant).
+	(vpadd): New (v4hf variant).
+	(vrecps): New (v8hf, v4hf variants).
+	(vrsqrts): New (v8hf, v4hf variants).
+	(vabs): New (v8hf, v4hf variants).
+	(vneg): New (v8hf, v4hf variants).
+	(vrecpe): New (v8hf, v4hf variants).
+	(vrnd): New (v8hf, v4hf variants).
+	(vrnda): New (v8hf, v4hf variants).
+	(vrndm): New (v8hf, v4hf variants).
+	(vrndn): New (v8hf, v4hf variants).
+	(vrndp): New (v8hf, v4hf variants).
+	(vrndx): New (v8hf, v4hf variants).
+	(vrsqrte): New (v8hf, v4hf variants).
+	(vmul_lane): Add v4hf and v8hf variants.
+	(vmul_n): Add v4hf and v8hf variants.
+	(vext): New (v8hf, v4hf variants).
+	(vcvts): New (v8hi, v4hi variants).
+	(vcvts): New (v8hf, v4hf variants).
+	(vcvtu): New (v8hi, v4hi variants).
+	(vcvtu): New (v8hf, v4hf variants).
+	(vcvts_n): New (v8hf, v4hf variants).
+	(vcvtu_n): New (v8hi, v4hi variants).
+	(vcvts_n): New (v8hi, v4hi variants).
+	(vcvtu_n): New (v8hf, v4hf variants).
+	(vbsl): New (v8hf, v4hf variants).
+	(vcvtas): New (v8hf, v4hf variants).
+	(vcvtau): New (v8hf, v4hf variants).
+	(vcvtms): New (v8hf, v4hf variants).
+	(vcvtmu): New (v8hf, v4hf variants).
+	(vcvtns): New (v8hf, v4hf variants).
+	(vcvtnu): New (v8hf, v4hf variants).
+	(vcvtps): New (v8hf, v4hf variants).
+	(vcvtpu): New (v8hf, v4hf variants).
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm-builtins.c (hf_UP): New.
+	(si_UP): New.
+	(vfp_builtin_data): New.  Update comment.
+	(enum arm_builtins): Include "arm_vfp_builtins.def".
+	(ARM_BUILTIN_VFP_PATTERN_START): New.
+	(arm_init_vfp_builtins): New.
+	(arm_init_builtins): Add arm_init_vfp_builtins.
+	(arm_expand_vfp_builtin): New.
+	(arm_expand_builtins): Update for arm_expand_vfp_builtin.  Fix
+	long line.
+	* config/arm/arm_vfp_builtins.def: New file.
+	* config/arm/t-arm (arm.o): Add arm_vfp_builtins.def.
+	(arm-builtins.o): Likewise.
+
+2016-09-23  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	PR ipa/77677
+	* ipa-cp.c (propagate_vr_accross_jump_function): Drop TREE_OVERFLOW
+	from constant while creating value range.
+
+2016-09-23  Renlin Li  <renlin.li@arm.com>
+
+	* ira.c (ira): Move ira_use_lra_p initialization code to ...
+	(ira_init_once): Here.
+
+2016-09-23  Uros Bizjak  <ubizjak@gmail.com>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	* hooks.h (hook_uint_uintp_false): Rename to...
+	(hook_bool_uint_uintp_false): ... this.
+	* hooks.c (hook_uint_uintp_false): Rename to...
+	(hook_bool_uint_uintp_false): ... this.
+	* target.def (elf_flags_numeric): Use hook_bool_uint_uintp_false
+	instead of hook_uint_uintp_false.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm-builtins.c (arm_init_neon_builtin): New.
+	(arm_init_builtins): Move body of a loop to the standalone
+	function arm_init_neon_builtin.
+	(arm_expand_neon_builtin_1): New.  Update comment.  Function body
+	moved from arm_neon_builtin with some white-space fixes.
+	(arm_expand_neon_builtin): Move code into the standalone function
+	arm_expand_neon_builtin_1.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/iterators.md (VCVTHI): New.
+	(NEON_VCMP): Add UNSPEC_VCLT and UNSPEC_VCLE.  Fix a long line.
+	(NEON_VAGLTE): New.
+	(VFM_LANE_AS): New.
+	(VH_CVTTO): New.
+	(V_reg): Add HF, V4HF and V8HF.  Fix white-space.
+	(V_HALF): Add V4HF.  Fix white-space.
+	(V_if_elem): Add HF, V4HF and V8HF.  Fix white-space.
+	(V_s_elem): Likewise.
+	(V_sz_elem): Fix white-space.
+	(V_elem_ch): Likewise.
+	(VH_elem_ch): New.
+	(scalar_mul_constraint): Add V8HF and V4HF.
+	(Is_float_mode): Fix white-space.
+	(Is_d_reg): Add V4HF and V8HF.  Fix white-space.
+	(q): Add HF.  Fix white-space.
+	(float_sup): New.
+	(float_SUP): New.
+	(cmp_op_unsp): Add UNSPEC_VCALE and UNSPEC_VCALT.
+	(neon_vfm_lane_as): New.
+	* config/arm/neon.md (add<mode>3_fp16): New.
+	(sub<mode>3_fp16): New.
+	(mul<mode>3add<mode>_neon): New.
+	(fma<VH:mode>4_intrinsic): New.
+	(fmsub<VCVTF:mode>4_intrinsic): Fix white-space.
+	(fmsub<VH:mode>4_intrinsic): New.
+	(<absneg_str><mode>2): New.
+	(neon_v<absneg_str><mode>): New.
+	(neon_v<fp16_rnd_str><mode>): New.
+	(neon_vrsqrte<mode>): New.
+	(neon_vpaddv4hf): New.
+	(neon_vadd<mode>): New.
+	(neon_vsub<mode>): New.
+	(neon_vmulf<mode>): New.
+	(neon_vfma<VH:mode>): New.
+	(neon_vfms<VH:mode>): New.
+	(neon_vc<cmp_op><mode>): New.
+	(neon_vc<cmp_op><mode>_fp16insn): New
+	(neon_vc<cmp_op_unsp><mode>_fp16insn_unspec): New.
+	(neon_vca<cmp_op><mode>): New.
+	(neon_vca<cmp_op><mode>_fp16insn): New.
+	(neon_vca<cmp_op_unsp><mode>_fp16insn_unspec): New.
+	(neon_vc<cmp_op>z<mode>): New.
+	(neon_vabd<mode>): New.
+	(neon_v<maxmin>f<mode>): New.
+	(neon_vp<maxmin>fv4hf: New.
+	(neon_<fmaxmin_op><mode>): New.
+	(neon_vrecps<mode>): New.
+	(neon_vrsqrts<mode>): New.
+	(neon_vrecpe<mode>): New (VH variant).
+	(neon_vdup_lane<mode>_internal): New.
+	(neon_vdup_lane<mode>): New.
+	(neon_vcvt<sup><mode>): New (VCVTHI variant).
+	(neon_vcvt<sup><mode>): New (VH variant).
+	(neon_vcvt<sup>_n<mode>): New (VH variant).
+	(neon_vcvt<sup>_n<mode>): New (VCVTHI variant).
+	(neon_vcvt<vcvth_op><sup><mode>): New.
+	(neon_vmul_lane<mode>): New.
+	(neon_vmul_n<mode>): New.
+	* config/arm/unspecs.md (UNSPEC_VCALE): New
+	(UNSPEC_VCALT): New.
+	(UNSPEC_VFMA_LANE): New.
+	(UNSPECS_VFMS_LANE): New.
+
+2016-09-23  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* config/s390/s390.md ("*extzv<mode>_zEC12", "*extzv<mode>_z10")
+	("*extzv<mode><clobbercc_or_nocc>"):
+	Correct a typo in a comment.
+	Merged patterns.
+	("*insv<mode>_zEC12", "*insv<mode>_z10")
+	("*insv<mode><clobbercc_or_nocc>"): Ditto.
+	("*insv<mode>_zEC12_appendbitsleft")
+	("*insv<mode><clobbercc_or_nocc>_appendbitsleft")
+	("*insv<mode>_z10_appendbitsleft"): Ditto.
+	("*insv<mode>_zEC12_noshift", "*insv<mode>_z10_noshift")
+	("*insv<mode><clobbercc_or_nocc>_noshift"): Ditto.
+	Provide pattern with operands switched.
+	("*pre_z10_extv<mode>"):
+	Use new subst patterns.
+	("*extzvdi<clobbercc_or_nocc>_lshiftrt", "*<risbg_n>_ior_and_sr_ze")
+	("*extvsidi<clobbercc_or_nocc>", "*<risbg_n>_and_subregdi_rotr")
+	("*<risbg_n>_and_subregdi_rotl", "*<risbg_n>_di_and_rot")
+	("*insv_z10_noshift_cc", "*insv_z10_noshift_cconly")
+	("*<risbg_n>_<mode>_ior_and_lshiftrt")
+	("*<risbg_n>_sidi_ior_and_lshiftrt")
+	("*trunc_sidi_and_subreg_lshrt<clobbercc_or_nocc>"):
+	New patterns.
+	("*extzv_<mode>_sll", "*extzv_<mode>_srl")
+	("*extzv_<mode>_srl<clobbercc_or_nocc>")
+	("*extzv_<mode>_sll<clobbercc_or_nocc>"): Renamed patterns, use risbgn
+	on zEC12.
+	("SINT"): New mode_iterator with SI, HI, QI.
+	* config/s390/subst.md ("clobbercc_or_nocc_subst", "z10_or_zEC12_cond")
+	("clobbercc_or_nocc", "risbg_n"): New constructs for risbg pattern
+	duplication.
+
+2016-09-23  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* config/s390/predicates.md ("contiguous_bitmask_operand"): Adapt to new
+	interface of s390_contiguous_bitmask_p.
+	("contiguous_bitmask_nowrap_operand"): New predicate.
+	* ("*anddi3_cc", "*anddi3_cconly", "*anddi3"): Replace NxxDq with NxxDw.
+	* config/s390/constraints.md ("NxxDw", "NxxSq"): Adapt to new interface
+	of s390_contiguous_bitmask_p.
+	* ("NxxDw"): Rename NxxDq constraint to NxxDw.
+	("NxxSw"): New constraint.
+	* config/s390/s390.md ("*andsi3_zarch"): Enable bitmask wraparound.
+	* config/s390/s390-protos.h (s390_contiguous_bitmask_p): Updated
+	interface.
+	(s390_contiguous_bitmask_nowrap_p): Export.
+	* config/s390/s390.c (s390_contiguous_bitmask_nowrap_p): New name of
+	former s390_contiguous_bitmask_p.
+	(s390_contiguous_bitmask_p): Use s390_contiguous_bitmask_nowrap_p to
+	detect contiguous bit ranges with wraparound.  Change signature to
+	return START and END position instead of POS and LENGTH.
+	(s390_contiguous_bitmask_vector_p): Remove extra code for continous bit
+	ranges with wraparound.
+	(s390_extzv_shift_ok): Use s390_contiguous_bitmask_nowrap_p.
+	(s390_contiguous_bitmask_vector_p,s390_extzv_shift_ok,print_operand):
+	Adapt to new signature of s390_contiguous_bitmask_p.
+
+2016-09-23  Bin Cheng  <bin.cheng@arm.com>
+
+	* tree-vect-loop-manip.c (create_intersect_range_checks_index): New.
+	(create_intersect_range_checks): New.
+	(vect_create_cond_for_alias_checks): Call above function.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/iterators.md (Code iterators): Fix some white-space
+	in the comments.
+	(GLTE): New.
+	(ABSNEG): New
+	(FCVT): Moved from vfp.md.
+	(VCVT_HF_US_N): New.
+	(VCVT_SI_US_N): New.
+	(VCVT_HF_US): New.
+	(VCVTH_US): New.
+	(FP16_RND): New.
+	(absneg_str): New.
+	(FCVTI32typename): Moved from vfp.md.
+	(sup): Add UNSPEC_VCVTA_S, UNSPEC_VCVTA_U, UNSPEC_VCVTM_S,
+	UNSPEC_VCVTM_U, UNSPEC_VCVTN_S, UNSPEC_VCVTN_U, UNSPEC_VCVTP_S,
+	UNSPEC_VCVTP_U, UNSPEC_VCVT_HF_S_N, UNSPEC_VCVT_HF_U_N,
+	UNSPEC_VCVT_SI_S_N, UNSPEC_VCVT_SI_U_N,  UNSPEC_VCVTH_S_N,
+	UNSPEC_VCVTH_U_N, UNSPEC_VCVTH_S and UNSPEC_VCVTH_U.
+	(vcvth_op): New.
+	(fp16_rnd_str): New.
+	(fp16_rnd_insn): New.
+	* config/arm/unspecs.md (UNSPEC_VCVT_HF_S_N): New.
+	(UNSPEC_VCVT_HF_U_N): New.
+	(UNSPEC_VCVT_SI_S_N): New.
+	(UNSPEC_VCVT_SI_U_N): New.
+	(UNSPEC_VCVTH_S): New.
+	(UNSPEC_VCVTH_U): New.
+	(UNSPEC_VCVTA_S): New.
+	(UNSPEC_VCVTA_U): New.
+	(UNSPEC_VCVTM_S): New.
+	(UNSPEC_VCVTM_U): New.
+	(UNSPEC_VCVTN_S): New.
+	(UNSPEC_VCVTN_U): New.
+	(UNSPEC_VCVTP_S): New.
+	(UNSPEC_VCVTP_U): New.
+	(UNSPEC_VCVTP_S): New.
+	(UNSPEC_VCVTP_U): New.
+	(UNSPEC_VRND): New.
+	(UNSPEC_VRNDA): New.
+	(UNSPEC_VRNDI): New.
+	(UNSPEC_VRNDM): New.
+	(UNSPEC_VRNDN): New.
+	(UNSPEC_VRNDP): New.
+	(UNSPEC_VRNDX): New.
+	* config/arm/vfp.md (<absneg_str>hf2): New.
+	(neon_vabshf): New.
+	(neon_v<fp16_rnd_str>hf): New.
+	(neon_vrndihf): New.
+	(addhf3): New.
+	(subhf3): New.
+	(divhf3): New.
+	(mulhf3): New.
+	(*mulsf3neghf_vfp): New.
+	(*negmulhf3_vfp): New.
+	(*mulsf3addhf_vfp): New.
+	(*mulhf3subhf_vfp): New.
+	(*mulhf3neghfaddhf_vfp): New.
+	(*mulhf3neghfsubhf_vfp): New.
+	(fmahf4): New.
+	(neon_vfmahf): New.
+	(fmsubhf4_fp16): New.
+	(neon_vfmshf): New.
+	(*fnmsubhf4): New.
+	(*fnmaddhf4): New.
+	(neon_vsqrthf): New.
+	(neon_vrsqrtshf): New.
+	(FCVT): Move to iterators.md.
+	(FCVTI32typename): Likewise.
+	(neon_vcvth<sup>hf): New.
+	(neon_vcvth<sup>si): New.
+	(neon_vcvth<sup>_nhf_unspec): New.
+	(neon_vcvth<sup>_nhf): New.
+	(neon_vcvth<sup>_nsi_unspec): New.
+	(neon_vcvth<sup>_nsi): New.
+	(neon_vcvt<vcvth_op>h<sup>si): New.
+	(neon_<fmaxmin_op>hf): New.
+
+2016-09-23  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* config/s390/s390.md (bitoff, bitoff_plus): Neq mode attributes.
+	("*extzv<mode>_zEC12", "*insv<mode>_zEC12", "*insv<mode>_z10")
+	("*insv<mode>_zEC12_appendbitsleft")
+	("*insv<mode>_z10_appendbitsleft", "*r<noxa>sbg_<mode>_sll")
+	("*r<noxa>sbg_<mode>_srl"): Use new attributes.
+
+2016-09-23  Jakub Jelinek  <jakub@redhat.com>
+
+	* ipa-cp.c (ipcp_store_vr_results): Avoid static local
+	var zero.
+	* sreal.h (sreal::min, sreal::max): Avoid static local vars,
+	construct values without normalization.
+	* tree-ssa-sccvn.c (vn_reference_lookup_3): Don't initialize
+	static local lhs_ops to vNULL.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+	    Jiong Wang <jiong.wang@arm.com>
+
+	* config/arm/arm.c (coproc_secondary_reload_class): Make HFmode
+	available when FP16 instructions are available.
+	(output_move_vfp): Add support for 16-bit data moves.
+	(arm_validize_comparison): Fix some white-space.  Support HFmode
+	by conversion to SFmode.
+	* config/arm/arm.md (truncdfhf2): Fix a comment.
+	(extendhfdf2): Likewise.
+	(cstorehf4): New.
+	(movsicc): Fix some white-space.
+	(movhfcc): New.
+	(movsfcc): Fix some white-space.
+	(*cmovhf): New.
+	* config/arm/vfp.md (*arm_movhi_vfp): Disable when VFP FP16
+	instructions are available.
+	(*thumb2_movhi_vfp): Likewise.
+	(*arm_movhi_fp16): New.
+	(*thumb2_movhi_fp16): New.
+	(*movhf_vfp_fp16): New.
+	(*movhf_vfp_neon): Disable when VFP FP16 instructions are
+	available.
+	(*movhf_vfp): Likewise.
+	(extendhfsf2): Enable when VFP FP16 instructions are available.
+	(truncsfhf2):  Enable when VFP FP16 instructions are available.
+
+2016-09-23  Martin Liska  <mliska@suse.cz>
+
+	* config/s390/vx-builtins.md: Replace 'adress' with 'address'.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm.c (arm_evpc_neon_vuzp): Add support for V8HF and
+	V4HF modes.
+	(arm_evpc_neon_vtrn): Likewise.
+	(arm_evpc_neon_vrev): Likewise.
+	(arm_evpc_neon_vext): Likewise.
+	* config/arm/arm_neon.h (vbsl_f16): New.
+	(vbslq_f16): New.
+	(vdup_n_f16): New.
+	(vdupq_n_f16): New.
+	(vdup_lane_f16): New.
+	(vdupq_lane_f16): New.
+	(vext_f16): New.
+	(vextq_f16): New.
+	(vmov_n_f16): New.
+	(vmovq_n_f16): New.
+	(vrev64_f16): New.
+	(vrev64q_f16): New.
+	(vtrn_f16): New.
+	(vtrnq_f16): New.
+	(vuzp_f16): New.
+	(vuzpq_f16): New.
+	(vzip_f16): New.
+	(vzipq_f16): New.
+	* config/arm/arm_neon_buillins.def (vdup_n): New (v8hf, v4hf variants).
+	(vdup_lane): New (v8hf, v4hf variants).
+	(vext): New (v8hf, v4hf variants).
+	(vbsl): New (v8hf, v4hf variants).
+	* config/arm/iterators.md (VDQWH): New.
+	(VH): New.
+	(V_double_vector_mode): Add V8HF and V4HF.  Fix white-space.
+	(Scalar_mul_8_16): Fix white-space.
+	(Is_d_reg): Add V4HF and V8HF.
+	* config/arm/neon.md (neon_vdup_lane<mode>_internal): New.
+	(neon_vdup_lane<mode>): New.
+	(neon_vtrn<mode>_internal): Replace VDQW with VDQWH.
+	(*neon_vtrn<mode>_insn): Likewise.
+	(neon_vzip<mode>_internal): Likewise. Also fix white-space.
+	(*neon_vzip<mode>_insn): Likewise
+	(neon_vuzp<mode>_internal): Likewise.
+	(*neon_vuzp<mode>_insn): Likewise
+	* config/arm/vec-common.md (vec_perm_const<mode>): New.
+
+2016-09-23  Jiong Wang  <jiong.wang@arm.com>
+	    Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm.c (output_move_vfp): Weaken assert to allow
+	HImode.
+	(arm_hard_regno_mode_ok): Allow HImode values in VFP registers.
+	* config/arm/arm.md (*movhi_bytes): Disable when VFP registers are
+	available.  Also fix some white-space.
+	* config/arm/vfp.md (*arm_movhi_vfp): New.
+	(*thumb2_movhi_vfp): New.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm-c.c (arm_cpu_builtins): Define
+	"__ARM_FEATURE_FP16_SCALAR_ARITHMETIC" and
+	"__ARM_FEATURE_FP16_VECTOR_ARITHMETIC".
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* doc/sourcebuild.texi (ARM-specific attributes): Add anchor for
+	arm_v8_1a_neon_ok.  Add entries for arm_v8_2a_fp16_scalar_ok,
+	arm_v8_2a_fp16_scalar_hw, arm_v8_2a_fp16_neon_ok and
+	arm_v8_2a_fp16_neon_hw.
+	(Add options): Add entries for arm_v8_1a_neon, arm_v8_2a_scalar,
+	arm_v8_2a_neon.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* doc/sourcebuild.texi (ARM-specific attributes): Add entries for
+	arm_fp16_alternative_ok and arm_fp16_none_ok.
+
+2016-09-23  Martin Liska  <mliska@suse.cz>
+
+	* ipa-icf.c (sem_variable::merge): Replace adress
+	with address.
+
+2016-09-23  Matthew Wahab  <matthew.wahab@arm.com>
+
+	* config/arm/arm-arches.def ("armv8.1-a"): Add FL_CRC32.
+	("armv8.2-a"): New.
+	("armv8.2-a+fp16"): New.
+	* config/arm/arm-protos.h (FL2_ARCH8_2): New.
+	(FL2_FP16INST): New.
+	(FL2_FOR_ARCH8_2A): New.
+	* config/arm/arm-tables.opt: Regenerate.
+	* config/arm/arm.c (arm_arch8_2): New.
+	(arm_fp16_inst): New.
+	(arm_option_override): Set arm_arch8_2 and arm_fp16_inst.  Check
+	for incompatible fp16-format settings.
+	* config/arm/arm.h (TARGET_VFP_FP16INST): New.
+	(TARGET_NEON_FP16INST): New.
+	(arm_arch8_2): Declare.
+	(arm_fp16_inst): Declare.
+	* config/arm/bpabi.h (BE8_LINK_SPEC): Add entries for
+	march=armv8.2-a and march=armv8.2-a+fp16.
+	* config/arm/t-aprofile (Arch Matches): Add entries for armv8.2-a
+	and armv8.2-a+fp16.
+	* doc/invoke.texi (ARM Options): Add "-march=armv8.1-a",
+	"-march=armv8.2-a" and "-march=armv8.2-a+fp16".
+
+2016-09-23  Martin Liska  <mliska@suse.cz>
+
+	* doc/extend.texi: Remove fused-madd from i386 target
+	options.
+
+2016-09-23  Martin Liska  <mliska@suse.cz>
+
+	* config/i386/i386.c (ix86_valid_target_attribute_inner_p):
+	Handle movbe.
+
+2016-09-23  Martin Liska  <mliska@suse.cz>
+
+	* config/i386/i386.c (ix86_valid_target_attribute_inner_p):
+	Handle crc32.
+
+2016-09-23  Martin Liska  <mliska@suse.cz>
+
+	PR target/71652
+	* config/i386/i386.c (ix86_option_override_internal): Change
+	signature and return false when there's an error related to
+	arch string.
+	(release_options_strings): New function.
+	(ix86_valid_target_attribute_tree): Call the function.
+
+2016-09-23  Jakub Jelinek  <jakub@redhat.com>
+
+	* hsa-gen.c (hsa_op_immed::hsa_op_immed Use CONSTRUCTOR_NELTS (...)
+	instead of vec_safe_length (CONSTRUCTOR_ELTS (...)).
+	(gen_hsa_ctor_assignment): Likewise.
+	* print-tree.c (print_node): Likewise.
+	* tree-dump.c (dequeue_and_dump): Likewise.
+	* tree-sra.c (sra_modify_constructor_assign): Likewise.
+	* expr.c (store_constructor): Likewise.
+	* fold-const.c (operand_equal_p): Likewise.
+	* tree-pretty-print.c (dump_generic_node): Likewise.
+	* hsa-brig.c (hsa_op_immed::emit_to_buffer): Likewise.
+	* ipa-icf-gimple.c (func_checker::compare_operand): Likewise.
+
+2016-09-23  Richard Biener  <rguenther@suse.de>
+
+	* hooks.h (hook_uint_uintp_false): Declare.
+
+2016-09-22  Senthil Kumar Selvaraj  <senthil_kumar.selvaraj@atmel.com>
+
+	* config/avr/avr.c (avr_rtx_costs_1): Handle DImode MULT.
+	(avr_address_cost): Replace 61 with MAX_LD_OFFSET(mode).
+
+2016-09-22  Martin Sebor  <msebor@redhat.com>
+
+	PR target/77676
+	* gimple-ssa-sprintf.c (target_int_min, target_int_max): Use
+	HOST_BITS_PER_WIDE_INT, make a static local variable auto.
+	(target_int_min): Correct computation.
+	(format_integer): Use long long as the argument for the ll length
+	modifier.
+	(format_floating): Use target_int_max().
+	(get_string_length): Same.
+	(format_string): Avoid setting the bounded flag for strings
+	of unknown length.
+	(try_substitute_return_value): Avoid setting range info when
+	the result isn't bounded.
+	* varasm.c (assemble_name): Increase buffer size.
+
+2016-09-22  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+	    Terry Guo  <terry.guo@arm.com>
+
+	* target.def (elf_flags_numeric): New target hook.
+	* targhooks.h (default_asm_elf_flags_numeric): New.
+	* varasm.c (default_asm_elf_flags_numeric): New.
+	(default_elf_asm_named_section): Use new target hook.
+	* config/arm/arm.opt (mpure-code): New.
+	* config/arm/arm.h (SECTION_ARM_PURECODE): New.
+	* config/arm/arm.c (arm_asm_init_sections): Add section
+	attribute to default text section if -mpure-code.
+	(arm_option_check_internal): Diagnose use of option with
+	non supported targets and/or options.
+	(arm_asm_elf_flags_numeric): New.
+	(arm_function_section): New.
+	(arm_elf_section_type_flags): New.
+	* config/arm/elf.h (JUMP_TABLES_IN_TEXT_SECTION): Disable
+	for -mpure-code.
+	* gcc/doc/texi (TARGET_ASM_ELF_FLAGS_NUMERIC): New.
+	* gcc/doc/texi.in (TARGET_ASM_ELF_FLAGS_NUMERIC): Likewise.
+
+2016-09-22  Jan Hubicka  <hubicka@ucw.cz>
+
+	* regcprop.c (copyprop_hardreg_forward_1): Remove noop moves.
+
+2016-09-22  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* emit-rtl.c (next_cc0_user): Make argument type rtx_insn *.
+	* rtl.h: Adjust prototype.
+
+2016-09-22  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* emit-rtl.c (next_active_insn): Change argument type to
+	rtx_insn *.
+	(prev_active_insn): Likewise.
+	(active_insn_p): Likewise.
+	* rtl.h: Adjust prototypes.
+	* cfgcleanup.c (merge_blocks_move_successor_nojumps): Adjust.
+	* config/arc/arc.md: Likewise.
+	* config/pa/pa.c (branch_to_delay_slot_p): Likewise.
+	(branch_needs_nop_p): Likewise.
+	(use_skip_p): Likewise.
+	* config/sh/sh.c (gen_block_redirect): Likewise.
+	(split_branches): Likewise.
+	* reorg.c (optimize_skip): Likewise.
+	(fill_simple_delay_slots): Likewise.
+	(fill_slots_from_thread): Likewise.
+	(relax_delay_slots): Likewise.
+	* resource.c (mark_target_live_regs): Likewise.
+
+2016-09-22  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config/cris/cris.c (cris_asm_output_case_end): Change argument
+	type to rtx_insn *.
+	* emit-rtl.c (next_nonnote_nondebug_insn): Likewise.
+	(prev_nonnote_nondebug_insn): Likewise.
+	* config/cris/cris-protos.h: Adjust prototype.
+	* rtl.h: Likewise.
+	* jump.c (rtx_renumbered_equal_p): Adjust.
+
+2016-09-22  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* emit-rtl.c (prev_real_insn): Change argument type to rtx_insn *.
+	* rtl.h: Adjust prototype.
+	* config/sh/sh.md: Adjust.
+	* dwarf2out.c (add_var_loc_to_decl): Likewise.
+
+2016-09-22  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* emit-rtl.c (next_nondebug_insn): Change argument type to
+	rtx_insn *.
+	(prev_nondebug_insn): Likewise.
+	* loop-doloop.c (doloop_condition_get): Likewise.
+	* rtl.h: Adjust prototype.
+	* cfgloop.h: Likewise.
+
+2016-09-22  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* emit-rtl.c (next_nonnote_insn): Change argument type to
+	rtx_insn *.
+	(prev_nonnote_insn): Likewise.
+	* jump.c (reversed_comparison_code_parts): Likewise.
+	(reversed_comparison): Likewise.
+	* rtl.h: Adjust prototypes.
+	* config/arc/arc.md: Adjust.
+	* cse.c (find_comparison_args): Likewise.
+	* reorg.c (redundant_insn): Change return type to rtx_insn *.
+	(fix_reg_dead_note): Change argument type to rtx_insn *.
+	(delete_prior_computation): Likewise.
+	(delete_computation): Likewise.
+	(fill_slots_from_thread): Adjust.
+	(relax_delay_slots): Likewise.
+	* simplify-rtx.c (simplify_unary_operation_1): Likewise.
+	(simplify_relational_operation_1): Likewise.
+	(simplify_ternary_operation): Likewise.
+
+2016-09-22  Trevor Saunders  <tbsaunde+gcc@tbsaunde.org>
+
+	* config/arc/arc-protos.h (arc_label_align): Change type of
+	variables from rtx to rtx_insn *.
+	* config/arc/arc.c (arc_label_align): Likewise.
+	* config/arm/arm.c (any_sibcall_could_use_r3): Likewise.
+	* config/bfin/bfin.c (workaround_speculation): Likewise.
+	* config/c6x/c6x.c (find_next_cycle_insn): Likewise.
+	(find_last_same_clock): Likewise.
+	(reorg_split_calls): Likewise.
+	* config/cris/cris-protos.h (cris_cc0_user_requires_cmp): Likewise.
+	* config/cris/cris.c (cris_cc0_user_requires_cmp): Likewise.
+	* config/h8300/h8300-protos.h (same_cmp_preceding_p): Likewise.
+	(same_cmp_following_p): Likewise.
+	* config/h8300/h8300.c (same_cmp_preceding_p): Likewise.
+	(same_cmp_following_p): Likwise.
+	* config/m32r/m32r.c (m32r_expand_epilogue): Likewise.
+	* config/nds32/nds32-protos.h (nds32_target_alignment): Likewise.
+	* config/nds32/nds32.c (nds32_target_alignment): Likewise.
+	* config/rl78/rl78.c (rl78_alloc_physical_registers_op2):
+	* Likewise.
+	(rl78_alloc_physical_registers_cmp): Likewise.
+	(rl78_alloc_physical_registers_umul): Likewise.
+	(rl78_calculate_death_notes): Likewise.
+	* config/s390/s390-protos.h (s390_label_align): Likewise.
+	* config/s390/s390.c (s390_label_align): Likewise.
+	* config/sh/sh.c (barrier_align): Likewise.
+	* config/sparc/sparc-protos.h (emit_cbcond_nop): Likewise.
+	* config/sparc/sparc.c (sparc_asm_function_epilogue): Likewise.
+	(emit_cbcond_nop): Likewise.
+
+2016-09-22  Martin Liska  <mliska@suse.cz>
+
+	PR ipa/77653
+	* ipa-icf.c (sem_variable::merge): Yield merge operation if
+	alias address matters, not necessarily address of original.
+
+2016-09-22  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/77697
+	* gimple-fold.c (fold_array_ctor_reference): Turn asserts into
+	fold fails.
+
+2016-09-22  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/77677
+	* gimple-match-head.c (gimple_resimplify1): Drop TREE_OVERFLOW
+	from constant folding results.
+	(gimple_resimplify2): Likewise.
+	(gimple_resimplify3): Likewise.
+
+2016-09-22  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/77678
+	* expr.c (expand_expr_real_1): Guard array access against negative
+	offset.
+
+2016-09-22  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* gimple-ssa-sprintf.c (format_floating_max): Use GMP_RNDN instead
+	of MPFR_RNDN.
+	(format_floating): Likewise.
+
+2016-09-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/77665
+	* tree-inline.c (remap_gimple_stmt): Set has_simduid_loops
+	for all IFN_GOMP_SIMD_* internal fns, not just for
+	IFN_GOMP_SIMD_ORDERED_*.
+
+2016-09-21  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/77670
+	* config/rs6000/predicates.md (invert_fpmask_comparison_operator):
+	New predicate that matches the ISA 3.0 XSCMP{EQ,GT,GE}DP
+	instructions when you want to invert the test.
+	* config/rs6000/rs6000.md (fpmask<mode>): Use the arguments in the
+	correct order for XXSEL.
+	(mov<SFDF:mode><SFDF2:mode>cc_invert_p9): Define the inverted test
+	for using XSCMP{EQ,GT,GE}DP.
+
+2016-09-21  David Malcolm  <dmalcolm@redhat.com>
+
+	* genconstants.c (main): Introduce noop_reader and convert call
+	to read_md_files to a method call.
+	* genenums.c (main): Likewise.
+	* genmddeps.c (main): Likewise.
+	* genpreds.c (write_tm_constrs_h): Replace use of "in_fname" with
+	rtx_reader_ptr->get_top_level_filename ().
+	(write_tm_preds_h): Likewise.
+	(write_insn_preds_c): Likewise.
+	* gensupport.c (class gen_reader): New subclass of rtx_reader.
+	(rtx_handle_directive): Convert to...
+	(gen_reader::handle_unknown_directive): ...this.
+	(init_rtx_reader_args_cb): Convert return type from bool to
+	rtx_reader *.  Create a gen_reader instance, using it for the
+	call to read_md_files.  Return it if no errors occur.
+	(init_rtx_reader_args): Convert return type from bool to
+	rtx_reader *.
+	* gensupport.h (init_rtx_reader_args_cb): Likewise.
+	(init_rtx_reader_args_cb): Likewise.
+	* read-md.c (struct file_name_list): Move to class rtx_reader.
+	(read_md_file): Delete in favor of rtx_reader::m_read_md_file.
+	(read_md_filename): Delete in favor of
+	rtx_reader::m_read_md_filename.
+	(read_md_lineno): Delete in favor of rtx_reader::m_read_md_lineno.
+	(in_fname): Delete in favor of rtx_reader::m_toplevel_fname.
+	(base_dir): Delete in favor of rtx_reader::m_base_dir.
+	(first_dir_md_include): Delete in favor of
+	rtx_reader::m_first_dir_md_include.
+	(last_dir_md_include_ptr): Delete in favor of
+	rtx_reader::m_last_dir_md_include_ptr.
+	(max_include_len): Delete.
+	(rtx_reader_ptr): New.
+	(fatal_with_file_and_line): Use get_filename and get_lineno
+	accessors of rtx_reader_ptr.
+	(require_char_ws): Likewise.
+	(rtx_reader::read_char): New method, based on ::read_char.
+	(rtx_reader::unread_char): New method, based on ::unread_char.
+	(read_escape): Use get_filename and get_lineno accessors of
+	rtx_reader_ptr.
+	(read_braced_string): Use get_lineno accessor of rtx_reader_ptr.
+	(read_string): Use get_filename and get_lineno accessors of
+	rtx_reader_ptr.
+	(rtx_reader::rtx_reader): New ctor.
+	(rtx_reader::~rtx_reader): New dtor.
+	(handle_include): Convert from a function to...
+	(rtx_reader::handle_include): ...this method, converting
+	handle_directive from a callback to a virtual function.
+	(handle_file): Likewise, converting to...
+	(rtx_reader::handle_file): ...this method.
+	(handle_toplevel_file): Likewise, converting to...
+	(rtx_reader::handle_toplevel_file): ...this method.
+	(rtx_reader::get_current_location): New method.
+	(parse_include): Convert from a function to...
+	(rtx_reader::add_include_path): ...this method, dropping redundant
+	update to unused max_include_len.
+	(read_md_files): Convert from a function to...
+	(rtx_reader::read_md_files): ...this method, converting
+	handle_directive from a callback to a virtual function.
+	(noop_reader::handle_unknown_directive): New method.
+	* read-md.h (directive_handler_t): Delete this typedef.
+	(in_fname): Delete.
+	(read_md_file): Delete.
+	(read_md_lineno): Delete.
+	(read_md_filename): Delete.
+	(class rtx_reader): New class.
+	(rtx_reader_ptr): New decl.
+	(class noop_reader): New subclass of rtx_reader.
+	(read_char): Reimplement in terms of rtx_reader::read_char.
+	(unread_char): Reimplement in terms of rtx_reader::unread_char.
+	(read_md_files): Delete.
+	* read-rtl.c (read_rtx_code): Update for deletion of globals
+	read_md_filename and read_md_lineno.
+
+2016-09-21  Jason Merrill  <jason@redhat.com>
+
+	* input.h (from_macro_definition_at): New.
+
+2016-09-21  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* doc/rtl.texi (JUMP_LABEL): Document RETURN and SIMPLE_RETURN values.
+
+2016-09-21  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR tree-optimization/77550
+	* tree-vect-stmts.c (create_array_ref): Change parameters.
+	(get_group_alias_ptr_type): New function.
+	(vectorizable_store, vectorizable_load): Use get_group_alias_ptr_type.
+
+2016-09-21  Marek Polacek  <polacek@redhat.com>
+
+	* gimple-ssa-sprintf.c (pass_sprintf_length::compute_format_length):
+	Add falls through comment.
+
+2016-09-21  Richard Biener  <rguenther@suse.de>
+
+	* dwarf2out.c (remove_child_with_prev): Clear child->die_sib.
+	(replace_child): Likewise.
+	(remove_child_TAG): Adjust.
+	(move_marked_base_types): Likewise.
+	(prune_unused_types_prune): Clear die_sib of removed children.
+
+2016-09-21  Georg-Johann Lay  <avr@gjlay.de>
+
+	PR target/77326
+	* config/avr/avr.c (avr_notice_update_cc) [CC_NONE]: If insn
+	touches some regs mentioned in cc_status, do CC_STATUS_INIT.
+
+2016-09-21  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/77648
+	* tree-ssa-structalias.c (process_constraint): Handle all DEREF
+	with complex RHS.
+	(make_transitive_closure_constraints): Adjust comment.
+	(make_any_offset_constraints): New function.
+	(handle_rhs_call): Make sure to first expand a pointer to all
+	subfields before transitively closing it.
+	(handle_const_call): Likewise.  Properly expand returned
+	pointers as well.
+	(handle_pure_call): Likewise.
+
+2016-09-21  Richard Biener  <rguenther@suse.de>
+	Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/77621
+	* tree-vect-data-refs.c (vect_analyze_data_ref_accesses): Split
+	group at non-vectorizable stmts.
+
+2016-09-21  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	PR tree-optimization/72835
+	* tree-ssa-reassoc.c (make_new_ssa_for_def): New.
+	(make_new_ssa_for_all_defs): Likewise.
+	(zero_one_operation): Replace all SSA_NAMEs defined in the chain.
+
+2016-09-20  Martin Sebor  <msebor@redhat.com>
+
+	PR middle-end/49905
+	* Makefile.in (OBJS): Add gimple-ssa-sprintf.o.
+	* config/linux.h (TARGET_PRINTF_POINTER_FORMAT): Redefine.
+	* config/linux.c (gnu_libc_printf_pointer_format): New function.
+	* config/sol2.h (TARGET_PRINTF_POINTER_FORMAT): Same.
+	* config/sol2.c (solaris_printf_pointer_format): New function.
+	* doc/invoke.texi (-Wformat-length, -fprintf-return-value): New
+	options.
+	* doc/tm.texi.in (TARGET_PRINTF_POINTER_FORMAT): Document.
+	* doc/tm.texi: Regenerate.
+	* gimple-fold.h (get_range_strlen): New function.
+	(get_maxval_strlen): Declare existing function.
+	* gimple-fold.c (get_range_strlen): Add arguments and compute both
+	maximum and minimum.
+	 (get_range_strlen): Define overload.
+	(get_maxval_strlen): Adjust.
+	* gimple-ssa-sprintf.c: New file and pass.
+	* passes.def (pass_sprintf_length): Add new pass.
+	* targhooks.h (default_printf_pointer_format): Declare new function.
+	(gnu_libc_printf_pointer_format): Same.
+	(solaris_libc_printf_pointer_format): Same.
+	* targhooks.c (default_printf_pointer_format): Define new function.
+	* tree-pass.h (make_pass_sprintf_length): Declare new function.
+	* print-tree.c: Increase buffer size.
+
+2016-09-21  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	 * tree-vrp.c (get_value_range): Teach PARM_DECL to use ipa-vrp
+	 results.
+
+2016-09-21  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	* common.opt: New option -fipa-vrp.
+	* ipa-cp.c (ipa_get_vr_lat): New.
+	(ipcp_vr_lattice::print): Likewise.
+	(print_all_lattices): Call ipcp_vr_lattice::print.
+	(ipcp_vr_lattice::meet_with): New.
+	(ipcp_vr_lattice::meet_with_1): Likewise.
+	(ipcp_vr_lattice::top_p): Likewise.
+	(ipcp_vr_lattice::bottom_p): Likewsie.
+	(ipcp_vr_lattice::set_to_bottom): Likewise.
+	(set_all_contains_variable): Call VR set_to_bottom.
+	(initialize_node_lattices): Init VR lattices.
+	(propagate_vr_accross_jump_function): New.
+	(propagate_constants_accross_call): Call
+	propagate_vr_accross_jump_function.
+	(ipcp_store_vr_results): New.
+	(ipcp_driver): Handle VR.
+	* ipa-prop.c (ipa_print_node_jump_functions_for_edge): Handle VR.
+	(ipa_set_jf_unknown): Likewise.
+	(ipa_compute_jump_functions_for_edge): Likewise.
+	(ipa_node_params_t::duplicate): Likewise.
+	(ipa_write_jump_function): Likewise.
+	(ipa_read_jump_function): Likewise.
+	(write_ipcp_transformation_info): Likewise.
+	(read_ipcp_transformation_info): Likewise.
+	(ipcp_update_vr): New.
+	(ipcp_transform_function): Handle VR.
+	* ipa-prop.h (struct ipa_vr): New.
+	* cgraph.c: Include tree-vrp.h.
+	* cgraphunit.c: Likewise.
+	* ipa-utils.c: Likewise.
+	* ipa.c: Likewise.
+	* opts.c: Likewise.
+	* toplev.c: Likewise.
+	* ipa-devirt.c: Likewise.
+	* ipa-inline-transform.c: Likewise.
+	* ipa-inline.c: Likewise.
+	* ipa-profile.c: Likewise.
+
+2016-09-21  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	* doc/invoke.texi: Document -fdump-tree-evrp.
+	* passes.def: Define new pass_early_vrp.
+	* timevar.def: Define new TV_TREE_EARLY_VRP.
+	* tree-pass.h (make_pass_early_vrp): New.
+	* tree-ssa-propagate.c: Make replace_uses_in non static.
+	* tree-ssa-propagate.h: Export replace_uses_in.
+	* tree-vrp.c (extract_range_for_var_from_comparison_expr): New.
+	(extract_range_from_assert): Factor out
+	extract_range_for_var_from_comparison_expr.
+	(vrp_initialize_lattice): New.
+	(vrp_initialize): Factor out vrp_initialize_lattice.
+	(vrp_valueize): Fix it to reject complex value ranges.
+	(vrp_free_lattice): New.
+	(evrp_dom_walker::before_dom_children): Likewise.
+	(evrp_dom_walker::after_dom_children): Likewise.
+	(evrp_dom_walker::push_value_range): Likewise.
+	(evrp_dom_walker::pop_value_range): Likewise.
+	(execute_early_vrp): Likewise.
+	(execute_vrp): Call vrp_initialize_lattice and
+	vrp_free_lattice.
+	(make_pass_early_vrp): New.
+
+2016-09-20  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (mult->ashift peephole2s): Use pow2p_hwi
+	instead of exact_log2.
+
+2016-09-20  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/77621
+	* config/i386/i386.c (ix86_preferred_simd_mode) <case DFmode>:
+	Don't return word_mode for !TARGET_VECTORIZE_DOUBLE.
+	(ix86_add_stmt_cost): Penalize DFmode vector operations
+	for !TARGET_VECTORIZE_DOUBLE.
+
+2016-09-20  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* doc/invoke.texi (Warning Options): Simplify language.
+	(Optimize Options): Complete sentence.
+
+2016-09-20  David Edelsohn  <dje.gcc@gmail.com>
+
+	* dbxout.c (xcoff_debug_hooks):  Add filename parameter to
+	early_finish hook.
+
+2016-09-20  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/71395
+	* config/rs6000/rs6000.c (rs6000_expand_vector_init): For V4SF
+	inits on power8 and above, use the VMRGEW instruction instead of a
+	permute.
+
+	* config/rs6000/altivec.md (UNSPEC_VMRGEW_DIRECT): New unspec.
+	(p8_vmrgew_v4sf_direct): New VMRGEW insn for V4SF floating
+	initialization.
+
+2016-09-20  Tamar Christina  <tamar.christina@arm.com>
+
+	* config/aarch64/arm_neon.h
+	(vst2_s64, vst2_u64, vst2_f64, vst2_s8): Add missing attributes.
+	(vst3_s64, vst3_u64, vst3_f64, vst3_s8): Likewise.
+	(vst4_s64, vst4_u64, vst4_f64, vst4_s8): Likewise.
+
+2016-09-20  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	* config/var/vax.h (ELIMINABLE_REGS): Define.
+	(INITIAL_ELIMINATION_OFFSET): Define.
+
+2016-09-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/77624
+	* builtins.c (fold_builtin_atomic_always_lock_free): Only look through
+	cast to void * if the cast is from some other pointer type.
+
+2016-09-20  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/77646
+	* tree-ssa-sccvn.c (visit_reference_op_call): Always value-number
+	a VDEF.
+
+2016-09-20  Tamar Christina  <tamar.christina@arm.com>
+
+	* config/aarch64/arm_neon.h: Add gnu_inline and artificial
+	attributes to all inlined functions and make them extern.
+
+2016-09-20  Richard Biener  <rguenther@suse.de>
+
+	* debug.h (gcc_debug_hooks): Add filename parameter to early_finish
+	hook.
+	* debug.c (do_nothing_debug_hooks): Adjust.
+	* dbxout.c (dbx_debug_hooks): Likewise.
+	* sdbout.c (sdb_debug_hooks): Likewise.
+	* dwarf2out.c (dwarf2_lineno_debug_hooks): Likewise.
+	(dwarf2out_finish): Move producer, filename and
+	path annotation ...
+	(dwarf2out_early_finish): ... here.  Remove in_lto_p special-casing.
+	* cgraphunit.c (symbol_table::finalize_compilation_unit): Adjust.
+
+2016-09-19  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR c++/77434
+	* doc/invoke.texi: Document -Wint-in-bool-context.
+
+	PR middle-end/77421
+	* dwarf2out.c (output_loc_operands): Fix an assertion.
+
+2016-09-19  Joseph Myers  <joseph@codesourcery.com>
+
+	* ginclude/float.h [__STDC_WANT_IEC_60559_BFP_EXT__]
+	(CR_DECIMAL_DIG): New macro.
+
+2016-09-19  Joseph Myers  <joseph@codesourcery.com>
+
+	* ginclude/stddef.h (max_align_t) [__i386__]: Add __float128
+	element.
+
+2016-09-19  Vladimir Makarov  <vmakarov@redhat.com>
+
+	PR rtl-optimization/77416
+	* lra-remat.c (operand_to_remat): Process hard coded insn
+	registers.
+
+2016-09-19  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* simplify-rtx.c (simplify_relational_operation_1): Add transformation
+	(GTU (PLUS a C) (C - 1)) --> (LTU a -C).
+
+2016-09-19  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* target.def (lra_p): Wordsmithing.
+	* doc/tm.texi: Regenerate.
+
+2016-09-19  Jakub Jelinek  <jakub@redhat.com>
+	    Jan Hubicka  <jh@suse.cz>
+
+	PR target/77587
+	* cgraph.c (cgraph_node::rtl_info): Pass &avail to
+	ultimate_alias_target call, return NULL if avail < AVAIL_AVAILABLE.
+	Call ultimate_alias_target just once, not up to 4 times.
+
+2016-09-19  Richard Biener  <rguenther@suse.de>
+
+	* dwarf2out.c (early_dwarf_finished): New global.
+	(set_early_dwarf::set_early_dwarf): Assert early_dwarf_finished
+	is false.
+	(dwarf2out_early_finish): Set early_dwarf_finished at the end,
+	if called from LTO exit early.
+	(dwarf2out_late_global_decl): When being during the early
+	debug phase do not add locations but only const value attributes.
+	Adjust the way we generate early DIEs for LTO.
+
+2016-09-19  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/77605
+	* tree-data-ref.c (analyze_subscript_affine_affine): Use the
+	proper niter to bound the loops.
+
+2016-09-19  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/77514
+	* tree-ssa-pre.c (create_expression_by_pieces): Optimize
+	search for folded stmt.
+
+2016-09-17  Jan Hubicka  <hubicka@ucw.cz>
+
+	* passes.def (pass_early_thread_jumps): Schedule after forwprop.
+	* tree-pass.h (make_pass_early_thread_jumps): Declare.
+	* tree-ssa-threadbackward.c (fsm_find_thread_path,
+	fsm_find_thread_path, profitable_jump_thread_path,
+	fsm_find_control_statement_thread_paths,
+	find_jump_threads_backwards): Add speed_p parameter.
+	(pass_data_early_thread_jumps): New pass.
+	(make_pass_early_thread_jumps): New function.
+
+2016-09-17  Andreas Schwab  <schwab@suse.de>
+
+	* config/ia64/ia64.h (ASM_OUTPUT_DWARF_OFFSET): Add cast.
+	* config/i386/cygming.h (ASM_OUTPUT_DWARF_OFFSET): Likewise.
+
+2016-09-16  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* recog.c (rest_of_handle_split_after_reload): Delete.
+	(pass_split_after_reload::gate): New method.
+	(pass_split_after_reload::execute): Call split_all_insns directly.
+
+2016-09-16  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/extend.texi (Integer Overflow Builtins): Fix type of out
+	parameters for functions taking long long arguments.
+
+2016-09-16  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	PR target/77613
+	* config/rs6000/rs6000.c (rtx_is_swappable_p): Add support for
+	splat with truncate.
+
+2016-09-16  Jason Merrill  <jason@redhat.com>
+
+	* hwint.h (least_bit_hwi, pow2_or_zerop, pow2p_hwi, ctz_or_zero):
+	New.
+	* hwint.c (exact_log2): Use pow2p_hwi.
+	(ctz_hwi, ffs_hwi): Use least_bit_hwi.
+	* alias.c (memrefs_conflict_p): Use pow2_or_zerop.
+	* builtins.c (get_object_alignment_2, get_object_alignment)
+	(get_pointer_alignment, fold_builtin_atomic_always_lock_free): Use
+	least_bit_hwi.
+	* calls.c (compute_argument_addresses, store_one_arg): Use
+	least_bit_hwi.
+	* cfgexpand.c (expand_one_stack_var_at): Use least_bit_hwi.
+	* combine.c (force_to_mode): Use least_bit_hwi.
+	(contains_muldiv, find_split_point, combine_simplify_rtx)
+	(simplify_if_then_else, simplify_set, force_to_mode)
+	(if_then_else_cond, simplify_and_const_int_1)
+	(simplify_compare_const): Use pow2p_hwi.
+	* cse.c (fold_rtx): Use pow2p_hwi.
+	* emit-rtl.c (set_mem_attributes_minus_bitpos, adjust_address_1):
+	Use least_bit_hwi.
+	* expmed.c (synth_mult, expand_divmod): Use ctz_or_zero, ctz_hwi.
+	(init_expmed_one_conv): Use pow2p_hwi.
+	* expr.c (is_aligning_offset): Use pow2p_hwi.
+	* fold-const.c (round_up_loc, round_down_loc): Use pow2_or_zerop.
+	(fold_binary_loc): Use pow2p_hwi.
+	* function.c (assign_parm_find_stack_rtl): Use least_bit_hwi.
+	* gimple-fold.c (gimple_fold_builtin_memory_op): Use pow2p_hwi.
+	* gimple-ssa-strength-reduction.c (replace_ref): Use least_bit_hwi.
+	* hsa-gen.c (gen_hsa_addr_with_align, hsa_bitmemref_alignment):
+	Use least_bit_hwi.
+	* ifcvt.c (noce_try_store_flag_constants): Use pow2p_hwi.
+	* ipa-cp.c (ipcp_alignment_lattice::meet_with_1): Use least_bit_hwi.
+	* ipa-prop.c (ipa_modify_call_arguments): Use least_bit_hwi.
+	* omp-low.c (oacc_loop_fixed_partitions)
+	(oacc_loop_auto_partitions): Use least_bit_hwi.
+	* rtlanal.c (nonzero_bits1): Use ctz_or_zero.
+	* stor-layout.c (place_field): Use least_bit_hwi.
+	* tree-pretty-print.c (dump_generic_node): Use pow2p_hwi.
+	* tree-sra.c (build_ref_for_offset): Use least_bit_hwi.
+	* tree-ssa-ccp.c (ccp_finalize): Use least_bit_hwi.
+	* tree-ssa-math-opts.c (bswap_replace): Use least_bit_hwi.
+	* tree-ssa-strlen.c (handle_builtin_memcmp): Use pow2p_hwi.
+	* tree-vect-data-refs.c (vect_analyze_group_access_1)
+	(vect_grouped_store_supported, vect_grouped_load_supported)
+	(vect_permute_load_chain, vect_shift_permute_load_chain)
+	(vect_transform_grouped_load): Use pow2p_hwi.
+	* tree-vect-generic.c (expand_vector_divmod): Use ctz_or_zero.
+	* tree-vect-patterns.c (vect_recog_divmod_pattern): Use ctz_or_zero.
+	* tree-vect-stmts.c (vectorizable_mask_load_store): Use
+	least_bit_hwi.
+	* tsan.c (instrument_expr): Use least_bit_hwi.
+	* var-tracking.c (negative_power_of_two_p): Use pow2_or_zerop.
+
+2016-09-16  Andreas Schwab  <schwab@suse.de>
+
+	* config/ia64/ia64.h (ASM_OUTPUT_DWARF_OFFSET): Use parameter
+	OFFSET, not offset.
+	* config/i386/cygming.h (ASM_OUTPUT_DWARF_OFFSET): Likewise.
+
+2016-09-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/77526
+	* combine.c (rest_of_handle_combine): If any edges have been purged,
+	free dominators if available.
+
+2016-09-16  Jakub Jelinek  <jakub@redhat.com>
+	    Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR middle-end/77594
+	* internal-fn.c (expand_arith_overflow) <case MINUS_EXPR>: Don't fall
+	through into expand_addsub_overflow after expand_neg_overflow.
+
+2016-09-15  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostic-show-locus.c
+	(selftest::test_fixit_insert_containing_newline): New function.
+	(selftest::test_fixit_replace_containing_newline): New function.
+	(selftest::diagnostic_show_locus_c_tests): Call the above.
+
+2016-09-15  Bin Cheng  <bin.cheng@arm.com>
+
+	PR tree-optimization/77503
+	* tree-vect-loop.c (vectorizable_reduction): Record reduction
+	code for CONST_COND_REDUCTION at analysis stage and use it at
+	transform stage.
+	* tree-vectorizer.h (struct _stmt_vec_info): New field.
+	(STMT_VINFO_VEC_CONST_COND_REDUC_CODE): New macro.
+	* tree-vect-stmts.c (new_stmt_vec_info): Initialize above new
+	field.
+
+2016-09-15  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/77544
+	* fold-const.c (split_tree): Do not split constant ~X.
+
+2016-09-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/77425
+	* sched-int.h (sd_iterator_cond): Don't update it_ptr->linkp if list
+	is NULL.
+
+	PR middle-end/77475
+	* config/i386/i386.c (ix86_parse_stringop_strategy_string): Simplify,
+	use %qs instead of %s where desirable, use argument instead of arg in
+	the diagnostic wording, add list of supported strategies and
+	spellcheck hint.
+	(ix86_option_override_internal): Emit target("m...") instead of
+	option("m...") in the diagnostic.  Use %qs instead of %s in invalid
+	-march/-mtune option diagnostic.  Add list of supported arches/tunings
+	and spellcheck hint.  Remove prefix, suffix and sw variables, use
+	main_args_p ? "..." : "..." in diagnostics to make translation
+	possible.
+
+2016-09-15  Richard Biener  <rguenther@suse.de>
+
+	* dwarf2asm.h (dw2_asm_output_offset): Add overload with
+	extra offset argument.
+	* dwarf2asm.c (dw2_asm_output_offset): Implement that.
+	* doc/tm.texi.in (ASM_OUTPUT_DWARF_OFFSET): Adjust documentation
+	to reflect new offset parameter.
+	* doc/tm.texi: Regenerate.
+	* config/darwin.h (ASM_OUTPUT_DWARF_OFFSET): Adjust.
+	* config/darwin-protos.h (darwin_asm_output_dwarf_delta): Add
+	offset argument.
+	(darwin_asm_output_dwarf_offset): Likewise.
+	* config/darwin.c (darwin_asm_output_dwarf_delta): Add offset
+	argument.
+	(darwin_asm_output_dwarf_offset): Pass offset argument through.
+	* config/ia64/ia64.h (ASM_OUTPUT_DWARF_OFFSET): Adjust.
+	* config/i386/cygmin.h (ASM_OUTPUT_DWARF_OFFSET): Likewise.
+
+2016-09-15  Chung-Lin Tang  <cltang@codesourcery.com>
+
+	PR fortran/72743
+	* ipa-icf.c (set_alias_uids): New function.
+	(sem_variable::merge): Use set_alias_uids to set DECL_PT_UID of
+	all the merged variable's referring aliases.
+
+2016-09-15  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/77514
+	* tree-ssa-pre.c (create_expression_by_pieces): Handle garbage
+	only forced_stmts sequence.
+
+2016-09-15  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	* tree-ssanames.h (FOR_EACH_SSA_NAME): New.
+	* cfgexpand.c (update_alias_info_with_stack_vars): Use
+	FOR_EACH_SSA_NAME to iterate over SSA variables.
+	(pass_expand::execute): Likewise.
+	* omp-simd-clone.c (ipa_simd_modify_function_body): Likewise.
+	* tree-cfg.c (dump_function_to_file): Likewise.
+	* tree-into-ssa.c (pass_build_ssa::execute): Likewise.
+	(update_ssa): Likewise.
+	* tree-ssa-alias.c (dump_alias_info): Likewise.
+	* tree-ssa-ccp.c (ccp_finalize): Likewise.
+	* tree-ssa-coalesce.c (build_ssa_conflict_graph): Likewise.
+	(create_outofssa_var_map): Likewise.
+	(coalesce_ssa_name): Likewise.
+	* tree-ssa-operands.c (dump_immediate_uses): Likewise.
+	* tree-ssa-pre.c (compute_avail): Likewise.
+	* tree-ssa-sccvn.c (init_scc_vn): Likewise.
+	(scc_vn_restore_ssa_info): Likewise.
+	(free_scc_vn): Likwise.
+	(run_scc_vn): Likewise.
+	* tree-ssa-structalias.c (compute_points_to_sets): Likewise.
+	* tree-ssa-ter.c (new_temp_expr_table): Likewise.
+	* tree-ssa-copy.c (fini_copy_prop): Likewise.
+	* tree-ssa.c (verify_ssa): Likewise.
+
+2016-09-14  Matthew Fortune  <matthew.fortune@imgtec.com>
+
+	* config.gcc (mips*-mti-elf*, mips*-mti-linux*): Set mips32r2
+	and mips64r2 as default 32-bit and 64-bit architectures.
+	(mips*-img-elf*, mips*-img-linux*): Set mips32r6 and mips64r6
+	as default 32-bit and 64-bit architectures.
+
+2016-09-14  Pat Haugen  <pthaugen@us.ibm.com>
+
+	* loop-unroll.c (unroll_loop_runtime_iterations): Set probability
+	of succ edge.
+
+2016-09-14  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* target.def (lra_p): Change commentary (for the manual) for the
+	new default.
+	* doc/tm.texi: Regenerate.
+
+2016-09-14  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/aarch64/aarch64.c (TARGET_LRA_P): Delete macro.
+	* config/arm/arm.c (TARGET_LRA_P): Delete macro.
+	* config/i386/i386.c (TARGET_LRA_P): Delete macro.
+	* config/nds32/nds32.c (TARGET_LRA_P): Delete macro.
+
+2016-09-14  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* targhooks.c (default_lra_p): Return true instead of false.
+
+2016-09-14  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/alpha/alpha.c (TARGET_LRA_P): New macro, defined to
+	hook_bool_void_false.
+	* config/avr/avr.c: Ditto.
+	* config/bfin/bfin.c: Ditto.
+	* config/c6x/c6x.c: Ditto.
+	* config/cr16/cr16.c: Ditto.
+	* config/cris/cris.c: Ditto.
+	* config/epiphany/epiphany.c: Ditto.
+	* config/fr30/fr30.c: Ditto.
+	* config/frv/frv.c: Ditto.
+	* config/h8300/h8300.c: Ditto.
+	* config/ia64/ia64.c: Ditto.
+	* config/iq2000/iq2000.c: Ditto.
+	* config/lm32/lm32.c: Ditto.
+	* config/m32c/m32c.c: Ditto.
+	* config/m32r/m32r.c: Ditto.
+	* config/m68k/m68k.c: Ditto.
+	* config/mcore/mcore.c: Ditto.
+	* config/microblaze/microblaze.c: Ditto.
+	* config/mmix/mmix.c: Ditto.
+	* config/mn10300/mn10300.c: Ditto.
+	* config/moxie/moxie.c: Ditto.
+	* config/msp430/msp430.c: Ditto.
+	* config/nios2/nios2.c: Ditto.
+	* config/nvptx/nvptx.c: Ditto.
+	* config/pa/pa.c: Ditto.
+	* config/pdp11/pdp11.c: Ditto.
+	* config/rl78/rl78.c: Ditto.
+	* config/sparc/sparc.c: Ditto.
+	* config/spu/spu.c: Ditto.
+	* config/stormy16/stormy16.c: Ditto.
+	* config/tilegx/tilegx.c: Ditto.
+	* config/tilepro/tilepro.c: Ditto.
+	* config/v850/v850.c: Ditto.
+	* config/vax/vax.c: Ditto.
+	* config/visium/visium.c: Ditto.
+	* config/xtensa/xtensa.c: Ditto.
+
+2016-09-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/68260
+	* tsan.c: Include target.h.
+	(enum tsan_atomic_action): Add bool_clear and bool_test_and_set.
+	(BOOL_CLEAR, BOOL_TEST_AND_SET): Define.
+	(tsan_atomic_table): Add BUILT_IN_ATOMIC_CLEAR and
+	BUILT_IN_ATOMIC_TEST_AND_SET entries.
+	(instrument_builtin_call): Handle bool_clear and bool_test_and_set.
+
+2016-09-14  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+	    Martin Liska  <mliska@suse.cz>
+
+	PR middle-end/77574
+	* predict.c (force_edge_cold): Add braces to a condition.
+
+2016-09-13  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	PR rtl-optimization/77289
+	* lra-constraints.c (get_final_hard_regno): Removed.
+	(get_hard_regno): Add new parameter final_p.
+	(get_reg_class): Directly call lra_get_elimination_hard_regno.
+	(operands_match_p): Adjust call to get_hard_regno.
+	(uses_hard_regs_p): Likewise.
+	(process_alt_operands): Likewise.
+
+2016-09-13  Joe Seymour  <joe.s@somniumtech.com>
+
+	PR target/70713
+	* config/msp430/msp430.c (msp430_start_function): Emit an error
+	if a function is both weak and specifies an interrupt number.
+
+2016-09-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/77454
+	* tree-ssa-dom.c (optimize_stmt): Set modified flag on stmt after
+	changing GIMPLE_COND.  Move update_stmt_if_modified call after this.
+	Formatting fix.
+
+2016-09-13  Tamar Christina  <tamar.christina@arm.com>
+
+	* config/aarch64/aarch64-builtins.c
+	(aarch64_init_simd_builtins): Fix builtin type signature printing.
+
+2016-09-13  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/alpha/alpha.c (alpha_pass_by_reference): Pass un-named
+	SFmode and SCmode arguments by reference.
+
+2016-09-13  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostic-show-locus.c (selftest::test_one_liner_fixit_insert):
+	Rename to...
+	(selftest::test_one_liner_fixit_insert_before): ...this, and update
+	for renaming of add_fixit_insert to add_fixit_insert_before.
+	(selftest::test_one_liner_fixit_insert_after): New function.
+	(selftest::test_one_liner_fixit_validation_adhoc_locations):
+	Update for renaming of add_fixit_insert to add_fixit_insert_before.
+	(selftest::test_one_liner_many_fixits): Likewise.
+	(selftest::test_diagnostic_show_locus_one_liner): Update for
+	renaming, call new test function.
+	(selftest::test_diagnostic_show_locus_fixit_lines): Update for
+	renaming of add_fixit_insert to add_fixit_insert_before.
+	(selftest::test_fixit_consolidation): Likewise.
+	* diagnostic.c (selftest::test_print_parseable_fixits_insert):
+	Likewise.
+	* edit-context.c (selftest::test_applying_fixits_insert): Rename to...
+	(selftest::test_applying_fixits_insert_before): ...this.
+	(selftest::test_applying_fixits_insert): Update for renaming of
+	add_fixit_insert to add_fixit_insert_before.
+	(selftest::test_applying_fixits_insert_after): New function.
+	(selftest::test_applying_fixits_insert_after_at_line_end): New
+	function.
+	(selftest::test_applying_fixits_insert_after_failure): New function.
+	(selftest::test_applying_fixits_multiple): Update for renaming of
+	add_fixit_insert to add_fixit_insert_before.
+	(selftest::change_line): Likewise.
+	(selftest::test_applying_fixits_unreadable_file): Likewise.
+	(selftest::test_applying_fixits_line_out_of_range): Likewise.
+	(selftest::test_applying_fixits_column_validation): Likewise.
+	(selftest::test_applying_fixits_column_validation): Likewise.
+	(selftest::edit_context_c_tests): Update for renamed test function;
+	call new test functions.
+
+2016-09-13  Pat Haugen  <pthaugen@us.ibm.com>
+
+	PR tree-optimization/77536
+	PR rtl-optimization/68212
+	* config/rs6000/rs6000.md (div->recip splitter): Remove
+	optimize_insn_for_speed_p condition.
+
+2016-09-13  Maciej W. Rozycki  <macro@imgtec.com>
+
+	* optabs.c (prepare_cmp_insn): Update documentation comment.
+
+2016-09-13  Jakub Jelinek  <jakub@redhat.com>
+	    Manuel Lopez-Ibanez  <manu@gcc.gnu.org>
+
+	PR middle-end/77475
+	* opts.h (candidates_list_and_hint): Declare.
+	* opts-common.c (candidates_list_and_hint): New function.
+	(cmdline_handle_error): Use it.
+
+2016-09-12  David Malcolm  <dmalcolm@redhat.com>
+
+	* edit-context.c (edited_line::get_len): New accessor.
+	(edited_file::print_diff): Split out hunk-printing into...
+	(edited_file::print_diff_hunk): New method.
+	(edited_file::print_diff_line): New method.
+
+2016-09-12  Andrew Pinski  <apinski@cavium.com>
+
+	* config/aarch64/aarch64-tuning-flags.def (SLOW_UNALIGNED_LDPW):
+	New tuning option.
+	* config/aarch64/aarch64.c (thunderx_tunings): Enable
+	AARCH64_EXTRA_TUNE_SLOW_UNALIGNED_LDPW.
+	(aarch64_operands_ok_for_ldpstp): Return false if
+	AARCH64_EXTRA_TUNE_SLOW_UNALIGNED_LDPW and the mode
+	was SImode and the alignment is less than 8 byte.
+	(aarch64_operands_adjust_ok_for_ldpstp): Likewise.
+
+2016-09-12  Orlando Arias  <oarias@knights.ucf.edu>
+
+	PR target/77570
+	* config/msp430/msp430.md (delay_cycles_32x): Fix pushm/popm.
+
+2016-09-12  Marek Polacek  <polacek@redhat.com>
+
+	* doc/extend.texi: Use lowercase "boolean".
+	* doc/invoke.texi: Likewise.
+	* doc/md.texi: Likewise.
+	* target.def: Likewise.
+	* doc/tm.texi: Regenerated.
+
+2016-09-12  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR middle-end/77426
+	* expmed.c (synth_mult): Delete duplicate mode check.
+
+2016-09-10  Tom de Vries  <tom@codesourcery.com>
+
+	PR C/71602
+	* builtins.c (std_canonical_va_list_type): Strictly return non-null for
+	va_list type only.
+	* config/i386/i386.c (ix86_canonical_va_list_type): Same.
+	* gimplify.c (gimplify_va_arg_expr): Handle &va_list.
+
+2016-09-09  Peter Bergner  <bergner@vnet.ibm.com>
+
+	PR rtl-optimization/77289
+	* lra-constraints.c (get_final_hard_regno): Add support for non hard
+	register numbers.  Remove support for subregs.
+	(get_hard_regno): Use SUBREG_P.  Don't call get_final_hard_regno().
+	(get_reg_class): Delete removed get_final_hard_regno() argument.
+	(uses_hard_regs_p): Call get_final_hard_regno().
+
+2016-09-09  Martin Sebor  <msebor@redhat.com>
+
+	PR c/77520
+	PR c/77521
+	* pretty-print.c (pp_quoted_string): New function.
+	(pp_format): Call it for %c and %s directives.
+
+2016-09-10  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	* doc/tm.texi.in (INITIAL_FRAME_POINTER_OFFSET): Remove.
+	(ELIMINABLE_REGS, TARGET_CAN_ELIMINATE,
+	INITIAL_ELIMINATION_OFFSET) : Update documentation.
+	* target.def (frame_pointer_required, can_eliminate): Likewise.
+	* doc/tm.texi: Regenerated.
+	* builtins.c (expand_builtin_setjmp_receiver): Remove #ifdef
+	ELIMINABLE_REGS.
+	* df-scan.c (df_hard_reg_init): Likewise.
+	* ira.c (ira_setup_eliminable_regset): Likewise.
+	* lra-eliminations.c (reg_eliminate_1, (update_reg_eliminate,
+	init_elim_table): Likewise.
+	* reload1.c (reg_eliminate_1, verify_initial_elim_offsets,
+	set_initial_elim_offsets, update_eliminables,
+	init_elim_table): Likewise.
+	* rtlanal.c (get_initial_register_offset): Likewise.
+	* config/ft32/ft32.h (INITIAL_FRAME_POINTER_OFFSET): Remove.
+	* config/m32r/m32r.h (INITIAL_FRAME_POINTER_OFFSET): Likewise.
+	* config/moxie/moxie.h (INITIAL_FRAME_POINTER_OFFSET): Likewise.
+	* config/vax/vax.h (INITIAL_FRAME_POINTER_OFFSET): Likewise.
+	* config/fr30/fr30.h: Fix comment.
+	* config/frv/frv.c: Likewise.
+	* config/frv/frv.h: Likewise.
+	* config/ft32/ft32.h: Likewise.
+	* config/visium/visium.h: Likewise.
+	* config/pa/pa64-linux.h: Likewise.
+	* config/v850/v850.h: Likewise.
+	* config/cris/cris.c: Likewise.
+	* config/ia64/ia64.h: Likewise.
+	* config/moxie/moxie.h: Likewise.
+	* config/m32r/m32r.h: Likewise.
+
+2016-09-10  Alexander Ivchenko  <alexander.ivchenko@intel.com>
+
+	PR target/77267
+	* config.in: Regenerate.
+	* config/i386/linux-common.h (MPX_LD_AS_NEEDED_GUARD_PUSH):
+	New macro.
+	(MPX_LD_AS_NEEDED_GUARD_PUSH): Ditto.
+	(LIBMPXWRAPPERS_SPEC): Remove "--no-whole-archive" from
+	static-libmpxwrappers case.
+	(LIBMPX_SPEC): Add guards with MPX_LD_AS_NEEDED_GUARD_PUSH and
+	MPX_LD_AS_NEEDED_GUARD_POP.
+	* configure: Regenerate.
+	* configure.ac (HAVE_LD_PUSHPOPSTATE_SUPPORT): New variable.
+	defined if linker support "--push-state"/"--pop-state".
+
+2016-09-09  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	* doc/cpp.texi (__*_WIDTH__): Small wording fixes.
+
+2016-09-09  Joseph Myers  <joseph@codesourcery.com>
+
+	* doc/cpp.texi (__SCHAR_WIDTH__, __SHRT_WIDTH__, __INT_WIDTH__)
+	(__LONG_WIDTH__, __LONG_LONG_WIDTH__, __PTRDIFF_WIDTH__)
+	(__SIG_ATOMIC_WIDTH__, __SIZE_WIDTH__, __WCHAR_WIDTH__)
+	(__WINT_WIDTH__, __INT_LEAST8_WIDTH__, __INT_LEAST16_WIDTH__)
+	(__INT_LEAST32_WIDTH__, __INT_LEAST64_WIDTH__)
+	(__INT_FAST8_WIDTH__, __INT_FAST16_WIDTH__, __INT_FAST32_WIDTH__)
+	(__INT_FAST64_WIDTH__, __INTPTR_WIDTH__, __INTMAX_WIDTH__):
+	Document.
+	* ginclude/stdint-gcc.h [__STDC_WANT_IEC_60559_BFP_EXT__]: Define
+	width macros from TS 18661-1.
+	* glimits.h [__STDC_WANT_IEC_60559_BFP_EXT__]: Likewise.
+
+2016-09-08  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/77516
+	* omp-low.c (lower_rec_simd_input_clauses): Use max_vf for non-positive
+	OMP_CLAUSE_SAFELEN_EXPR.
+
+2016-09-07  David Malcolm  <dmalcolm@redhat.com>
+
+	* Makefile.in (OBJS): Add substring-locations.o.
+	* langhooks-def.h (class substring_loc): New forward decl.
+	(lhd_get_substring_location): New decl.
+	(LANG_HOOKS_GET_SUBSTRING_LOCATION): New macro.
+	(LANG_HOOKS_INITIALIZER): Add LANG_HOOKS_GET_SUBSTRING_LOCATION.
+	* langhooks.c (lhd_get_substring_location): New function.
+	* langhooks.h (class substring_loc): New forward decl.
+	(struct lang_hooks): Add field get_substring_location.
+	* substring-locations.c: New file, taking definition of
+	format_warning_va and format_warning_at_substring from
+	c-family/c-format.c, making them non-static.
+	* substring-locations.h (class substring_loc): Move class here
+	from c-family/c-common.h.  Add and rewrite comments.
+	(format_warning_va): New decl.
+	(format_warning_at_substring): New decl.
+	(get_source_location_for_substring): Add comment.
+
+2016-09-07  Eric Gallager  <egall@gwmail.gwu.edu>
+
+	* config/i386/i386.c: Add 'U' suffix to processor feature bits
+	to avoid -Wnarrowing warning.
+	* config/i386/x86-tune.def: Likewise for DEF_TUNE selector bitmasks.
+	* opts.c: Likewise for SANITIZER_OPT bitmasks.
+
+2016-09-07  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_legitimize_address):
+	Avoid use of base_offset if offset already in range.
+
+2016-09-07  Kaz Kojima  <kkojima@gcc.gnu.org>
+
+	* config/sh/sh-protos.h (struct sh_atomic_model,
+	selected_atomic_model, TARGET_ATOMIC_ANY, TARGET_ATOMIC_STRICT,
+	TARGET_ATOMIC_SOFT_GUSA, TARGET_ATOMIC_HARD_LLCS,
+	TARGET_ATOMIC_SOFT_TCB, TARGET_ATOMIC_SOFT_IMASK): Move to...
+	* config/sh/sh.h (struct sh_atomic_model,
+	selected_atomic_model, TARGET_ATOMIC_ANY, TARGET_ATOMIC_STRICT,
+	TARGET_ATOMIC_SOFT_GUSA, TARGET_ATOMIC_HARD_LLCS,
+	TARGET_ATOMIC_SOFT_TCB, TARGET_ATOMIC_SOFT_IMASK): ...here.
+	Guard with __cplusplus.
+
+2016-09-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/69255
+	* config/i386/i386.c (ix86_expand_builtin): For builtin with
+	unsupported or unknown ISA, use expand_call.
+
+2016-09-06  Martin Liska  <mliska@suse.cz>
+
+	PR gcov-profile/77378
+	PR gcov-profile/77466
+	* tree-profile.c (tree_profiling): Detect whether target can use
+	-fprofile-update=atomic.
+
+2016-09-06  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/77479
+	* tree-vrp.c (update_value_range): Extend overflow handling to
+	VARYING.
+
+2016-09-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/77476
+	* config/i386/i386.md (isa): Add x64_avx512bw.
+	(*zero_extendsidi2): For alternative 11 use x64_avx512bw isa.
+	(kmov_isa): New mode attr.
+	(zero_extend<mode>di2): Use <kmov_isa> isa for the last alternative.
+	(*zero_extend<mode>si2): Likewise.
+	(*zero_extendqihi2): Use avx512dq isa for the last alternative.
+
+2016-09-05  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* doc/invoke.texi (SPU Options): nops -> NOPs.
+	(x86 Options): Ditto.
+
+2016-09-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/77475
+	* toplev.c (process_options): Temporarily set input_location
+	to UNKNOWN_LOCATION around targetm.target_option.override () call.
+
+2016-09-05  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR rtl-optimization/77452
+	* explow.c (plus_constant) <case MEM>: Extract scalar constant from
+	inner-mode reference to a CONST_VECTOR constant in the constant pool.
+
+2016-09-05  Marek Polacek  <polacek@redhat.com>
+
+	PR c/77423
+	* doc/invoke.texi: Update -Wlogical-not-parentheses documentation.
+
+2016-09-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR other/77421
+	* gensupport.c (alter_output_for_subst_insn): Remove redundant
+	*insn_out == '*' test.  Don't copy unnecessary to yet another
+	memory buffer, and don't leak it.
+
+	PR rtl-optimization/77425
+	* ipa-devirt.c (get_odr_type): Set val->id unconditionally.
+
+2016-09-03  Kirill Yukhin  <kirill.yukhin@intel.com>
+
+	* ubsan.c (ubsan_use_new_style_p): Fix check for empty string.
+
+2016-09-02  David Malcolm  <dmalcolm@redhat.com>
+
+	* common.opt (fdiagnostics-generate-patch): New option.
+	* diagnostic.c: Include "edit-context.h".
+	(diagnostic_initialize): Initialize context->edit_context_ptr.
+	(diagnostic_finish): Delete context->edit_context_ptr.
+	(diagnostic_report_diagnostic): Add fix-it hints from the
+	diagnostic to context->edit_context_ptr, if any.
+	* diagnostic.h (class edit_context): Add forward decl.
+	(struct diagnostic_context): Add field "edit_context_ptr".
+	* doc/invoke.texi (Diagnostic Message Formatting Options): Add
+	-fdiagnostics-generate-patch.
+	(-fdiagnostics-generate-patch): New item.
+	* toplev.c: Include "edit-context.h".
+	(process_options): Set global_dc->edit_context_ptr to a new
+	edit_context if the options need one.
+	(toplev::main): Handle -fdiagnostics-generate-patch by using
+	global_dc->edit_context_ptr.
+
+2016-09-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/65467
+	* gimplify.c (gimplify_adjust_omp_clauses_1): Diagnose implicit
+	map and firstprivate clauses on target construct for _Atomic
+	qualified decls.
+	(gimplify_adjust_omp_clauses): Diagnose explicit firstprivate clauses
+	on target construct for _Atomic qualified decls.
+	* omp-low.c (use_pointer_for_field): Return true for _Atomic qualified
+	decls.
+	* omp-simd-clone.c (simd_clone_clauses_extract): Warn and give up for
+	_Atomic qualified arguments not mentioned in uniform clause.
+
+2016-09-02  David Malcolm  <dmalcolm@redhat.com>
+
+	* Makefile.in (OBJS-libcommon): Add edit-context.o.
+	* diagnostic-color.c (color_dict): Add "diff-filename",
+	"diff-hunk", "diff-delete", and "diff-insert".
+	(parse_gcc_colors): Update default value of GCC_COLORS in comment
+	to reflect above changes.
+	* doc/invoke.texi (-fdiagnostics-color): Update description of
+	default GCC_COLORS, and of the supported capabilities.
+	* edit-context.c: New file.
+	* edit-context.h: New file.
+	* input.c (struct fcache): Add field "missing_trailing_newline".
+	(diagnostics_file_cache_forcibly_evict_file): Initialize it to
+	true.
+	(add_file_to_cache_tab): Likewise.
+	(fcache::fcache): Likewise.
+	(get_next_line): Update c->missing_trailing_newline.
+	(location_missing_trailing_newline): New function.
+	* input.h (location_missing_trailing_newline): New decl.
+	* selftest-run-tests.c (selftest::run_tests): Call
+	edit_context_c_tests.
+	* selftest.h (edit_context_c_tests): New decl.
+
+2016-09-02  Jakub Jelinek  <jakub@redhat.com>
+	    Richard Biener  <rguenth@suse.de>
+
+	PR tree-optimization/77444
+	* tree-ssa-loop-ivopts.c (cand_value_at): For pointers use sizetype
+	as steptype, remove redundant initialization.
+
+2016-09-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/77396
+	* sanopt.c: Include gimple-ssa.h, tree-phinodes.h and ssa-iterators.h.
+	(sanopt_optimize_walker): Optimize away
+	__asan_before_dynamic_init (...) followed by
+	__asan_after_dynamic_init () without intervening memory loads/stores.
+	* ipa-pure-const.c (special_builtin_state): Handle
+	BUILT_IN_ASAN_BEFORE_DYNAMIC_INIT and
+	BUILT_IN_ASAN_AFTER_DYNAMIC_INIT.
+
+2016-09-02  Prathamesh Kulkarni  <prathamesh.kulkarni@linaro.org>
+
+	* cfg.c (free_original_copy_tables): Replace second assignment of
+	bb_copy = NULL by bb_original = NULL. 
+
+2016-09-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR other/77421
+	* config/i386/i386.c (ix86_expanded_args_builtin): Remove redundant
+	assignment added in r216794.
+
+2016-09-02  David Malcolm  <dmalcolm@redhat.com>
+
+	* Makefile.in (OBJS): Add typed-splay-tree.o.
+	* selftest-run-tests.c (selftest::run_tests): Call
+	typed_splay_tree_c_tests.
+	* selftest.h (typed_splay_tree_c_tests): New decl.
+	* typed-splay-tree.c: New file.
+	* typed-splay-tree.h (typed_splay_tree::foreach_fn): New typedef.
+	(typed_splay_tree::max): New method.
+	(typed_splay_tree::min): New method.
+	(typed_splay_tree::foreach): New method.
+	(typed_splay_tree::closure): New struct.
+	(typed_splay_tree::inner_foreach_fn): New function.
+
+2016-09-02  Prathamesh Kulkarni  <prathamesh.kulkarni@linaro.org>
+
+	* ipa-cp.c (ipcp_store_bits_results): Change option name from
+	-fipa-cp-bit to -fipa-bit-cp.
+
+2016-09-01  Martin Sebor  <msebor@redhat.com>
+
+	PR tree-optimization/71831
+	* tree-object-size.h: Return bool instead of the size and add
+	argument for the size.
+	* tree-object-size.c (compute_object_offset): Update signature.
+	(addr_object_size): Same.
+	(compute_builtin_object_size): Return bool instead of the size
+	and add argument for the size.  Handle POINTER_PLUS_EXPR when
+	optimization is disabled.
+	(expr_object_size): Adjust.
+	(plus_stmt_object_size): Adjust.
+	(pass_object_sizes::execute): Adjust.
+	* builtins.c (fold_builtin_object_size): Adjust.
+	* doc/extend.texi (Object Size Checking): Update.
+	* ubsan.c (instrument_object_size): Adjust.
+
+2016-09-01  Martin Sebor  <msebor@redhat.com>
+
+	* genmatch.c (parser::parse_expr): Increase buffer size to guarantee
+	it fits the output of the formatted function regardless of its
+	arguments.
+	* gcc/genmodes.c (parser::parse_expr): Same.
+	* gimplify.c (gimplify_asm_expr): Same.
+	* passes.c (pass_manager::register_one_dump_file): Same.
+	* print-tree.c (print_node): Same.
+
+2016-09-01  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/altivec.md: Use VSCR_REGNO instead of 110 throughout.
+
+2016-09-01  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/altivec.md: Use VRSAVE_REGNO instead of 109 throughout.
+
+2016-09-01  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/altivec.md: Use CR6_REGNO instead of 74 throughout.
+	* config/rs6000/vector.md: Ditto.
+	* config/rs6000/vsx.md: Ditto.
+
+2016-09-01  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* ipa-inline-analysis.c (param_change_prob): Get to the base object
+	first in all cases.
+
+2016-09-01  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/rs6000.md (*restore_gpregs_<mode>_r11,
+	*restore_gpregs_<mode>_r12, *restore_gpregs_<mode>_r1,
+	*return_and_restore_gpregs_<mode>_r11,
+	*return_and_restore_gpregs_<mode>_r12,
+	*return_and_restore_gpregs_<mode>_r1,
+	*return_and_restore_fpregs_<mode>_r11,
+	*return_and_restore_fpregs_<mode>_r12,
+	*return_and_restore_fpregs_<mode>_r1): Use the hard register LR_REGNO
+	directly instead of via the "l" constraint.  Renumber operands.
+	Fix whitespace.
+
+2016-09-01  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/altivec.md (*save_world, *save_vregs_<mode>_r11,
+	save_vregs_<mode>_r12, *restore_vregs_<mode>_r11,
+	*restore_vregs_<mode>_r12): Use LR_REGNO instead of 65.
+	* config/rs6000/darwin.md (load_macho_picbase, load_macho_picbase_si,
+	load_macho_picbase_di, *call_indirect_nonlocal_darwin64,
+	*call_nonlocal_darwin64, *call_value_indirect_nonlocal_darwin64,
+	*call_value_nonlocal_darwin64, reload_macho_picbase,
+	reload_macho_picbase_si, reload_macho_picbase_di): Ditto.
+	* config/rs6000/rs6000.h (RETURN_ADDR_IN_PREVIOUS_FRAME): Ditto.
+	* config/rs6000/rs6000.md (*save_gpregs_<mode>_r11,
+	*save_gpregs_<mode>_r12, *save_gpregs_<mode>_r1,
+	*save_fpregs_<mode>_r11, *save_fpregs_<mode>_r12,
+	*save_fpregs_<mode>_r1): Ditto.
+	* config/rs6000/spe.md (*save_gpregs_spe, *restore_gpregs_spe,
+	*return_and_restore_gpregs_spe): Ditto.
+
+2016-09-01  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/rs6000.md
+	(define_insn "*return_and_restore_fpregs_aix_<mode>_r11"): Delete
+	the use of the link register.
+	(define_insn "*return_and_restore_fpregs_aix_<mode>_r1"): Ditto.
+
+2016-09-01  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+	    Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/72827
+	* config/rs6000/rs6000.c (rs6000_legitimize_address): Avoid
+	reg+reg addressing for TImode.
+	(rs6000_legitimate_address_p): Only allow register indirect
+	addressing for TImode, even without TARGET_QUAD_MEMORY.
+
+2016-09-01  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/77436
+	* tree-chrec.c (tree_fold_binomial): Use widest_int, properly
+	check whether the result fits the desired result type.
+
+2016-09-01  Nathan Sidwell  <nathan@acm.org>
+
+	* config/nvptx/nvptx.md (cbranch<mode>4): Op 2 can be const.
+
+2016-09-01  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_legitimize_address_displacement):
+	New function.
+	(TARGET_LEGITIMIZE_ADDRESS_DISPLACEMENT): Define.
+
+2016-09-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.md (*ands<mode>_compare0): New pattern.
+	* config/aarch64/aarch64.c (aarch64_select_cc_mode): Return CC_NZmode
+	for comparisons of integer ZERO_EXTEND against zero.
+
+2016-09-01  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/i386/i386.c (ix86_option_override_internal): Also disable the
+	STV pass if -mstackrealign is enabled.
+
+2016-08-31  Ilya Verbin  <iverbin@gmail.com>
+
+	* config/i386/driver-i386.c (host_detect_local_cpu): Fix detection of
+	AVX512IFMA.
+
+2016-08-31  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostic-show-locus.c (class layout): Add field m_fixit_hints.
+	(layout_range::intersects_line_p): New method.
+	(test_range_contains_point_for_single_point): Rename to...
+	(test_layout_range_for_single_point): ...this, and add testing
+	for layout_range::intersects_line_p.
+	(test_range_contains_point_for_single_line): Rename to...
+	(test_layout_range_for_single_line): ...this,  and add testing
+	for layout_range::intersects_line_p.
+	(test_range_contains_point_for_multiple_lines): Rename to...
+	(test_layout_range_for_multiple_lines): ...this,  and add testing
+	for layout_range::intersects_line_p.
+	(layout::layout): Populate m_fixit_hints.
+	(layout::get_expanded_location): Handle the case of a line-span
+	for a fix-it hint.
+	(layout::validate_fixit_hint_p): New method.
+	(get_line_span_for_fixit_hint): New function.
+	(layout::calculate_line_spans): Add spans for fixit-hints.
+	(layout::should_print_annotation_line_p): New method.
+	(layout::print_any_fixits): Drop param "richloc", instead using
+	validated fixits in m_fixit_hints.  Add "const" to hint pointers.
+	(diagnostic_show_locus): Avoid printing blank annotation lines.
+	(selftest::test_diagnostic_context::test_diagnostic_context):
+	Initialize show_column and start_span.
+	(selftest::test_diagnostic_context::start_span_cb): New static
+	function.
+	(selftest::test_diagnostic_show_locus_fixit_lines): New function.
+	(selftest::diagnostic_show_locus_c_tests): Update for function
+	renamings.  Call test_diagnostic_show_locus_fixit_lines.
+
+2016-08-31  Marc Glisse  <marc.glisse@inria.fr>
+
+	PR tree-optimization/73714
+	* match.pd (a * (1 << b)): Revert change from 2016-05-23.
+
+2016-08-31  David Malcolm  <dmalcolm@redhat.com>
+
+	* selftest.c: Move "namespace selftest {" to top of file,
+	removing explicit "selftest::" qualifiers throughout.
+
+2016-08-31  Marc Glisse  <marc.glisse@inria.fr>
+
+	* config/i386/avx512fintrin.h (__m512_u, __m512i_u, __m512d_u):
+	New types.
+	(_mm512_loadu_pd, _mm512_storeu_pd, _mm512_loadu_ps,
+	_mm512_storeu_ps, _mm512_loadu_si512, _mm512_storeu_si512):
+	Replace builtin with vector extension.
+	* config/i386/avxintrin.h (__m256_u, __m256i_u, __m256d_u):
+	New types.
+	(_mm256_loadu_pd, _mm256_storeu_pd, _mm256_loadu_ps,
+	_mm256_storeu_ps, _mm256_loadu_si256, _mm256_storeu_si256):
+	Replace builtin with vector extension.
+	* config/i386/emmintrin.h (__m128i_u, __m128d_u): New types.
+	(_mm_loadu_pd, _mm_storeu_pd, _mm_loadu_si128, _mm_storeu_si128):
+	Replace builtin with vector extension.
+	* config/i386/xmmintrin.h (__m128_u): New type.
+	(_mm_loadu_ps, _mm_storeu_ps): Replace builtin with vector extension.
+	(_mm_load_ps, _mm_store_ps): Simplify.
+
+2016-08-31  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/arm/arm.c (thumb1_size_rtx_costs) <SET>: Add missing guard.
+
 2016-08-30  David Malcolm  <dmalcolm@redhat.com>
 
 	* diagnostic-show-locus.c (colorizer::begin_state): Support more
@@ -369,8 +2600,8 @@
 	(gen_scheduled_generic_parms_dies): Do not set early dwarf here.
 	(dwarf2out_early_finish): But do it here.
 
-2016-08-24  Michael Collison <michael.collison@linaro.org>
-	    Michael Collison <michael.collison@arm.com>
+2016-08-24  Michael Collison  <michael.collison@linaro.org>
+	    Michael Collison  <michael.collison@arm.com>
 
 	* config/arm/arm-modes.def: Add new condition code mode CC_V
 	to represent the overflow bit.
@@ -925,8 +3156,8 @@
 	When doing auto-parallelizing also prevent use of PHIs that
 	carry dependences across loop backedges.
 
-2016-08-18  Tamar Christina  <tamar.christina@arm.com>
-	    Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+2016-08-18  Tamar Christina  <tamar.christina@arm.com>
+	    Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
 
 	* varasm.c (default_use_anchors_for_symbol_p): Reject too large decls.
 
@@ -970,7 +3201,7 @@
 	when find_reloads_toplev returns address_reloaded==-1.
 	(alternative_allows_const_pool_ref): Update comment.
 
-2015-08-17  Alan Hayward <alan.hayward@arm.com>
+2015-08-17  Alan Hayward  <alan.hayward@arm.com>
 
 	PR tree-optimization/71752
 	* tree-vect-loop.c (vectorizable_reduction): Keep SLP operand ordering.
@@ -1468,7 +3699,7 @@
 	the currently executable edges have fixed ranges.  Always
 	go through update_value_range.
 
-2016-08-12  Alexandre Oliva <aoliva@redhat.com>
+2016-08-12  Alexandre Oliva  <aoliva@redhat.com>
 
 	PR debug/63240
 	* langhooks-def.h
@@ -2450,7 +4681,7 @@
 	fix_debug_reg_uses after changing source register mode to
 	V1TImode if source register is undefined.
 
-2015-08-01  Alan Hayward <alan.hayward@arm.com>
+2015-08-01  Alan Hayward  <alan.hayward@arm.com>
 
 	PR tree-optimization/71818
 	* tree-vect-loop-manip.c (vect_can_advance_ivs_p): Don't advance IVs
@@ -2832,7 +5063,7 @@
 	choosing a better vector mode to do the extraction from.
 
 2016-07-26  Richard Biener  <rguenther@suse.de>
-	    Prathamesh Kulkarni <prathamesh.kulkarni@linaro.org>
+	    Prathamesh Kulkarni  <prathamesh.kulkarni@linaro.org>
 
 	PR middle-end/70920
 	* match.pd ((intptr)x eq/ne CST to x eq/ne (typeof x) CST): New
@@ -3268,11 +5499,11 @@
 	* config/rs6000/rs6000-c.c (altivec_resolve_overloaded_builtin):
 	Reformat two multi-line strings.
 
-2016-07-22 Martin Sebor  <msebor@redhat.com>
+2016-07-22  Martin Sebor  <msebor@redhat.com>
 
 	* doc/extend.texi (Compound Literals): Add '@' missed in last commit.
 
-2016-07-22 Martin Sebor  <msebor@redhat.com>
+2016-07-22  Martin Sebor  <msebor@redhat.com>
 
 	PR c/71560
 	* doc/extend.texi (Compound Literals): Correct and clarify.
@@ -5971,7 +8202,7 @@
 	* tree-ssa-loop-ivopts.c (determine_group_iv_cost_address): Compute
 	cost for all uses in group.
 
-2016-06-17 Bin Cheng  <bin.cheng@arm.com>
+2016-06-17  Bin Cheng  <bin.cheng@arm.com>
 
 	* tree-vect-loop.c (vect_create_epilog_for_reduction): Only
 	insert gimple seq if it's not empty.
@@ -9457,7 +11688,7 @@
 	builtin __SANITIZE_THREAD__ macros for fsanitize=thread switch.
 	* doc/cpp.texi: Document new macros.
 
-2016-05-19 Bin Cheng  <bin.cheng@arm.com>
+2016-05-19  Bin Cheng  <bin.cheng@arm.com>
 
 	PR tree-optimization/69848
 	* tree-vect-loop.c (vectorizable_reduction): Don't factor
@@ -9686,7 +11917,7 @@
 	cleanup_cfg with CLEANUP_EXPENSIVE after shrink-wrapping instead
 	of before.  Add a comment.
 
-2016-05-18 Bin Cheng  <bin.cheng@arm.com>
+2016-05-18  Bin Cheng  <bin.cheng@arm.com>
 
 	* tree-ssa-loop-ivopts.c (get_computation_cost_at): Check invariant
 	expression pointer, not pointer to the pointer.
@@ -14889,7 +17120,7 @@
 	(possible_polymorphic_call_target_p): Fix formatting.
 
 2016-04-04  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
-	    Jakub Jelinek <jakub@redhat.com>
+	    Jakub Jelinek  <jakub@redhat.com>
 
 	PR middle-end/70457
 	* tree-inline.c (estimate_num_insn): Use gimple_call_builtin_p
@@ -16063,7 +18294,7 @@
 	* config/aarch64/aarch64.opt (aarch64_fix_a53_err843419): Save.
 
 2016-03-10  Alan Lawrence  <alan.lawrence@arm.com>
-	Jakub Jelinek <jakub@redhat.com>
+	    Jakub Jelinek  <jakub@redhat.com>
 
 	* common.opt (funconstrained-commons, flag_unconstrained_commons): New.
 	* tree.c (array_at_struct_end_p): Do not limit to size of decl for
@@ -18603,7 +20834,7 @@
 	* wide-int.cc (canonize_uhwi): New function.
 	(wi::divmod_internal): Use it.
 
-2016-02-02  James Norris  <jnorris@codesourcery.com
+2016-02-02  James Norris  <jnorris@codesourcery.com>
 
 	* gimplify.c (omp_notice_variable): Add usage check.
 

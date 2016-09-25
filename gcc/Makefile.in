@@ -1297,6 +1297,7 @@ OBJS = \
 	gimple-ssa-nonnull-compare.o \
 	gimple-ssa-split-paths.o \
 	gimple-ssa-strength-reduction.o \
+	gimple-ssa-sprintf.o \
 	gimple-streamer-in.o \
 	gimple-streamer-out.o \
 	gimple-walk.o \
@@ -1444,6 +1445,7 @@ OBJS = \
 	store-motion.o \
 	streamer-hooks.o \
 	stringpool.o \
+	substring-locations.o \
 	target-globals.o \
 	targhooks.o \
 	timevar.o \
@@ -1543,6 +1545,7 @@ OBJS = \
 	tree-vectorizer.o \
 	tree-vrp.o \
 	tree.o \
+	typed-splay-tree.o \
 	valtrack.o \
 	value-prof.o \
 	var-tracking.o \
@@ -1561,6 +1564,7 @@ OBJS = \
 # Objects in libcommon.a, potentially used by all host binaries and with
 # no target dependencies.
 OBJS-libcommon = diagnostic.o diagnostic-color.o diagnostic-show-locus.o \
+	edit-context.o \
 	pretty-print.o intl.o \
 	vec.o input.o version.o hash-table.o ggc-none.o memory-block.o \
 	selftest.o

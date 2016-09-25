@@ -1786,8 +1786,7 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
   gimple *def_stmt = SSA_NAME_DEF_STMT (vuse);
   tree base = ao_ref_base (ref);
   HOST_WIDE_INT offset, maxsize;
-  static vec<vn_reference_op_s>
-    lhs_ops = vNULL;
+  static vec<vn_reference_op_s> lhs_ops;
   ao_ref lhs_ref;
   bool lhs_ref_ok = false;
 
@@ -3470,6 +3469,10 @@ visit_reference_op_call (tree lhs, gcall *stmt)
     {
       if (vnresult->result_vdef && vdef)
 	changed |= set_ssa_val_to (vdef, vnresult->result_vdef);
+      else if (vdef)
+	/* If the call was discovered to be pure or const reflect
+	   that as far as possible.  */
+	changed |= set_ssa_val_to (vdef, vuse_ssa_val (gimple_vuse (stmt)));
 
       if (!vnresult->result && lhs)
 	vnresult->result = lhs;
@@ -3481,8 +3484,24 @@ visit_reference_op_call (tree lhs, gcall *stmt)
     {
       vn_reference_t vr2;
       vn_reference_s **slot;
+      tree vdef_val = vdef;
       if (vdef)
-	changed |= set_ssa_val_to (vdef, vdef);
+	{
+	  /* If we value numbered an indirect functions function to
+	     one not clobbering memory value number its VDEF to its
+	     VUSE.  */
+	  tree fn = gimple_call_fn (stmt);
+	  if (fn && TREE_CODE (fn) == SSA_NAME)
+	    {
+	      fn = SSA_VAL (fn);
+	      if (TREE_CODE (fn) == ADDR_EXPR
+		  && TREE_CODE (TREE_OPERAND (fn, 0)) == FUNCTION_DECL
+		  && (flags_from_decl_or_type (TREE_OPERAND (fn, 0))
+		      & (ECF_CONST | ECF_PURE)))
+		vdef_val = vuse_ssa_val (gimple_vuse (stmt));
+	    }
+	  changed |= set_ssa_val_to (vdef, vdef_val);
+	}
       if (lhs)
 	changed |= set_ssa_val_to (lhs, lhs);
       vr2 = current_info->references_pool->allocate ();
@@ -3495,7 +3514,7 @@ visit_reference_op_call (tree lhs, gcall *stmt)
       vr2->set = vr1.set;
       vr2->hashcode = vr1.hashcode;
       vr2->result = lhs;
-      vr2->result_vdef = vdef;
+      vr2->result_vdef = vdef_val;
       slot = current_info->references->find_slot_with_hash (vr2, vr2->hashcode,
 							    INSERT);
       gcc_assert (!*slot);
@@ -3909,11 +3928,22 @@ visit_use (tree use)
 	    }
 	}
 
+      /* Pick up flags from a devirtualization target.  */
+      tree fn = gimple_call_fn (stmt);
+      int extra_fnflags = 0;
+      if (fn && TREE_CODE (fn) == SSA_NAME)
+	{
+	  fn = SSA_VAL (fn);
+	  if (TREE_CODE (fn) == ADDR_EXPR
+	      && TREE_CODE (TREE_OPERAND (fn, 0)) == FUNCTION_DECL)
+	    extra_fnflags = flags_from_decl_or_type (TREE_OPERAND (fn, 0));
+	}
       if (!gimple_call_internal_p (call_stmt)
 	  && (/* Calls to the same function with the same vuse
 		 and the same operands do not necessarily return the same
 		 value, unless they're pure or const.  */
-	      gimple_call_flags (call_stmt) & (ECF_PURE | ECF_CONST)
+	      ((gimple_call_flags (call_stmt) | extra_fnflags)
+	       & (ECF_PURE | ECF_CONST))
 	      /* If calls have a vdef, subsequent calls won't have
 		 the same incoming vuse.  So, if 2 calls with vdef have the
 		 same vuse, we know they're not subsequent.
@@ -4290,7 +4320,6 @@ free_vn_table (vn_tables_t table)
 static void
 init_scc_vn (void)
 {
-  size_t i;
   int j;
   int *rpo_numbers_temp;
 
@@ -4339,12 +4368,11 @@ init_scc_vn (void)
 
   /* Create the VN_INFO structures, and initialize value numbers to
      TOP or VARYING for parameters.  */
-  for (i = 1; i < num_ssa_names; i++)
-    {
-      tree name = ssa_name (i);
-      if (!name)
-	continue;
+  size_t i;
+  tree name;
 
+  FOR_EACH_SSA_NAME (i, name, cfun)
+    {
       VN_INFO_GET (name)->valnum = VN_TOP;
       VN_INFO (name)->needs_insertion = false;
       VN_INFO (name)->expr = NULL;
@@ -4402,11 +4430,12 @@ init_scc_vn (void)
 void
 scc_vn_restore_ssa_info (void)
 {
-  for (unsigned i = 0; i < num_ssa_names; i++)
+  unsigned i;
+  tree name;
+
+  FOR_EACH_SSA_NAME (i, name, cfun)
     {
-      tree name = ssa_name (i);
-      if (name
-	  && has_VN_INFO (name))
+      if (has_VN_INFO (name))
 	{
 	  if (VN_INFO (name)->needs_insertion)
 	    ;
@@ -4428,6 +4457,7 @@ void
 free_scc_vn (void)
 {
   size_t i;
+  tree name;
 
   delete constant_to_value_id;
   constant_to_value_id = NULL;
@@ -4436,11 +4466,9 @@ free_scc_vn (void)
   shared_lookup_references.release ();
   XDELETEVEC (rpo_numbers);
 
-  for (i = 0; i < num_ssa_names; i++)
+  FOR_EACH_SSA_NAME (i, name, cfun)
     {
-      tree name = ssa_name (i);
-      if (name
-	  && has_VN_INFO (name)
+      if (has_VN_INFO (name)
 	  && VN_INFO (name)->needs_insertion)
 	release_ssa_name (name);
     }
@@ -4797,13 +4825,11 @@ run_scc_vn (vn_lookup_kind default_vn_walk_kind_)
 
   /* Initialize the value ids and prune out remaining VN_TOPs
      from dead code.  */
-  for (i = 1; i < num_ssa_names; ++i)
+  tree name;
+
+  FOR_EACH_SSA_NAME (i, name, cfun)
     {
-      tree name = ssa_name (i);
-      vn_ssa_aux_t info;
-      if (!name)
-	continue;
-      info = VN_INFO (name);
+      vn_ssa_aux_t info = VN_INFO (name);
       if (!info->visited)
 	info->valnum = name;
       if (info->valnum == name
@@ -4814,13 +4840,9 @@ run_scc_vn (vn_lookup_kind default_vn_walk_kind_)
     }
 
   /* Propagate.  */
-  for (i = 1; i < num_ssa_names; ++i)
+  FOR_EACH_SSA_NAME (i, name, cfun)
     {
-      tree name = ssa_name (i);
-      vn_ssa_aux_t info;
-      if (!name)
-	continue;
-      info = VN_INFO (name);
+      vn_ssa_aux_t info = VN_INFO (name);
       if (TREE_CODE (info->valnum) == SSA_NAME
 	  && info->valnum != name
 	  && info->value_id != VN_INFO (info->valnum)->value_id)
@@ -4832,11 +4854,9 @@ run_scc_vn (vn_lookup_kind default_vn_walk_kind_)
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
       fprintf (dump_file, "Value numbers:\n");
-      for (i = 0; i < num_ssa_names; i++)
+      FOR_EACH_SSA_NAME (i, name, cfun)
 	{
-	  tree name = ssa_name (i);
-	  if (name
-	      && VN_INFO (name)->visited
+	  if (VN_INFO (name)->visited
 	      && SSA_VAL (name) != name)
 	    {
 	      print_generic_expr (dump_file, name, 0);

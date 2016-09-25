@@ -995,7 +995,7 @@ default_ira_change_pseudo_allocno_class (int regno ATTRIBUTE_UNUSED,
 extern bool
 default_lra_p (void)
 {
-  return false;
+  return true;
 }
 
 int
@@ -1507,6 +1507,20 @@ bool
 no_c99_libc_has_function (enum function_class fn_class ATTRIBUTE_UNUSED)
 {
   return false;
+}
+
+/* Return the format string to which "%p" corresponds.  By default,
+   assume it corresponds to the C99 "%zx" format and set *FLAGS to
+   the empty string to indicate that format flags have no effect.
+   An example of an implementation that matches this description
+   is AIX.  */
+
+const char*
+default_printf_pointer_format (tree, const char **flags)
+{
+  *flags = "";
+
+  return "%zx";
 }
 
 tree
