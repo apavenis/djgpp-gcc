@@ -1,5 +1,6 @@
 /* { dg-do compile } */
 /* { dg-options "-std=c99 -Wformat -Wformat-length=1 -ftrack-macro-expansion=0" } */
+/* { dg-require-effective-target int32plus } */
 
 /* When debugging, define LINE to the line number of the test case to exercise
    and avoid exercising any of the others.  The buffer and objsize macros
@@ -94,20 +95,20 @@ void test_sprintf_p_const (void)
      format null pointers as 0 or 0x0 and so the following will only be
      diagnosed on the former targets.  */
   T (5, "%p",     (void*)0);
-  /* { dg-warning "nul past the end" "(nil)" { target *-linux-gnu *-*-uclinux } 96 } */
+  /* { dg-warning "nul past the end" "(nil)" { target *-linux-gnu *-*-uclinux } .-1 } */
 
   /* The exact output for %p is unspecified by C.  Two formats are known:
      same as %tx (for example AIX) and same as %#tx (for example Solaris).  */
-  T (0, "%p",     (void*)0x1);    /* { dg-warning ".%p. directive writing . bytes into a region of size 0" } */
-  T (1, "%p",     (void*)0x12);   /* { dg-warning ".%p. directive writing . bytes into a region of size 1" } */
-  T (2, "%p",     (void*)0x123);  /* { dg-warning ".%p. directive writing . bytes into a region of size 2" } */
+  T (0, "%p",     (void*)0x1);    /* { dg-warning ".%p. directive writing . bytes? into a region of size 0" } */
+  T (1, "%p",     (void*)0x12);   /* { dg-warning ".%p. directive writing . bytes? into a region of size 1" } */
+  T (2, "%p",     (void*)0x123);  /* { dg-warning ".%p. directive writing . bytes? into a region of size 2" } */
 
   /* GLIBC and uClibc treat the ' ' flag with the "%p" directive the same
      as with signed integer conversions (i.e., it prepends a space).  Other
      known implementations ignore it.  */
   T (6, "% p",    (void*)0x234);  /* { dg-warning ". . flag used with .%p." } */
-  /* { dg-warning "nul past the end" "Glibc %p" { target *-linux-gnu } 108 } */
-  /* { dg-warning "nul past the end" "Generic %p" { target *-*-uclinux } 108 } */
+  /* { dg-warning "nul past the end" "Glibc %p" { target *-linux-gnu } .-1 } */
+  /* { dg-warning "nul past the end" "Generic %p" { target *-*-uclinux } .-2 } */
 }
 
 /* Verify that no warning is issued for calls that write into a flexible
@@ -208,11 +209,11 @@ void test_sprintf_chk_c_const (void)
   T (3, "%c%c", '1', '2');
 
   /* Wide characters.  */
-  T (0, "%lc",     0);           /* { dg-warning "nul past the end" } */
-  T (1, "%lc",     0);
-  T (1, "%lc%lc",  0, 0);
-  T (2, "%lc",     0);
-  T (2, "%lc%lc",  0, 0);
+  T (0, "%lc",     (wint_t)0);   /* { dg-warning "nul past the end" } */
+  T (1, "%lc",     (wint_t)0);
+  T (1, "%lc%lc",  (wint_t)0, (wint_t)0);
+  T (2, "%lc",     (wint_t)0);
+  T (2, "%lc%lc",  (wint_t)0, (wint_t)0);
 
   /* The following could result in as few as no bytes and in as many as
      MB_CUR_MAX, but since the MB_CUR_MAX value is a runtime property
@@ -865,6 +866,8 @@ void test_sprintf_chk_z_const (void)
 void test_sprintf_chk_e_const (void)
 {
   T (-1, "%E",   0.0);
+  T (-1, "%lE",  0.0);
+
   T ( 0, "%E",   0.0);          /* { dg-warning "into a region" } */
   T ( 0, "%e",   0.0);          /* { dg-warning "into a region" } */
   T ( 1, "%E",   1.0);          /* { dg-warning "into a region" } */
@@ -1075,6 +1078,8 @@ void test_sprintf_chk_int_nonconst (int a)
 void test_sprintf_chk_e_nonconst (double d)
 {
   T (-1, "%E",          d);
+  T (-1, "%lE",         d);
+
   T ( 0, "%E",          d);           /* { dg-warning "writing between 12 and 14 bytes into a region of size 0" } */
   T ( 0, "%e",          d);           /* { dg-warning "into a region" } */
   T ( 1, "%E",          d);           /* { dg-warning "into a region" } */
@@ -1106,6 +1111,8 @@ void test_sprintf_chk_e_nonconst (double d)
 void test_sprintf_chk_f_nonconst (double d)
 {
   T (-1, "%F",          d);
+  T (-1, "%lF",         d);
+
   T ( 0, "%F",          d);           /* { dg-warning "into a region" } */
   T ( 0, "%f",          d);           /* { dg-warning "into a region" } */
   T ( 1, "%F",          d);           /* { dg-warning "into a region" } */
@@ -1237,9 +1244,9 @@ void test_snprintf_c_const (void)
   T (3, "%c%c", '1', '2');
 
   /* Wide characters.  */
-  T (0, "%lc",  0);
-  T (1, "%lc",  0);
-  T (2, "%lc",  0);
+  T (0, "%lc",  (wint_t)0);
+  T (1, "%lc",  (wint_t)0);
+  T (2, "%lc",  (wint_t)0);
 
   /* The following could result in as few as a single byte and in as many
      as MB_CUR_MAX, but since the MB_CUR_MAX value is a runtime property
@@ -1286,9 +1293,9 @@ void test_snprintf_chk_c_const (void)
   T (3, "%c_%c", '1', '2');      /* { dg-warning "output truncated" } */
 
   /* Wide characters.  */
-  T (0, "%lc",  0);
-  T (1, "%lc",  0);
-  T (2, "%lc",  0);
+  T (0, "%lc",  (wint_t)0);
+  T (1, "%lc",  (wint_t)0);
+  T (2, "%lc",  (wint_t)0);
 
   /* The following could result in as few as a single byte and in as many
      as MB_CUR_MAX, but since the MB_CUR_MAX value is a runtime property
@@ -1403,9 +1410,9 @@ void test_vsnprintf_chk_s (__builtin_va_list va)
   /* Verify that specifying a size of the destination buffer that's
      bigger than its actual size (normally determined and passed to
      the function by __builtin_object_size) is diagnosed.  */
-  __builtin___snprintf_chk (buffer, 123, 0, 122, " ");   /* { dg-warning "always overflow|specified size 123 exceeds the size 122 of the destination object" } */
+  __builtin___vsnprintf_chk (buffer, 123, 0, 122, "%-s", va);   /* { dg-warning "always overflow|specified size 123 exceeds the size 122 of the destination object" } */
 
-  __builtin___snprintf_chk (buffer, __SIZE_MAX__, 0, 2, " ");   /* { dg-warning "always overflow|destination size .\[0-9\]+. too large" } */
+  __builtin___vsnprintf_chk (buffer, __SIZE_MAX__, 0, 2, "%-s", va);   /* { dg-warning "always overflow|destination size .\[0-9\]+. too large" } */
 
   T (0, "%s");
   T (1, "%s");

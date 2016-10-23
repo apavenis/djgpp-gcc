@@ -288,16 +288,24 @@ namespace
   }
 
   inline fs::file_time_type
-  file_time(const stat_type& st) noexcept
+  file_time(const stat_type& st, std::error_code& ec) noexcept
   {
     using namespace std::chrono;
-    return fs::file_time_type{
 #ifdef _GLIBCXX_USE_ST_MTIM
-	seconds{st.st_mtim.tv_sec} + nanoseconds{st.st_mtim.tv_nsec}
+    time_t s = st.st_mtim.tv_sec;
+    nanoseconds ns{st.st_mtim.tv_nsec};
 #else
-	seconds{st.st_mtime}
+    time_t s = st.st_mtime;
+    nanoseconds ns{};
 #endif
-    };
+
+    if (s >= (nanoseconds::max().count() / 1e9))
+      {
+	ec = std::make_error_code(std::errc::value_too_large); // EOVERFLOW
+	return fs::file_time_type::min();
+      }
+    ec.clear();
+    return fs::file_time_type{seconds{s} + ns};
   }
 
   // Returns true if the file descriptor was successfully closed,
@@ -373,11 +381,11 @@ namespace
 	  }
 	else if (is_set(option, opts::update_existing))
 	  {
-	    if (file_time(*from_st) <= file_time(*to_st))
-	      {
-		ec.clear();
-		return false;
-	      }
+	    const auto from_mtime = file_time(*from_st, ec);
+	    if (ec)
+	      return false;
+	    if ((from_mtime <= file_time(*to_st, ec)) || ec)
+	      return false;
 	  }
 	else if (!is_set(option, opts::overwrite_existing))
 	  {
@@ -1036,7 +1044,7 @@ fs::last_write_time(const path& p)
 fs::file_time_type
 fs::last_write_time(const path& p, error_code& ec) noexcept
 {
-  return do_stat(p, ec, [](const auto& st) { return file_time(st); },
+  return do_stat(p, ec, [&ec](const auto& st) { return file_time(st, ec); },
 		 file_time_type::min());
 }
 
@@ -1089,10 +1097,12 @@ fs::permissions(const path& p, perms prms)
     _GLIBCXX_THROW_OR_ABORT(filesystem_error("cannot set permissions", p, ec));
 }
 
-void fs::permissions(const path& p, perms prms, error_code& ec) noexcept
+void
+fs::permissions(const path& p, perms prms, error_code& ec) noexcept
 {
   const bool add = is_set(prms, perms::add_perms);
   const bool remove = is_set(prms, perms::remove_perms);
+  const bool nofollow = is_set(prms, perms::symlink_nofollow);
   if (add && remove)
     {
       ec = std::make_error_code(std::errc::invalid_argument);
@@ -1101,24 +1111,33 @@ void fs::permissions(const path& p, perms prms, error_code& ec) noexcept
 
   prms &= perms::mask;
 
-  if (add || remove)
+  file_status st;
+  if (add || remove || nofollow)
     {
-      auto st = status(p, ec);
+      st = nofollow ? symlink_status(p, ec) : status(p, ec);
       if (ec)
 	return;
       auto curr = st.permissions();
       if (add)
 	prms |= curr;
-      else
+      else if (remove)
 	prms = curr & ~prms;
     }
 
+  int err = 0;
 #if _GLIBCXX_USE_FCHMODAT
-  if (::fchmodat(AT_FDCWD, p.c_str(), static_cast<mode_t>(prms), 0))
+  const int flag = (nofollow && is_symlink(st)) ? AT_SYMLINK_NOFOLLOW : 0;
+  if (::fchmodat(AT_FDCWD, p.c_str(), static_cast<mode_t>(prms), flag))
+    err = errno;
 #else
-  if (::chmod(p.c_str(), static_cast<mode_t>(prms)))
+  if (nofollow && is_symlink(st))
+    ec = std::make_error_code(std::errc::operation_not_supported);
+  else if (::chmod(p.c_str(), static_cast<mode_t>(prms)))
+    err = errno;
 #endif
-    ec.assign(errno, std::generic_category());
+
+  if (err)
+    ec.assign(err, std::generic_category());
   else
     ec.clear();
 }
@@ -1289,7 +1308,7 @@ fs::space(const path& p, error_code& ec) noexcept
 
 #ifdef _GLIBCXX_HAVE_SYS_STAT_H
 fs::file_status
-fs::status(const fs::path& p, std::error_code& ec) noexcept
+fs::status(const fs::path& p, error_code& ec) noexcept
 {
   file_status status;
   stat_type st;
@@ -1299,6 +1318,10 @@ fs::status(const fs::path& p, std::error_code& ec) noexcept
       ec.assign(err, std::generic_category());
       if (is_not_found_errno(err))
 	status.type(file_type::not_found);
+#ifdef EOVERFLOW
+      else if (err == EOVERFLOW)
+	status.type(file_type::unknown);
+#endif
     }
   else
     {

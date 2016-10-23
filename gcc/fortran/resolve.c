@@ -5112,6 +5112,11 @@ resolve_variable (gfc_expr *e)
 
   if (sym->ts.type != BT_UNKNOWN)
     gfc_variable_attr (e, &e->ts);
+  else if (sym->attr.flavor == FL_PROCEDURE
+	   && sym->attr.function && sym->result
+	   && sym->result->ts.type != BT_UNKNOWN
+	   && sym->result->attr.proc_pointer)
+    e->ts = sym->result->ts;
   else
     {
       /* Must be a simple variable reference.  */
@@ -8304,9 +8309,63 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
   /* Mark this as an associate variable.  */
   sym->attr.associate_var = 1;
 
+  /* Fix up the type-spec for CHARACTER types.  */
+  if (sym->ts.type == BT_CHARACTER && !sym->attr.select_type_temporary)
+    {
+      if (!sym->ts.u.cl)
+	sym->ts.u.cl = target->ts.u.cl;
+
+      if (!sym->ts.u.cl->length)
+	sym->ts.u.cl->length
+	  = gfc_get_int_expr (gfc_default_integer_kind,
+			      NULL, target->value.character.length);
+    }
+
   /* If the target is a good class object, so is the associate variable.  */
   if (sym->ts.type == BT_CLASS && gfc_expr_attr (target).class_ok)
     sym->attr.class_ok = 1;
+}
+
+
+/* Ensure that SELECT TYPE expressions have the correct rank and a full
+   array reference, where necessary.  The symbols are artificial and so
+   the dimension attribute and arrayspec can also be set.  In addition,
+   sometimes the expr1 arrives as BT_DERIVED, when the symbol is BT_CLASS.
+   This is corrected here as well.*/
+
+static void
+fixup_array_ref (gfc_expr **expr1, gfc_expr *expr2,
+		 int rank, gfc_ref *ref)
+{
+  gfc_ref *nref = (*expr1)->ref;
+  gfc_symbol *sym1 = (*expr1)->symtree->n.sym;
+  gfc_symbol *sym2 = expr2 ? expr2->symtree->n.sym : NULL;
+  (*expr1)->rank = rank;
+  if (sym1->ts.type == BT_CLASS)
+    {
+      if ((*expr1)->ts.type != BT_CLASS)
+	(*expr1)->ts = sym1->ts;
+
+      CLASS_DATA (sym1)->attr.dimension = 1;
+      if (CLASS_DATA (sym1)->as == NULL && sym2)
+	CLASS_DATA (sym1)->as
+		= gfc_copy_array_spec (CLASS_DATA (sym2)->as);
+    }
+  else
+    {
+      sym1->attr.dimension = 1;
+      if (sym1->as == NULL && sym2)
+	sym1->as = gfc_copy_array_spec (sym2->as);
+    }
+
+  for (; nref; nref = nref->next)
+    if (nref->next == NULL)
+      break;
+
+  if (ref && nref && nref->type != REF_ARRAY)
+    nref->next = gfc_copy_ref (ref);
+  else if (ref && !nref)
+    (*expr1)->ref = gfc_copy_ref (ref);
 }
 
 
@@ -8324,6 +8383,8 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
   gfc_namespace *ns;
   int error = 0;
   int charlen = 0;
+  int rank = 0;
+  gfc_ref* ref = NULL;
 
   ns = code->ext.block.ns;
   gfc_resolve (ns);
@@ -8451,6 +8512,31 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
   else
     code->ext.block.assoc = NULL;
 
+  /* Ensure that the selector rank and arrayspec are available to
+     correct expressions in which they might be missing.  */
+  if (code->expr2 && code->expr2->rank)
+    {
+      rank = code->expr2->rank;
+      for (ref = code->expr2->ref; ref; ref = ref->next)
+	if (ref->next == NULL)
+	  break;
+      if (ref && ref->type == REF_ARRAY)
+	ref = gfc_copy_ref (ref);
+
+      /* Fixup expr1 if necessary.  */
+      if (rank)
+	fixup_array_ref (&code->expr1, code->expr2, rank, ref);
+    }
+  else if (code->expr1->rank)
+    {
+      rank = code->expr1->rank;
+      for (ref = code->expr1->ref; ref; ref = ref->next)
+	if (ref->next == NULL)
+	  break;
+      if (ref && ref->type == REF_ARRAY)
+	ref = gfc_copy_ref (ref);
+    }
+
   /* Add EXEC_SELECT to switch on type.  */
   new_st = gfc_get_code (code->op);
   new_st->expr1 = code->expr1;
@@ -8516,7 +8602,12 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
       st->n.sym->assoc->target = gfc_get_variable_expr (code->expr1->symtree);
       st->n.sym->assoc->target->where = code->expr1->where;
       if (c->ts.type != BT_CLASS && c->ts.type != BT_UNKNOWN)
-	gfc_add_data_component (st->n.sym->assoc->target);
+	{
+	  gfc_add_data_component (st->n.sym->assoc->target);
+	  /* Fixup the target expression if necessary.  */
+	  if (rank)
+	    fixup_array_ref (&st->n.sym->assoc->target, NULL, rank, ref);
+	}
 
       new_st = gfc_get_code (EXEC_BLOCK);
       new_st->ext.block.ns = gfc_build_block_ns (ns);
@@ -8654,6 +8745,9 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
   gfc_current_ns = ns;
   gfc_resolve_blocks (code->block, gfc_current_ns);
   gfc_current_ns = old_ns;
+
+  if (ref)
+    free (ref);
 
   resolve_select (code, true);
 }
@@ -9817,10 +9911,6 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
 		     "requires %<-frealloc-lhs%>", &lhs->where);
 	  return false;
 	}
-      /* See PR 43366.  */
-      gfc_error ("Assignment to an allocatable polymorphic variable at %L "
-		 "is not yet supported", &lhs->where);
-      return false;
     }
   else if (lhs->ts.type == BT_CLASS)
     {
@@ -10723,6 +10813,19 @@ start:
 	      break;
 
 	    gfc_check_pointer_assign (code->expr1, code->expr2);
+
+	    /* Assigning a class object always is a regular assign.  */
+	    if (code->expr2->ts.type == BT_CLASS
+		&& !CLASS_DATA (code->expr2)->attr.dimension
+		&& !(UNLIMITED_POLY (code->expr2)
+		     && code->expr1->ts.type == BT_DERIVED
+		     && (code->expr1->ts.u.derived->attr.sequence
+			 || code->expr1->ts.u.derived->attr.is_bind_c))
+		&& !(gfc_expr_attr (code->expr1).proc_pointer
+		     && code->expr2->expr_type == EXPR_VARIABLE
+		     && code->expr2->symtree->n.sym->attr.flavor
+			== FL_PROCEDURE))
+	      code->op = EXEC_ASSIGN;
 	    break;
 	  }
 
@@ -11577,7 +11680,7 @@ resolve_fl_variable (gfc_symbol *sym, int mp_flag)
   if (!deferred_requirements (sym))
     return false;
 
-  if (sym->ts.type == BT_CHARACTER)
+  if (sym->ts.type == BT_CHARACTER && !sym->attr.associate_var)
     {
       /* Make sure that character string variables with assumed length are
 	 dummy arguments.  */
@@ -13775,6 +13878,19 @@ resolve_symbol (gfc_symbol *sym)
      (just like derived type declaration symbols have flavor FL_DERIVED). */
   gcc_assert (sym->ts.type != BT_UNION);
 
+  /* Coarrayed polymorphic objects with allocatable or pointer components are
+     yet unsupported for -fcoarray=lib.  */
+  if (flag_coarray == GFC_FCOARRAY_LIB && sym->ts.type == BT_CLASS
+      && sym->ts.u.derived && CLASS_DATA (sym)
+      && CLASS_DATA (sym)->attr.codimension
+      && (sym->ts.u.derived->attr.alloc_comp
+	  || sym->ts.u.derived->attr.pointer_comp))
+    {
+      gfc_error ("Sorry, allocatable/pointer components in polymorphic (CLASS) "
+		 "type coarrays at %L are unsupported", &sym->declared_at);
+      return;
+    }
+
   if (sym->attr.artificial)
     return;
 
@@ -13886,7 +14002,10 @@ resolve_symbol (gfc_symbol *sym)
 	  /* The specific case of an external procedure should emit an error
 	     in the case that there is no implicit type.  */
 	  if (!mp_flag)
-	    gfc_set_default_type (sym, sym->attr.external, NULL);
+	    {
+	      if (!sym->attr.mixed_entry_master)
+		gfc_set_default_type (sym, sym->attr.external, NULL);
+	    }
 	  else
 	    {
 	      /* Result may be in another namespace.  */

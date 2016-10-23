@@ -148,9 +148,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
        *  @brief  Default constructor creates no elements.
        */
       set()
-#if __cplusplus >= 201103L
-      noexcept(is_nothrow_default_constructible<allocator_type>::value)
-#endif
+      _GLIBCXX_NOEXCEPT_IF(
+	  is_nothrow_default_constructible<allocator_type>::value
+	  && is_nothrow_default_constructible<key_compare>::value)
       : _M_t() { }
 
       /**
@@ -565,7 +565,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       /// Extract a node.
       node_type
       extract(const_iterator __pos)
-      { return _M_t.extract(__pos); }
+      {
+	__glibcxx_assert(__pos != end());
+	return _M_t.extract(__pos);
+      }
 
       /// Extract a node.
       node_type

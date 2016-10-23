@@ -344,6 +344,18 @@
 #  error "__cpp_hex_float != 201603"
 #endif
 
+#ifndef __cpp_aggregate_bases
+#  error "__cpp_aggregate_bases"
+#elif __cpp_aggregate_bases != 201603
+#  error "__cpp_aggregate_bases != 201603"
+#endif
+
+#ifndef __cpp_deduction_guides
+#  error "__cpp_deduction_guides"
+#elif __cpp_deduction_guides != 201606
+#  error "__cpp_deduction_guides != 201606"
+#endif
+
 #ifndef __cpp_if_constexpr
 #  error "__cpp_if_constexpr"
 #elif __cpp_if_constexpr != 201606
@@ -354,6 +366,18 @@
 #  error "__cpp_aligned_new"
 #elif __cpp_aligned_new != 201606
 #  error "__cpp_aligned_new != 201606"
+#endif
+
+#ifndef __cpp_inline_variables
+#  error "__cpp_inline_variables"
+#elif __cpp_inline_variables != 201606
+#  error "__cpp_inline_variables != 201606"
+#endif
+
+#ifndef __cpp_capture_star_this
+#  error "__cpp_capture_star_this"
+#elif __cpp_capture_star_this != 201603
+#  error "__cpp_capture_star_this != 201603"
 #endif
 
 #ifdef __has_cpp_attribute
@@ -368,6 +392,12 @@
 #    error "__has_cpp_attribute(nodiscard)"
 #  elif __has_cpp_attribute(nodiscard) != 201603
 #    error "__has_cpp_attribute(nodiscard) != 201603"
+#  endif
+
+#  if ! __has_cpp_attribute(fallthrough)
+#    error "__has_cpp_attribute(fallthrough)"
+#  elif __has_cpp_attribute(fallthrough) != 201603
+#    error "__has_cpp_attribute(fallthrough) != 201603"
 #  endif
 
 #else

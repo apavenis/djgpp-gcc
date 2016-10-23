@@ -134,9 +134,9 @@ endif
 # pass -mlong-double-64.
 if GLIBCXX_LDBL_COMPAT
 compatibility-ldbl.lo: compatibility-ldbl.cc
-	$(LTCXXCOMPILE) -mlong-double-64 -c $<
+	$(LTCXXCOMPILE) $(LONG_DOUBLE_COMPAT_FLAGS) -c $<
 compatibility-ldbl.o: compatibility-ldbl.cc
-	$(CXXCOMPILE) -mlong-double-64 -c $<
+	$(CXXCOMPILE) $(LONG_DOUBLE_COMPAT_FLAGS) -c $<
 endif
 
 # Use special rules for C++11 files/objects.

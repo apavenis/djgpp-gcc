@@ -28,6 +28,7 @@
 #include "cfghooks.h"
 #include "cfgloop.h"
 #include "df.h"
+#include "memmodel.h"
 #include "tm_p.h"
 #include "optabs.h"
 #include "regs.h"
@@ -2693,7 +2694,6 @@ cc_flags_for_code (enum rtx_code code)
     case LT:	/* N */
     case GE:	/* ~N */
       return CC_FLAG_N;
-      break;
 
     case GT:    /* ~(Z|(N^V)) */
     case LE:    /* Z|(N^V) */

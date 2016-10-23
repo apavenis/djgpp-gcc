@@ -20,6 +20,8 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_PRINT_RTL_H
 #define GCC_PRINT_RTL_H
 
+extern bool flag_compact;
+
 #ifdef BUFSIZ
 extern void print_rtl (FILE *, const_rtx);
 #endif
@@ -35,5 +37,7 @@ extern void print_insn (pretty_printer *pp, const rtx_insn *x, int verbose);
 
 extern void rtl_dump_bb_for_graph (pretty_printer *, basic_block);
 extern const char *str_pattern_slim (const_rtx);
+
+extern void print_rtx_function (FILE *file, function *fn, bool compact);
 
 #endif  // GCC_PRINT_RTL_H

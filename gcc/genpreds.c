@@ -74,7 +74,7 @@ validate_exp (rtx exp, const char *name, file_location loc)
 	      }
 	  }
       }
-      /* fall through */
+      gcc_fallthrough ();
 
       /* These need no special checking.  */
     case MATCH_OPERAND:
@@ -154,7 +154,7 @@ write_predicate_subfunction (struct pred_data *p)
   printf ("static inline int\n"
 	  "%s_1 (rtx op, machine_mode mode ATTRIBUTE_UNUSED)\n",
 	  p->name);
-  print_md_ptr_loc (p->c_block);
+  rtx_reader_ptr->print_md_ptr_loc (p->c_block);
   if (p->c_block[0] == '{')
     fputs (p->c_block, stdout);
   else
@@ -538,7 +538,7 @@ write_predicate_expr (rtx exp)
       break;
 
     case MATCH_TEST:
-      print_c_condition (XSTR (exp, 0));
+      rtx_reader_ptr->print_c_condition (XSTR (exp, 0));
       break;
 
     default:
@@ -1569,6 +1569,7 @@ write_insn_preds_c (void)
 #include \"varasm.h\"\n\
 #include \"stor-layout.h\"\n\
 #include \"calls.h\"\n\
+#include \"memmodel.h\"\n\
 #include \"tm_p.h\"\n\
 #include \"insn-config.h\"\n\
 #include \"recog.h\"\n\

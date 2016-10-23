@@ -167,7 +167,7 @@ ptr_deref_may_alias_decl_p (tree ptr, tree decl)
        && TREE_CODE (ptr) != ADDR_EXPR
        && TREE_CODE (ptr) != POINTER_PLUS_EXPR)
       || !POINTER_TYPE_P (TREE_TYPE (ptr))
-      || (TREE_CODE (decl) != VAR_DECL
+      || (!VAR_P (decl)
 	  && TREE_CODE (decl) != PARM_DECL
 	  && TREE_CODE (decl) != RESULT_DECL))
     return true;
@@ -338,7 +338,7 @@ ptrs_compare_unequal (tree ptr1, tree ptr2)
       tree tem = get_base_address (TREE_OPERAND (ptr1, 0));
       if (! tem)
 	return false;
-      if (TREE_CODE (tem) == VAR_DECL
+      if (VAR_P (tem)
 	  || TREE_CODE (tem) == PARM_DECL
 	  || TREE_CODE (tem) == RESULT_DECL)
 	obj1 = tem;
@@ -350,12 +350,19 @@ ptrs_compare_unequal (tree ptr1, tree ptr2)
       tree tem = get_base_address (TREE_OPERAND (ptr2, 0));
       if (! tem)
 	return false;
-      if (TREE_CODE (tem) == VAR_DECL
+      if (VAR_P (tem)
 	  || TREE_CODE (tem) == PARM_DECL
 	  || TREE_CODE (tem) == RESULT_DECL)
 	obj2 = tem;
       else if (TREE_CODE (tem) == MEM_REF)
 	ptr2 = TREE_OPERAND (tem, 0);
+    }
+
+  /* Canonicalize ptr vs. object.  */
+  if (TREE_CODE (ptr1) == SSA_NAME && obj2)
+    {
+      std::swap (ptr1, ptr2);
+      std::swap (obj1, obj2);
     }
 
   if (obj1 && obj2)
@@ -368,14 +375,15 @@ ptrs_compare_unequal (tree ptr1, tree ptr2)
 	 may be in fact obj1.  */
       if (!pi || pi->pt.vars_contains_restrict)
 	return false;
+      if (VAR_P (obj1)
+	  && (TREE_STATIC (obj1) || DECL_EXTERNAL (obj1)))
+	{
+	  varpool_node *node = varpool_node::get (obj1);
+	  /* If obj1 may bind to NULL give up (see below).  */
+	  if (! node || ! node->nonzero_address ())
+	    return false;
+	}
       return !pt_solution_includes (&pi->pt, obj1);
-    }
-  else if (TREE_CODE (ptr1) == SSA_NAME && obj2)
-    {
-      struct ptr_info_def *pi = SSA_NAME_PTR_INFO (ptr1);
-      if (!pi || pi->pt.vars_contains_restrict)
-	return false;
-      return !pt_solution_includes (&pi->pt, obj2);
     }
 
   /* ???  We'd like to handle ptr1 != NULL and ptr1 != ptr2
@@ -1819,9 +1827,7 @@ ref_maybe_used_by_call_p_1 (gcall *call, ao_ref *ref)
 
   /* Check if base is a global static variable that is not read
      by the function.  */
-  if (callee != NULL_TREE
-      && TREE_CODE (base) == VAR_DECL
-      && TREE_STATIC (base))
+  if (callee != NULL_TREE && VAR_P (base) && TREE_STATIC (base))
     {
       struct cgraph_node *node = cgraph_node::get (callee);
       bitmap not_read;
@@ -2208,9 +2214,7 @@ call_may_clobber_ref_p_1 (gcall *call, ao_ref *ref)
 
   /* Check if base is a global static variable that is not written
      by the function.  */
-  if (callee != NULL_TREE
-      && TREE_CODE (base) == VAR_DECL
-      && TREE_STATIC (base))
+  if (callee != NULL_TREE && VAR_P (base) && TREE_STATIC (base))
     {
       struct cgraph_node *node = cgraph_node::get (callee);
       bitmap not_written;

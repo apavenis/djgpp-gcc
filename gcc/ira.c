@@ -371,6 +371,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "rtl.h"
 #include "tree.h"
 #include "df.h"
+#include "memmodel.h"
 #include "tm_p.h"
 #include "insn-config.h"
 #include "regs.h"
@@ -5063,6 +5064,8 @@ ira (FILE *f)
   int ira_max_point_before_emit;
   bool saved_flag_caller_saves = flag_caller_saves;
   enum ira_region saved_flag_ira_region = flag_ira_region;
+
+  clear_bb_flags ();
 
   /* Perform target specific PIC register initialization.  */
   targetm.init_pic_reg ();

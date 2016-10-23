@@ -191,6 +191,21 @@ class Error_statement : public Statement
   do_dump_statement(Ast_dump_context*) const;
 };
 
+//
+// Helper to tack on available source position information
+// at the end of a statement.
+//
+static std::string
+dsuffix(Location location)
+{
+  std::string lstr = Linemap::location_to_string(location);
+  if (lstr == "")
+    return lstr;
+  std::string rval(" // ");
+  rval += lstr;
+  return rval;
+}
+
 // Dump the AST representation for an error statement.
 
 void
@@ -338,7 +353,7 @@ Variable_declaration_statement::do_dump_statement(
       ast_dump_context->ostream() <<  "= ";
       ast_dump_context->dump_expression(var->init());
     }
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a variable declaration.
@@ -533,7 +548,7 @@ Temporary_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
       ast_dump_context->ostream() << " = ";
       ast_dump_context->dump_expression(this->init_);
     }
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make and initialize a temporary variable in BLOCK.
@@ -839,7 +854,7 @@ Assignment_statement::do_dump_statement(Ast_dump_context* ast_dump_context)
   ast_dump_context->dump_expression(this->lhs_);
   ast_dump_context->ostream() << " = " ;
   ast_dump_context->dump_expression(this->rhs_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make an assignment statement.
@@ -980,7 +995,7 @@ Assignment_operation_statement::do_dump_statement(
   ast_dump_context->dump_expression(this->lhs_);
   ast_dump_context->dump_operator(this->op_);
   ast_dump_context->dump_expression(this->rhs_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make an assignment operation statement.
@@ -1126,7 +1141,7 @@ Tuple_assignment_statement::do_dump_statement(
   ast_dump_context->dump_expression_list(this->lhs_);
   ast_dump_context->ostream() << " = ";
   ast_dump_context->dump_expression_list(this->rhs_);
-  ast_dump_context->ostream()  << std::endl;
+  ast_dump_context->ostream()  << dsuffix(location()) << std::endl;
 }
 
 // Make a tuple assignment statement.
@@ -1287,7 +1302,7 @@ Tuple_map_assignment_statement::do_dump_statement(
   ast_dump_context->dump_expression(this->present_);
   ast_dump_context->ostream() << " = ";
   ast_dump_context->dump_expression(this->map_index_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a map assignment statement which returns a pair of values.
@@ -1429,7 +1444,7 @@ Tuple_receive_assignment_statement::do_dump_statement(
   ast_dump_context->dump_expression(this->closed_);
   ast_dump_context->ostream() << " <- ";
   ast_dump_context->dump_expression(this->channel_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a nonblocking receive statement.
@@ -1623,7 +1638,7 @@ Tuple_type_guard_assignment_statement::do_dump_statement(
   ast_dump_context->dump_expression(this->expr_);
   ast_dump_context->ostream() << " . ";
   ast_dump_context->dump_type(this->type_);
-  ast_dump_context->ostream()  << std::endl;
+  ast_dump_context->ostream()  << dsuffix(location()) << std::endl;
 }
 
 // Make an assignment from a type guard to a pair of variables.
@@ -1720,7 +1735,7 @@ Expression_statement::do_dump_statement(Ast_dump_context* ast_dump_context)
 {
   ast_dump_context->print_indent();
   ast_dump_context->dump_expression(expr_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make an expression statement from an Expression.
@@ -1810,7 +1825,7 @@ Inc_dec_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
 {
   ast_dump_context->print_indent();
   ast_dump_context->dump_expression(expr_);
-  ast_dump_context->ostream() << (is_inc_? "++": "--") << std::endl;
+  ast_dump_context->ostream() << (is_inc_? "++": "--") << dsuffix(location()) << std::endl;
 }
 
 // Make an increment statement.
@@ -2501,7 +2516,7 @@ Go_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
   ast_dump_context->print_indent();
   ast_dump_context->ostream() << "go ";
   ast_dump_context->dump_expression(this->call());
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a go statement.
@@ -2539,7 +2554,7 @@ Defer_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
   ast_dump_context->print_indent();
   ast_dump_context->ostream() << "defer ";
   ast_dump_context->dump_expression(this->call());
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a defer statement.
@@ -2733,7 +2748,7 @@ Return_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
   ast_dump_context->print_indent();
   ast_dump_context->ostream() << "return " ;
   ast_dump_context->dump_expression_list(this->vals_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a return statement.
@@ -2816,7 +2831,7 @@ Bc_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
       ast_dump_context->ostream() << " ";
       ast_dump_context->dump_label_name(this->label_);
     }
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a break statement.
@@ -2873,7 +2888,7 @@ void
 Goto_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
 {
   ast_dump_context->print_indent();
-  ast_dump_context->ostream() << "goto " << this->label_->name() << std::endl;
+  ast_dump_context->ostream() << "goto " << this->label_->name() << dsuffix(location()) << std::endl;
 }
 
 // Make a goto statement.
@@ -2909,7 +2924,7 @@ Goto_unnamed_statement::do_dump_statement(
   ast_dump_context->print_indent();
   ast_dump_context->ostream() << "goto ";
   ast_dump_context->dump_label_name(this->label_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a goto statement to an unnamed label.
@@ -2952,7 +2967,7 @@ void
 Label_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
 {
   ast_dump_context->print_indent();
-  ast_dump_context->ostream() << this->label_->name() << ":" << std::endl;
+  ast_dump_context->ostream() << this->label_->name() << ":" << dsuffix(location()) << std::endl;
 }
 
 // Make a label statement.
@@ -2992,7 +3007,7 @@ Unnamed_label_statement::do_dump_statement(Ast_dump_context* ast_dump_context)
 {
   ast_dump_context->print_indent();
   ast_dump_context->dump_label_name(this->label_);
-  ast_dump_context->ostream() << ":" << std::endl;
+  ast_dump_context->ostream() << ":" << dsuffix(location()) << std::endl;
 }
 
 // Make an unnamed label statement.
@@ -3077,7 +3092,7 @@ If_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
   ast_dump_context->print_indent();
   ast_dump_context->ostream() << "if ";
   ast_dump_context->dump_expression(this->cond_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
   if (ast_dump_context->dump_subblocks())
     {
       ast_dump_context->dump_block(this->then_block_);
@@ -3391,7 +3406,7 @@ Case_clauses::Case_clause::dump_clause(Ast_dump_context* ast_dump_context)
   if (this->is_fallthrough_)
     {
       ast_dump_context->print_indent();
-      ast_dump_context->ostream() <<  " (fallthrough)" << std::endl;
+      ast_dump_context->ostream() <<  " (fallthrough)" << dsuffix(location()) << std::endl;
     }
 }
 
@@ -3782,7 +3797,7 @@ Switch_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
     }
   if (ast_dump_context->dump_subblocks())
     {
-      ast_dump_context->ostream() << " {" << std::endl;
+      ast_dump_context->ostream() << " {" << dsuffix(location()) << std::endl;
       this->clauses_->dump_clauses(ast_dump_context);
       ast_dump_context->print_indent();
       ast_dump_context->ostream() << "}";
@@ -3879,7 +3894,7 @@ Type_case_clauses::Type_case_clause::lower(Type* switch_val_type,
       else
 	cond = Runtime::make_call((type->interface_type() == NULL
 				   ? Runtime::IFACETYPEEQ
-				   : Runtime::IFACEI2TP),
+				   : Runtime::IFACET2IP),
 				  loc, 2,
 				  Expression::make_type_descriptor(type, loc),
 				  ref);
@@ -4202,7 +4217,7 @@ Type_switch_statement::do_dump_statement(Ast_dump_context* ast_dump_context)
   ast_dump_context->ostream() << " .(type)";
   if (ast_dump_context->dump_subblocks())
     {
-      ast_dump_context->ostream() << " {" << std::endl;
+      ast_dump_context->ostream() << " {" << dsuffix(location()) << std::endl;
       this->clauses_->dump_clauses(ast_dump_context);
       ast_dump_context->ostream() << "}";
     }
@@ -4315,7 +4330,6 @@ Send_statement::do_get_backend(Translate_context* context)
 						       element_type,
 						       this->val_, loc);
 
-  bool is_small;
   bool can_take_address;
   switch (element_type->base()->classification())
     {
@@ -4325,25 +4339,18 @@ Send_statement::do_get_backend(Translate_context* context)
     case Type::TYPE_POINTER:
     case Type::TYPE_MAP:
     case Type::TYPE_CHANNEL:
-      is_small = true;
-      can_take_address = false;
-      break;
-
     case Type::TYPE_FLOAT:
     case Type::TYPE_COMPLEX:
     case Type::TYPE_STRING:
     case Type::TYPE_INTERFACE:
-      is_small = false;
       can_take_address = false;
       break;
 
     case Type::TYPE_STRUCT:
-      is_small = false;
       can_take_address = true;
       break;
 
     case Type::TYPE_ARRAY:
-      is_small = false;
       can_take_address = !element_type->is_slice_type();
       break;
 
@@ -4369,28 +4376,19 @@ Send_statement::do_get_backend(Translate_context* context)
   Expression* td = Expression::make_type_descriptor(this->channel_->type(),
 						    loc);
 
-  Runtime::Function code;
   Bstatement* btemp = NULL;
-  if (is_small)
-      {
-	// Type is small enough to handle as uint64.
-	code = Runtime::SEND_SMALL;
-	val = Expression::make_unsafe_cast(Type::lookup_integer_type("uint64"),
-					   val, loc);
-      }
-  else if (can_take_address)
+  if (can_take_address)
     {
-      // Must pass address of value.  The function doesn't change the
-      // value, so just take its address directly.
-      code = Runtime::SEND_BIG;
+      // The function doesn't change the value, so just take its
+      // address directly.
       val = Expression::make_unary(OPERATOR_AND, val, loc);
     }
   else
     {
-      // Must pass address of value, but the value is small enough
-      // that it might be in registers.  Copy value into temporary
-      // variable to take address.
-      code = Runtime::SEND_BIG;
+      // The value is not in a variable, or is small enough that it
+      // might be in a register, and taking the address would push it
+      // on the stack.  Copy it into a temporary variable to take the
+      // address.
       Temporary_statement* temp = Statement::make_temporary(element_type,
 							    val, loc);
       Expression* ref = Expression::make_temporary_reference(temp, loc);
@@ -4398,7 +4396,8 @@ Send_statement::do_get_backend(Translate_context* context)
       btemp = temp->get_backend(context);
     }
 
-  Expression* call = Runtime::make_call(code, loc, 3, td, this->channel_, val);
+  Expression* call = Runtime::make_call(Runtime::CHANSEND, loc, 3, td,
+					this->channel_, val);
 
   context->gogo()->lower_expression(context->function(), NULL, &call);
   Bexpression* bcall = call->get_backend(context);
@@ -4419,7 +4418,7 @@ Send_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
   ast_dump_context->dump_expression(this->channel_);
   ast_dump_context->ostream() << " <- ";
   ast_dump_context->dump_expression(this->val_);
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a send statement.
@@ -4476,6 +4475,7 @@ Select_clauses::Select_clause::lower(Gogo* gogo, Named_object* function,
   Location loc = this->location_;
 
   Expression* selref = Expression::make_temporary_reference(sel, loc);
+  selref = Expression::make_unary(OPERATOR_AND, selref, loc);
 
   Expression* index_expr = Expression::make_integer_ul(this->index_, NULL,
 						       loc);
@@ -4839,6 +4839,7 @@ Select_clauses::get_backend(Translate_context* context,
     }
 
   Expression* selref = Expression::make_temporary_reference(sel, location);
+  selref = Expression::make_unary(OPERATOR_AND, selref, location);
   Expression* call = Runtime::make_call(Runtime::SELECTGO, location, 1,
 					selref);
   context->gogo()->lower_expression(context->function(), NULL, &call);
@@ -4905,12 +4906,26 @@ Select_statement::do_lower(Gogo* gogo, Named_object* function,
 
   go_assert(this->sel_ == NULL);
 
-  Expression* size_expr = Expression::make_integer_ul(this->clauses_->size(),
-						      NULL, loc);
-  Expression* call = Runtime::make_call(Runtime::NEWSELECT, loc, 1, size_expr);
-
-  this->sel_ = Statement::make_temporary(NULL, call, loc);
+  int ncases = this->clauses_->size();
+  Type* selstruct_type = Channel_type::select_type(ncases);
+  this->sel_ = Statement::make_temporary(selstruct_type, NULL, loc);
   b->add_statement(this->sel_);
+
+  int64_t selstruct_size;
+  if (!selstruct_type->backend_type_size(gogo, &selstruct_size))
+    {
+      go_assert(saw_errors());
+      return Statement::make_error_statement(loc);
+    }
+
+  Expression* ref = Expression::make_temporary_reference(this->sel_, loc);
+  ref = Expression::make_unary(OPERATOR_AND, ref, loc);
+  Expression* selstruct_size_expr =
+    Expression::make_integer_int64(selstruct_size, NULL, loc);
+  Expression* size_expr = Expression::make_integer_ul(ncases, NULL, loc);
+  Expression* call = Runtime::make_call(Runtime::NEWSELECT, loc, 3,
+					ref, selstruct_size_expr, size_expr);
+  b->add_statement(Statement::make_statement(call, true));
 
   this->clauses_->lower(gogo, function, b, this->sel_);
   this->is_lowered_ = true;
@@ -4950,7 +4965,7 @@ Select_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
   ast_dump_context->ostream() << "select";
   if (ast_dump_context->dump_subblocks())
     {
-      ast_dump_context->ostream() << " {" << std::endl;
+      ast_dump_context->ostream() << " {" << dsuffix(location()) << std::endl;
       this->clauses_->dump_clauses(ast_dump_context);
       ast_dump_context->ostream() << "}";
     }
@@ -5143,7 +5158,7 @@ For_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
       ast_dump_context->ostream() << "}";
     }
 
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a for statement.
@@ -5895,7 +5910,7 @@ For_range_statement::do_dump_statement(Ast_dump_context* ast_dump_context) const
       ast_dump_context->print_indent();
       ast_dump_context->ostream() << "}";
     }
-  ast_dump_context->ostream() << std::endl;
+  ast_dump_context->ostream() << dsuffix(location()) << std::endl;
 }
 
 // Make a for statement with a range clause.

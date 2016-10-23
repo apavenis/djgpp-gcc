@@ -267,8 +267,9 @@ read_sf_internal (st_parameter_dt *dtp, int * length)
 
   dtp->u.p.current_unit->bytes_left -= *length;
 
-  if ((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0)
-    dtp->u.p.size_used += (GFC_IO_INT) *length;
+  if (((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0) ||
+      dtp->u.p.current_unit->has_size)
+    dtp->u.p.current_unit->size_used += (GFC_IO_INT) *length;
 
   return base;
 
@@ -397,8 +398,9 @@ read_sf (st_parameter_dt *dtp, int * length)
 
   dtp->u.p.current_unit->bytes_left -= n;
 
-  if ((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0)
-    dtp->u.p.size_used += (GFC_IO_INT) n;
+  if (((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0) ||
+      dtp->u.p.current_unit->has_size)
+    dtp->u.p.current_unit->size_used += (GFC_IO_INT) n;
 
   /* We can't call fbuf_getptr before the loop doing fbuf_getc, because
      fbuf_getc might reallocate the buffer.  So return current pointer
@@ -478,8 +480,9 @@ read_block_form (st_parameter_dt *dtp, int * nbytes)
   source = fbuf_read (dtp->u.p.current_unit, nbytes);
   fbuf_seek (dtp->u.p.current_unit, *nbytes, SEEK_CUR);
 
-  if ((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0)
-    dtp->u.p.size_used += (GFC_IO_INT) *nbytes;
+  if (((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0) ||
+      dtp->u.p.current_unit->has_size)
+    dtp->u.p.current_unit->size_used += (GFC_IO_INT) *nbytes;
 
   if (norig != *nbytes)
     {
@@ -536,8 +539,9 @@ read_block_form4 (st_parameter_dt *dtp, int * nbytes)
 
   dtp->u.p.current_unit->bytes_left -= *nbytes;
 
-  if ((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0)
-    dtp->u.p.size_used += (GFC_IO_INT) *nbytes;
+  if (((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0) ||
+      dtp->u.p.current_unit->has_size)
+    dtp->u.p.current_unit->size_used += (GFC_IO_INT) *nbytes;
 
   return source;
 }
@@ -770,8 +774,9 @@ write_block (st_parameter_dt *dtp, int length)
 	}
     }
 
-  if ((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0)
-    dtp->u.p.size_used += (GFC_IO_INT) length;
+  if (((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0) ||
+      dtp->u.p.current_unit->has_size)
+    dtp->u.p.current_unit->size_used += (GFC_IO_INT) length;
 
   dtp->u.p.current_unit->strm_pos += (gfc_offset) length;
 
@@ -2596,24 +2601,22 @@ data_transfer_init (st_parameter_dt *dtp, int read_flag)
   if ((dtp->common.flags & IOPARM_LIBRETURN_MASK) != IOPARM_LIBRETURN_OK)
     return;
 
-  if ((cf & IOPARM_DT_HAS_SIZE) != 0)
-    dtp->u.p.size_used = 0;  /* Initialize the count.  */
-
   dtp->u.p.current_unit = get_unit (dtp, 1);
 
-  if (dtp->u.p.current_unit->s == NULL)
+  if (dtp->u.p.current_unit == NULL)
+    {
+      /* This means we tried to access an external unit < 0 without
+	 having opened it first with NEWUNIT=.  */
+      generate_error (&dtp->common, LIBERROR_BAD_OPTION,
+		      "Unit number is negative and unit was not already "
+		      "opened with OPEN(NEWUNIT=...)");
+      return;
+    }
+  else if (dtp->u.p.current_unit->s == NULL)
     {  /* Open the unit with some default flags.  */
        st_parameter_open opp;
        unit_convert conv;
 
-      if (dtp->common.unit < 0 && !is_internal_unit (dtp))
-	{
-	  close_unit (dtp->u.p.current_unit);
-	  dtp->u.p.current_unit = NULL;
-	  generate_error (&dtp->common, LIBERROR_BAD_OPTION,
-			  "Bad unit number in statement");
-	  return;
-	}
       memset (&u_flags, '\0', sizeof (u_flags));
       u_flags.access = ACCESS_SEQUENTIAL;
       u_flags.action = ACTION_READWRITE;
@@ -2671,6 +2674,18 @@ data_transfer_init (st_parameter_dt *dtp, int read_flag)
       dtp->common.flags |= (opp.common.flags & IOPARM_COMMON_MASK);
       if (dtp->u.p.current_unit == NULL)
 	return;
+    }
+
+  if (dtp->u.p.current_unit->child_dtio == 0)
+    {
+      if ((cf & IOPARM_DT_HAS_SIZE) != 0)
+	{
+	  dtp->u.p.current_unit->has_size = true;
+	  /* Initialize the count.  */
+	  dtp->u.p.current_unit->size_used = 0;
+	}
+      else
+	dtp->u.p.current_unit->has_size = false;
     }
 
   /* Check the action.  */
@@ -3720,6 +3735,8 @@ next_record (st_parameter_dt *dtp, int done)
   else
     next_record_w (dtp, done);
 
+  fbuf_flush (dtp->u.p.current_unit, dtp->u.p.mode);
+
   if (!is_stream_io (dtp))
     {
       /* Since we have changed the position, set it to unspecified so
@@ -3733,8 +3750,8 @@ next_record (st_parameter_dt *dtp, int done)
 	  fp = stell (dtp->u.p.current_unit->s);
 	  /* Calculate next record, rounding up partial records.  */
 	  dtp->u.p.current_unit->last_record =
-	    (fp + dtp->u.p.current_unit->recl - 1) /
-	      dtp->u.p.current_unit->recl;
+	    (fp + dtp->u.p.current_unit->recl) /
+	      dtp->u.p.current_unit->recl - 1;
 	}
       else
 	dtp->u.p.current_unit->last_record++;
@@ -3743,7 +3760,6 @@ next_record (st_parameter_dt *dtp, int done)
   if (!done)
     pre_position (dtp);
 
-  fbuf_flush (dtp->u.p.current_unit, dtp->u.p.mode);
   smarkeor (dtp->u.p.current_unit->s);
 }
 
@@ -3767,10 +3783,17 @@ finalize_transfer (st_parameter_dt *dtp)
     }
 
   if (dtp->u.p.current_unit && (dtp->u.p.current_unit->child_dtio  > 0))
-    return;
+    {
+      if (cf & IOPARM_DT_HAS_FORMAT)
+        {
+	  free (dtp->u.p.fmt);
+	  free (dtp->format);
+	}
+      return;
+    }
 
   if ((dtp->common.flags & IOPARM_DT_HAS_SIZE) != 0)
-    *dtp->size = dtp->u.p.size_used;
+    *dtp->size = dtp->u.p.current_unit->size_used;
 
   if (dtp->u.p.eor_condition)
     {
@@ -3956,7 +3979,6 @@ st_read_done (st_parameter_dt *dtp)
         {
 	  free (dtp->u.p.current_unit->filename);
 	  dtp->u.p.current_unit->filename = NULL;
-	  free_format_hash_table (dtp->u.p.current_unit);
 	  free (dtp->u.p.current_unit->s);
 	  dtp->u.p.current_unit->s = NULL;
 	  if (dtp->u.p.current_unit->ls)
@@ -4027,7 +4049,6 @@ st_write_done (st_parameter_dt *dtp)
 	{
 	  free (dtp->u.p.current_unit->filename);
 	  dtp->u.p.current_unit->filename = NULL;
-	  free_format_hash_table (dtp->u.p.current_unit);
 	  free (dtp->u.p.current_unit->s);
 	  dtp->u.p.current_unit->s = NULL;
 	  if (dtp->u.p.current_unit->ls)

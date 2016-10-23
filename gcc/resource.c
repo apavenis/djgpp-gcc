@@ -23,6 +23,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "backend.h"
 #include "rtl.h"
 #include "df.h"
+#include "memmodel.h"
 #include "tm_p.h"
 #include "regs.h"
 #include "emit-rtl.h"
@@ -364,6 +365,7 @@ mark_referenced_resources (rtx x, struct resources *res,
 	}
 
       /* ... fall through to other INSN processing ...  */
+      gcc_fallthrough ();
 
     case INSN:
     case JUMP_INSN:
@@ -674,6 +676,7 @@ mark_set_resources (rtx x, struct resources *res, int in_dest,
 	}
 
       /* ... and also what its RTL says it modifies, if anything.  */
+      gcc_fallthrough ();
 
     case JUMP_INSN:
     case INSN:

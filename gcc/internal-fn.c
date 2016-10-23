@@ -30,6 +30,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-vrp.h"
 #include "tree-ssanames.h"
 #include "expmed.h"
+#include "memmodel.h"
 #include "optabs.h"
 #include "emit-rtl.h"
 #include "diagnostic-core.h"
@@ -242,6 +243,15 @@ static void
 expand_TSAN_FUNC_EXIT (internal_fn, gcall *)
 {
   gcc_unreachable ();
+}
+
+/* This should get expanded in the lower pass.  */
+
+static void
+expand_FALLTHROUGH (internal_fn, gcall *call)
+{
+  error_at (gimple_location (call),
+	    "invalid use of attribute %<fallthrough%>");
 }
 
 /* Helper function for expand_addsub_overflow.  Return 1

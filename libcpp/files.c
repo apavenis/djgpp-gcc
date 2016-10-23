@@ -1708,7 +1708,7 @@ remap_filename (cpp_reader *pfile, _cpp_file *file)
       new_dir = XNEWVEC (char, len + 2);
       p3 = new_dir + dir->len;
       memcpy (new_dir, dir->name, dir->len);
-      if (dir->len && !IS_DIR_SEPARATOR(dir->name[dir->len - 1]))
+      if (dir->len && !IS_DIR_SEPARATOR (dir->name[dir->len - 1]))
 	{
 	  *p3++ = '/';
 	  len++;

@@ -514,7 +514,7 @@ typedef struct st_parameter_dt
 	     large enough to hold a complex value (two reals) of the
 	     largest kind.  */
 	  char value[32];
-	  GFC_IO_INT size_used;
+	  GFC_IO_INT not_used; /* Needed for alignment. */
 	  formatted_dtio fdtio_ptr;
 	  unformatted_dtio ufdtio_ptr;
 	} p;
@@ -650,6 +650,8 @@ typedef struct gfc_unit
   /* DTIO Parent/Child procedure, 0 = parent, >0 = child level.  */
   int child_dtio;
   int last_char;
+  bool has_size;
+  GFC_IO_INT size_used;
 }
 gfc_unit;
 
@@ -659,6 +661,21 @@ typedef struct gfc_saved_unit
   gfc_unit *unit;
 }
 gfc_saved_unit;
+
+/* TEMP_FAILURE_RETRY macro from glibc.  */
+
+#ifndef TEMP_FAILURE_RETRY
+/* Evaluate EXPRESSION, and repeat as long as it returns -1 with `errno'
+   set to EINTR.  */
+
+# define TEMP_FAILURE_RETRY(expression) \
+  (__extension__                                                              \
+    ({ long int __result;                                                     \
+       do __result = (long int) (expression);                                 \
+       while (__result == -1L && errno == EINTR);                             \
+       __result; }))
+#endif
+
 
 /* unit.c */
 
@@ -700,8 +717,9 @@ internal_proto (finish_last_advance_record);
 extern int unit_truncate (gfc_unit *, gfc_offset, st_parameter_common *);
 internal_proto (unit_truncate);
 
-extern GFC_INTEGER_4 get_unique_unit_number (st_parameter_common *);
-internal_proto(get_unique_unit_number);
+extern int newunit_alloc (void);
+internal_proto(newunit_alloc);
+
 
 /* open.c */
 

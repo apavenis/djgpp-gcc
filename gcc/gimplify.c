@@ -160,6 +160,7 @@ struct gimplify_ctx
   unsigned in_cleanup_point_expr : 1;
   unsigned keep_stack : 1;
   unsigned save_stack : 1;
+  unsigned in_switch_expr : 1;
 };
 
 struct gimplify_omp_ctx
@@ -664,7 +665,7 @@ force_constant_size (tree var)
 
   HOST_WIDE_INT max_size;
 
-  gcc_assert (TREE_CODE (var) == VAR_DECL);
+  gcc_assert (VAR_P (var));
 
   max_size = max_int_size_in_bytes (TREE_TYPE (var));
 
@@ -1107,7 +1108,7 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
   /* Mark variables seen in this bind expr.  */
   for (t = BIND_EXPR_VARS (bind_expr); t ; t = DECL_CHAIN (t))
     {
-      if (TREE_CODE (t) == VAR_DECL)
+      if (VAR_P (t))
 	{
 	  struct gimplify_omp_ctx *ctx = gimplify_omp_ctxp;
 
@@ -1137,7 +1138,7 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
       if ((TREE_CODE (TREE_TYPE (t)) == COMPLEX_TYPE
 	   || TREE_CODE (TREE_TYPE (t)) == VECTOR_TYPE)
 	  && !TREE_THIS_VOLATILE (t)
-	  && (TREE_CODE (t) == VAR_DECL && !DECL_HARD_REGISTER (t))
+	  && (VAR_P (t) && !DECL_HARD_REGISTER (t))
 	  && !needs_to_live_in_memory (t))
 	DECL_GIMPLE_REG_P (t) = 1;
     }
@@ -1189,23 +1190,26 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
   /* Add clobbers for all variables that go out of scope.  */
   for (t = BIND_EXPR_VARS (bind_expr); t ; t = DECL_CHAIN (t))
     {
-      if (TREE_CODE (t) == VAR_DECL
+      if (VAR_P (t)
 	  && !is_global_var (t)
-	  && DECL_CONTEXT (t) == current_function_decl
-	  && !DECL_HARD_REGISTER (t)
-	  && !TREE_THIS_VOLATILE (t)
-	  && !DECL_HAS_VALUE_EXPR_P (t)
-	  /* Only care for variables that have to be in memory.  Others
-	     will be rewritten into SSA names, hence moved to the top-level.  */
-	  && !is_gimple_reg (t)
-	  && flag_stack_reuse != SR_NONE)
+	  && DECL_CONTEXT (t) == current_function_decl)
 	{
-	  tree clobber = build_constructor (TREE_TYPE (t), NULL);
-	  gimple *clobber_stmt;
-	  TREE_THIS_VOLATILE (clobber) = 1;
-	  clobber_stmt = gimple_build_assign (t, clobber);
-	  gimple_set_location (clobber_stmt, end_locus);
-	  gimplify_seq_add_stmt (&cleanup, clobber_stmt);
+	  if (!DECL_HARD_REGISTER (t)
+	      && !TREE_THIS_VOLATILE (t)
+	      && !DECL_HAS_VALUE_EXPR_P (t)
+	      /* Only care for variables that have to be in memory.  Others
+		 will be rewritten into SSA names, hence moved to the
+		 top-level.  */
+	      && !is_gimple_reg (t)
+	      && flag_stack_reuse != SR_NONE)
+	    {
+	      tree clobber = build_constructor (TREE_TYPE (t), NULL);
+	      gimple *clobber_stmt;
+	      TREE_THIS_VOLATILE (clobber) = 1;
+	      clobber_stmt = gimple_build_assign (t, clobber);
+	      gimple_set_location (clobber_stmt, end_locus);
+	      gimplify_seq_add_stmt (&cleanup, clobber_stmt);
+	    }
 
 	  if (flag_openacc && oacc_declare_returns != NULL)
 	    {
@@ -1449,7 +1453,7 @@ gimplify_decl_expr (tree *stmt_p, gimple_seq *seq_p)
     return GS_ERROR;
 
   if ((TREE_CODE (decl) == TYPE_DECL
-       || TREE_CODE (decl) == VAR_DECL)
+       || VAR_P (decl))
       && !TYPE_SIZES_GIMPLIFIED (TREE_TYPE (decl)))
     {
       gimplify_type_sizes (TREE_TYPE (decl), seq_p);
@@ -1468,7 +1472,7 @@ gimplify_decl_expr (tree *stmt_p, gimple_seq *seq_p)
 	gimplify_type_sizes (TREE_TYPE (DECL_ORIGINAL_TYPE (decl)), seq_p);
     }
 
-  if (TREE_CODE (decl) == VAR_DECL && !DECL_EXTERNAL (decl))
+  if (VAR_P (decl) && !DECL_EXTERNAL (decl))
     {
       tree init = DECL_INITIAL (decl);
 
@@ -1626,6 +1630,435 @@ maybe_warn_switch_unreachable (gimple_seq seq)
     }
 }
 
+
+/* A label entry that pairs label and a location.  */
+struct label_entry
+{
+  tree label;
+  location_t loc;
+};
+
+/* Find LABEL in vector of label entries VEC.  */
+
+static struct label_entry *
+find_label_entry (const auto_vec<struct label_entry> *vec, tree label)
+{
+  unsigned int i;
+  struct label_entry *l;
+
+  FOR_EACH_VEC_ELT (*vec, i, l)
+    if (l->label == label)
+      return l;
+  return NULL;
+}
+
+/* Return true if LABEL, a LABEL_DECL, represents a case label
+   in a vector of labels CASES.  */
+
+static bool
+case_label_p (const vec<tree> *cases, tree label)
+{
+  unsigned int i;
+  tree l;
+
+  FOR_EACH_VEC_ELT (*cases, i, l)
+    if (CASE_LABEL (l) == label)
+      return true;
+  return false;
+}
+
+/* Find the last statement in a scope STMT.  */
+
+static gimple *
+last_stmt_in_scope (gimple *stmt)
+{
+  if (!stmt)
+    return NULL;
+
+  switch (gimple_code (stmt))
+    {
+    case GIMPLE_BIND:
+      {
+	gbind *bind = as_a <gbind *> (stmt);
+	stmt = gimple_seq_last_stmt (gimple_bind_body (bind));
+	return last_stmt_in_scope (stmt);
+      }
+
+    case GIMPLE_TRY:
+      {
+	gtry *try_stmt = as_a <gtry *> (stmt);
+	stmt = gimple_seq_last_stmt (gimple_try_eval (try_stmt));
+	gimple *last_eval = last_stmt_in_scope (stmt);
+	if (gimple_stmt_may_fallthru (last_eval)
+	    && (last_eval == NULL
+		|| !gimple_call_internal_p (last_eval, IFN_FALLTHROUGH))
+	    && gimple_try_kind (try_stmt) == GIMPLE_TRY_FINALLY)
+	  {
+	    stmt = gimple_seq_last_stmt (gimple_try_cleanup (try_stmt));
+	    return last_stmt_in_scope (stmt);
+	  }
+	else
+	  return last_eval;
+      }
+
+    default:
+      return stmt;
+    }
+}
+
+/* Collect interesting labels in LABELS and return the statement preceding
+   another case label, or a user-defined label.  */
+
+static gimple *
+collect_fallthrough_labels (gimple_stmt_iterator *gsi_p,
+			    auto_vec <struct label_entry> *labels)
+{
+  gimple *prev = NULL;
+
+  do
+    {
+      if (gimple_code (gsi_stmt (*gsi_p)) == GIMPLE_BIND
+	  || gimple_code (gsi_stmt (*gsi_p)) == GIMPLE_TRY)
+	{
+	  /* Nested scope.  Only look at the last statement of
+	     the innermost scope.  */
+	  location_t bind_loc = gimple_location (gsi_stmt (*gsi_p));
+	  gimple *last = last_stmt_in_scope (gsi_stmt (*gsi_p));
+	  if (last)
+	    {
+	      prev = last;
+	      /* It might be a label without a location.  Use the
+		 location of the scope then.  */
+	      if (!gimple_has_location (prev))
+		gimple_set_location (prev, bind_loc);
+	    }
+	  gsi_next (gsi_p);
+	  continue;
+	}
+
+      /* Ifs are tricky.  */
+      if (gimple_code (gsi_stmt (*gsi_p)) == GIMPLE_COND)
+	{
+	  gcond *cond_stmt = as_a <gcond *> (gsi_stmt (*gsi_p));
+	  tree false_lab = gimple_cond_false_label (cond_stmt);
+	  location_t if_loc = gimple_location (cond_stmt);
+
+	  /* If we have e.g.
+	       if (i > 1) goto <D.2259>; else goto D;
+	     we can't do much with the else-branch.  */
+	  if (!DECL_ARTIFICIAL (false_lab))
+	    break;
+
+	  /* Go on until the false label, then one step back.  */
+	  for (; !gsi_end_p (*gsi_p); gsi_next (gsi_p))
+	    {
+	      gimple *stmt = gsi_stmt (*gsi_p);
+	      if (gimple_code (stmt) == GIMPLE_LABEL
+		  && gimple_label_label (as_a <glabel *> (stmt)) == false_lab)
+		break;
+	    }
+
+	  /* Not found?  Oops.  */
+	  if (gsi_end_p (*gsi_p))
+	    break;
+
+	  struct label_entry l = { false_lab, if_loc };
+	  labels->safe_push (l);
+
+	  /* Go to the last statement of the then branch.  */
+	  gsi_prev (gsi_p);
+
+	  /* if (i != 0) goto <D.1759>; else goto <D.1760>;
+	     <D.1759>:
+	     <stmt>;
+	     goto <D.1761>;
+	     <D.1760>:
+	   */
+	  if (gimple_code (gsi_stmt (*gsi_p)) == GIMPLE_GOTO
+	      && !gimple_has_location (gsi_stmt (*gsi_p)))
+	    {
+	      /* Look at the statement before, it might be
+		 attribute fallthrough, in which case don't warn.  */
+	      gsi_prev (gsi_p);
+	      bool fallthru_before_dest
+		= gimple_call_internal_p (gsi_stmt (*gsi_p), IFN_FALLTHROUGH);
+	      gsi_next (gsi_p);
+	      tree goto_dest = gimple_goto_dest (gsi_stmt (*gsi_p));
+	      if (!fallthru_before_dest)
+		{
+		  struct label_entry l = { goto_dest, if_loc };
+		  labels->safe_push (l);
+		}
+	    }
+	  /* And move back.  */
+	  gsi_next (gsi_p);
+	}
+
+      /* Remember the last statement.  Skip labels that are of no interest
+	 to us.  */
+      if (gimple_code (gsi_stmt (*gsi_p)) == GIMPLE_LABEL)
+	{
+	  tree label = gimple_label_label (as_a <glabel *> (gsi_stmt (*gsi_p)));
+	  if (find_label_entry (labels, label))
+	    prev = gsi_stmt (*gsi_p);
+	}
+      else
+	prev = gsi_stmt (*gsi_p);
+      gsi_next (gsi_p);
+    }
+  while (!gsi_end_p (*gsi_p)
+	 /* Stop if we find a case or a user-defined label.  */
+	 && (gimple_code (gsi_stmt (*gsi_p)) != GIMPLE_LABEL
+	     || !gimple_has_location (gsi_stmt (*gsi_p))));
+
+  return prev;
+}
+
+/* Return true if the switch fallthough warning should occur.  LABEL is
+   the label statement that we're falling through to.  */
+
+static bool
+should_warn_for_implicit_fallthrough (gimple_stmt_iterator *gsi_p, tree label)
+{
+  gimple_stmt_iterator gsi = *gsi_p;
+
+  /* Don't warn if the label is marked with a "falls through" comment.  */
+  if (FALLTHROUGH_LABEL_P (label))
+    return false;
+
+  /* Don't warn for a non-case label followed by a statement:
+       case 0:
+	 foo ();
+       label:
+	 bar ();
+     as these are likely intentional.  */
+  if (!case_label_p (&gimplify_ctxp->case_labels, label))
+    {
+      gsi_next (&gsi);
+      if (gsi_end_p (gsi) || gimple_code (gsi_stmt (gsi)) != GIMPLE_LABEL)
+	return false;
+    }
+
+  /* Don't warn for terminated branches, i.e. when the subsequent case labels
+     immediately breaks.  */
+  gsi = *gsi_p;
+
+  /* Skip all immediately following labels.  */
+  while (!gsi_end_p (gsi) && gimple_code (gsi_stmt (gsi)) == GIMPLE_LABEL)
+    gsi_next (&gsi);
+
+  /* { ... something; default:; } */
+  if (gsi_end_p (gsi)
+      /* { ... something; default: break; } or
+	 { ... something; default: goto L; } */
+      || gimple_code (gsi_stmt (gsi)) == GIMPLE_GOTO
+      /* { ... something; default: return; } */
+      || gimple_code (gsi_stmt (gsi)) == GIMPLE_RETURN)
+    return false;
+
+  return true;
+}
+
+/* Callback for walk_gimple_seq.  */
+
+static tree
+warn_implicit_fallthrough_r (gimple_stmt_iterator *gsi_p, bool *handled_ops_p,
+			     struct walk_stmt_info *)
+{
+  gimple *stmt = gsi_stmt (*gsi_p);
+
+  *handled_ops_p = true;
+  switch (gimple_code (stmt))
+    {
+    case GIMPLE_TRY:
+    case GIMPLE_BIND:
+    case GIMPLE_CATCH:
+    case GIMPLE_EH_FILTER:
+    case GIMPLE_TRANSACTION:
+      /* Walk the sub-statements.  */
+      *handled_ops_p = false;
+      break;
+
+    /* Find a sequence of form:
+
+       GIMPLE_LABEL
+       [...]
+       <may fallthru stmt>
+       GIMPLE_LABEL
+
+       and possibly warn.  */
+    case GIMPLE_LABEL:
+      {
+	/* Found a label.  Skip all immediately following labels.  */
+	while (!gsi_end_p (*gsi_p)
+	       && gimple_code (gsi_stmt (*gsi_p)) == GIMPLE_LABEL)
+	  gsi_next (gsi_p);
+
+	/* There might be no more statements.  */
+	if (gsi_end_p (*gsi_p))
+	  return integer_zero_node;
+
+	/* Vector of labels that fall through.  */
+	auto_vec <struct label_entry> labels;
+	gimple *prev = collect_fallthrough_labels (gsi_p, &labels);
+
+	/* There might be no more statements.  */
+	if (gsi_end_p (*gsi_p))
+	  return integer_zero_node;
+
+	gimple *next = gsi_stmt (*gsi_p);
+	tree label;
+	/* If what follows is a label, then we may have a fallthrough.  */
+	if (gimple_code (next) == GIMPLE_LABEL
+	    && gimple_has_location (next)
+	    && (label = gimple_label_label (as_a <glabel *> (next)))
+	    && prev != NULL)
+	  {
+	    struct label_entry *l;
+	    bool warned_p = false;
+	    if (!should_warn_for_implicit_fallthrough (gsi_p, label))
+	      /* Quiet.  */;
+	    else if (gimple_code (prev) == GIMPLE_LABEL
+		     && (label = gimple_label_label (as_a <glabel *> (prev)))
+		     && (l = find_label_entry (&labels, label)))
+	      warned_p = warning_at (l->loc, OPT_Wimplicit_fallthrough_,
+				     "this statement may fall through");
+	    else if (!gimple_call_internal_p (prev, IFN_FALLTHROUGH)
+		     /* Try to be clever and don't warn when the statement
+			can't actually fall through.  */
+		     && gimple_stmt_may_fallthru (prev)
+		     && gimple_has_location (prev))
+	      warned_p = warning_at (gimple_location (prev),
+				     OPT_Wimplicit_fallthrough_,
+				     "this statement may fall through");
+	    if (warned_p)
+	      inform (gimple_location (next), "here");
+
+	    /* Mark this label as processed so as to prevent multiple
+	       warnings in nested switches.  */
+	    FALLTHROUGH_LABEL_P (label) = true;
+
+	    /* So that next warn_implicit_fallthrough_r will start looking for
+	       a new sequence starting with this label.  */
+	    gsi_prev (gsi_p);
+	  }
+      }
+      break;
+   default:
+      break;
+    }
+  return NULL_TREE;
+}
+
+/* Warn when a switch case falls through.  */
+
+static void
+maybe_warn_implicit_fallthrough (gimple_seq seq)
+{
+  if (!warn_implicit_fallthrough)
+    return;
+
+  /* This warning is meant for C/C++/ObjC/ObjC++ only.  */
+  if (!(lang_GNU_C ()
+	|| lang_GNU_CXX ()
+	|| lang_GNU_OBJC ()))
+    return;
+
+  struct walk_stmt_info wi;
+  memset (&wi, 0, sizeof (wi));
+  walk_gimple_seq (seq, warn_implicit_fallthrough_r, NULL, &wi);
+}
+
+/* Callback for walk_gimple_seq.  */
+
+static tree
+expand_FALLTHROUGH_r (gimple_stmt_iterator *gsi_p, bool *handled_ops_p,
+		      struct walk_stmt_info *)
+{
+  gimple *stmt = gsi_stmt (*gsi_p);
+
+  *handled_ops_p = true;
+  switch (gimple_code (stmt))
+    {
+    case GIMPLE_TRY:
+    case GIMPLE_BIND:
+    case GIMPLE_CATCH:
+    case GIMPLE_EH_FILTER:
+    case GIMPLE_TRANSACTION:
+      /* Walk the sub-statements.  */
+      *handled_ops_p = false;
+      break;
+    case GIMPLE_CALL:
+      if (gimple_call_internal_p (stmt, IFN_FALLTHROUGH))
+	{
+	  gsi_remove (gsi_p, true);
+	  if (gsi_end_p (*gsi_p))
+	    return integer_zero_node;
+
+	  bool found = false;
+	  location_t loc = gimple_location (stmt);
+
+	  gimple_stmt_iterator gsi2 = *gsi_p;
+	  stmt = gsi_stmt (gsi2);
+	  if (gimple_code (stmt) == GIMPLE_GOTO && !gimple_has_location (stmt))
+	    {
+	      /* Go on until the artificial label.  */
+	      tree goto_dest = gimple_goto_dest (stmt);
+	      for (; !gsi_end_p (gsi2); gsi_next (&gsi2))
+		{
+		  if (gimple_code (gsi_stmt (gsi2)) == GIMPLE_LABEL
+		      && gimple_label_label (as_a <glabel *> (gsi_stmt (gsi2)))
+			   == goto_dest)
+		    break;
+		}
+
+	      /* Not found?  Stop.  */
+	      if (gsi_end_p (gsi2))
+		break;
+
+	      /* Look one past it.  */
+	      gsi_next (&gsi2);
+	    }
+
+	  /* We're looking for a case label or default label here.  */
+	  while (!gsi_end_p (gsi2))
+	    {
+	      stmt = gsi_stmt (gsi2);
+	      if (gimple_code (stmt) == GIMPLE_LABEL)
+		{
+		  tree label = gimple_label_label (as_a <glabel *> (stmt));
+		  if (gimple_has_location (stmt) && DECL_ARTIFICIAL (label))
+		    {
+		      found = true;
+		      break;
+		    }
+		}
+	      else
+		/* Something other than a label.  That's not expected.  */
+		break;
+	      gsi_next (&gsi2);
+	    }
+	  if (!found)
+	    warning_at (loc, 0, "attribute %<fallthrough%> not preceding "
+			"a case label or default label");
+	}
+      break;
+    default:
+      break;
+    }
+  return NULL_TREE;
+}
+
+/* Expand all FALLTHROUGH () calls in SEQ.  */
+
+static void
+expand_FALLTHROUGH (gimple_seq *seq_p)
+{
+  struct walk_stmt_info wi;
+  memset (&wi, 0, sizeof (wi));
+  walk_gimple_seq_mod (seq_p, expand_FALLTHROUGH_r, NULL, &wi);
+}
+
 
 /* Gimplify a SWITCH_EXPR, and collect the vector of labels it can
    branch to.  */
@@ -1660,10 +2093,17 @@ gimplify_switch_expr (tree *expr_p, gimple_seq *pre_p)
          labels.  Save all the things from the switch body to append after.  */
       saved_labels = gimplify_ctxp->case_labels;
       gimplify_ctxp->case_labels.create (8);
+      bool old_in_switch_expr = gimplify_ctxp->in_switch_expr;
+      gimplify_ctxp->in_switch_expr = true;
 
       gimplify_stmt (&SWITCH_BODY (switch_expr), &switch_body_seq);
 
+      gimplify_ctxp->in_switch_expr = old_in_switch_expr;
       maybe_warn_switch_unreachable (switch_body_seq);
+      maybe_warn_implicit_fallthrough (switch_body_seq);
+      /* Only do this for the outermost GIMPLE_SWITCH.  */
+      if (!gimplify_ctxp->in_switch_expr)
+	expand_FALLTHROUGH (&switch_body_seq);
 
       labels = gimplify_ctxp->case_labels;
       gimplify_ctxp->case_labels = saved_labels;
@@ -1694,6 +2134,21 @@ gimplify_switch_expr (tree *expr_p, gimple_seq *pre_p)
   return GS_ALL_DONE;
 }
 
+/* Gimplify the LABEL_EXPR pointed to by EXPR_P.  */
+
+static enum gimplify_status
+gimplify_label_expr (tree *expr_p, gimple_seq *pre_p)
+{
+  gcc_assert (decl_function_context (LABEL_EXPR_LABEL (*expr_p))
+	      == current_function_decl);
+
+  glabel *label_stmt = gimple_build_label (LABEL_EXPR_LABEL (*expr_p));
+  gimple_set_location (label_stmt, EXPR_LOCATION (*expr_p));
+  gimplify_seq_add_stmt (pre_p, label_stmt);
+
+  return GS_ALL_DONE;
+}
+
 /* Gimplify the CASE_LABEL_EXPR pointed to by EXPR_P.  */
 
 static enum gimplify_status
@@ -1711,6 +2166,7 @@ gimplify_case_label_expr (tree *expr_p, gimple_seq *pre_p)
       break;
 
   label_stmt = gimple_build_label (CASE_LABEL (*expr_p));
+  gimple_set_location (label_stmt, EXPR_LOCATION (*expr_p));
   ctxp->case_labels.safe_push (*expr_p);
   gimplify_seq_add_stmt (pre_p, label_stmt);
 
@@ -1925,7 +2381,7 @@ gimplify_var_or_parm_decl (tree *expr_p)
      be really nice if the front end wouldn't leak these at all.
      Currently the only known culprit is C++ destructors, as seen
      in g++.old-deja/g++.jason/binding.C.  */
-  if (TREE_CODE (decl) == VAR_DECL
+  if (VAR_P (decl)
       && !DECL_SEEN_IN_BIND_EXPR_P (decl)
       && !TREE_STATIC (decl) && !DECL_EXTERNAL (decl)
       && decl_function_context (decl) == current_function_decl)
@@ -1945,7 +2401,7 @@ gimplify_var_or_parm_decl (tree *expr_p)
 
       /* For referenced nonlocal VLAs add a decl for debugging purposes
 	 to the current function.  */
-      if (TREE_CODE (decl) == VAR_DECL
+      if (VAR_P (decl)
 	  && TREE_CODE (DECL_SIZE_UNIT (decl)) != INTEGER_CST
 	  && nonlocal_vlas != NULL
 	  && TREE_CODE (value_expr) == INDIRECT_REF
@@ -2080,7 +2536,7 @@ gimplify_compound_lval (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	;
       /* Expand DECL_VALUE_EXPR now.  In some cases that may expose
 	 additional COMPONENT_REFs.  */
-      else if ((TREE_CODE (*p) == VAR_DECL || TREE_CODE (*p) == PARM_DECL)
+      else if ((VAR_P (*p) || TREE_CODE (*p) == PARM_DECL)
 	       && gimplify_var_or_parm_decl (p) == GS_OK)
 	goto restart;
       else
@@ -3994,7 +4450,7 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	if (valid_const_initializer
 	    && num_nonzero_elements > 1
 	    && TREE_READONLY (object)
-	    && TREE_CODE (object) == VAR_DECL
+	    && VAR_P (object)
 	    && (flag_merge_constants >= 2 || !TREE_ADDRESSABLE (object)))
 	  {
 	    if (notify_temp_creation)
@@ -4747,8 +5203,7 @@ gimplify_modify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
       if (ret == GS_ERROR)
 	return ret;
       gcc_assert (!want_value
-		  && (TREE_CODE (*to_p) == VAR_DECL
-		      || TREE_CODE (*to_p) == MEM_REF));
+		  && (VAR_P (*to_p) || TREE_CODE (*to_p) == MEM_REF));
       gimplify_seq_add_stmt (pre_p, gimple_build_assign (*to_p, *from_p));
       *expr_p = NULL;
       return GS_ALL_DONE;
@@ -4896,7 +5351,7 @@ gimplify_modify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
      temporaries (see for example is_gimple_reg_rhs) on the debug info, but
      make sure not to create DECL_DEBUG_EXPR links across functions.  */
   if (!gimplify_ctxp->into_ssa
-      && TREE_CODE (*from_p) == VAR_DECL
+      && VAR_P (*from_p)
       && DECL_IGNORED_P (*from_p)
       && DECL_P (*to_p)
       && !DECL_IGNORED_P (*to_p)
@@ -5482,7 +5937,7 @@ gimplify_asm_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p)
 	      if (TREE_CODE (x) == MEM_REF
 		  && TREE_CODE (TREE_OPERAND (x, 0)) == ADDR_EXPR)
 		x = TREE_OPERAND (TREE_OPERAND (x, 0), 0);
-	      if ((TREE_CODE (x) == VAR_DECL
+	      if ((VAR_P (x)
 		   || TREE_CODE (x) == PARM_DECL
 		   || TREE_CODE (x) == RESULT_DECL)
 		  && !TREE_ADDRESSABLE (x)
@@ -8602,7 +9057,7 @@ gimplify_oacc_declare (tree *expr_p, gimple_seq *pre_p)
       if (TREE_CODE (decl) == MEM_REF)
 	continue;
 
-      if (TREE_CODE (decl) == VAR_DECL
+      if (VAR_P (decl)
 	  && !is_global_var (decl)
 	  && DECL_CONTEXT (decl) == current_function_decl)
 	{
@@ -10777,11 +11232,7 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	  break;
 
 	case LABEL_EXPR:
-	  ret = GS_ALL_DONE;
-	  gcc_assert (decl_function_context (LABEL_EXPR_LABEL (*expr_p))
-		      == current_function_decl);
-	  gimplify_seq_add_stmt (pre_p,
-			  gimple_build_label (LABEL_EXPR_LABEL (*expr_p)));
+	  ret = gimplify_label_expr (expr_p, pre_p);
 	  break;
 
 	case CASE_LABEL_EXPR:
@@ -11596,10 +12047,10 @@ gimplify_type_sizes (tree type, gimple_seq *list_p)
 	  && INTEGRAL_TYPE_P (TYPE_DOMAIN (type)))
 	{
 	  t = TYPE_MIN_VALUE (TYPE_DOMAIN (type));
-	  if (t && TREE_CODE (t) == VAR_DECL && DECL_ARTIFICIAL (t))
+	  if (t && VAR_P (t) && DECL_ARTIFICIAL (t))
 	    DECL_IGNORED_P (t) = 0;
 	  t = TYPE_MAX_VALUE (TYPE_DOMAIN (type));
-	  if (t && TREE_CODE (t) == VAR_DECL && DECL_ARTIFICIAL (t))
+	  if (t && VAR_P (t) && DECL_ARTIFICIAL (t))
 	    DECL_IGNORED_P (t) = 0;
 	}
       break;
@@ -11925,10 +12376,7 @@ gimplify_function_tree (tree fndecl)
 				tmp_var);
       gimplify_seq_add_stmt (&body, call);
       gimplify_seq_add_stmt (&body, tf);
-      new_bind = gimple_build_bind (NULL, body, gimple_bind_block (bind));
-      /* Clear the block for BIND, since it is no longer directly inside
-         the function, but within a try block.  */
-      gimple_bind_set_block (bind, NULL);
+      new_bind = gimple_build_bind (NULL, body, NULL);
 
       /* Replace the current function body with the body
          wrapped in the try/finally TF.  */
@@ -11943,10 +12391,7 @@ gimplify_function_tree (tree fndecl)
     {
       gcall *call = gimple_build_call_internal (IFN_TSAN_FUNC_EXIT, 0);
       gimple *tf = gimple_build_try (seq, call, GIMPLE_TRY_FINALLY);
-      gbind *new_bind = gimple_build_bind (NULL, tf, gimple_bind_block (bind));
-      /* Clear the block for BIND, since it is no longer directly inside
-	 the function, but within a try block.  */
-      gimple_bind_set_block (bind, NULL);
+      gbind *new_bind = gimple_build_bind (NULL, tf, NULL);
       /* Replace the current function body with the body
 	 wrapped in the try/finally TF.  */
       seq = NULL;

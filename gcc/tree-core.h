@@ -90,6 +90,9 @@ struct die_struct;
 /* Nonzero if this call is into the transaction runtime library.  */
 #define ECF_TM_BUILTIN		  (1 << 13)
 
+/* Nonzero if this is an indirect call by descriptor.  */
+#define ECF_BY_DESCRIPTOR	  (1 << 14)
+
 /* Call argument flags.  */
 /* Nonzero if the argument is not dereferenced recursively, thus only
    directly reachable memory is read or written.  */
@@ -553,20 +556,6 @@ enum tree_index {
   TI_BOOLEAN_FALSE,
   TI_BOOLEAN_TRUE,
 
-  TI_COMPLEX_INTEGER_TYPE,
-  TI_COMPLEX_FLOAT_TYPE,
-  TI_COMPLEX_DOUBLE_TYPE,
-  TI_COMPLEX_LONG_DOUBLE_TYPE,
-
-  TI_COMPLEX_FLOAT16_TYPE,
-  TI_COMPLEX_FLOATN_NX_TYPE_FIRST = TI_COMPLEX_FLOAT16_TYPE,
-  TI_COMPLEX_FLOAT32_TYPE,
-  TI_COMPLEX_FLOAT64_TYPE,
-  TI_COMPLEX_FLOAT128_TYPE,
-  TI_COMPLEX_FLOAT32X_TYPE,
-  TI_COMPLEX_FLOAT64X_TYPE,
-  TI_COMPLEX_FLOAT128X_TYPE,
-
   TI_FLOAT_TYPE,
   TI_DOUBLE_TYPE,
   TI_LONG_DOUBLE_TYPE,
@@ -595,6 +584,23 @@ enum tree_index {
 #define NUM_FLOATN_NX_TYPES (TI_FLOATN_NX_TYPE_LAST		\
 			     - TI_FLOATN_NX_TYPE_FIRST		\
 			     + 1)
+
+  /* Put the complex types after their component types, so that in (sequential)
+     tree streaming we can assert that their component types have already been
+     handled (see tree-streamer.c:record_common_node).  */
+  TI_COMPLEX_INTEGER_TYPE,
+  TI_COMPLEX_FLOAT_TYPE,
+  TI_COMPLEX_DOUBLE_TYPE,
+  TI_COMPLEX_LONG_DOUBLE_TYPE,
+
+  TI_COMPLEX_FLOAT16_TYPE,
+  TI_COMPLEX_FLOATN_NX_TYPE_FIRST = TI_COMPLEX_FLOAT16_TYPE,
+  TI_COMPLEX_FLOAT32_TYPE,
+  TI_COMPLEX_FLOAT64_TYPE,
+  TI_COMPLEX_FLOAT128_TYPE,
+  TI_COMPLEX_FLOAT32X_TYPE,
+  TI_COMPLEX_FLOAT64X_TYPE,
+  TI_COMPLEX_FLOAT128X_TYPE,
 
   TI_FLOAT_PTR_TYPE,
   TI_DOUBLE_PTR_TYPE,
@@ -1077,6 +1083,9 @@ struct GTY(()) tree_base {
        TRANSACTION_EXPR_RELAXED in
 	   TRANSACTION_EXPR
 
+       FALLTHROUGH_LABEL_P in
+	   LABEL_DECL
+
    private_flag:
 
        TREE_PRIVATE in
@@ -1247,6 +1256,12 @@ struct GTY(()) tree_base {
 
        REF_REVERSE_STORAGE_ORDER in
            BIT_FIELD_REF, MEM_REF
+
+       FUNC_ADDR_BY_DESCRIPTOR in
+           ADDR_EXPR
+
+       CALL_EXPR_BY_DESCRIPTOR in
+           CALL_EXPR
 */
 
 struct GTY(()) tree_typed {

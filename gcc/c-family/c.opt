@@ -295,6 +295,16 @@ Wall
 C ObjC C++ ObjC++ Warning
 Enable most warning messages.
 
+Walloca
+C ObjC C++ ObjC++ Var(warn_alloca) Warning
+Warn on any use of alloca.
+
+Walloca-larger-than=
+C ObjC C++ ObjC++ Var(warn_alloca_limit) Warning Joined RejectNegative UInteger
+-Walloca-larger-than=<number> Warn on unbounded uses of
+alloca, and on bounded uses of alloca whose bound can be larger than
+<number> bytes.
+
 Warray-bounds
 LangEnabledBy(C ObjC C++ ObjC++,Wall)
 ; in common.opt
@@ -462,6 +472,10 @@ Werror-implicit-function-declaration
 C ObjC RejectNegative Warning Alias(Werror=, implicit-function-declaration)
 This switch is deprecated; use -Werror=implicit-function-declaration instead.
 
+Wextra
+C ObjC C++ ObjC++ Warning
+; in common.opt
+
 Wfloat-conversion
 C ObjC C++ ObjC++ Var(warn_float_conversion) Warning LangEnabledBy(C ObjC C++ ObjC++,Wconversion)
 Warn for implicit type conversions that cause loss of floating point precision.
@@ -535,6 +549,10 @@ Warn about variables which are initialized to themselves.
 Wimplicit
 C ObjC Var(warn_implicit) Warning LangEnabledBy(C ObjC,Wall)
 Warn about implicit declarations.
+
+Wimplicit-fallthrough=
+LangEnabledBy(C ObjC C++ ObjC++,Wextra,3,0)
+; in common.opt
 
 Wdouble-promotion
 C ObjC C++ ObjC++ Var(warn_double_promotion) Warning
@@ -842,6 +860,10 @@ Wredundant-decls
 C ObjC C++ ObjC++ Var(warn_redundant_decls) Warning
 Warn about multiple declarations of the same object.
 
+Wregister
+C++ ObjC++ Var(warn_register) Warning
+Warn about uses of register storage specifier.
+
 Wreorder
 C++ ObjC++ Var(warn_reorder) Warning LangEnabledBy(C++ ObjC++,Wall)
 Warn when the compiler reorders code.
@@ -1017,6 +1039,12 @@ Warn about questionable usage of the macros used to retrieve variable arguments.
 Wvla
 C ObjC C++ ObjC++ Var(warn_vla) Init(-1) Warning
 Warn if a variable length array is used.
+
+Wvla-larger-than=
+C ObjC C++ ObjC++ Var(warn_vla_limit) Warning Joined RejectNegative UInteger
+-Wvla-larger-than=<number> Warn on unbounded uses of variable-length arrays, and
+on bounded uses of variable-length arrays whose bound can be
+larger than <number> bytes.
 
 Wvolatile-register-var
 C ObjC C++ ObjC++ Var(warn_volatile_register_var) Warning LangEnabledBy(C ObjC C++ ObjC++,Wall)

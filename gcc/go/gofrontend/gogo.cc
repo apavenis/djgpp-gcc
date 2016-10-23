@@ -3616,11 +3616,21 @@ Order_eval::statement(Block* block, size_t* pindex, Statement* s)
 	  // be handled specially.  We can't create a temporary
 	  // because there is no type to give it.  Any actual uses of
 	  // the values will be done via Call_result_expressions.
-	  s = Statement::make_statement(*pexpr, true);
-	}
+          //
+          // Since a given call expression can be shared by multiple
+          // Call_result_expressions, avoid hoisting the call the
+          // second time we see it here.
+          if (this->remember_expression(*pexpr))
+            s = NULL;
+          else
+            s = Statement::make_statement(*pexpr, true);
+        }
 
-      block->insert_statement_before(*pindex, s);
-      ++*pindex;
+      if (s != NULL)
+        {
+          block->insert_statement_before(*pindex, s);
+          ++*pindex;
+        }
     }
 
   if (init != orig_init)
@@ -4470,6 +4480,19 @@ Gogo::write_c_header()
        ++p)
     {
       Named_object* no = *p;
+
+      // Skip names that start with underscore followed by something
+      // other than an uppercase letter, as when compiling the runtime
+      // package they are mostly types defined by mkrsysinfo.sh based
+      // on the C system header files.  We don't need to translate
+      // types to C and back to Go.  But do accept the special cases
+      // _defer and _panic.
+      std::string name = Gogo::unpack_hidden_name(no->name());
+      if (name[0] == '_'
+	  && (name[1] < 'A' || name[1] > 'Z')
+	  && (name != "_defer" && name != "_panic"))
+	continue;
+
       if (no->is_type() && no->type_value()->struct_type() != NULL)
 	types.push_back(no);
       if (no->is_const() && no->const_value()->type()->integer_type() != NULL)
@@ -7191,6 +7214,14 @@ Named_object::get_backend(Gogo* gogo, std::vector<Bexpression*>& const_decls,
                           std::vector<Btype*>& type_decls,
                           std::vector<Bfunction*>& func_decls)
 {
+  // If this is a definition, avoid trying to get the backend
+  // representation, as that can crash.
+  if (this->is_redefinition_)
+    {
+      go_assert(saw_errors());
+      return;
+    }
+
   switch (this->classification_)
     {
     case NAMED_OBJECT_CONST:
@@ -7949,13 +7980,14 @@ Traverse::remember_type(const Type* type)
 }
 
 // Record that we are looking at an expression, and return true if we
-// have already seen it.
+// have already seen it. NB: this routine used to assert if the traverse
+// mask did not include expressions/types -- this is no longer the case,
+// since it can be useful to remember specific expressions during
+// walks that only cover statements.
 
 bool
 Traverse::remember_expression(const Expression* expression)
 {
-  go_assert((this->traverse_mask() & traverse_types) != 0
-	     || (this->traverse_mask() & traverse_expressions) != 0);
   if (this->expressions_seen_ == NULL)
     this->expressions_seen_ = new Expressions_seen();
   std::pair<Expressions_seen::iterator, bool> ins =

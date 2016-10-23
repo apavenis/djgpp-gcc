@@ -396,9 +396,9 @@ rtems_task_variable_add_file =
 endif
 
 if LIBGO_IS_LINUX
-runtime_lock_files = runtime/lock_futex.c runtime/thread-linux.c
+runtime_thread_files = runtime/thread-linux.c
 else
-runtime_lock_files = runtime/lock_sema.c runtime/thread-sema.c
+runtime_thread_files = runtime/thread-sema.c
 endif
 
 if LIBGO_IS_LINUX
@@ -427,42 +427,20 @@ endif
 endif
 endif
 
-if LIBGO_IS_LINUX
-runtime_netpoll_files = runtime/netpoll_epoll.c
-else
-if LIBGO_IS_SOLARIS
-runtime_netpoll_files = runtime/netpoll_select.c
-else
-runtime_netpoll_files = runtime/netpoll_kqueue.c
-endif
-endif
-
 runtime_files = \
 	runtime/go-append.c \
 	runtime/go-assert.c \
-	runtime/go-assert-interface.c \
-	runtime/go-byte-array-to-string.c \
 	runtime/go-breakpoint.c \
 	runtime/go-caller.c \
 	runtime/go-callers.c \
-	runtime/go-can-convert-interface.c \
 	runtime/go-cdiv.c \
 	runtime/go-cgo.c \
-	runtime/go-check-interface.c \
 	runtime/go-construct-map.c \
-	runtime/go-convert-interface.c \
 	runtime/go-copy.c \
 	runtime/go-defer.c \
 	runtime/go-deferred-recover.c \
-	runtime/go-eface-compare.c \
-	runtime/go-eface-val-compare.c \
 	runtime/go-ffi.c \
 	runtime/go-fieldtrack.c \
-	runtime/go-int-array-to-string.c \
-	runtime/go-int-to-string.c \
-	runtime/go-interface-compare.c \
-	runtime/go-interface-eface-compare.c \
-	runtime/go-interface-val-compare.c \
 	runtime/go-make-slice.c \
 	runtime/go-matherr.c \
 	runtime/go-memclr.c \
@@ -474,24 +452,15 @@ runtime_files = \
 	runtime/go-new.c \
 	runtime/go-nosys.c \
 	runtime/go-panic.c \
-	runtime/go-print.c \
 	runtime/go-recover.c \
 	runtime/go-reflect-call.c \
-	runtime/go-rune.c \
 	runtime/go-runtime-error.c \
 	runtime/go-setenv.c \
 	runtime/go-signal.c \
-	runtime/go-strcmp.c \
-	runtime/go-string-to-byte-array.c \
-	runtime/go-string-to-int-array.c \
-	runtime/go-strplus.c \
 	runtime/go-strslice.c \
-	runtime/go-traceback.c \
 	runtime/go-type-complex.c \
-	runtime/go-type-eface.c \
 	runtime/go-type-float.c \
 	runtime/go-type-identity.c \
-	runtime/go-type-interface.c \
 	runtime/go-type-string.c \
 	runtime/go-typedesc-equal.c \
 	runtime/go-unsafe-new.c \
@@ -502,7 +471,6 @@ runtime_files = \
 	runtime/go-varargs.c \
 	runtime/env_posix.c \
 	runtime/heapdump.c \
-	$(runtime_lock_files) \
 	runtime/mcache.c \
 	runtime/mcentral.c \
 	$(runtime_mem_file) \
@@ -510,7 +478,6 @@ runtime_files = \
 	runtime/mgc0.c \
 	runtime/mheap.c \
 	runtime/msize.c \
-	$(runtime_netpoll_files) \
 	runtime/panic.c \
 	runtime/parfor.c \
 	runtime/print.c \
@@ -518,22 +485,12 @@ runtime_files = \
 	runtime/runtime.c \
 	runtime/signal_unix.c \
 	runtime/thread.c \
+	$(runtime_thread_files) \
 	runtime/yield.c \
 	$(rtems_task_variable_add_file) \
-	chan.c \
-	cpuprof.c \
-	go-iface.c \
-	lfstack.c \
 	malloc.c \
-	mprof.c \
-	netpoll.c \
-	rdebug.c \
-	reflect.c \
 	runtime1.c \
-	sema.c \
 	sigqueue.c \
-	string.c \
-	time.c \
 	$(runtime_getncpu_file)
 
 goc2c.$(OBJEXT): runtime/goc2c.c
@@ -546,32 +503,12 @@ malloc.c: $(srcdir)/runtime/malloc.goc goc2c
 	./goc2c $< > $@.tmp
 	mv -f $@.tmp $@
 
-mprof.c: $(srcdir)/runtime/mprof.goc goc2c
-	./goc2c $< > $@.tmp
-	mv -f $@.tmp $@
-
-netpoll.c: $(srcdir)/runtime/netpoll.goc goc2c
-	./goc2c $< > $@.tmp
-	mv -f $@.tmp $@
-
-reflect.c: $(srcdir)/runtime/reflect.goc goc2c
-	./goc2c $< > $@.tmp
-	mv -f $@.tmp $@
-
 runtime1.c: $(srcdir)/runtime/runtime1.goc goc2c
-	./goc2c $< > $@.tmp
-	mv -f $@.tmp $@
-
-sema.c: $(srcdir)/runtime/sema.goc goc2c
 	./goc2c $< > $@.tmp
 	mv -f $@.tmp $@
 
 sigqueue.c: $(srcdir)/runtime/sigqueue.goc goc2c
 	./goc2c --go-pkgpath os_signal $< > $@.tmp
-	mv -f $@.tmp $@
-
-time.c: $(srcdir)/runtime/time.goc goc2c
-	./goc2c $< > $@.tmp
 	mv -f $@.tmp $@
 
 %.c: $(srcdir)/runtime/%.goc goc2c
@@ -633,12 +570,8 @@ s-version: Makefile
 	$(STAMP) $@
 
 runtime_sysinfo.go: s-runtime_sysinfo; @true
-s-runtime_sysinfo: sysinfo.go
-	rm -f tmp-runtime_sysinfo.go
-	echo 'package runtime' > tmp-runtime_sysinfo.go
-	echo >> tmp-runtime_sysinfo.go
-	grep 'const _sizeof_ucontext_t ' sysinfo.go >> tmp-runtime_sysinfo.go
-	grep 'type _sigset_t ' sysinfo.go >> tmp-runtime_sysinfo.go
+s-runtime_sysinfo: $(srcdir)/mkrsysinfo.sh gen-sysinfo.go
+	$(SHELL) $(srcdir)/mkrsysinfo.sh
 	$(SHELL) $(srcdir)/mvifdiff.sh tmp-runtime_sysinfo.go runtime_sysinfo.go
 	$(STAMP) $@
 
@@ -691,9 +624,26 @@ s-syscall_arch: Makefile
 	$(SHELL) $(srcdir)/mvifdiff.sh syscall_arch.go.tmp syscall_arch.go
 	$(STAMP) $@
 
+SYSINFO_FLAGS = \
+	$(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
+	$(CPPFLAGS) $(OSCFLAGS) -O
+
+gen-sysinfo.go: s-gen-sysinfo; @true
+s-gen-sysinfo: $(srcdir)/sysinfo.c config.h
+	$(CC) $(SYSINFO_FLAGS) -fdump-go-spec=tmp-gen-sysinfo.go -std=gnu99 -S -o sysinfo.s $(srcdir)/sysinfo.c
+	rm -f sysinfo.s
+	$(SHELL) $(srcdir)/mvifdiff.sh tmp-gen-sysinfo.go gen-sysinfo.go
+	$(STAMP) $@
+
+errno.i: s-errno; @true
+s-errno:
+	echo '#include <errno.h>' | $(CC) $(SYSINFO_FLAGS) -x c - -E -dM > tmp-errno.i
+	$(SHELL) $(srcdir)/mvifdiff.sh tmp-errno.i errno.i
+	$(STAMP) $@
+
 sysinfo.go: s-sysinfo; @true
-s-sysinfo: $(srcdir)/mksysinfo.sh config.h
-	CC="$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(OSCFLAGS) -O" $(SHELL) $(srcdir)/mksysinfo.sh
+s-sysinfo: $(srcdir)/mksysinfo.sh gen-sysinfo.go errno.i
+	$(SHELL) $(srcdir)/mksysinfo.sh
 	$(SHELL) $(srcdir)/mvifdiff.sh tmp-sysinfo.go sysinfo.go
 	$(STAMP) $@
 
@@ -724,6 +674,12 @@ s-epoll: Makefile
 	echo '}' >> epoll.go.tmp
 	$(SHELL) $(srcdir)/mvifdiff.sh epoll.go.tmp epoll.go
 	$(STAMP) $@
+
+if LIBGO_IS_LINUX
+syscall_lib_clone_lo = syscall/clone_linux.lo
+else
+syscall_lib_clone_lo =
+endif
 
 libgo_go_objs = \
 	bufio.lo \
@@ -756,6 +712,7 @@ libgo_go_objs = \
 	strings/index.lo \
 	sync.lo \
 	syscall.lo \
+	$(syscall_lib_clone_lo) \
 	syscall/errno.lo \
 	syscall/signame.lo \
 	syscall/wait.lo \
@@ -1271,9 +1228,15 @@ runtime_go_lo_GOCFLAGS = -fgo-c-header=runtime.inc.tmp -fgo-compiling-runtime
 runtime-go.lo:
 	$(BUILDPACKAGE)
 runtime.inc: s-runtime-inc; @true
-s-runtime-inc: runtime-go.lo
-	$(SHELL) $(srcdir)/mvifdiff.sh runtime.inc.tmp runtime.inc
+s-runtime-inc: runtime-go.lo Makefile
+	rm -f runtime.inc.tmp2
+	grep -v "#define _" runtime.inc.tmp | grep -v "#define c0 " | grep -v "#define c1 " > runtime.inc.tmp2
+	for pattern in '_G[a-z]' '_P[a-z]' _Max _Lock _Sig _Trace _MHeap _Num; do \
+	  grep "#define $$pattern" runtime.inc.tmp >> runtime.inc.tmp2; \
+	done
+	$(SHELL) $(srcdir)/mvifdiff.sh runtime.inc.tmp2 runtime.inc
 	$(STAMP) $@
+runtime_check_GOCFLAGS = -fgo-compiling-runtime
 runtime/check: $(CHECK_DEPS)
 	@$(CHECK)
 .PHONY: runtime/check
@@ -2517,6 +2480,9 @@ syscall.lo.dep: $(srcdir)/go/syscall/*.go $(extra_go_files_syscall)
 	$(BUILDDEPS)
 syscall.lo:
 	$(BUILDPACKAGE)
+syscall/clone_linux.lo: go/syscall/clone_linux.c runtime.inc
+	@$(MKDIR_P) syscall
+	$(LTCOMPILE) -c -o $@ $<
 syscall/errno.lo: go/syscall/errno.c runtime.inc
 	@$(MKDIR_P) syscall
 	$(LTCOMPILE) -c -o $@ $<
@@ -3021,6 +2987,7 @@ TEST_PACKAGES = \
 	os/user/check \
 	path/filepath/check \
 	regexp/syntax/check \
+	runtime/debug/check \
 	runtime/pprof/check \
 	runtime/internal/atomic/check \
 	runtime/internal/sys/check \

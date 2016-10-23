@@ -111,7 +111,7 @@ along with GCC; see the file COPYING3.  If not see
 	assemble_name (FILE, LABEL);				\
 	if ((OFFSET) != 0)					\
 	  fprintf (FILE, "+" HOST_WIDE_INT_PRINT_DEC,		\
-		   (HOST_WIDE_INT) (OFFSET))			\
+		   (HOST_WIDE_INT) (OFFSET));			\
 	break;							\
       case 8:							\
 	/* This is a hack.  There is no 64-bit section relative	\
@@ -123,7 +123,7 @@ along with GCC; see the file COPYING3.  If not see
 	assemble_name (FILE, LABEL);				\
 	if ((OFFSET) != 0)					\
 	  fprintf (FILE, "+" HOST_WIDE_INT_PRINT_DEC,		\
-		   (HOST_WIDE_INT) (OFFSET))			\
+		   (HOST_WIDE_INT) (OFFSET));			\
 	fputs ("\n\t.long\t0", FILE);				\
 	break;							\
       default:							\
@@ -442,11 +442,6 @@ do {						\
   while (0)
 
 #endif /* HAVE_GAS_WEAK */
-
-/* FIXME: SUPPORTS_WEAK && TARGET_HAVE_NAMED_SECTIONS is true,
-   but for .jcr section to work we also need crtbegin and crtend
-   objects.  */
-#define TARGET_USE_JCR_SECTION 1
 
 /* Decide whether it is safe to use a local alias for a virtual function
    when constructing thunks.  */
