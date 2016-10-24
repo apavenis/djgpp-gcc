@@ -1,3 +1,67 @@
+2016-10-24  Richard Biener  <rguenther@suse.de>
+
+	PR testsuite/71491
+	* gcc.dg/vect/slp-43.c: Adjust for !vect_hw_misalign.
+	* gcc.dg/vect/slp-45.c: Likewise.
+
+2016-10-24  Richard Biener  <rguenther@suse.de>
+
+	* gcc.dg/tree-ssa/cunroll-13.c: Disable EVRP.
+	* gcc.dg/tree-ssa/pr21458.c: Likewise.
+	* gcc.dg/tree-ssa/pr21458-2.c: New testcase for EVRP.
+
+2016-10-24  Georg-Johann Lay  <avr@gjlay.de>
+
+	PR target/78093
+	* lib/target-supports.exp (check_effective_target_avr_tiny): New proc.
+	* gcc.target/avr/torture/tiny-absdata-1.c: New test.
+
+2016-10-24  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	* gcc.target/arm/pure-code/pure-code.exp: Restore saved globals.
+
+2016-10-24  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.target/i386/bmi2-pext-1.c: New test.
+	* gcc.target/i386/bmi2-pdep-1.c: New test.
+	* gcc.target/i386/bmi2-bzhi-3.c: New test.
+	* gcc.target/i386/tbm-bextri-1.c: New test.
+	* gcc.target/i386/bmi-bextr-6.c: New test.
+
+2016-10-24  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR target/77483
+	* gcc.target/i386/mask-unpack.c (dg-options): Add -mno-stackrealign.
+	* gcc.target/i386/pr65105-1.c: Likewise.
+	* gcc.target/i386/pr65105-2.c: Likewise.
+	* gcc.target/i386/pr65105-3.c: Likewise.
+	* gcc.target/i386/pr65105-5.c: Likewise.
+	* gcc.target/i386/pr67761.c: Likewise.
+	* gcc.target/i386/pr70799-1.c: Likewise.
+
+2016-10-24  Martin Liska  <mliska@suse.cz>
+
+	PR sanitizer/77966
+	* c-c++-common/ubsan/unreachable-3.c: New test.
+
+2016-10-23  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/77763
+	* gfortran.dg/pr77763.f90
+
+2016-10-23  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/54730
+	PR fortran/78033
+	* gfortran.dg/pr78033.f90: New test.
+
+2016-10-23  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/69834
+	* gfortran.dg/select_type_1.f03: Change error for overlapping
+	TYPE IS cases.
+	* gfortran.dg/select_type_36.f03: New test.
+
 2016-10-22  Eric Botcazou  <ebotcazou@adacore.com>
 
 	* gcc.dg/tree-ssa/pr71347.c: Remove XFAIL on SPARC.

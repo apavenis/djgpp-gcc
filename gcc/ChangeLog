@@ -1,3 +1,73 @@
+2016-10-24  Ximin Luo  <infinity0@pwned.gg>
+
+	PR debug/77985
+	* dwarf2out.c (file_table_relative_p): Remove.
+	(gen_compile_unit_die, dwarf2out_early_finish): Emit DW_AT_comp_dir
+	also for absolute paths.
+	* doc/tm.texi: Update.
+	* doc/tm.texi.in (SDB and DWARF) <TARGET_FORCE_AT_COMP_DIR>: Remove.
+	* target.def (force_at_comp_dir): Remove hook.
+	* config/darwin.h (TARGET_FORCE_AT_COMP_DIR): Remove define.
+
+2016-10-24  Richard Biener  <rguenther@suse.de>
+
+	* tree-vrp.c (evrp_dom_walker::before_dom_children): Ignore
+	backedges when identifying the single predecessor to take
+	conditional info from.  Use SCEV to get at ranges for loop IVs.
+	* lto-streamer-out.c (lto_write_mode_table): CSE inner mode to
+	avoid false warning.
+
+2016-10-24  Georg-Johann Lay  <avr@gjlay.de>
+
+	PR target/78093
+	* doc/extend.texi (AVR Variable Attributes) [absdata]: Document it.
+	* config/avr/avr.c (AVR_SYMBOL_FLAG_TINY_ABSDATA): New macro.
+	(avr_address_tiny_absdata_p): New static function.
+	(avr_legitimate_address_p, avr_legitimize_address) [AVR_TINY]: Use
+	it to determine validity of constant addresses.
+	(avr_attribute_table) [absdata]: New variable attribute...
+	(avr_handle_absdata_attribute): ...and handler.
+	(avr_decl_absdata_p): New static function.
+	(avr_encode_section_info) [AVR_TINY]: Use it to add flag
+	AVR_SYMBOL_FLAG_TINY_ABSDATA to respective symbols_refs.
+	(avr_address_cost) [AVR_TINY]: absdata addresses cost 2.
+
+2016-10-24  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/78076
+	* tree-ssa-loop-split.c (tree_ssa_split_loops): Reset aux
+	also on the loop tree root.
+
+2016-10-24  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/i386/i386.c (ix86_fold_builtin): Handle
+	IX86_BUILTIN_BEXTR{,I}{32,64}, IX86_BUILTIN_BZHI{32,64},
+	IX86_BUILTIN_PDEP{32,64} and IX86_BUILTIN_PEXT{32,64}.
+	(ix86_gimple_fold_builtin): Handle IX86_BUILTIN_BZHI{32,64},
+	IX86_BUILTIN_PDEP{32,64} and IX86_BUILTIN_PEXT{32,64}.
+
+2016-10-24  Martin Liska  <mliska@suse.cz>
+
+	PR sanitizer/77966
+	* opts.c (finish_options): Skip conditionally.
+
+2016-10-23  Martin Sebor  <msebor@redhat.com>
+
+	PR target/77837
+	* config/rs6000/linux.h (TARGET_PRINTF_POINTER_FORMAT): Define.
+	* config/rs6000/linux64.h (TARGET_PRINTF_POINTER_FORMAT): Likewise.
+
+2016-10-23  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/sparc/sparc.md (cpu_feature): Minor tweak.
+	(enabled): Likewise.
+	(movsi_insn, movdi_insn_sp32, movdi_insn_sp64, movsf_insn,
+	movdf_insn_sp32, movdf_insn_sp64, zero_extendsidi2_insn_sp64,
+	sign_extendsidi2_insn, mov<VM32:mode>_insn, mov<VM64:mode>_insn_sp64,
+	mov<VM64:mode>_insn_sp32, not_<code><mode>, nand<mode>_vis,
+	<code>_not1<mode>_vi, <code>_not2<mode>_vis, one_cmpl<mode>2,
+	fcmp<code><GCM:gcm_name>, pdistn<mode>_vis): Likewise.
+
 2016-10-23  Eric Botcazou  <ebotcazou@adacore.com>
 
 	* config/sparc/sparc-c.c (sparc_target_macros): Replace TARGET_64BIT
