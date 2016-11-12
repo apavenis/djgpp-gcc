@@ -62,6 +62,7 @@
 #include "builtins.h"
 #include "tm-constrs.h"
 #include "rtl-iter.h"
+#include "optabs-libfuncs.h"
 
 /* This file should be included last.  */
 #include "target-def.h"
@@ -304,6 +305,7 @@ static section *arm_function_section (tree, enum node_frequency, bool, bool);
 static bool arm_asm_elf_flags_numeric (unsigned int flags, unsigned int *num);
 static unsigned int arm_elf_section_type_flags (tree decl, const char *name,
 						int reloc);
+static void arm_expand_divmod_libfunc (rtx, machine_mode, rtx, rtx, rtx *, rtx *);
 
 /* Table of machine attributes.  */
 static const struct attribute_spec arm_attribute_table[] =
@@ -738,6 +740,9 @@ static const struct attribute_spec arm_attribute_table[] =
 
 #undef TARGET_SECTION_TYPE_FLAGS
 #define TARGET_SECTION_TYPE_FLAGS arm_elf_section_type_flags
+
+#undef TARGET_EXPAND_DIVMOD_LIBFUNC
+#define TARGET_EXPAND_DIVMOD_LIBFUNC arm_expand_divmod_libfunc
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
@@ -28342,6 +28347,15 @@ arm_split_compare_and_swap (rtx operands[])
     emit_label (label2);
 }
 
+/* Split an atomic operation pattern.  Operation is given by CODE and is one
+   of PLUS, MINUS, IOR, XOR, SET (for an exchange operation) or NOT (for a nand
+   operation).  Operation is performed on the content at MEM and on VALUE
+   following the memory model MODEL_RTX.  The content at MEM before and after
+   the operation is returned in OLD_OUT and NEW_OUT respectively while the
+   success of the operation is returned in COND.  Using a scratch register or
+   an operand register for these determines what result is returned for that
+   pattern.  */
+
 void
 arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
 		     rtx value, rtx model_rtx, rtx cond)
@@ -28350,6 +28364,7 @@ arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
   machine_mode mode = GET_MODE (mem);
   machine_mode wmode = (mode == DImode ? DImode : SImode);
   rtx_code_label *label;
+  bool all_low_regs, bind_old_new;
   rtx x;
 
   bool is_armv8_sync = arm_arch8 && is_mm_sync (model);
@@ -28383,6 +28398,28 @@ arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
   value = simplify_gen_subreg (wmode, value, mode, 0);
 
   arm_emit_load_exclusive (mode, old_out, mem, use_acquire);
+
+  /* Does the operation require destination and first operand to use the same
+     register?  This is decided by register constraints of relevant insn
+     patterns in thumb1.md.  */
+  gcc_assert (!new_out || REG_P (new_out));
+  all_low_regs = REG_P (value) && REGNO_REG_CLASS (REGNO (value)) == LO_REGS
+		 && new_out && REGNO_REG_CLASS (REGNO (new_out)) == LO_REGS
+		 && REGNO_REG_CLASS (REGNO (old_out)) == LO_REGS;
+  bind_old_new =
+    (TARGET_THUMB1
+     && code != SET
+     && code != MINUS
+     && (code != PLUS || (!all_low_regs && !satisfies_constraint_L (value))));
+
+  /* We want to return the old value while putting the result of the operation
+     in the same register as the old value so copy the old value over to the
+     destination register and use that register for the operation.  */
+  if (old_out && bind_old_new)
+    {
+      emit_move_insn (new_out, old_out);
+      old_out = new_out;
+    }
 
   switch (code)
     {
@@ -30118,9 +30155,9 @@ arm_const_not_ok_for_debug_p (rtx p)
 	      && GET_CODE (XEXP (p, 0)) == SYMBOL_REF
 	      && (decl_op0 = SYMBOL_REF_DECL (XEXP (p, 0))))
 	    {
-	      if ((TREE_CODE (decl_op1) == VAR_DECL
+	      if ((VAR_P (decl_op1)
 		   || TREE_CODE (decl_op1) == CONST_DECL)
-		  && (TREE_CODE (decl_op0) == VAR_DECL
+		  && (VAR_P (decl_op0)
 		      || TREE_CODE (decl_op0) == CONST_DECL))
 		return (get_variable_section (decl_op1, false)
 			!= get_variable_section (decl_op0, false));
@@ -30811,6 +30848,35 @@ arm_elf_section_type_flags (tree decl, const char *name, int reloc)
     flags |= SECTION_ARM_PURECODE;
 
   return flags;
+}
+
+/* Generate call to __aeabi_[mode]divmod (op0, op1).  */
+
+static void
+arm_expand_divmod_libfunc (rtx libfunc, machine_mode mode,
+			   rtx op0, rtx op1,
+			   rtx *quot_p, rtx *rem_p)
+{
+  if (mode == SImode)
+    gcc_assert (!TARGET_IDIV);
+
+  machine_mode libval_mode = smallest_mode_for_size (2 * GET_MODE_BITSIZE (mode),
+						     MODE_INT);
+
+  rtx libval = emit_library_call_value (libfunc, NULL_RTX, LCT_CONST,
+					libval_mode, 2,
+					op0, GET_MODE (op0),
+					op1, GET_MODE (op1));
+
+  rtx quotient = simplify_gen_subreg (mode, libval, libval_mode, 0);
+  rtx remainder = simplify_gen_subreg (mode, libval, libval_mode,
+				       GET_MODE_SIZE (mode));
+
+  gcc_assert (quotient);
+  gcc_assert (remainder);
+
+  *quot_p = quotient;
+  *rem_p = remainder;
 }
 
 #include "gt-arm.h"

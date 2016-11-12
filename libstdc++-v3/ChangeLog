@@ -1,3 +1,64 @@
+2016-10-28  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/experimental/bits/fs_path.h (__is_path_src)
+	(_S_range_begin, _S_range_end): Overload to treat string_view as a
+	Source object.
+	(path::operator+=, path::compare): Overload for basic_string_view.
+	* testsuite/experimental/filesystem/path/construct/string_view.cc:
+	New test.
+	* testsuite/experimental/filesystem/path/construct/
+	string_view_cxx17.cc: New test.
+
+	* include/experimental/bits/fs_path.h
+	(path::_S_convert<_Iter>(_Iter, _Iter)): Remove cv-qualifiers from
+	iterator's value_type.
+	(path::_S_convert<_Iter>(_Iter __first, __null_terminated)): Likewise.
+	Do not use operation not supported by input iterators.
+	(path::__is_path_iter_src): Add partial specialization for const
+	encoded character types.
+	* testsuite/experimental/filesystem/path/construct/range.cc: Test
+	construction from input iterators with const value types.
+
+	* doc/xml/manual/status_cxx2017.xml: Update status.
+	* doc/html/*: Regenerate.
+	* include/std/type_traits (has_unique_object_representations): Guard
+	with __has_builtin check.
+	* libsupc++/new (launder): Define for C++17.
+	* testsuite/18_support/launder/1.cc: New test.
+	* testsuite/18_support/launder/requirements.cc: New test.
+	* testsuite/18_support/launder/requirements_neg.cc: New test.
+
+2016-10-27  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR libstdc++/70975
+	* src/filesystem/ops.cc (do_copy_file) [_GLIBCXX_USE_SENDFILE]:
+	Pass non-null pointer to sendfile for offset argument.
+
+2016-10-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/ext/random/uniform_inside_sphere_distribution/cons/
+	default.cc: Fix effective target selector.
+	* testsuite/ext/random/uniform_inside_sphere_distribution/cons/
+	parms.cc: Likewise.
+	* testsuite/ext/random/uniform_inside_sphere_distribution/operators/
+	equal.cc: Likewise.
+	* testsuite/ext/random/uniform_inside_sphere_distribution/operators/
+	generate.cc: Likewise.
+	* testsuite/ext/random/uniform_inside_sphere_distribution/operators/
+	inequal.cc: Likewise.
+	* testsuite/ext/random/uniform_inside_sphere_distribution/operators/
+	serialize.cc: Likewise.
+
+	* testsuite/experimental/filesystem/iterators/directory_iterator.cc:
+	Use end() function to get end iterator.
+	* testsuite/experimental/filesystem/iterators/pop.cc: Remove printf
+	statements that were present for debugging.
+	* testsuite/experimental/filesystem/iterators/
+	recursive_directory_iterator.cc: Use end() function to get end
+	iterator.
+	* testsuite/experimental/filesystem/operations/last_write_time.cc:
+	Only require file timestamps to be accurate to one second.
+
 2016-10-26  François Dumont  <fdumont@gcc.gnu.org>
 
 	* include/bits/stl_map.h (map()): Make default.

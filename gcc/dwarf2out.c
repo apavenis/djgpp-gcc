@@ -1363,6 +1363,8 @@ dw_val_equal_p (dw_val_node *a, dw_val_node *b)
     case dw_val_class_offset:
     case dw_val_class_unsigned_const:
     case dw_val_class_const:
+    case dw_val_class_unsigned_const_implicit:
+    case dw_val_class_const_implicit:
     case dw_val_class_range_list:
     case dw_val_class_lineptr:
     case dw_val_class_macptr:
@@ -1385,6 +1387,7 @@ dw_val_equal_p (dw_val_node *a, dw_val_node *b)
     case dw_val_class_flag:
       return a->v.val_flag == b->v.val_flag;
     case dw_val_class_file:
+    case dw_val_class_file_implicit:
       return a->v.val_file == b->v.val_file;
     case dw_val_class_decl_ref:
       return a->v.val_decl_ref == b->v.val_decl_ref;
@@ -3006,27 +3009,15 @@ struct dw_loc_list_hasher : ggc_ptr_hash<cached_dw_loc_list>
 /* Table of cached location lists.  */
 static GTY (()) hash_table<dw_loc_list_hasher> *cached_dw_loc_list_table;
 
-/* A pointer to the base of a list of references to DIE's that
-   are uniquely identified by their tag, presence/absence of
-   children DIE's, and list of attribute/value pairs.  */
-static GTY((length ("abbrev_die_table_allocated")))
-  dw_die_ref *abbrev_die_table;
-
-/* Number of elements currently allocated for abbrev_die_table.  */
-static GTY(()) unsigned abbrev_die_table_allocated;
-
-/* Number of elements in abbrev_die_table currently in use.  */
-static GTY(()) unsigned abbrev_die_table_in_use;
+/* A vector of references to DIE's that are uniquely identified by their tag,
+   presence/absence of children DIE's, and list of attribute/value pairs.  */
+static GTY(()) vec<dw_die_ref, va_gc> *abbrev_die_table;
 
 /* A hash map to remember the stack usage for DWARF procedures.  The value
    stored is the stack size difference between before the DWARF procedure
    invokation and after it returned.  In other words, for a DWARF procedure
    that consumes N stack slots and that pushes M ones, this stores M - N.  */
 static hash_map<dw_die_ref, int> *dwarf_proc_stack_usage_map;
-
-/* Size (in elements) of increments by which we may expand the
-   abbrev_die_table.  */
-#define ABBREV_DIE_TABLE_INCREMENT 256
 
 /* A global counter for generating labels for line number data.  */
 static unsigned int line_info_label_num;
@@ -3905,7 +3896,8 @@ add_AT_int (dw_die_ref die, enum dwarf_attribute attr_kind, HOST_WIDE_INT int_va
 static inline HOST_WIDE_INT
 AT_int (dw_attr_node *a)
 {
-  gcc_assert (a && AT_class (a) == dw_val_class_const);
+  gcc_assert (a && (AT_class (a) == dw_val_class_const
+		    || AT_class (a) == dw_val_class_const_implicit));
   return a->dw_attr_val.v.val_int;
 }
 
@@ -3927,7 +3919,8 @@ add_AT_unsigned (dw_die_ref die, enum dwarf_attribute attr_kind,
 static inline unsigned HOST_WIDE_INT
 AT_unsigned (dw_attr_node *a)
 {
-  gcc_assert (a && AT_class (a) == dw_val_class_unsigned_const);
+  gcc_assert (a && (AT_class (a) == dw_val_class_unsigned_const
+		    || AT_class (a) == dw_val_class_unsigned_const_implicit));
   return a->dw_attr_val.v.val_unsigned;
 }
 
@@ -4506,7 +4499,8 @@ add_AT_file (dw_die_ref die, enum dwarf_attribute attr_kind,
 static inline struct dwarf_file_data *
 AT_file (dw_attr_node *a)
 {
-  gcc_assert (a && AT_class (a) == dw_val_class_file);
+  gcc_assert (a && (AT_class (a) == dw_val_class_file
+		    || AT_class (a) == dw_val_class_file_implicit));
   return a->dw_attr_val.v.val_file;
 }
 
@@ -5581,9 +5575,11 @@ print_dw_val (dw_val_node *val, bool recurse, FILE *outfile)
       fprintf (outfile, "range list");
       break;
     case dw_val_class_const:
+    case dw_val_class_const_implicit:
       fprintf (outfile, HOST_WIDE_INT_PRINT_DEC, val->v.val_int);
       break;
     case dw_val_class_unsigned_const:
+    case dw_val_class_unsigned_const_implicit:
       fprintf (outfile, HOST_WIDE_INT_PRINT_UNSIGNED, val->v.val_unsigned);
       break;
     case dw_val_class_const_double:
@@ -5650,6 +5646,7 @@ print_dw_val (dw_val_node *val, bool recurse, FILE *outfile)
 	fprintf (outfile, "<null>");
       break;
     case dw_val_class_file:
+    case dw_val_class_file_implicit:
       fprintf (outfile, "\"%s\" (%d)", val->v.val_file->filename,
 	       val->v.val_file->emitted_number);
       break;
@@ -5979,9 +5976,11 @@ attr_checksum (dw_attr_node *at, struct md5_ctx *ctx, int *mark)
   switch (AT_class (at))
     {
     case dw_val_class_const:
+    case dw_val_class_const_implicit:
       CHECKSUM (at->dw_attr_val.v.val_int);
       break;
     case dw_val_class_unsigned_const:
+    case dw_val_class_unsigned_const_implicit:
       CHECKSUM (at->dw_attr_val.v.val_unsigned);
       break;
     case dw_val_class_const_double:
@@ -6032,6 +6031,7 @@ attr_checksum (dw_attr_node *at, struct md5_ctx *ctx, int *mark)
       break;
 
     case dw_val_class_file:
+    case dw_val_class_file_implicit:
       CHECKSUM_STRING (AT_file (at)->filename);
       break;
 
@@ -6256,11 +6256,13 @@ attr_checksum_ordered (enum dwarf_tag tag, dw_attr_node *at,
   switch (AT_class (at))
     {
     case dw_val_class_const:
+    case dw_val_class_const_implicit:
       CHECKSUM_ULEB128 (DW_FORM_sdata);
       CHECKSUM_SLEB128 (at->dw_attr_val.v.val_int);
       break;
 
     case dw_val_class_unsigned_const:
+    case dw_val_class_unsigned_const_implicit:
       CHECKSUM_ULEB128 (DW_FORM_sdata);
       CHECKSUM_SLEB128 ((int) at->dw_attr_val.v.val_unsigned);
       break;
@@ -6324,6 +6326,7 @@ attr_checksum_ordered (enum dwarf_tag tag, dw_attr_node *at,
       break;
 
     case dw_val_class_file:
+    case dw_val_class_file_implicit:
       CHECKSUM_ULEB128 (DW_FORM_string);
       CHECKSUM_STRING (AT_file (at)->filename);
       break;
@@ -6766,8 +6769,10 @@ same_dw_val_p (const dw_val_node *v1, const dw_val_node *v2, int *mark)
   switch (v1->val_class)
     {
     case dw_val_class_const:
+    case dw_val_class_const_implicit:
       return v1->v.val_int == v2->v.val_int;
     case dw_val_class_unsigned_const:
+    case dw_val_class_unsigned_const_implicit:
       return v1->v.val_unsigned == v2->v.val_unsigned;
     case dw_val_class_const_double:
       return v1->v.val_double.high == v2->v.val_double.high
@@ -6817,6 +6822,7 @@ same_dw_val_p (const dw_val_node *v1, const dw_val_node *v2, int *mark)
       return 1;
 
     case dw_val_class_file:
+    case dw_val_class_file_implicit:
       return v1->v.val_file == v2->v.val_file;
 
     case dw_val_class_data8:
@@ -8252,6 +8258,20 @@ optimize_external_refs (dw_die_ref die)
   return map;
 }
 
+/* The following 3 variables are temporaries that are computed only during the
+   build_abbrev_table call and used and released during the following
+   optimize_abbrev_table call.  */
+
+/* First abbrev_id that can be optimized based on usage.  */
+static unsigned int abbrev_opt_start;
+
+/* Vector of usage counts during build_abbrev_table.  Indexed by
+   abbrev_id - abbrev_opt_start.  */
+static vec<unsigned int> abbrev_usage_count;
+
+/* Vector of all DIEs added with die_abbrev >= abbrev_opt_start.  */
+static vec<dw_die_ref> sorted_abbrev_dies;
+
 /* The format of each DIE (and its attribute value pairs) is encoded in an
    abbreviation table.  This routine builds the abbreviation table and assigns
    a unique abbreviation id for each abbreviation entry.  The children of each
@@ -8260,11 +8280,11 @@ optimize_external_refs (dw_die_ref die)
 static void
 build_abbrev_table (dw_die_ref die, external_ref_hash_type *extern_map)
 {
-  unsigned long abbrev_id;
-  unsigned int n_alloc;
+  unsigned int abbrev_id = 0;
   dw_die_ref c;
   dw_attr_node *a;
   unsigned ix;
+  dw_die_ref abbrev;
 
   /* Scan the DIE references, and replace any that refer to
      DIEs from other CUs (i.e. those which are not marked) with
@@ -8284,13 +8304,14 @@ build_abbrev_table (dw_die_ref die, external_ref_hash_type *extern_map)
 	  set_AT_ref_external (a, 1);
       }
 
-  for (abbrev_id = 1; abbrev_id < abbrev_die_table_in_use; ++abbrev_id)
+  FOR_EACH_VEC_SAFE_ELT (abbrev_die_table, abbrev_id, abbrev)
     {
-      dw_die_ref abbrev = abbrev_die_table[abbrev_id];
       dw_attr_node *die_a, *abbrev_a;
       unsigned ix;
       bool ok = true;
 
+      if (abbrev_id == 0)
+	continue;
       if (abbrev->die_tag != die->die_tag)
 	continue;
       if ((abbrev->die_child != NULL) != (die->die_child != NULL))
@@ -8313,25 +8334,179 @@ build_abbrev_table (dw_die_ref die, external_ref_hash_type *extern_map)
 	break;
     }
 
-  if (abbrev_id >= abbrev_die_table_in_use)
+  if (abbrev_id >= vec_safe_length (abbrev_die_table))
     {
-      if (abbrev_die_table_in_use >= abbrev_die_table_allocated)
-	{
-	  n_alloc = abbrev_die_table_allocated + ABBREV_DIE_TABLE_INCREMENT;
-	  abbrev_die_table = GGC_RESIZEVEC (dw_die_ref, abbrev_die_table,
-					    n_alloc);
-
-	  memset (&abbrev_die_table[abbrev_die_table_allocated], 0,
-		 (n_alloc - abbrev_die_table_allocated) * sizeof (dw_die_ref));
-	  abbrev_die_table_allocated = n_alloc;
-	}
-
-      ++abbrev_die_table_in_use;
-      abbrev_die_table[abbrev_id] = die;
+      vec_safe_push (abbrev_die_table, die);
+      if (abbrev_opt_start)
+	abbrev_usage_count.safe_push (0);
+    }
+  if (abbrev_opt_start && abbrev_id >= abbrev_opt_start)
+    {
+      abbrev_usage_count[abbrev_id - abbrev_opt_start]++;
+      sorted_abbrev_dies.safe_push (die);
     }
 
   die->die_abbrev = abbrev_id;
   FOR_EACH_CHILD (die, c, build_abbrev_table (c, extern_map));
+}
+
+/* Callback function for sorted_abbrev_dies vector sorting.  We sort
+   by die_abbrev's usage count, from the most commonly used
+   abbreviation to the least.  */
+
+static int
+die_abbrev_cmp (const void *p1, const void *p2)
+{
+  dw_die_ref die1 = *(const dw_die_ref *) p1;
+  dw_die_ref die2 = *(const dw_die_ref *) p2;
+
+  gcc_checking_assert (die1->die_abbrev >= abbrev_opt_start);
+  gcc_checking_assert (die2->die_abbrev >= abbrev_opt_start);
+
+  if (abbrev_usage_count[die1->die_abbrev - abbrev_opt_start]
+      > abbrev_usage_count[die2->die_abbrev - abbrev_opt_start])
+    return -1;
+  if (abbrev_usage_count[die1->die_abbrev - abbrev_opt_start]
+      < abbrev_usage_count[die2->die_abbrev - abbrev_opt_start])
+    return 1;
+
+  /* Stabilize the sort.  */
+  if (die1->die_abbrev < die2->die_abbrev)
+    return -1;
+  if (die1->die_abbrev > die2->die_abbrev)
+    return 1;
+
+  return 0;
+}
+
+/* Convert dw_val_class_const and dw_val_class_unsigned_const class attributes
+   of DIEs in between sorted_abbrev_dies[first_id] and abbrev_dies[end_id - 1]
+   into dw_val_class_const_implicit or
+   dw_val_class_unsigned_const_implicit.  */
+
+static void
+optimize_implicit_const (unsigned int first_id, unsigned int end,
+			 vec<bool> &implicit_consts)
+{
+  /* It never makes sense if there is just one DIE using the abbreviation.  */
+  if (end < first_id + 2)
+    return;
+
+  dw_attr_node *a;
+  unsigned ix, i;
+  dw_die_ref die = sorted_abbrev_dies[first_id];
+  FOR_EACH_VEC_SAFE_ELT (die->die_attr, ix, a)
+    if (implicit_consts[ix])
+      {
+	enum dw_val_class new_class = dw_val_class_none;
+	switch (AT_class (a))
+	  {
+	  case dw_val_class_unsigned_const:
+	    if ((HOST_WIDE_INT) AT_unsigned (a) < 0)
+	      continue;
+
+	    /* The .debug_abbrev section will grow by
+	       size_of_sleb128 (AT_unsigned (a)) and we avoid the constants
+	       in all the DIEs using that abbreviation.  */
+	    if (constant_size (AT_unsigned (a)) * (end - first_id)
+		<= (unsigned) size_of_sleb128 (AT_unsigned (a)))
+	      continue;
+
+	    new_class = dw_val_class_unsigned_const_implicit;
+	    break;
+
+	  case dw_val_class_const:
+	    new_class = dw_val_class_const_implicit;
+	    break;
+
+	  case dw_val_class_file:
+	    new_class = dw_val_class_file_implicit;
+	    break;
+
+	  default:
+	    continue;
+	  }
+	for (i = first_id; i < end; i++)
+	  (*sorted_abbrev_dies[i]->die_attr)[ix].dw_attr_val.val_class
+	    = new_class;
+      }
+}
+
+/* Attempt to optimize abbreviation table from abbrev_opt_start
+   abbreviation above.  */
+
+static void
+optimize_abbrev_table (void)
+{
+  if (abbrev_opt_start
+      && vec_safe_length (abbrev_die_table) > abbrev_opt_start
+      && (dwarf_version >= 5 || vec_safe_length (abbrev_die_table) > 127))
+    {
+      auto_vec<bool, 32> implicit_consts;
+      sorted_abbrev_dies.qsort (die_abbrev_cmp);
+
+      unsigned int abbrev_id = abbrev_opt_start - 1;
+      unsigned int first_id = 0;
+      unsigned int last_abbrev_id = 0;
+      unsigned int i;
+      dw_die_ref die;
+      /* Reassign abbreviation ids from abbrev_opt_start above, so that
+	 most commonly used abbreviations come first.  */
+      FOR_EACH_VEC_ELT (sorted_abbrev_dies, i, die)
+	{
+	  dw_attr_node *a;
+	  unsigned ix;
+
+	  if (die->die_abbrev != last_abbrev_id)
+	    {
+	      last_abbrev_id = die->die_abbrev;
+	      if (dwarf_version >= 5 && i)
+		optimize_implicit_const (first_id, i, implicit_consts);
+	      abbrev_id++;
+	      (*abbrev_die_table)[abbrev_id] = die;
+	      if (dwarf_version >= 5)
+		{
+		  first_id = i;
+		  implicit_consts.truncate (0);
+
+		  FOR_EACH_VEC_SAFE_ELT (die->die_attr, ix, a)
+		    switch (AT_class (a))
+		      {
+		      case dw_val_class_const:
+		      case dw_val_class_unsigned_const:
+		      case dw_val_class_file:
+			implicit_consts.safe_push (true);
+			break;
+		      default:
+			implicit_consts.safe_push (false);
+			break;
+		      }
+		}
+	    }
+	  else if (dwarf_version >= 5)
+	    {
+	      FOR_EACH_VEC_SAFE_ELT (die->die_attr, ix, a)
+		if (!implicit_consts[ix])
+		  continue;
+		else
+		  {
+		    dw_attr_node *other_a
+		      = &(*(*abbrev_die_table)[abbrev_id]->die_attr)[ix];
+		    if (!dw_val_equal_p (&a->dw_attr_val,
+					 &other_a->dw_attr_val))
+		      implicit_consts[ix] = false;
+		  }
+	    }
+	  die->die_abbrev = abbrev_id;
+	}
+      gcc_assert (abbrev_id == vec_safe_length (abbrev_die_table) - 1);
+      if (dwarf_version >= 5)
+	optimize_implicit_const (first_id, i, implicit_consts);
+    }
+
+  abbrev_opt_start = 0;
+  abbrev_usage_count.release ();
+  sorted_abbrev_dies.release ();
 }
 
 /* Return the power-of-two number of bytes necessary to represent VALUE.  */
@@ -8417,6 +8592,12 @@ size_of_die (dw_die_ref die)
 	    else
 	      size += csize;
 	  }
+	  break;
+	case dw_val_class_const_implicit:
+	case dw_val_class_unsigned_const_implicit:
+	case dw_val_class_file_implicit:
+	  /* These occupy no size in the DIE, just an extra sleb128 in
+	     .debug_abbrev.  */
 	  break;
 	case dw_val_class_const_double:
 	  size += HOST_BITS_PER_DOUBLE_INT / HOST_BITS_PER_CHAR;
@@ -8798,6 +8979,10 @@ value_format (dw_attr_node *a)
 	default:
 	  gcc_unreachable ();
 	}
+    case dw_val_class_const_implicit:
+    case dw_val_class_unsigned_const_implicit:
+    case dw_val_class_file_implicit:
+      return DW_FORM_implicit_const;
     case dw_val_class_const_double:
       switch (HOST_BITS_PER_WIDE_INT)
 	{
@@ -8951,6 +9136,17 @@ output_die_abbrevs (unsigned long abbrev_id, dw_die_ref abbrev)
       dw2_asm_output_data_uleb128 (a_attr->dw_attr, "(%s)",
                                    dwarf_attr_name (a_attr->dw_attr));
       output_value_format (a_attr);
+      if (value_format (a_attr) == DW_FORM_implicit_const)
+	{
+	  if (AT_class (a_attr) == dw_val_class_file_implicit)
+	    {
+	      int f = maybe_emit_file (a_attr->dw_attr_val.v.val_file);
+	      const char *filename = a_attr->dw_attr_val.v.val_file->filename;
+	      dw2_asm_output_data_sleb128 (f, "(%s)", filename);
+	    }
+	  else
+	    dw2_asm_output_data_sleb128 (a_attr->dw_attr_val.v.val_int, NULL);
+	}
     }
 
   dw2_asm_output_data (1, 0, NULL);
@@ -8964,10 +9160,12 @@ output_die_abbrevs (unsigned long abbrev_id, dw_die_ref abbrev)
 static void
 output_abbrev_section (void)
 {
-  unsigned long abbrev_id;
+  unsigned int abbrev_id;
+  dw_die_ref abbrev;
 
-  for (abbrev_id = 1; abbrev_id < abbrev_die_table_in_use; ++abbrev_id)
-    output_die_abbrevs (abbrev_id, abbrev_die_table[abbrev_id]);
+  FOR_EACH_VEC_SAFE_ELT (abbrev_die_table, abbrev_id, abbrev)
+    if (abbrev_id != 0)
+      output_die_abbrevs (abbrev_id, abbrev);
 
   /* Terminate the table.  */
   dw2_asm_output_data (1, 0, NULL);
@@ -9264,6 +9462,20 @@ output_die (dw_die_ref die)
 	  }
 	  break;
 
+	case dw_val_class_const_implicit:
+	  if (flag_debug_asm)
+	    fprintf (asm_out_file, "\t\t\t%s %s ("
+				   HOST_WIDE_INT_PRINT_DEC ")\n",
+		     ASM_COMMENT_START, name, AT_int (a));
+	  break;
+
+	case dw_val_class_unsigned_const_implicit:
+	  if (flag_debug_asm)
+	    fprintf (asm_out_file, "\t\t\t%s %s ("
+				   HOST_WIDE_INT_PRINT_HEX ")\n",
+		     ASM_COMMENT_START, name, AT_unsigned (a));
+	  break;
+
 	case dw_val_class_const_double:
 	  {
 	    unsigned HOST_WIDE_INT first, second;
@@ -9457,6 +9669,14 @@ output_die (dw_die_ref die)
 	    break;
 	  }
 
+	case dw_val_class_file_implicit:
+	  if (flag_debug_asm)
+	    fprintf (asm_out_file, "\t\t\t%s %s (%d, %s)\n",
+		     ASM_COMMENT_START, name,
+		     maybe_emit_file (a->dw_attr_val.v.val_file),
+		     a->dw_attr_val.v.val_file->filename);
+	  break;
+
 	case dw_val_class_data8:
 	  {
 	    int i;
@@ -9564,7 +9784,15 @@ output_comp_unit (dw_die_ref die, int output_if_empty)
 
   external_ref_hash_type *extern_map = optimize_external_refs (die);
 
+  /* For now, optimize only the main CU, in order to optimize the rest
+     we'd need to see all of them earlier.  Leave the rest for post-linking
+     tools like DWZ.  */
+  if (die == comp_unit_die ())
+    abbrev_opt_start = vec_safe_length (abbrev_die_table);
+
   build_abbrev_table (die, extern_map);
+
+  optimize_abbrev_table ();
 
   delete extern_map;
 
@@ -22624,7 +22852,8 @@ gen_member_die (tree type, dw_die_ref context_die)
 	  /* Handle inline static data members, which only have in-class
 	     declarations.  */
 	  if (child->die_tag == DW_TAG_variable
-	      && child->die_parent == comp_unit_die ())
+	      && child->die_parent == comp_unit_die ()
+	      && get_AT (child, DW_AT_specification) == NULL)
 	    {
 	      reparent_child (child, context_die);
 	      child->die_tag = DW_TAG_member;
@@ -25164,7 +25393,7 @@ dwarf2out_define (unsigned int lineno ATTRIBUTE_UNUSED,
     {
       macinfo_entry e;
       /* Insert a dummy first entry to be able to optimize the whole
-	 predefined macro block using DW_MACRO_GNU_transparent_include.  */
+	 predefined macro block using DW_MACRO_import.  */
       if (macinfo_table->is_empty () && lineno <= 1)
 	{
 	  e.code = 0;
@@ -25191,7 +25420,7 @@ dwarf2out_undef (unsigned int lineno ATTRIBUTE_UNUSED,
     {
       macinfo_entry e;
       /* Insert a dummy first entry to be able to optimize the whole
-	 predefined macro block using DW_MACRO_GNU_transparent_include.  */
+	 predefined macro block using DW_MACRO_import.  */
       if (macinfo_table->is_empty () && lineno <= 1)
 	{
 	  e.code = 0;
@@ -25263,8 +25492,7 @@ output_macinfo_op (macinfo_entry *ref)
 	  && (debug_str_section->common.flags & SECTION_MERGE) != 0)
 	{
 	  ref->code = ref->code == DW_MACINFO_define
-		      ? DW_MACRO_GNU_define_indirect
-		      : DW_MACRO_GNU_undef_indirect;
+		      ? DW_MACRO_define_strp : DW_MACRO_undef_strp;
 	  output_macinfo_op (ref);
 	  return;
 	}
@@ -25275,16 +25503,16 @@ output_macinfo_op (macinfo_entry *ref)
 				   (unsigned long) ref->lineno);
       dw2_asm_output_nstring (ref->info, -1, "The macro");
       break;
-    case DW_MACRO_GNU_define_indirect:
-    case DW_MACRO_GNU_undef_indirect:
+    case DW_MACRO_define_strp:
+    case DW_MACRO_undef_strp:
       node = find_AT_string (ref->info);
       gcc_assert (node
-                  && ((node->form == DW_FORM_strp)
-                      || (node->form == DW_FORM_GNU_str_index)));
+		  && (node->form == DW_FORM_strp
+		      || node->form == DW_FORM_GNU_str_index));
       dw2_asm_output_data (1, ref->code,
-			   ref->code == DW_MACRO_GNU_define_indirect
-			   ? "Define macro indirect"
-			   : "Undefine macro indirect");
+			   ref->code == DW_MACRO_define_strp
+			   ? "Define macro strp"
+			   : "Undefine macro strp");
       dw2_asm_output_data_uleb128 (ref->lineno, "At line number %lu",
 				   (unsigned long) ref->lineno);
       if (node->form == DW_FORM_strp)
@@ -25295,8 +25523,8 @@ output_macinfo_op (macinfo_entry *ref)
         dw2_asm_output_data_uleb128 (node->index, "The macro: \"%s\"",
                                      ref->info);
       break;
-    case DW_MACRO_GNU_transparent_include:
-      dw2_asm_output_data (1, ref->code, "Transparent include");
+    case DW_MACRO_import:
+      dw2_asm_output_data (1, ref->code, "Import");
       ASM_GENERATE_INTERNAL_LABEL (label,
 				   DEBUG_MACRO_SECTION_LABEL, ref->lineno);
       dw2_asm_output_offset (DWARF_OFFSET_SIZE, label, NULL, NULL);
@@ -25312,7 +25540,7 @@ output_macinfo_op (macinfo_entry *ref)
    other compilation unit .debug_macinfo sections.  IDX is the first
    index of a define/undef, return the number of ops that should be
    emitted in a comdat .debug_macinfo section and emit
-   a DW_MACRO_GNU_transparent_include entry referencing it.
+   a DW_MACRO_import entry referencing it.
    If the define/undef entry should be emitted normally, return 0.  */
 
 static unsigned
@@ -25398,10 +25626,10 @@ optimize_macinfo_range (unsigned int idx, vec<macinfo_entry, va_gc> *files,
   for (i = 0; i < 16; i++)
     sprintf (tail + i * 2, "%02x", checksum[i] & 0xff);
 
-  /* Construct a macinfo_entry for DW_MACRO_GNU_transparent_include
+  /* Construct a macinfo_entry for DW_MACRO_import
      in the empty vector entry before the first define/undef.  */
   inc = &(*macinfo_table)[idx - 1];
-  inc->code = DW_MACRO_GNU_transparent_include;
+  inc->code = DW_MACRO_import;
   inc->lineno = 0;
   inc->info = ggc_strdup (grp_name);
   if (!*macinfo_htab)
@@ -25413,7 +25641,7 @@ optimize_macinfo_range (unsigned int idx, vec<macinfo_entry, va_gc> *files,
       inc->code = 0;
       inc->info = NULL;
       /* If such an entry has been used before, just emit
-	 a DW_MACRO_GNU_transparent_include op.  */
+	 a DW_MACRO_import op.  */
       inc = *slot;
       output_macinfo_op (inc);
       /* And clear all macinfo_entry in the range to avoid emitting them
@@ -25459,8 +25687,8 @@ save_macinfo_strings (void)
                 && (debug_str_section->common.flags & SECTION_MERGE) != 0)
               set_indirect_string (find_AT_string (ref->info));
             break;
-          case DW_MACRO_GNU_define_indirect:
-          case DW_MACRO_GNU_undef_indirect:
+	  case DW_MACRO_define_strp:
+	  case DW_MACRO_undef_strp:
             set_indirect_string (find_AT_string (ref->info));
             break;
           default:
@@ -25484,15 +25712,16 @@ output_macinfo (void)
     return;
 
   /* output_macinfo* uses these interchangeably.  */
-  gcc_assert ((int) DW_MACINFO_define == (int) DW_MACRO_GNU_define
-	      && (int) DW_MACINFO_undef == (int) DW_MACRO_GNU_undef
-	      && (int) DW_MACINFO_start_file == (int) DW_MACRO_GNU_start_file
-	      && (int) DW_MACINFO_end_file == (int) DW_MACRO_GNU_end_file);
+  gcc_assert ((int) DW_MACINFO_define == (int) DW_MACRO_define
+	      && (int) DW_MACINFO_undef == (int) DW_MACRO_undef
+	      && (int) DW_MACINFO_start_file == (int) DW_MACRO_start_file
+	      && (int) DW_MACINFO_end_file == (int) DW_MACRO_end_file);
 
   /* For .debug_macro emit the section header.  */
-  if (!dwarf_strict)
+  if (!dwarf_strict || dwarf_version >= 5)
     {
-      dw2_asm_output_data (2, 4, "DWARF macro version number");
+      dw2_asm_output_data (2, dwarf_version >= 5 ? 5 : 4,
+			   "DWARF macro version number");
       if (DWARF_OFFSET_SIZE == 8)
 	dw2_asm_output_data (1, 3, "Flags: 64-bit, lineptr present");
       else
@@ -25506,8 +25735,7 @@ output_macinfo (void)
   /* In the first loop, it emits the primary .debug_macinfo section
      and after each emitted op the macinfo_entry is cleared.
      If a longer range of define/undef ops can be optimized using
-     DW_MACRO_GNU_transparent_include, the
-     DW_MACRO_GNU_transparent_include op is emitted and kept in
+     DW_MACRO_import, the DW_MACRO_import op is emitted and kept in
      the vector before the first define/undef in the range and the
      whole range of define/undef ops is not emitted and kept.  */
   for (i = 0; macinfo_table->iterate (i, &ref); i++)
@@ -25523,7 +25751,7 @@ output_macinfo (void)
 	  break;
 	case DW_MACINFO_define:
 	case DW_MACINFO_undef:
-	  if (!dwarf_strict
+	  if ((!dwarf_strict || dwarf_version >= 5)
 	      && HAVE_COMDAT_GROUP
 	      && vec_safe_length (files) != 1
 	      && i > 0
@@ -25557,16 +25785,15 @@ output_macinfo (void)
   delete macinfo_htab;
   macinfo_htab = NULL;
 
-  /* If any DW_MACRO_GNU_transparent_include were used, on those
-     DW_MACRO_GNU_transparent_include entries terminate the
-     current chain and switch to a new comdat .debug_macinfo
+  /* If any DW_MACRO_import were used, on those DW_MACRO_import entries
+     terminate the current chain and switch to a new comdat .debug_macinfo
      section and emit the define/undef entries within it.  */
   for (i = 0; macinfo_table->iterate (i, &ref); i++)
     switch (ref->code)
       {
       case 0:
 	continue;
-      case DW_MACRO_GNU_transparent_include:
+      case DW_MACRO_import:
 	{
 	  char label[MAX_ARTIFICIAL_LABEL_BYTES];
 	  tree comdat_key = get_identifier (ref->info);
@@ -25582,7 +25809,8 @@ output_macinfo (void)
 	  ASM_OUTPUT_LABEL (asm_out_file, label);
 	  ref->code = 0;
 	  ref->info = NULL;
-	  dw2_asm_output_data (2, 4, "DWARF macro version number");
+	  dw2_asm_output_data (2, dwarf_version >= 5 ? 5 : 4,
+			       "DWARF macro version number");
 	  if (DWARF_OFFSET_SIZE == 8)
 	    dw2_asm_output_data (1, 1, "Flags: 64-bit");
 	  else
@@ -25614,7 +25842,8 @@ init_sections_and_labels (void)
       debug_loc_section = get_section (DEBUG_LOC_SECTION,
                                        SECTION_DEBUG, NULL);
       debug_macinfo_section_name
-	= dwarf_strict ? DEBUG_MACINFO_SECTION : DEBUG_MACRO_SECTION;
+	= (dwarf_strict && dwarf_version < 5)
+	  ? DEBUG_MACINFO_SECTION : DEBUG_MACRO_SECTION;
       debug_macinfo_section = get_section (debug_macinfo_section_name,
 					   SECTION_DEBUG, NULL);
     }
@@ -25651,7 +25880,8 @@ init_sections_and_labels (void)
       debug_str_dwo_section = get_section (DEBUG_STR_DWO_SECTION,
                                            DEBUG_STR_DWO_SECTION_FLAGS, NULL);
       debug_macinfo_section_name
-	= dwarf_strict ? DEBUG_DWO_MACINFO_SECTION : DEBUG_DWO_MACRO_SECTION;
+	= (dwarf_strict && dwarf_version < 5)
+	  ? DEBUG_DWO_MACINFO_SECTION : DEBUG_DWO_MACRO_SECTION;
       debug_macinfo_section = get_section (debug_macinfo_section_name,
 					   SECTION_DEBUG | SECTION_EXCLUDE,
 					   NULL);
@@ -25682,7 +25912,7 @@ init_sections_and_labels (void)
   ASM_GENERATE_INTERNAL_LABEL (debug_addr_section_label,
                                DEBUG_ADDR_SECTION_LABEL, 0);
   ASM_GENERATE_INTERNAL_LABEL (macinfo_section_label,
-			       dwarf_strict
+			       (dwarf_strict && dwarf_version < 5)
 			       ? DEBUG_MACINFO_SECTION_LABEL
 			       : DEBUG_MACRO_SECTION_LABEL, 0);
   ASM_GENERATE_INTERNAL_LABEL (loc_section_label, DEBUG_LOC_SECTION_LABEL, 0);
@@ -25718,11 +25948,9 @@ dwarf2out_init (const char *filename ATTRIBUTE_UNUSED)
   vec_alloc (decl_scope_table, 256);
 
   /* Allocate the initial hunk of the abbrev_die_table.  */
-  abbrev_die_table = ggc_cleared_vec_alloc<dw_die_ref>
-    (ABBREV_DIE_TABLE_INCREMENT);
-  abbrev_die_table_allocated = ABBREV_DIE_TABLE_INCREMENT;
+  vec_alloc (abbrev_die_table, 256);
   /* Zero-th entry is allocated, but unused.  */
-  abbrev_die_table_in_use = 1;
+  abbrev_die_table->quick_push (NULL);
 
   /* Allocate the dwarf_proc_stack_usage_map.  */
   dwarf_proc_stack_usage_map = new hash_map<dw_die_ref, int>;
@@ -27998,7 +28226,8 @@ dwarf2out_finish (const char *)
 
   if (have_macinfo)
     add_AT_macptr (comp_unit_die (),
-		   dwarf_strict ? DW_AT_macro_info : DW_AT_GNU_macros,
+		   dwarf_version >= 5 ? DW_AT_macros
+		   : dwarf_strict ? DW_AT_macro_info : DW_AT_GNU_macros,
 		   macinfo_section_label);
 
   if (dwarf_split_debug_info)
@@ -28108,7 +28337,7 @@ dwarf2out_finish (const char *)
     output_skeleton_debug_sections (main_comp_unit_die);
 
   /* Output the abbreviation table.  */
-  if (abbrev_die_table_in_use != 1)
+  if (vec_safe_length (abbrev_die_table) != 1)
     {
       switch_to_section (debug_abbrev_section);
       ASM_OUTPUT_LABEL (asm_out_file, abbrev_section_label);
@@ -28331,8 +28560,6 @@ dwarf2out_c_finalize (void)
   tail_call_site_count = -1;
   cached_dw_loc_list_table = NULL;
   abbrev_die_table = NULL;
-  abbrev_die_table_allocated = 0;
-  abbrev_die_table_in_use = 0;
   delete dwarf_proc_stack_usage_map;
   dwarf_proc_stack_usage_map = NULL;
   line_info_label_num = 0;
