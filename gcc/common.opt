@@ -58,10 +58,6 @@ int flag_incremental_link = 0
 Variable
 int flag_complex_method = 1
 
-; Nonzero if subexpressions must be evaluated from left-to-right.
-Variable
-int flag_evaluation_order = 0
-
 ; Language specific warning pass for unused results.
 Variable
 bool flag_warn_unused_result = false
@@ -907,7 +903,8 @@ Driver Undocumented
 ;     identity, such as ia32 calling convention attributes (stdcall, etc.)
 ;     Default in G++ 6 (set in c_common_post_options).
 ;
-; 11: The version of the ABI that corrects mangling of sizeof... expressions.
+; 11: The version of the ABI that corrects mangling of sizeof... expressions
+;     and introduces new inheriting constructor handling.
 ;     Default in G++ 7.
 ;
 ; Additional positive integers will be assigned as new versions of
@@ -984,6 +981,9 @@ After diagnosing undefined behavior attempt to continue execution.
 fsanitize-recover
 Common Report
 This switch is deprecated; use -fsanitize-recover= instead.
+
+fsanitize-address-use-after-scope
+Common Driver Report Var(flag_sanitize_address_use_after_scope) Init(0)
 
 fsanitize-undefined-trap-on-error
 Common Driver Report Var(flag_sanitize_undefined_trap_on_error) Init(0)
@@ -1959,7 +1959,7 @@ Enable correction of flow inconsistent profile data input.
 
 fprofile-update=
 Common Joined RejectNegative Enum(profile_update) Var(flag_profile_update) Init(PROFILE_UPDATE_SINGLE)
--fprofile-update=[single|atomic]	Set the profile update method.
+-fprofile-update=[single|atomic|prefer-atomic]	Set the profile update method.
 
 Enum
 Name(profile_update) Type(enum profile_update) UnknownError(unknown profile update method %qs)
@@ -1969,6 +1969,9 @@ Enum(profile_update) String(single) Value(PROFILE_UPDATE_SINGLE)
 
 EnumValue
 Enum(profile_update) String(atomic) Value(PROFILE_UPDATE_ATOMIC)
+
+EnumValue
+Enum(profile_update) String(prefer-atomic) Value(PROFILE_UPDATE_PREFER_ATOMIC)
 
 fprofile-generate
 Common

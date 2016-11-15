@@ -2228,7 +2228,8 @@ struct GTY(()) lang_decl_base {
   unsigned u2sel : 1;
   unsigned concept_p : 1;                  /* applies to vars and functions */
   unsigned var_declared_inline_p : 1;	   /* var */
-  /* 2 spare bits */
+  unsigned decomposition_p : 1;		   /* var */
+  /* 1 spare bit */
 };
 
 /* True for DECL codes which have template info and access.  */
@@ -2730,12 +2731,21 @@ struct GTY(()) lang_decl {
   (LANG_DECL_FN_CHECK (NODE)->context = (THUNKS))
 
 /* If NODE, a FUNCTION_DECL, is a C++11 inheriting constructor, then this
-   is the base it inherits from.  */
-#define DECL_INHERITED_CTOR_BASE(NODE) \
-  (DECL_CONSTRUCTOR_P (NODE) ? LANG_DECL_FN_CHECK (NODE)->context : NULL_TREE)
+   is the constructor it inherits from.  */
+#define DECL_INHERITED_CTOR(NODE) \
+  (DECL_DECLARES_FUNCTION_P (NODE) && DECL_CONSTRUCTOR_P (NODE) \
+   ? LANG_DECL_FN_CHECK (NODE)->context : NULL_TREE)
+
+/* And this is the base that constructor comes from.  */
+#define DECL_INHERITED_CTOR_BASE(NODE)			\
+  (DECL_INHERITED_CTOR (NODE)				\
+   ? DECL_CONTEXT (flag_new_inheriting_ctors		\
+		   ? strip_inheriting_ctors (NODE)	\
+		   : DECL_INHERITED_CTOR (NODE))	\
+   : NULL_TREE)
 
 /* Set the inherited base.  */
-#define SET_DECL_INHERITED_CTOR_BASE(NODE,INH) \
+#define SET_DECL_INHERITED_CTOR(NODE,INH) \
   (LANG_DECL_FN_CHECK (NODE)->context = (INH))
 
 /* Nonzero if NODE is a thunk, rather than an ordinary function.  */
@@ -3617,6 +3627,16 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
   (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))->u.base.var_declared_inline_p \
    = true)
 
+/* Nonzero if NODE is the artificial VAR_DECL for decomposition
+   declaration.  */
+#define DECL_DECOMPOSITION_P(NODE) \
+  (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))			\
+   ? DECL_LANG_SPECIFIC (NODE)->u.base.decomposition_p		\
+   : false)
+#define SET_DECL_DECOMPOSITION_P(NODE) \
+  (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))->u.base.decomposition_p \
+   = true)
+
 /* Nonzero if NODE is an inline VAR_DECL.  In C++17, static data members
    declared with constexpr specifier are implicitly inline variables.  */
 #define DECL_INLINE_VAR_P(NODE) \
@@ -4371,7 +4391,8 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
    instantiated will not be a DECL_TEMPLATE_INSTANTIATION, but will be
    a DECL_FRIEND_PSEUDO_TEMPLATE_INSTANTIATION.  */
 #define DECL_FRIEND_PSEUDO_TEMPLATE_INSTANTIATION(DECL) \
-  (DECL_TEMPLATE_INFO (DECL) && !DECL_USE_TEMPLATE (DECL))
+  (DECL_LANG_SPECIFIC (DECL) && DECL_TEMPLATE_INFO (DECL) \
+   && !DECL_USE_TEMPLATE (DECL))
 
 /* Nonzero if DECL is a function generated from a function 'temploid',
    i.e. template, member of class template, or dependent friend.  */
@@ -4735,6 +4756,8 @@ enum tsubst_flags {
 				    for calls in decltype (5.2.2/11).  */
   tf_partial = 1 << 8,		 /* Doing initial explicit argument
 				    substitution in fn_type_unification.  */
+  tf_fndecl_type = 1 << 9,   /* Substituting the type of a function
+				declaration.  */
   /* Convenient substitution flags combinations.  */
   tf_warning_or_error = tf_warning | tf_error
 };
@@ -4939,6 +4962,10 @@ extern int at_eof;
    later generation, rather than emitting them right away.  */
 
 extern bool defer_mangling_aliases;
+
+/* True if noexcept is part of the type (i.e. in C++17).  */
+
+extern bool flag_noexcept_type;
 
 /* A list of namespace-scope objects which have constructors or
    destructors which reside in the global scope.  The decl is stored
@@ -5148,7 +5175,9 @@ enum auto_deduction_context
   adc_unspecified,   /* Not given */
   adc_variable_type, /* Variable initializer deduction */
   adc_return_type,   /* Return type deduction */
-  adc_requirement    /* Argument dedution constraint */
+  adc_unify,         /* Template argument deduction */
+  adc_requirement,   /* Argument deduction constraint */
+  adc_decomp_type    /* Decomposition declaration initializer deduction */
 };
 
 /* True iff this TEMPLATE_TYPE_PARM represents decltype(auto).  */
@@ -5365,6 +5394,7 @@ enum cp_declarator_kind {
   cdk_pointer,
   cdk_reference,
   cdk_ptrmem,
+  cdk_decomp,
   cdk_error
 };
 
@@ -5395,7 +5425,8 @@ struct cp_declarator {
   /* Whether we parsed an ellipsis (`...') just before the declarator,
      to indicate this is a parameter pack.  */
   BOOL_BITFIELD parameter_pack_p : 1;
-  location_t id_loc; /* Currently only set for cdk_id and cdk_function. */
+  location_t id_loc; /* Currently only set for cdk_id, cdk_decomp and
+			cdk_function. */
   /* GNU Attributes that apply to this declarator.  If the declarator
      is a pointer or a reference, these attribute apply to the type
      pointed to.  */
@@ -5404,8 +5435,8 @@ struct cp_declarator {
      declarator is a pointer or a reference, these attributes apply
      to the pointer, rather than to the type pointed to.  */
   tree std_attributes;
-  /* For all but cdk_id and cdk_error, the contained declarator.  For
-     cdk_id and cdk_error, guaranteed to be NULL.  */
+  /* For all but cdk_id, cdk_decomp and cdk_error, the contained declarator.
+     For cdk_id, cdk_decomp and cdk_error, guaranteed to be NULL.  */
   cp_declarator *declarator;
   union {
     /* For identifiers.  */
@@ -5635,6 +5666,7 @@ extern tree get_vtable_decl			(tree, int);
 extern void resort_type_method_vec		(void *, void *,
 						 gt_pointer_operator, void *);
 extern bool add_method				(tree, tree, tree);
+extern tree declared_access			(tree);
 extern tree currently_open_class		(tree);
 extern tree currently_open_derived_class	(tree);
 extern tree outermost_open_class		(void);
@@ -5727,7 +5759,8 @@ extern tree type_promotes_to			(tree);
 extern tree perform_qualification_conversions	(tree, tree);
 extern bool tx_safe_fn_type_p			(tree);
 extern tree tx_unsafe_fn_variant		(tree);
-extern bool can_convert_tx_safety		(tree, tree);
+extern bool fnptr_conv_p			(tree, tree);
+extern tree strip_fnptr_conv			(tree);
 
 /* in name-lookup.c */
 extern tree pushdecl				(tree);
@@ -5775,6 +5808,7 @@ extern tree start_decl				(const cp_declarator *, cp_decl_specifier_seq *, int, 
 extern void start_decl_1			(tree, bool);
 extern bool check_array_initializer		(tree, tree, tree);
 extern void cp_finish_decl			(tree, tree, bool, tree, int);
+extern void cp_finish_decomp			(tree, tree, unsigned int);
 extern int cp_complete_array_type		(tree *, tree, bool);
 extern int cp_complete_array_type_or_error	(tree *, tree, bool, tsubst_flags_t);
 extern tree build_ptrmemfunc_type		(tree);
@@ -5877,6 +5911,7 @@ extern void import_export_decl			(tree);
 extern tree build_cleanup			(tree);
 extern tree build_offset_ref_call_from_tree	(tree, vec<tree, va_gc> **,
 						 tsubst_flags_t);
+extern bool decl_defined_p			(tree);
 extern bool decl_constant_var_p			(tree);
 extern bool decl_maybe_constant_var_p		(tree);
 extern void no_linkage_error			(tree);
@@ -6035,7 +6070,9 @@ extern tree get_copy_ctor			(tree, tsubst_flags_t);
 extern tree get_copy_assign			(tree);
 extern tree get_default_ctor			(tree);
 extern tree get_dtor				(tree, tsubst_flags_t);
-extern tree get_inherited_ctor			(tree);
+extern tree strip_inheriting_ctors		(tree);
+extern tree inherited_ctor_binfo		(tree);
+extern bool ctor_omit_inherited_parms		(tree);
 extern tree locate_ctor				(tree);
 extern tree implicitly_declare_fn               (special_function_kind, tree,
 						 bool, tree, tree);
@@ -6044,7 +6081,7 @@ extern tree implicitly_declare_fn               (special_function_kind, tree,
 extern bool maybe_clone_body			(tree);
 
 /* In parser.c */
-extern tree cp_convert_range_for (tree, tree, tree, bool);
+extern tree cp_convert_range_for (tree, tree, tree, tree, unsigned int, bool);
 extern bool parsing_nsdmi (void);
 extern void inject_this_parameter (tree, cp_cv_quals);
 
@@ -6060,6 +6097,7 @@ extern void reset_specialization		(void);
 extern void end_specialization			(void);
 extern void begin_explicit_instantiation	(void);
 extern void end_explicit_instantiation		(void);
+extern void check_unqualified_spec_or_inst	(tree, location_t);
 extern tree check_explicit_specialization	(tree, tree, int, int);
 extern int num_template_headers_for_class	(tree);
 extern void check_template_variable		(tree);
@@ -6069,7 +6107,8 @@ extern tree make_template_placeholder		(tree);
 extern tree do_auto_deduction                   (tree, tree, tree);
 extern tree do_auto_deduction                   (tree, tree, tree,
                                                  tsubst_flags_t,
-                                                 auto_deduction_context);
+                                                 auto_deduction_context,
+						 tree = NULL_TREE);
 extern tree type_uses_auto			(tree);
 extern tree type_uses_auto_or_concept		(tree);
 extern void append_type_to_template_for_access_check (tree, tree, tree,
@@ -6533,6 +6572,7 @@ extern cp_lvalue_kind lvalue_kind		(const_tree);
 extern bool glvalue_p				(const_tree);
 extern bool obvalue_p				(const_tree);
 extern bool xvalue_p	                        (const_tree);
+extern bool bitfield_p				(const_tree);
 extern tree cp_stabilize_reference		(tree);
 extern bool builtin_valid_in_constant_expr_p    (const_tree);
 extern tree build_min				(enum tree_code, tree, ...);
@@ -6565,6 +6605,7 @@ extern tree build_overload			(tree, tree);
 extern tree ovl_scope				(tree);
 extern const char *cxx_printable_name		(tree, int);
 extern const char *cxx_printable_name_translate	(tree, int);
+extern tree canonical_eh_spec			(tree);
 extern tree build_exception_variant		(tree, tree);
 extern tree bind_template_template_parm		(tree, tree);
 extern tree array_type_nelts_total		(tree);
@@ -6636,7 +6677,7 @@ extern tree complete_type			(tree);
 extern tree complete_type_or_else		(tree, tree);
 extern tree complete_type_or_maybe_complain	(tree, tree, tsubst_flags_t);
 extern int type_unknown_p			(const_tree);
-enum { ce_derived, ce_normal, ce_exact };
+enum { ce_derived, ce_type, ce_normal, ce_exact };
 extern bool comp_except_specs			(const_tree, const_tree, int);
 extern bool comptypes				(tree, tree, int);
 extern bool same_type_ignoring_top_level_qualifiers_p (tree, tree);

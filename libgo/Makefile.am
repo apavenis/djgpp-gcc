@@ -480,14 +480,12 @@ runtime_files = \
 	runtime/print.c \
 	runtime/proc.c \
 	runtime/runtime_c.c \
-	runtime/signal_unix.c \
 	runtime/thread.c \
 	$(runtime_thread_files) \
 	runtime/yield.c \
 	$(rtems_task_variable_add_file) \
 	malloc.c \
 	runtime1.c \
-	sigqueue.c \
 	$(runtime_getncpu_file)
 
 goc2c.$(OBJEXT): runtime/goc2c.c
@@ -502,10 +500,6 @@ malloc.c: $(srcdir)/runtime/malloc.goc goc2c
 
 runtime1.c: $(srcdir)/runtime/runtime1.goc goc2c
 	./goc2c $< > $@.tmp
-	mv -f $@.tmp $@
-
-sigqueue.c: $(srcdir)/runtime/sigqueue.goc goc2c
-	./goc2c --go-pkgpath os_signal $< > $@.tmp
 	mv -f $@.tmp $@
 
 %.c: $(srcdir)/runtime/%.goc goc2c
@@ -572,11 +566,17 @@ s-runtime_sysinfo: $(srcdir)/mkrsysinfo.sh gen-sysinfo.go
 	$(SHELL) $(srcdir)/mvifdiff.sh tmp-runtime_sysinfo.go runtime_sysinfo.go
 	$(STAMP) $@
 
+sigtab.go: s-sigtab; @true
+s-sigtab: $(srcdir)/mksigtab.sh gen-sysinfo.go
+	GOOS=$(GOOS) $(SHELL) $(srcdir)/mksigtab.sh > tmp-sigtab.go
+	$(SHELL) $(srcdir)/mvifdiff.sh tmp-sigtab.go sigtab.go
+	$(STAMP) $@
+
 runtime.inc: s-runtime-inc; @true
 s-runtime-inc: runtime.lo Makefile
 	rm -f runtime.inc.tmp2
-	grep -v "#define _" runtime.inc.tmp | grep -v "#define c0 " | grep -v "#define c1 " > runtime.inc.tmp2
-	for pattern in '_G[a-z]' '_P[a-z]' _Max _Lock _Sig _Trace _MHeap _Num; do \
+	grep -v "#define _" runtime.inc.tmp | grep -v "#define c[01] " > runtime.inc.tmp2
+	for pattern in '_[GP][a-z]' _Max _Lock _Sig _Trace _MHeap _Num; do \
 	  grep "#define $$pattern" runtime.inc.tmp >> runtime.inc.tmp2; \
 	done
 	$(SHELL) $(srcdir)/mvifdiff.sh runtime.inc.tmp2 runtime.inc
@@ -591,7 +591,7 @@ s-zstdpkglist: Makefile
 	echo 'package main' > zstdpkglist.go.tmp
 	echo "" >> zstdpkglist.go.tmp
 	echo 'var stdpkg = map[string]bool{' >> zstdpkglist.go.tmp
-	echo $(libgo_go_objs) 'unsafe.lo' 'runtime/cgo.lo' | sed 's/\.lo /\": true,\n/g' | sed 's/\.lo/\": true,/' | grep -v _c | sed 's/^/\t\"/' | sort | uniq >> zstdpkglist.go.tmp
+	echo $(libgo_go_objs) 'unsafe.lo' 'runtime/cgo.lo' | sed 's/\.lo /\": true,\n/g' | grep -v _c | sed 's/\.lo/\": true,/' | sed 's/^/\t\"/' | sort -u >> zstdpkglist.go.tmp
 	echo '}' >> zstdpkglist.go.tmp
 	$(SHELL) $(srcdir)/mvifdiff.sh zstdpkglist.go.tmp zstdpkglist.go
 	$(STAMP) $@
@@ -924,7 +924,8 @@ BUILDPACKAGE = \
 # How to build a .gox file from a .lo file.
 BUILDGOX = \
 	f=`echo $< | sed -e 's/.lo$$/.o/'`; \
-	$(OBJCOPY) -j .go_export $$f $@.tmp && mv -f $@.tmp $@
+	$(OBJCOPY) -j .go_export $$f $@.tmp; \
+	$(SHELL) $(srcdir)/mvifdiff.sh $@.tmp `echo $@ | sed -e 's/s-gox/gox/'`
 
 GOTESTFLAGS =
 GOBENCH = 
@@ -1022,8 +1023,10 @@ $(1).lo:
 $(1)/check: $$(CHECK_DEPS)
 	@$$(CHECK)
 .PHONY: $(1)/check
-$(1).gox: $(1).lo
+$(1).gox: $(1).s-gox; @true
+$(1).s-gox: $(1).lo
 	$$(BUILDGOX)
+	$$(STAMP) $$@
 endef
 
 # This line expands PACKAGE_template once for each package name listed
@@ -1035,7 +1038,7 @@ $(foreach package,$(PACKAGES),$(eval $(call PACKAGE_template,$(package))))
 math_lo_GOCFLAGS = $(MATH_FLAG)
 
 # Add the generated file runtime_sysinfo.go to the runtime package.
-extra_go_files_runtime = runtime_sysinfo.go
+extra_go_files_runtime = runtime_sysinfo.go sigtab.go
 runtime.lo.dep: $(extra_go_files_runtime)
 
 # Add generated files to the syscall package.

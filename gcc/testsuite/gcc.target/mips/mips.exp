@@ -360,6 +360,19 @@ set mips_option_tests(-mips16) {
     jalr $3
     move $31,$2
 }
+set mips_option_tests(-mmicromips) {
+    move $2,$31
+    bal 1f
+    .set push
+    .set micromips
+    jraddiusp 0
+    .set pop
+    .align 2
+1:
+    ori $3,$31,1
+    jalr $3
+    move $31,$2
+}
 set mips_option_tests(-mpaired-single) {
     .set mips64
     lui $2,0x3f80
@@ -387,6 +400,27 @@ set mips_option_tests(-mdspr2) {
     .set mips64r2
     .set dspr2
     prepend $2,$3,11
+}
+set mips_option_tests(-mcode-readable=yes) {
+    move $2,$31
+    bal 1f
+    .set mips16
+    la $3,0f
+    lw $3,($3)
+    jr $31
+0:
+    .word 0xfacebead
+    .set nomips16
+    .align 2
+1:
+    ori $3,$31,1
+    jalr $3
+    li $4,0xfacebead
+    beq $3,$4,2f
+    break
+    b .
+2:
+    move $31,$2
 }
 
 # Canonicalize command-line option OPTION.
@@ -1129,7 +1163,7 @@ proc mips-dg-options { args } {
         # We need MIPS IV or higher for:
 	#
 	#
-	} elseif { $isa < 3
+	} elseif { $isa < 4
 		   && [mips_have_test_option_p options "HAS_MOVN"] } {
 	    mips_make_test_option options "-mips4"
         # We need MIPS III or higher for:
@@ -1176,7 +1210,8 @@ proc mips-dg-options { args } {
 		       || [mips_have_test_option_p options "-mpaired-single"]
 		       || [mips_have_test_option_p options "-mnan=legacy"]
 		       || [mips_have_test_option_p options "-mabs=legacy"]
-		       || [mips_have_test_option_p options "!HAS_LSA"]) } {
+		       || [mips_have_test_option_p options "!HAS_LSA"]
+		       || [mips_have_test_option_p options "-mbranch-likely"]) } {
 	    if { $gp_size == 32 } {
 		mips_make_test_option options "-mips32r5"
 	    } else {
@@ -1345,6 +1380,7 @@ proc mips-dg-options { args } {
 	    mips_make_test_option options "-mno-paired-single"
 	    mips_make_test_option options "-mnan=2008"
 	    mips_make_test_option options "-mabs=2008"
+	    mips_make_test_option options "-mno-branch-likely"
 	}
 	if { [regexp {^-march=(octeon|loongson)} $arch] } {
 	    mips_make_test_option options "-mno-micromips"
