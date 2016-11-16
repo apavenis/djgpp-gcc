@@ -1,4 +1,18 @@
+2016-11-15  Jakub Jelinek  <jakub@redhat.com>
+
+	* decl.c (cp_finish_decomp): For DECL_NAMESPACE_SCOPE_P decl,
+	set DECL_ASSEMBLER_NAME.
+	* parser.c (cp_parser_decomposition_declaration): Likewise
+	if returning error_mark_node.
+	* mangle.c (mangle_decomp): New function.
+	* cp-tree.h (mangle_decomp): New declaration.
+
 2016-11-15  Jason Merrill  <jason@redhat.com>
+
+	PR c++/78358
+	* semantics.c (finish_decltype_type): Strip references for a tuple
+	decomposition.
+	* cp-tree.h (DECL_DECOMPOSITION_P): False for non-variables.
 
 	* decl2.c (decl_maybe_constant_var_p): References qualify.
 	* constexpr.c (non_const_var_error): Handle references.
@@ -64,6 +78,11 @@
 	* parser.c (cp_parser_diagnose_invalid_type_name): Likewise.
 	* semantics.c (perform_koenig_lookup): Don't wrap an error in
 	TEMPLATE_ID_EXPR.
+
+2016-11-13  Prathamesh Kulkarni  <prathamesh.kulkarni@linaro.org>
+
+	PR c/35503
+	* parser.c (cp_parser_postfix_pexpression): Call warn_for_restrict.
 
 2016-11-12  Jason Merrill  <jason@redhat.com>
 

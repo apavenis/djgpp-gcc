@@ -3627,10 +3627,10 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
   (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))->u.base.var_declared_inline_p \
    = true)
 
-/* Nonzero if NODE is the artificial VAR_DECL for decomposition
+/* Nonzero if NODE is an artificial VAR_DECL for a C++17 decomposition
    declaration.  */
 #define DECL_DECOMPOSITION_P(NODE) \
-  (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))			\
+  (VAR_P (NODE) && DECL_LANG_SPECIFIC (NODE)			\
    ? DECL_LANG_SPECIFIC (NODE)->u.base.decomposition_p		\
    : false)
 #define SET_DECL_DECOMPOSITION_P(NODE) \
@@ -6868,6 +6868,7 @@ extern bool decl_tls_wrapper_p			(tree);
 extern tree mangle_ref_init_variable		(tree);
 extern char * get_mangled_vtable_map_var_name   (tree);
 extern bool mangle_return_type_p		(tree);
+extern tree mangle_decomp			(tree, vec<tree> &);
 
 /* in dump.c */
 extern bool cp_dump_tree			(void *, tree);
