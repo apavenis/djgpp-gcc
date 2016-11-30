@@ -82,6 +82,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "rtl.h"
 #include "tree.h"
+#include "cfghooks.h"
 #include "predict.h"
 #include "df.h"
 #include "memmodel.h"
@@ -2870,8 +2871,8 @@ try_combine (rtx_insn *i3, rtx_insn *i2, rtx_insn *i1, rtx_insn *i0,
 	  rtx outer = SET_SRC (temp_expr);
 
 	  wide_int o
-	    = wi::insert (std::make_pair (outer, GET_MODE (SET_DEST (temp_expr))),
-			  std::make_pair (inner, GET_MODE (dest)),
+	    = wi::insert (rtx_mode_t (outer, GET_MODE (SET_DEST (temp_expr))),
+			  rtx_mode_t (inner, GET_MODE (dest)),
 			  offset, width);
 
 	  combine_merges++;
@@ -4618,6 +4619,25 @@ try_combine (rtx_insn *i3, rtx_insn *i2, rtx_insn *i1, rtx_insn *i0,
     {
       *new_direct_jump_p = 1;
       update_cfg_for_uncondjump (undobuf.other_insn);
+    }
+
+  if (GET_CODE (PATTERN (i3)) == TRAP_IF
+      && XEXP (PATTERN (i3), 0) == const1_rtx)
+    {
+      basic_block bb = BLOCK_FOR_INSN (i3);
+      gcc_assert (bb);
+      remove_edge (split_block (bb, i3));
+      *new_direct_jump_p = 1;
+    }
+
+  if (undobuf.other_insn
+      && GET_CODE (PATTERN (undobuf.other_insn)) == TRAP_IF
+      && XEXP (PATTERN (undobuf.other_insn), 0) == const1_rtx)
+    {
+      basic_block bb = BLOCK_FOR_INSN (undobuf.other_insn);
+      gcc_assert (bb);
+      remove_edge (split_block (bb, undobuf.other_insn));
+      *new_direct_jump_p = 1;
     }
 
   /* A noop might also need cleaning up of CFG, if it comes from the
@@ -6522,14 +6542,22 @@ simplify_if_then_else (rtx x)
       simplify_shift_const (NULL_RTX, ASHIFT, mode,
 			    gen_lowpart (mode, XEXP (cond, 0)), i);
 
-  /* (IF_THEN_ELSE (NE REG 0) (0) (8)) is REG for nonzero_bits (REG) == 8.  */
+  /* (IF_THEN_ELSE (NE A 0) C1 0) is A or a zero-extend of A if the only
+     non-zero bit in A is C1.  */
   if (true_code == NE && XEXP (cond, 1) == const0_rtx
       && false_rtx == const0_rtx && CONST_INT_P (true_rtx)
-      && GET_MODE (XEXP (cond, 0)) == mode
+      && INTEGRAL_MODE_P (GET_MODE (XEXP (cond, 0)))
       && (UINTVAL (true_rtx) & GET_MODE_MASK (mode))
-	  == nonzero_bits (XEXP (cond, 0), mode)
+	  == nonzero_bits (XEXP (cond, 0), GET_MODE (XEXP (cond, 0)))
       && (i = exact_log2 (UINTVAL (true_rtx) & GET_MODE_MASK (mode))) >= 0)
-    return XEXP (cond, 0);
+    {
+      rtx val = XEXP (cond, 0);
+      enum machine_mode val_mode = GET_MODE (val);
+      if (val_mode == mode)
+        return val;
+      else if (GET_MODE_PRECISION (val_mode) < GET_MODE_PRECISION (mode))
+        return simplify_gen_unary (ZERO_EXTEND, mode, val, val_mode);
+    }
 
   return x;
 }
@@ -7382,6 +7410,7 @@ make_extraction (machine_mode mode, rtx inner, HOST_WIDE_INT pos,
   if (tmode != BLKmode
       && ((pos_rtx == 0 && (pos % BITS_PER_WORD) == 0
 	   && !MEM_P (inner)
+	   && (pos == 0 || REG_P (inner))
 	   && (inner_mode == tmode
 	       || !REG_P (inner)
 	       || TRULY_NOOP_TRUNCATION_MODES_P (tmode, inner_mode)
@@ -7458,10 +7487,9 @@ make_extraction (machine_mode mode, rtx inner, HOST_WIDE_INT pos,
 	}
       else
 	new_rtx = force_to_mode (inner, tmode,
-			     len >= HOST_BITS_PER_WIDE_INT
-			     ? HOST_WIDE_INT_M1U
-			     : (HOST_WIDE_INT_1U << len) - 1,
-			     0);
+				 len >= HOST_BITS_PER_WIDE_INT
+				 ? HOST_WIDE_INT_M1U
+				 : (HOST_WIDE_INT_1U << len) - 1, 0);
 
       /* If this extraction is going into the destination of a SET,
 	 make a STRICT_LOW_PART unless we made a MEM.  */
@@ -8089,12 +8117,19 @@ make_compound_operation_int (machine_mode mode, rtx *x_ptr,
 	/* If the SUBREG is masking of a logical right shift,
 	   make an extraction.  */
 	if (GET_CODE (inner) == LSHIFTRT
+	    && CONST_INT_P (XEXP (inner, 1))
 	    && GET_MODE_SIZE (mode) < GET_MODE_SIZE (GET_MODE (inner))
+	    && (UINTVAL (XEXP (inner, 1))
+		< GET_MODE_PRECISION (GET_MODE (inner)))
 	    && subreg_lowpart_p (x))
 	  {
 	    new_rtx = make_compound_operation (XEXP (inner, 0), next_code);
+	    int width = GET_MODE_PRECISION (GET_MODE (inner))
+			- INTVAL (XEXP (inner, 1));
+	    if (width > mode_width)
+	      width = mode_width;
 	    new_rtx = make_extraction (mode, new_rtx, 0, XEXP (inner, 1),
-				       mode_width, 1, 0, in_code == COMPARE);
+				       width, 1, 0, in_code == COMPARE);
 	    break;
 	  }
 
@@ -9141,7 +9176,7 @@ if_then_else_cond (rtx x, rtx *ptrue, rtx *pfalse)
   /* If X is known to be either 0 or -1, those are the true and
      false values when testing X.  */
   else if (x == constm1_rtx || x == const0_rtx
-	   || (mode != VOIDmode
+	   || (mode != VOIDmode && mode != BLKmode
 	       && num_sign_bit_copies (x, mode) == GET_MODE_PRECISION (mode)))
     {
       *ptrue = constm1_rtx, *pfalse = const0_rtx;
@@ -11216,16 +11251,20 @@ change_zero_ext (rtx pat)
       else if (GET_CODE (x) == ZERO_EXTEND
 	       && SCALAR_INT_MODE_P (mode)
 	       && GET_CODE (XEXP (x, 0)) == SUBREG
-	       && GET_MODE (SUBREG_REG (XEXP (x, 0))) == mode
+	       && SCALAR_INT_MODE_P (GET_MODE (SUBREG_REG (XEXP (x, 0))))
+	       && !paradoxical_subreg_p (XEXP (x, 0))
 	       && subreg_lowpart_p (XEXP (x, 0)))
 	{
 	  size = GET_MODE_PRECISION (GET_MODE (XEXP (x, 0)));
 	  x = SUBREG_REG (XEXP (x, 0));
+	  if (GET_MODE (x) != mode)
+	    x = gen_lowpart_SUBREG (mode, x);
 	}
       else if (GET_CODE (x) == ZERO_EXTEND
 	       && SCALAR_INT_MODE_P (mode)
 	       && REG_P (XEXP (x, 0))
-	       && HARD_REGISTER_P (XEXP (x, 0)))
+	       && HARD_REGISTER_P (XEXP (x, 0))
+	       && can_change_dest_mode (XEXP (x, 0), 0, mode))
 	{
 	  size = GET_MODE_PRECISION (GET_MODE (XEXP (x, 0)));
 	  x = gen_rtx_REG (mode, REGNO (XEXP (x, 0)));

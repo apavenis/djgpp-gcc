@@ -1081,19 +1081,59 @@ sysv, aix.
 
 @item --with-multilib-list=@var{list}
 @itemx --without-multilib-list
-Specify what multilibs to build.
-Currently only implemented for arm*-*-*, sh*-*-* and x86-64-*-linux*.
+Specify what multilibs to build.  @var{list} is a comma separated list of
+values, possibly consisting of a single value.  Currently only implemented
+for arm*-*-*, sh*-*-* and x86-64-*-linux*.  The accepted values and meaning
+for each target is given below.
 
 @table @code
 @item arm*-*-*
-@var{list} is either @code{default} or @code{aprofile}.  Specifying
-@code{default} is equivalent to omitting this option while specifying
-@code{aprofile} builds multilibs for each combination of ISA (@code{-marm} or
-@code{-mthumb}), architecture (@code{-march=armv7-a}, @code{-march=armv7ve},
-or @code{-march=armv8-a}), FPU available (none, @code{-mfpu=vfpv3-d16},
-@code{-mfpu=neon}, @code{-mfpu=vfpv4-d16}, @code{-mfpu=neon-vfpv4} or
-@code{-mfpu=neon-fp-armv8} depending on architecture) and floating-point ABI
-(@code{-mfloat-abi=softfp} or @code{-mfloat-abi=hard}).
+@var{list} is one of@code{default}, @code{aprofile} or @code{rmprofile}.
+Specifying @code{default} is equivalent to omitting this option, ie. only the
+default runtime library will be enabled.  Specifying @code{aprofile} or
+@code{rmprofile} builds multilibs for a combination of ISA, architecture,
+FPU available and floating-point ABI.
+
+The table below gives the combination of ISAs, architectures, FPUs and
+floating-point ABIs for which multilibs are built for each accepted value.
+
+@multitable @columnfractions .15 .28 .30
+@item Option @tab aprofile @tab rmprofile
+@item ISAs
+@tab @code{-marm} and @code{-mthumb}
+@tab @code{-mthumb}
+@item Architectures@*@*@*@*@*@*
+@tab default architecture@*
+@code{-march=armv7-a}@*
+@code{-march=armv7ve}@*
+@code{-march=armv8-a}@*@*@*
+@tab default architecture@*
+@code{-march=armv6s-m}@*
+@code{-march=armv7-m}@*
+@code{-march=armv7e-m}@*
+@code{-march=armv8-m.base}@*
+@code{-march=armv8-m.main}@*
+@code{-march=armv7}
+@item FPUs@*@*@*@*@*
+@tab none@*
+@code{-mfpu=vfpv3-d16}@*
+@code{-mfpu=neon}@*
+@code{-mfpu=vfpv4-d16}@*
+@code{-mfpu=neon-vfpv4}@*
+@code{-mfpu=neon-fp-armv8}
+@tab none@*
+@code{-mfpu=vfpv3-d16}@*
+@code{-mfpu=fpv4-sp-d16}@*
+@code{-mfpu=fpv5-sp-d16}@*
+@code{-mfpu=fpv5-d16}@*
+@item floating-point@/ ABIs@*@*
+@tab @code{-mfloat-abi=soft}@*
+@code{-mfloat-abi=softfp}@*
+@code{-mfloat-abi=hard}
+@tab @code{-mfloat-abi=soft}@*
+@code{-mfloat-abi=softfp}@*
+@code{-mfloat-abi=hard}
+@end multitable
 
 @item sh*-*-*
 @var{list} is a comma separated list of CPU names.  These must be of the
@@ -1995,12 +2035,6 @@ explicitly specify the directory where they are installed.  The
 shorthand for
 @option{--with-hsa-runtime-lib=@/@var{hsainstalldir}/lib} and
 @option{--with-hsa-runtime-include=@/@var{hsainstalldir}/include}.
-
-@item --with-hsa-kmt-lib=@var{pathname}
-
-If you configure GCC with HSA offloading but do not have the HSA
-KMT library installed in a standard location then you can
-explicitly specify the directory where it resides.
 @end table
 
 @subheading Cross-Compiler-Specific Options
@@ -2142,6 +2176,37 @@ scripts.
 In order to avoid shell and @command{make} quoting issues for complex
 overrides, you can pass a setting for @env{CONFIG_SITE} and set
 variables in the site file.
+
+@subheading Objective-C-Specific Options
+
+The following options apply to the build of the Objective-C runtime library.
+
+@table @code
+@item --enable-objc-gc
+Specify that an additional variant of the GNU Objective-C runtime library
+is built, using an external build of the Boehm-Demers-Weiser garbage
+collector (@uref{http://www.hboehm.info/gc/}).  This library needs to be
+available for each multilib variant, unless configured with
+@option{--enable-objc-gc=@samp{auto}} in which case the build of the
+additional runtime library is skipped when not available and the build
+continues.
+
+@item --with-target-bdw-gc=@var{list}
+@itemx --with-target-bdw-gc-include=@var{list}
+@itemx --with-target-bdw-gc-lib=@var{list}
+Specify search directories for the garbage collector header files and
+libraries. @var{list} is a comma separated list of key value pairs of the
+form @samp{@var{multilibdir}=@var{path}}, where the default multilib key
+is named as @samp{.} (dot), or is omitted (e.g.
+@samp{--with-target-bdw-gc=/opt/bdw-gc,32=/opt-bdw-gc32}).
+
+The options @option{--with-target-bdw-gc-include} and
+@option{--with-target-bdw-gc-lib} must always be specified together
+for each multilib variant and they take precedence over
+@option{--with-target-bdw-gc}.  If none of these options are
+specified, the values are taken from the @command{pkg-config}
+@samp{bdw-gc} module.
+@end table
 
 @html
 <hr />
