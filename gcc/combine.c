@@ -4627,6 +4627,7 @@ try_combine (rtx_insn *i3, rtx_insn *i2, rtx_insn *i1, rtx_insn *i0,
       basic_block bb = BLOCK_FOR_INSN (i3);
       gcc_assert (bb);
       remove_edge (split_block (bb, i3));
+      emit_barrier_after_bb (bb);
       *new_direct_jump_p = 1;
     }
 
@@ -4637,6 +4638,7 @@ try_combine (rtx_insn *i3, rtx_insn *i2, rtx_insn *i1, rtx_insn *i0,
       basic_block bb = BLOCK_FOR_INSN (undobuf.other_insn);
       gcc_assert (bb);
       remove_edge (split_block (bb, undobuf.other_insn));
+      emit_barrier_after_bb (bb);
       *new_direct_jump_p = 1;
     }
 
@@ -12559,7 +12561,8 @@ simplify_comparison (enum rtx_code code, rtx *pop0, rtx *pop1)
 		  if (GET_CODE (op0) == LSHIFTRT)
 		    code = unsigned_condition (code);
 
-		  const_op <<= INTVAL (XEXP (op0, 1));
+		  const_op = (unsigned HOST_WIDE_INT) const_op
+			      << INTVAL (XEXP (op0, 1));
 		  if (low_bits != 0
 		      && (code == GT || code == GTU
 			  || code == LE || code == LEU))
