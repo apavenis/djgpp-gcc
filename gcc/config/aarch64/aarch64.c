@@ -1302,7 +1302,8 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
 	    emit_move_insn (gp_rtx, gen_rtx_HIGH (Pmode, s));
 
 	    if (mode != GET_MODE (gp_rtx))
-	      gp_rtx = simplify_gen_subreg (mode, gp_rtx, GET_MODE (gp_rtx), 0);
+             gp_rtx = gen_lowpart (mode, gp_rtx);
+
 	  }
 
 	if (mode == ptr_mode)
@@ -1378,10 +1379,14 @@ aarch64_load_symref_appropriately (rtx dest, rtx imm,
     case SYMBOL_SMALL_TLSGD:
       {
 	rtx_insn *insns;
-	rtx result = gen_rtx_REG (Pmode, R0_REGNUM);
+	machine_mode mode = GET_MODE (dest);
+	rtx result = gen_rtx_REG (mode, R0_REGNUM);
 
 	start_sequence ();
-	aarch64_emit_call_insn (gen_tlsgd_small (result, imm));
+	if (TARGET_ILP32)
+	  aarch64_emit_call_insn (gen_tlsgd_small_si (result, imm));
+	else
+	  aarch64_emit_call_insn (gen_tlsgd_small_di (result, imm));
 	insns = get_insns ();
 	end_sequence ();
 
@@ -4268,8 +4273,11 @@ aarch64_classify_address (struct aarch64_address_info *info,
   enum rtx_code code = GET_CODE (x);
   rtx op0, op1;
 
-  /* On BE, we use load/store pair for all large int mode load/stores.  */
+  /* On BE, we use load/store pair for all large int mode load/stores.
+     TI/TFmode may also use a load/store pair.  */
   bool load_store_pair_p = (outer_code == PARALLEL
+			    || mode == TImode
+			    || mode == TFmode
 			    || (BYTES_BIG_ENDIAN
 				&& aarch64_vect_struct_mode_p (mode)));
 
