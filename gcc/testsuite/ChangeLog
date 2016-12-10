@@ -1,3 +1,23 @@
+2016-12-09  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* gcc.target/powerpc/fold-vec-add-7.c: Require effective target to
+	support __int128.
+
+2016-12-09  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	PR ipa/78721
+	* gcc.dg/pr78721.c: New test.
+
+2016-12-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/72742
+	* gcc.c-torture/compile/pr72742.c: New test.
+
+2016-12-09  Martin Sebor  <msebor@redhat.com>
+
+	* gcc.dg/attr-alloc_size-3.c: Avoid false positives and negatives
+	on arm-unknown-linux-gnueabi (and likely other ILP32) targets.
+
 2016-12-09  Andre Vieira <andre.simoesdiasvieira@arm.com>
 
 	PR rtl-optimization/78255

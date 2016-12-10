@@ -1,3 +1,35 @@
+2016-12-09  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* config/rs6000/rs6000-passes.def: New file.
+	* config/rs6000/rs6000-protos.h: Declare make_pass_analyze_swaps.
+	* config/rs6000/rs6000.c (rs6000_option_override): Remove
+	registration of machine-specific passes.
+	(pass_analyze_swaps::clone): New function.
+	* config/rs6000/t-rs6000: Define PASSES_EXTRA.
+
+2016-12-09  Kugan Vivekanandarajah  <kuganv@linaro.org>
+
+	PR ipa/78721
+	* ipa-cp.c (propagate_vr_accross_jump_function): drop_tree_overflow
+	after fold_convert.
+
+2016-12-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/72742
+	* config/rs6000/rs6000.md (*and<mode>3_imm_mask_dot,
+	*and<mode>3_imm_mask_dot2): Add rs6000_is_valid_and_mask to insn
+	condition.
+
+2016-12-09  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR target/78683
+	* config/rs6000/rs6000.h (CLZ_DEFINED_VALUE_AT_ZERO): Use
+	GET_MODE_BITSIZE.  Return 2.
+	(CTZ_DEFINED_VALUE_AT_ZERO): Use GET_MODE_BITSIZE.  Return 2.  Handle
+	TARGET_POPCNTD the same as TARGET_CTZ.
+	* config/rs6000/rs6000.md (ctz<mode>2): Reimplement.
+	(ffs<mode>2): Reimplement.
+
 2016-12-09  Andre Vieira <andre.simoesdiasvieira@arm.com>
 
 	PR rtl-optimization/78255
