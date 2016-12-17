@@ -51,6 +51,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "langhooks.h"
 #include "tree-cfg.h"
 #include "tree-ssa.h"
+#include "omp-general.h"
 #include "omp-low.h"
 #include "gimple-low.h"
 #include "cilk.h"
@@ -1109,7 +1110,7 @@ build_asan_poison_call_expr (tree decl)
   return build_call_expr_internal_loc (UNKNOWN_LOCATION, IFN_ASAN_MARK,
 				       void_type_node, 3,
 				       build_int_cst (integer_type_node,
-						      ASAN_MARK_CLOBBER),
+						      ASAN_MARK_POISON),
 				       base, unit_size);
 }
 
@@ -1138,7 +1139,7 @@ asan_poison_variable (tree decl, bool poison, gimple_stmt_iterator *it,
   if (DECL_ALIGN_UNIT (decl) <= ASAN_SHADOW_GRANULARITY)
     SET_DECL_ALIGN (decl, BITS_PER_UNIT * ASAN_SHADOW_GRANULARITY);
 
-  HOST_WIDE_INT flags = poison ? ASAN_MARK_CLOBBER : ASAN_MARK_UNCLOBBER;
+  HOST_WIDE_INT flags = poison ? ASAN_MARK_POISON : ASAN_MARK_UNPOISON;
 
   gimple *g
     = gimple_build_call_internal (IFN_ASAN_MARK, 3,
@@ -6959,7 +6960,7 @@ omp_notice_variable (struct gimplify_omp_ctx *ctx, tree decl, bool in_code)
 
       if (gimplify_omp_ctxp->outer_context == NULL
 	  && VAR_P (decl)
-	  && get_oacc_fn_attrib (current_function_decl))
+	  && oacc_get_fn_attrib (current_function_decl))
 	{
 	  location_t loc = DECL_SOURCE_LOCATION (decl);
 
@@ -9314,7 +9315,7 @@ gimplify_omp_task (tree *expr_p, gimple_seq *pre_p)
   gimple_seq body = NULL;
 
   gimplify_scan_omp_clauses (&OMP_TASK_CLAUSES (expr), pre_p,
-			     find_omp_clause (OMP_TASK_CLAUSES (expr),
+			     omp_find_clause (OMP_TASK_CLAUSES (expr),
 					      OMP_CLAUSE_UNTIED)
 			     ? ORT_UNTIED_TASK : ORT_TASK, OMP_TASK);
 
@@ -9390,7 +9391,7 @@ gimplify_omp_for (tree *expr_p, gimple_seq *pre_p)
       ort = ORT_ACC;
       break;
     case OMP_TASKLOOP:
-      if (find_omp_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_UNTIED))
+      if (omp_find_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_UNTIED))
 	ort = ORT_UNTIED_TASK;
       else
 	ort = ORT_TASK;
@@ -9555,7 +9556,7 @@ gimplify_omp_for (tree *expr_p, gimple_seq *pre_p)
   gcc_assert (TREE_VEC_LENGTH (OMP_FOR_INIT (for_stmt))
 	      == TREE_VEC_LENGTH (OMP_FOR_INCR (for_stmt)));
 
-  tree c = find_omp_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_ORDERED);
+  tree c = omp_find_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_ORDERED);
   bool is_doacross = false;
   if (c && OMP_CLAUSE_ORDERED_EXPR (c))
     {
@@ -9565,7 +9566,7 @@ gimplify_omp_for (tree *expr_p, gimple_seq *pre_p)
 					       * 2);
     }
   int collapse = 1;
-  c = find_omp_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_COLLAPSE);
+  c = omp_find_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_COLLAPSE);
   if (c)
     collapse = tree_to_shwi (OMP_CLAUSE_COLLAPSE_EXPR (c));
   for (i = 0; i < TREE_VEC_LENGTH (OMP_FOR_INIT (for_stmt)); i++)
@@ -12643,7 +12644,7 @@ gimplify_va_arg_expr (tree *expr_p, gimple_seq *pre_p,
     return GS_ERROR;
   have_va_type = targetm.canonical_va_list_type (have_va_type);
   if (have_va_type == NULL_TREE
-      && TREE_CODE (valist) == ADDR_EXPR)
+      && POINTER_TYPE_P (TREE_TYPE (valist)))
     /* Handle 'Case 1: Not an array type' from c-common.c/build_va_arg.  */
     have_va_type
       = targetm.canonical_va_list_type (TREE_TYPE (TREE_TYPE (valist)));

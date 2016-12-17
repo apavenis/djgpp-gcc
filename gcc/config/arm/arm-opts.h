@@ -26,17 +26,28 @@
 #define ARM_OPTS_H
 
 #include "arm-flags.h"
+#include "arm-isa.h"
 
 /* The various ARM cores.  */
 enum processor_type
 {
 #undef ARM_CORE
-#define ARM_CORE(NAME, INTERNAL_IDENT, IDENT, ARCH, FLAGS, COSTS) \
+#define ARM_CORE(NAME, INTERNAL_IDENT, IDENT, TUNE_FLAGS, ARCH, ISA, COSTS) \
   TARGET_CPU_##INTERNAL_IDENT,
 #include "arm-cores.def"
 #undef ARM_CORE
   /* Used to indicate that no processor has been specified.  */
   TARGET_CPU_arm_none
+};
+
+/* The various ARM FPUs.  */
+enum fpu_type
+{
+#undef ARM_FPU
+#define ARM_FPU(NAME, CNAME, ISA) TARGET_FPU_##CNAME,
+#include "arm-fpus.def"
+  TARGET_FPU_auto
+#undef ARM_FPU
 };
 
 /* Which __fp16 format to use.
@@ -78,25 +89,5 @@ enum arm_tp_type {
 enum arm_tls_type {
   TLS_GNU,
   TLS_GNU2
-};
-
-struct arm_arch_core_flag
-{
-  const char *const name;
-  const arm_feature_set flags;
-};
-
-static const struct arm_arch_core_flag arm_arch_core_flags[] =
-{
-#undef ARM_CORE
-#define ARM_CORE(NAME, X, IDENT, ARCH, FLAGS, COSTS) \
-  {NAME, FLAGS},
-#include "arm-cores.def"
-#undef ARM_CORE
-#undef ARM_ARCH
-#define ARM_ARCH(NAME, CORE, ARCH, FLAGS) \
-  {NAME, FLAGS},
-#include "arm-arches.def"
-#undef ARM_ARCH
 };
 #endif

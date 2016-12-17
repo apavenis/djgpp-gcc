@@ -1,3 +1,1298 @@
+2016-12-17  Andrew Senkevich  <andrew.senkevich@intel.com>
+
+	* config/i386/avx512bwintrin.h: Add new k-mask intrinsics.
+	* config/i386/avx512dqintrin.h: Ditto.
+	* config/i386/avx512fintrin.h: Ditto.
+	* config/i386/i386-builtin.def (__builtin_ia32_kaddqi,
+	__builtin_ia32_kaddhi, __builtin_ia32_kaddsi,
+	__builtin_ia32_kadddi): New.
+	* config/i386/sse.md (kadd<mode>): New.
+
+2016-12-17  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (*tzcnt<mode>_1): Merge *tzcnt<mode>_1_falsedep_1
+	and *tzcnt<mode>_1 to define_insn_and_split pattern.  Adjust split
+	condition to split after epilogue_completed.
+	(ctz<mode>2): Remove expander.
+	(ctz<mode>2): Merge *ctz<mode>2_falsedep_1 and *ctz<mode>2 to
+	define_insn_and_split pattern.  Adjust split condition to split
+	after epilogue_completed.
+	(clz<mode>2_lznct): Remove expander.
+	(clz<mode>2_lzcnt): Merge *clz<mode>2_lzcnt_falsedep_1 and
+	*clz<mode>2 to define_insn_and_split pattern.  Adjust split
+	condition to split after epilogue_completed.
+	(<lt_zcnt>_<mode>): Remove expander.
+	(<lt_zcnt>_<mode>): Merge *<lt_zcnt>_<mode>_falsedep_1 and
+	*<lt_zcnt>_<mode> to define_insn_and_split pattern.  Adjust split
+	condition to split after epilogue_completed.
+	(<lt_zcnt>_hi): New insn pattern.
+	(popcount<mode>2): Remove expander.
+	(popcount<mode>2): Merge *popcount<mode>2_falsedep_1 and
+	*popcount<mode>2 to define_insn_and_split pattern.  Adjust split
+	condition to split after epilogue_completed.
+	(popcounthi2): New insn pattern.
+
+2016-12-16  Kelvin Nilsen  <kelvin@gcc.gnu.org>
+
+	* config/rs6000/altivec.md (UNSPEC_CMPRB): New unspec value.
+	(UNSPEC_CMPRB2): New unspec value.
+	(UNSPEC_CMPEQB): New unspec value.
+	(cmprb): New expansion.
+	(*cmprb_internal): New insn.
+	(*setb_internal): New insn.
+	(cmprb2): New expansion.
+	(*cmprb2_internal): New insn.
+	(cmpeqb): New expansion.
+	(*cmpeqb_internal): New insn.
+	* config/rs6000/rs6000-builtin.def (BU_P9_2): New macro.
+	(BU_P9_64BIT_2): Likewise.
+	(BU_P9_OVERLOAD_2): Likewise.
+	(CMPRB): Add byte-in-range built-in function.
+	(CMBRB2): Add byte-in-either-range built-in function.
+	(CMPEQB): Add byte-in-set built-in function.
+	(CMPRB): Add overload support for byte-in-range function.
+	(CMPRB2): Add overload support for byte-in-either-range function.
+	(CMPEQB): Add overload support for byte-in-set built-in function.
+	* config/rs6000/rs6000-c.c (P9_BUILTIN_CMPRB): Macro expansion to
+	define argument types for new builtin.
+	(P9_BUILTIN_CMPRB2): Likewise.
+	(P9_BUILTIN_CMPEQB): Likewise.
+	* doc/extend.texi (PowerPC AltiVec Built-in Functions): Rearrange
+	the order of presentation for certain built-in functions
+	(scalar_extract_exp, scalar_extract_sig, scalar_insert_exp)
+	(scalar_cmp_exp_gt, scalar_cmp_exp_lt, scalar_cmp_exp_eq)
+	(scalar_cmp_exp_unordered, scalar_test_data_class)
+	(scalar_test_neg) to improve locality and flow.  Document
+	the new __builtin_scalar_byte_in_set,
+	__builtin_scalar_byte_in_range, and
+	__builtin_scalar_byte_in_either_range functions.
+
+2016-12-16  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.md: New define_split above bswap<mode>2.
+
+2016-12-16  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.md: New define_split above insv<mode>.
+
+2016-12-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/78408
+	* tree-ssa-ccp.c: Include tree-dfa.h.
+	(optimize_memcpy): New function.
+	(pass_fold_builtins::execute): Use it.  Remove useless conditional
+	break after BUILT_IN_VA_*.
+
+2016-12-16  Marek Polacek  <polacek@redhat.com>
+
+	PR tree-optimization/78819
+	* tree-vrp.c (find_switch_asserts): Return if the insertion limit is 0.
+	Don't register an assertion if the default case shares a label with
+	another case.
+
+2016-12-16  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* config/arm/arm.md (subsi3_carryin): Add Thumb-2 RSC #0.
+	(arm_negdi2) Rename to negdi2_insn, allow on Thumb-2.
+	* config/arm/thumb2.md (thumb2_negdi2): Remove pattern.
+
+2016-12-16  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* config/arm/arm.c (thumb_core_reg_alloc_order): Swap R12 and R14.
+
+2016-12-16  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/arc.md (call_prof): Remove.
+	(call_value_prof): Likewise.
+	(sibcall_prof): Likewise.
+	(sibcall_value_prof): Likewise.
+
+2016-12-16  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/arc.h (LINK_SPEC): Tidy up.
+	(ENDFILE_SPEC): Likewise.
+	(LIB_SPEC): Likewise.
+	(STARTFILE_SPEC): Include gcrt0 when profiling.
+	(FUNCTION_PROFILER): Use __mcount.
+	* config/arc/arc.opt (mucb-mcount): Remove.
+	* doc/invoke.texi (ARC): Remove mucb-mcount doc.
+	* arc/arc-protos.h (arc_profile_call): Remove.
+	* config/arc/arc.c (write_profile_sections): Likewise.
+	(arc_profile_call): Likewise.
+	(unspec_prof_hash): Likewise.
+	(unspec_prof_htab_eq): Likewise.
+	(arc_legitimate_constant_p): Remove UNSPEC_PROF.
+	(arc_reorg): Remove call to write_profile_sections.
+	* config/arc/arc.md (call): Remove call to arc_profile_call.
+	(call_value): Likewise.
+	(sibcall): Likewise.
+	(sibcall_value): Likewise.
+	(define_constants): Remove UNSPEC_PROF.
+
+2016-12-16  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/arc.md (mulsidi_600): Change to insn_and_split,
+	generate new mul64 insn for core multiplication work.
+	(umulsidi_600): Likewise, but use mulu64 insn.
+	(mul64): New pattern, content taken from old mulsidi_600 insn
+	pattern.
+	(mulu64): Likewise, but using umulsidi_600.
+	(mulsidi3): Remove move to destination, this is now handled by
+	mulsidi_600 insn_and_split.
+	(umulsidi3): Likewise, but using umulsidi_600.
+
+2016-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR c++/71694
+	* langhooks-def.h (lhd_unit_size_without_reusable_padding): Declare.
+	(LANG_HOOKS_UNIT_SIZE_WITHOUT_REUSABLE_PADDING): Define.
+	(LANG_HOOKS_FOR_TYPES_INITIALIZER): Adjust.
+	* langhooks.h (struct lang_hooks_for_types): Add
+	unit_size_without_reusable_padding.
+	* langhooks.c (lhd_unit_size_without_reusable_padding): New.
+	* stor-layout.c (finish_bitfield_representative): Use
+	unit_size_without_reusable_padding langhook to decide on the
+	last representatives size.
+
+2016-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/71632
+	* expr.c (expand_cond_expr_using_cmove): Bail out early if
+	we end up recursing via TER.
+
+2016-12-15  Martin Sebor  <msebor@redhat.com>
+
+	PR bootstrap/78817
+	* vec.h (vec<T, va_heap, vl_ptr>::safe_grow_cleared): Assert
+	a pointer is non-null.
+
+2016-12-15  Andrew Senkevich  <andrew.senkevich@intel.com>
+
+	* config/i386/avx512bwintrin.h: Add new k-mask intrinsics.
+	* config/i386/avx512dqintrin.h: Ditto.
+	* config/i386/avx512fintrin.h: Ditto.
+	* config/i386/i386-builtin.def (__builtin_ia32_kmovb,
+	__builtin_ia32_kmovd, __builtin_ia32_kmovq): New.
+	(__builtin_ia32_kmov16): Rename to __builtin_ia32_kmovw.
+	* config/i386/sse.md (kmov<mskmodesuffix>): New.
+
+2016-12-15  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (ffs<mode>2): Generate CCCmode flags register
+	for TARGET_BMI.
+	(ffssi2_no_cmove): Ditto.
+	(*tzcnt<mode>_1_falsedep_1): New insn_and_split pattern.
+	(*tzcnt<mode>_1_falsedep): New insn pattern.
+
+	(LT_ZCNT): New mode iterator.
+	(lt_zcnt): New mode attribute.
+	(lt_zcnt_type): New mode attribute.
+	(<lt_zcnt>_<mode>): Macroize expander from bmi_tzcnt_<mode> and
+	lzcnt_<mode> using LT_ZCNT mode iterator.
+	(*<lt_zcnt>_<mode>_falsedep_1): Macroize insn from
+	*bmi_tzcnt_<mode>_falsedep_1 and *lzcnt_<mode>_falsedep_1
+	using LT_ZCNT mode iterator.
+	(*<lt_zcnt>_<mode>_falsedep): Macroize insn from
+	*bmi_tzcnt_<mode>_falsedep and *lzcnt_<mode>_falsedep
+	using LT_ZCNT mode iterator.
+	(*<lt_zcnt>_<mode>): Macroize insn from *bmi_tzcnt_<mode>
+	and *lzcnt_<mode> using LT_ZCNT mode iterator.
+	* config/i386/i386-builtin.def (__builtin_ia32_tzcnt_u16)
+	(__builtin_ia32_tzcnt_u32, __builtin_ia32_tzcnt_u64, __builtin_ctzs):
+	Update for rename.
+
+2016-12-15  Jakub Jelinek  <jakub@redhat.com>
+
+	* ipa-cp.c (class ipcp_bits_lattice): Formatting fixes.
+	(print_ipcp_constant_value): Likewise.
+	(ipcp_cloning_candidate_p): Likewise.
+	(ipcp_bits_lattice::get_value_and_mask): Likewise.
+	(ipcp_bits_lattice::meet_with_1): Likewise.
+	(ipcp_bits_lattice::meet_with): Likewise.
+	(initialize_node_lattices): Likewise.
+	(ipcp_lattice::add_value): Likewise.
+	(propagate_vals_accross_pass_through): Renamed to ...
+	(propagate_vals_across_pass_through): ... this function.
+	(propagate_vals_accross_ancestor): Renamed to ...
+	(propagate_vals_across_ancestor): ... this.
+	(propagate_scalar_accross_jump_function): Renamed to ...
+	(propagate_scalar_across_jump_function): ... this.
+	Adjust calls to above functions.
+	(propagate_context_accross_jump_function): Renamed to ...
+	(propagate_context_across_jump_function): ... this.
+	(propagate_bits_accross_jump_function): Renamed to ...
+	(propagate_bits_accross_jump_function): ... this.  Formatting fixes.
+	(propagate_vr_accross_jump_function): Renamed to ...
+	(propagate_vr_across_jump_function): ... this.
+	(merge_agg_lats_step): Formatting fixes.
+	(propagate_constants_accross_call): Renamed to ...
+	(propagate_constants_across_call): ... this.  Adjust calls to above
+	functions.
+	(ipa_get_indirect_edge_target_1): Formatting fixes.
+	(gather_context_independent_values): Likewise.
+	(estimate_local_effects): Likewise.
+	(add_all_node_vals_to_toposort): Likewise.
+	(propagate_constants_topo): Adjust calls to above functions.
+	(get_replacement_map): Formatting fixes.
+	(dump_profile_updates): Likewise.
+	(update_profiling_info): Likewise.
+	(update_specialized_profile): Likewise.
+	(create_specialized_node): Likewise.
+	(find_more_contexts_for_caller_subset): Likewise.
+	(decide_whether_version_node): Likewise.
+	(identify_dead_nodes): Likewise.
+	(ipcp_decision_stage): Likewise.
+	(ipcp_store_bits_results): Likewise.
+	(ipcp_store_vr_results): Likewise.
+	(ipcp_driver): Likewise.
+
+2016-12-15  David Malcolm  <dmalcolm@redhat.com>
+
+	PR preprocessor/78680
+	PR preprocessor/78811
+	* input.c (struct selftest::lexer_test): Add field
+	m_implicitly_expect_EOF.
+	(selftest::lexer_error_sink): New class.
+	(selftest::lexer_error_sink::s_singleton): New global.
+	(selftest::lexer_test::lexer_test): Initialize new field
+	"m_implicitly_expect_EOF".
+	(selftest::lexer_test::~lexer_test): Conditionalize the
+	check for the EOF token on the new field.
+	(selftest::test_lexer_string_locations_raw_string_unterminated):
+	New function.
+	(selftest::input_c_tests): Call the new test.
+
+2016-12-15  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* config/arm/arm.h (TARGET_BACKTRACE): Use crtl->is_leaf.
+	* config/arm/arm.c (arm_option_check_internal): Improve comment.
+	(thumb_force_lr_save): Use crtl->is_leaf.
+	(arm_get_frame_offsets): Remove comment.  Use crtl->is_leaf.
+	(thumb_far_jump_used_p): Remove comment.
+	(arm_frame_pointer_required): Use crtl->is_leaf.
+
+2016-12-15  Jakub Jelinek  <jakub@redhat.com>
+
+	* doc/extend.texi: Clean up @xref{...} uses.
+	* doc/invoke.texi: Likewise.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-fpus.def: Add CNAME field to all FPU definitions.
+	* genopt.sh: Use explicit enumeration tags for FPU entries.
+	* arm-tables.opt: Regenerated.
+	* arm.opt (mfpu): Provide initial value.
+	* arm-opts.h (enum fpu_type): Build the enumeration from the list of
+	available FPUs.  Add 'auto' entry on the end.
+	* arm.c (arm_configure_build_target): Only do explicit configuration
+	of the FPU features if the selected FPU is not 'auto'.
+	(arm_option_override): Adjust initialization of arm_fpu_index.
+	Emit an error if we have a hard float ABI request, but the processor
+	does not support floating-point.
+	(arm_option_print): Handle -mfpu=auto.
+	(arm_valid_target_attribute_rec): Don't permit fpu=auto in pragmas
+	or function attributes.
+	(arm_identify_fpu_from_isa): Handle effective soft-float when
+	the FPU is automatically detected.
+	* arm-cores.def (arm1136jf-s): Add feature ISA_FP_DBL.
+	(arm1176jzf-s): Likewise.
+	(mpcore): Likewise.
+	(arm1156t2f-s): Likewise.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-fpus.def (ARM_FPU): Remove features field from all definitions.
+	* arm.h (arm_fpu_feature_set): Delete typedef.
+	(FPU_FL_NONE): Delete.
+	(FPU_FL_NEON): Delete.
+	(FPU_FL_FP16): Delete.
+	(FPU_FL_CRYPTO): Delete.
+	(FPU_FL_DBL): Delete.
+	(FPU_FL_D32): Delete.
+	(FPU_FL_VFPv2): Delete.
+	(FPU_FL_VFPv3): Delete.
+	(FPU_FL_VFPv4): Delete.
+	(FPU_FL_VFPv5): Delete.
+	(FPU_FL_AMRv8): Delete.
+	(FPU_VFPv2): Delete.
+	(FPU_VFPv3): Delete.
+	(FPU_VFPv4): Delete.
+	(FPU_VFPv5): Delete.
+	(FPU_ARMv8): Delete.
+	(FPU_DBL): Delete.
+	(FPU_D32): Delete.
+	(FPU_NEON): Delete.
+	(FPU_CRYPTO): Delete.
+	(FPU_FP16): Delete.
+	(arm_fpu_desc): Delete features field.
+	* arm.c (all_fpus): Don't initialize feature field.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.c (arm_can_inline_p): Use ISA features for determining
+	inlinability.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-protos.h (arm_configure_build_target): Change second argument
+	to cl_target_options.
+	* arm.c (arm_configure_build_target): Likewise.
+	(arm_option_restore): Update accordingly.
+	(arm_option_override): Create the target_option_default_node before
+	calling arm_configure_build_target.  Use it in call of latter.
+	Resynchronize after all other overrides have been calculated.
+	(arm_valid_target_attribute_tree): Use the target options for
+	reconfiguration.  Resynchronize after performing override checks.
+	* arm-c.c (arm_pragma_target_parse): Use target optiosn from cur_tree
+	to reconfigure the build target.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.h (TARGET_VFPD32): Use arm_active_target.
+	(TARGET_VFP3): Likewise.
+	(TARGET_VFP5): Likewise.
+	(TARGET_VFP_SINGLE): Likewise.
+	(TARGET_VFP_DOUBLE): Likewise.
+	(TARGET_NEON_FP16): Likewise.
+	(TARGET_FP16): Likewise.
+	(TARGET_FMA): Likewise.
+	(TARGET_FPU_ARMV8): Likewise.
+	(TARGET_CRYPTO): Likewise.
+	(TARGET_NEON): Likewise.
+	(TARGET_FPU_FEATURES): Delete.
+	* arm.c (arm_option_check_internal): Check for iwmmxt conflict with
+	Neon using arm_active_target.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.h (TARGET_FPU_NAME): Delete.
+	* arm.c (arm_identify_fpu_from_isa): New function.
+	(arm_declare_function_name): Use it to get the name for the FPU.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-protos.h: Include sbitmap.h
+	(arm_configure_build_target): Make public.
+	* arm.c (arm_configure_build_target): Now not static.
+	(arm_valid_target_attribute_rec): Move internal option check to...
+	(arm_valid_target_attribute_tree0: ... here.  Also reconfingure the
+	active target.
+	(arm_override_options_after_change): Call arm_configure_build_target.
+	(isa_all_fpubits): Renamed from isa_fpubits.
+	(arm_option_restore): New function.
+	(TARGET_OPTION_RESTORE): Register it.
+	(arm_configure_build_target): Initialize the FPU capability bits in
+	the isa.
+	(arm_option_override): Move the code that forces the setting of the
+	FPU option before the call to arm_configure_build_target.
+	* arm.opt (march): Mark as Save.
+	(mcpu, mtune): Likewise.
+	* arm-c.c (arm_pragma_target_parse): Reconfigure the build target
+	after pragmas change the target options.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-isa.h (isa_feature): Add bits for VFPv4, FPv5, fp16conv,
+	fP_dbl, fp_d32 and fp_crypto.
+	(ISA_ALL_FPU): Add all the new bits.
+	(ISA_VFPv2, ISA_VFPv3, ISA_VFPv4, ISA_FPv5): New macros.
+	(ISA_FP_ARMv8, ISA_FP_DBL, ISA_FP_D32, ISA_NEON, ISA_CRYPTO): Likewise.
+	* arm-fpus.def: Add ISA features to all FPUs.
+	* arm.h: (arm_fpu_desc): Add new field for ISA bits.
+	* arm.c (all_fpus): Initialize it.
+	* arm-tables.opt: Regenerated.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.h (FPU_FL_VFPv2) New feature bit.
+	(FPU_FL_VFPv3, FPU_FL_VFPv4, FPU_FL_VFPv5, FPU_FL_ARMv8): Likewise.
+	(FPU_VFPv2, FPU_VFPv3, FPU_VFPv4, FPU_VFPv5, FPU_ARMv8): New helper
+	macros.
+	(FPU_DBL, FPU_D32, FPU_NEON, FPU_CRYPTO, FPU_FP16): Likewise.
+	(TARGET_FPU_REV): Delete.
+	(TARGET_VFP3): Use feature bits.
+	(TARGET_VFP5): Likewise.
+	(TARGET_FMA): Likewise.
+	(TARGET_FPU_ARMV8): Likewise.
+	(struct arm_fpu_desc): Delete rev field.
+	* arm-fpus.def: Delete REV entry, use new feature bits and macros.
+	* arm.c (all_fpus): Delete rev field.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.h (vfp_reg_type): Delete.
+	(TARGET_FPU_REGS): Delete.
+	(arm_fpu_desc): Delete regs field.
+	(FPU_FL_NONE, FPU_FL_NEON, FPU_FL_FP16, FPU_FL_CRYPTO): Use unsigned
+	values.
+	(FPU_FL_DBL, FPU_FL_D32): Define.
+	(TARGET_VFPD32): Use feature test.
+	(TARGET_VFP_SINGLE): Likewise.
+	(TARGET_VFP_DOUBLE): Likewise.
+	* arm-fpus.def: Update all entries for new feature bits.
+	* arm.c (all_fpus): Update initializer macro.
+	(arm_can_inline_p): Remove test on fpu regs.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.h (arm_fp_model): Delete.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-cores.def: Remove FLAGS field from all core definitions.
+	* arm-arches.def: Likewise.
+	* arm-opts.h (enum processor_type): Remove FLAGS parameter from
+	ARM_CORES macro.
+	(arm_arch_core_flags): Likewise, plus ARM_ARCH macro.
+	* arm-protos.h (FL_*): Delete.
+	(arm_feature_set): Delete.
+	(ARM_FSET_*): Delete.
+	* arm.c (struct processors): Delete flags field.
+	(all_cores): Delete FLAGS parameter from macro, don't initialize flags.
+	(all architectures): Likewise.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-opts.h (struct arm_arch_core_flag): Add new field ISA.
+	Initialize it.
+	(arm_arch_core_flag): Delete flags field.
+	(arm_arch_core_flags): Don't initialize flags field.
+	* common/config/arm/arm-common.c (check_isa_bits_for): New function.
+	(arm_target_thumb_only): Use new isa bits arrays.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-protos.h (insn_flags): Delete declaration.
+	(arm_arch7ve): Declare.
+	* arm.c (insn_flags): Delete.
+	(arm_arch7ve): New variable.
+	(arm_selected_cpu): Delete.
+	(arm_option_check_internal): Use new ISA bitmap.
+	(arm_option_override_internal): Likewise.
+	(arm_configure_build_target): Declare arm_selected_cpu locally.
+	(arm_option_override): Use new ISA bitmap.  Initialize arm_arch7ve.
+	Rearrange variable intialization by general function.
+	* arm.h (TARGET_HAVE_LPAE): Use arm_arch7ve.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-builtins.c: Include sbitmap.h.
+	(def_mbuiltin): Change first parameter to a flag bit.  Use it to test
+	available features in the current target.
+	(struct builtin_description): Change type of feature field.
+	(IWMMXT_BUILTIN): Use the isa_features types.
+	(IWMMXT2_BUILTIN): Likewise.
+	(IWMMXT_BUILTIN2): Likewise.
+	(IWMMXT2_BUILTIN2): Likewise.
+	(CRC32_BUILTIN): Likewise.
+	(CRYPTO_BUILTIN): Likewise.
+	(iwmmx_builtin): Likewise.
+	(iwmmx2_builtin): Likewise.
+	(arm_iwmmxt_builtin): Check for specific feature bits.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-isa.h (enum isa_feature): Add isa_quirk_cm3_ldrd.
+	(ISA_ALL_QUIRKS): New macro.
+	* arm-cores.def (cortex-m3): Add isa_quirk_cm3_ldrd to isa feature list.
+	* arm.c (isa_quirkbits): New feature-list bitmap.
+	(arm_configure_build_target): Ignore quirk bits when comparing an
+	architecture feature list with a CPU feature list.
+	(arm_option_override): Initialize_isa_quirkbits.  If the user has
+	not specified -m[no-]fix-cortex-m3-ldrd, automatically enable the
+	feature if isa_quirk_cm3_ldrd appears in the isa feature list.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.c (arm_option_override): Use arm_active_target as source of
+	information for arm_base_arch and arm_arch_name.
+	* (arm_file_start): Use arm_active_target for core name.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.c (arm_selected_tune): Delete static variable.
+	(arm_selected_arch): Likewise.
+	(arm_configure_build_target): Declare local versions of arm_selected
+	target and arm_selected_arch.  Initialize more fields in target
+	data structure.
+	(arm_option_override): Use arm_active_target instead of
+	arm_selected_tune and arm_selected_arch.
+	(asm_file_start): Use arm_active_target.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-protos.h (arm_build_target): New structure.
+	(arm_active_target): Declare it.
+	* arm.c (arm_active_target): New variable.
+	(bitmap_popcount): New function.
+	(feature_count): Delete.
+	(arm_initialize_isa): New function.
+	isa_fpubits): New variable.
+	(arm_configure_build_target): New function.
+	(arm_option_override): Initialize isa_fpubits and arm_active_target.isa.
+	Use arm_configure_build_target.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-isa.h: New file.
+	* arm-protos.h: Include it.
+	* arm-arches.def: Add new ISA field to all entries.  Drop bogus
+	armv8.1-a+crc architecture.
+	* arm-cores.def: Similarly.  Group ARMv8 cores by profile.
+	* arm-opts.h (enum processor_type): Adjust for new field.
+	* arm.c (struct processors): New field 'isa_bits'.
+	(all_cores, all_architectures): Initialize new field.
+	* arm-tables.opt: Regenerated.
+	* arm-tune.md: Regenerated.
+
+2016-12-15  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm-arches.def (ARM_ARCH): Add extra field TUNE_FLAGS, move
+	tuning properties from architectural FLAGS field.
+	* arm-cores.def (ARM_CORE): Likewise.
+	* arm-protos.h (TF_LDSCHED, TF_WBUF, TF_CO_PROC): New macros.
+	(TF_SMALLMUL, TF_STRONG, TF_SCALE, TF_NOMODE32): New macros.
+	(FL_LDSCHED, FL_STRONG, FL_WBUF, FL_SMALLMUL): Delete.
+	(FL_TUNE): Remove deleted elements.
+	(tune_flags): Convert type to unsigned int.
+	* arm.c (struct processors): Add new field tune_flags.
+	(all_cores, all_arches): Initialize it.
+	(arm_option_override): Adapt uses of tune_flags.  Use tune_flags
+	for deciding when we should have slow multiply operations.
+
+2016-12-14  Martin Sebor  <msebor@redhat.com>
+
+	PR middle-end/78519
+	* gimple-ssa-sprintf.c (format_string): Handle null pointers.
+	(format_directive): Diagnose null pointer arguments.
+	(pass_sprintf_length::handle_gimple_call): Diagnose null destination
+	pointers.  Correct location of null format string in diagnostics.
+
+2016-12-14  David Malcolm  <dmalcolm@redhat.com>
+
+	* Makefile.in (SELFTEST_FLAGS): Add path argument to -fself-test.
+	(s-selftest): Add dependency on the selftests data directory.
+	* common.opt (fself-test): Rename to...
+	(fself-test=): ...this, documenting the meaning of the argument.
+	* selftest-run-tests.c (along): Likewise.
+	* selftest-run-tests.c: Include "options.h".
+	(selftest::run_tests): Initialize selftest::path_to_selftest_files
+	from flag_self_test.
+	* selftest.c (selftest::path_to_selftest_files): New global.
+	(selftest::locate_file): New function.
+	(selftest::test_locate_file): New function.
+	(selftest_c_tests): Likewise.
+	(selftest::selftest_c_tests): Call test_locate_file.
+	* selftest.h (selftest::locate_file): New decl.
+	(selftest::path_to_selftest_files): New decl.
+
+2016-12-14  Andrew Pinski  <apinski@cavium.com>
+
+	* config/aarch64/aarch64-cores.def: Add -1 as the variant to all
+	of the cores.
+	(thunderx): Update to include LSE by default.
+	(thunderxt88p1): New core.
+	(thunderxt88): New core.
+	(thunderxt81): New core.
+	(thunderxt83): New core.
+	* config/aarch64/driver-aarch64.c (struct aarch64_core_data):
+	Add variant field.
+	(ALL_VARIANTS): New define.
+	(AARCH64_CORE): Support VARIANT operand.
+	(cpu_data): Likewise.
+	(host_detect_local_cpu): Parse variant field of /proc/cpuinfo.
+	Combine the arch and single core case and support variant searching.
+	* common/config/aarch64/aarch64-common.c (AARCH64_CORE):
+	Add VARIANT operand.
+	* config/aarch64/aarch64-opts.h (AARCH64_CORE): Likewise.
+	* config/aarch64/aarch64.c (AARCH64_CORE): Likewise.
+	* config/aarch64/aarch64.h (AARCH64_CORE): Likewise.
+	* config/aarch64/aarch64-tune.md: Regenerate.
+	* doc/invoke.texi (AARCH64/mtune): Document thunderxt88,
+	thunderxt88p1, thunderxt81, thunderxt83 as available options.
+
+2016-12-14  Martin Jambor  <mjambor@suse.cz>
+
+	* omp-offload.c: Fix coding style.
+	* omp-expand.c: Likewise.
+	* omp-general.c: Likewise.
+	* omp-grid.c: Likewise.
+	* omp-low.c: Fix coding style of parts touched by the
+	previous splitting patch.
+
+2016-12-14  Martin Jambor  <mjambor@suse.cz>
+
+	* omp-general.h: New file.
+	* omp-general.c: New file.
+	* omp-expand.h: Likewise.
+	* omp-expand.c: Likewise.
+	* omp-offload.h: Likewise.
+	* omp-offload.c: Likewise.
+	* omp-grid.c: Likewise.
+	* omp-grid.c: Likewise.
+	* omp-low.h: Include omp-general.h and omp-grid.h.  Removed includes
+	of params.h, symbol-summary.h, lto-section-names.h, cilk.h, tree-eh.h,
+	ipa-prop.h, tree-cfgcleanup.h, cfgloop.h, except.h, expr.h, stmt.h,
+	varasm.h, calls.h, explow.h, dojump.h, flags.h, tree-into-ssa.h,
+	tree-cfg.h, cfganal.h, alias.h, emit-rtl.h, optabs.h, expmed.h,
+	alloc-pool.h, cfghooks.h, rtl.h and memmodel.h.
+	(omp_find_combined_for): Declare.
+	(find_omp_clause): Renamed to omp_find_clause and moved to
+	omp-general.h.
+	(free_omp_regions): Renamed to omp_free_regions and moved to
+	omp-expand.h.
+	(replace_oacc_fn_attrib): Renamed to oacc_replace_fn_attrib and moved
+	to omp-general.h.
+	(set_oacc_fn_attrib): Renamed to oacc_set_fn_attrib and moved to
+	omp-general.h.
+	(build_oacc_routine_dims): Renamed to oacc_build_routine_dims and
+	moved to omp-general.h.
+	(get_oacc_fn_attrib): Renamed to oacc_get_fn_attrib and moved to
+	omp-general.h.
+	(oacc_fn_attrib_kernels_p): Moved to omp-general.h.
+	(get_oacc_fn_dim_size): Renamed to oacc_get_fn_dim_size and moved to
+	omp-general.c.
+	(omp_expand_local): Moved to omp-expand.h.
+	(make_gimple_omp_edges): Renamed to omp_make_gimple_edges and moved to
+	omp-expand.h.
+	(omp_finish_file): Moved to omp-offload.h.
+	(default_goacc_validate_dims): Renamed to
+	oacc_default_goacc_validate_dims and moved to omp-offload.h.
+	(offload_funcs, offload_vars): Moved to omp-offload.h.
+	* omp-low.c: Include omp-general.h, omp-offload.h and omp-grid.h.
+	(omp_region): Moved to omp-expand.c.
+	(omp_for_data_loop): Moved to omp-general.h.
+	(omp_for_data): Likewise.
+	(oacc_loop): Moved to omp-offload.c.
+	(oacc_loop_flags): Moved to omp-general.h.
+	(offload_funcs, offload_vars): Moved to omp-offload.c.
+	(root_omp_region): Moved to omp-expand.c.
+	(omp_any_child_fn_dumped): Likewise.
+	(find_omp_clause): Renamed to omp_find_clause and moved to
+	omp-general.c.
+	(is_combined_parallel): Moved to omp-expand.c.
+	(is_reference): Renamed to omp_is_reference and and moved to
+	omp-general.c.
+	(adjust_for_condition): Renamed to omp_adjust_for_condition and moved
+	to omp-general.c.
+	(get_omp_for_step_from_incr): Renamed to omp_get_for_step_from_incr
+	and moved to omp-general.c.
+	(extract_omp_for_data): Renamed to omp_extract_for_data and moved to
+	omp-general.c.
+	(workshare_safe_to_combine_p): Moved to omp-expand.c.
+	(omp_adjust_chunk_size): Likewise.
+	(get_ws_args_for): Likewise.
+	(get_base_type): Removed.
+	(dump_omp_region): Moved to omp-expand.c.
+	(debug_omp_region): Likewise.
+	(debug_all_omp_regions): Likewise.
+	(new_omp_region): Likewise.
+	(free_omp_region_1): Likewise.
+	(free_omp_regions): Renamed to omp_free_regions and moved to
+	omp-expand.c.
+	(find_combined_for): Renamed to omp_find_combined_for, made global.
+	(build_omp_barrier): Renamed to omp_build_barrier and moved to
+	omp-general.c.
+	(omp_max_vf): Moved to omp-general.c.
+	(omp_max_simt_vf): Likewise.
+	(gimple_build_cond_empty): Moved to omp-expand.c.
+	(parallel_needs_hsa_kernel_p): Likewise.
+	(expand_omp_build_assign): Moved declaration to omp-expand.c.
+	(expand_parallel_call): Moved to omp-expand.c.
+	(expand_cilk_for_call): Likewise.
+	(expand_task_call): Likewise.
+	(vec2chain): Likewise.
+	(remove_exit_barrier): Likewise.
+	(remove_exit_barriers): Likewise.
+	(optimize_omp_library_calls): Likewise.
+	(expand_omp_regimplify_p): Likewise.
+	(expand_omp_build_assign): Likewise.
+	(expand_omp_taskreg): Likewise.
+	(oacc_collapse): Likewise.
+	(expand_oacc_collapse_init): Likewise.
+	(expand_oacc_collapse_vars): Likewise.
+	(expand_omp_for_init_counts): Likewise.
+	(expand_omp_for_init_vars): Likewise.
+	(extract_omp_for_update_vars): Likewise.
+	(expand_omp_ordered_source): Likewise.
+	(expand_omp_ordered_sink): Likewise.
+	(expand_omp_ordered_source_sink): Likewise.
+	(expand_omp_for_ordered_loops): Likewise.
+	(expand_omp_for_generic): Likewise.
+	(expand_omp_for_static_nochunk): Likewise.
+	(find_phi_with_arg_on_edge): Likewise.
+	(expand_omp_for_static_chunk): Likewise.
+	(expand_cilk_for): Likewise.
+	(expand_omp_simd): Likewise.
+	(expand_omp_taskloop_for_outer): Likewise.
+	(expand_omp_taskloop_for_inner): Likewise.
+	(expand_oacc_for): Likewise.
+	(expand_omp_for): Likewise.
+	(expand_omp_sections): Likewise.
+	(expand_omp_single): Likewise.
+	(expand_omp_synch): Likewise.
+	(expand_omp_atomic_load): Likewise.
+	(expand_omp_atomic_store): Likewise.
+	(expand_omp_atomic_fetch_op): Likewise.
+	(expand_omp_atomic_pipeline): Likewise.
+	(expand_omp_atomic_mutex): Likewise.
+	(expand_omp_atomic): Likewise.
+	(oacc_launch_pack): and moved to omp-general.c, made public.
+	(OACC_FN_ATTRIB): Likewise.
+	(replace_oacc_fn_attrib): Renamed to oacc_replace_fn_attrib and moved
+	to omp-general.c.
+	(set_oacc_fn_attrib): Renamed to oacc_set_fn_attrib and moved to
+	omp-general.c.
+	(build_oacc_routine_dims): Renamed to oacc_build_routine_dims and
+	moved to omp-general.c.
+	(get_oacc_fn_attrib): Renamed to oacc_get_fn_attrib and moved to
+	omp-general.c.
+	(oacc_fn_attrib_kernels_p): Moved to omp-general.c.
+	(oacc_fn_attrib_level): Moved to omp-offload.c.
+	(get_oacc_fn_dim_size): Renamed to oacc_get_fn_dim_size and moved to
+	omp-general.c.
+	(get_oacc_ifn_dim_arg): Renamed to oacc_get_ifn_dim_arg and moved to
+	omp-general.c.
+	(mark_loops_in_oacc_kernels_region): Moved to omp-expand.c.
+	(grid_launch_attributes_trees): Likewise.
+	(grid_attr_trees): Likewise.
+	(grid_create_kernel_launch_attr_types): Likewise.
+	(grid_insert_store_range_dim): Likewise.
+	(grid_get_kernel_launch_attributes): Likewise.
+	(get_target_argument_identifier_1): Likewise.
+	(get_target_argument_identifier): Likewise.
+	(get_target_argument_value): Likewise.
+	(push_target_argument_according_to_value): Likewise.
+	(get_target_arguments): Likewise.
+	(expand_omp_target): Likewise.
+	(grid_expand_omp_for_loop): Moved to omp-grid.c.
+	(grid_arg_decl_map): Likewise.
+	(grid_remap_kernel_arg_accesses): Likewise.
+	(grid_expand_target_grid_body): Likewise.
+	(expand_omp): Renamed to omp_expand and moved to omp-expand.c.
+	(build_omp_regions_1): Moved to omp-expand.c.
+	(build_omp_regions_root): Likewise.
+	(omp_expand_local): Likewise.
+	(build_omp_regions): Likewise.
+	(execute_expand_omp): Likewise.
+	(pass_data_expand_omp): Likewise.
+	(pass_expand_omp): Likewise.
+	(make_pass_expand_omp): Likewise.
+	(pass_data_expand_omp_ssa): Likewise.
+	(pass_expand_omp_ssa): Likewise.
+	(make_pass_expand_omp_ssa): Likewise.
+	(grid_lastprivate_predicate): Renamed to
+	omp_grid_lastprivate_predicate and moved to omp-grid.c, made public.
+	(grid_prop): Moved to omp-grid.c.
+	(GRID_MISSED_MSG_PREFIX): Likewise.
+	(grid_safe_assignment_p): Likewise.
+	(grid_seq_only_contains_local_assignments): Likewise.
+	(grid_find_single_omp_among_assignments_1): Likewise.
+	(grid_find_single_omp_among_assignments): Likewise.
+	(grid_find_ungridifiable_statement): Likewise.
+	(grid_parallel_clauses_gridifiable): Likewise.
+	(grid_inner_loop_gridifiable_p): Likewise.
+	(grid_dist_follows_simple_pattern): Likewise.
+	(grid_gfor_follows_tiling_pattern): Likewise.
+	(grid_call_permissible_in_distribute_p): Likewise.
+	(grid_handle_call_in_distribute): Likewise.
+	(grid_dist_follows_tiling_pattern): Likewise.
+	(grid_target_follows_gridifiable_pattern): Likewise.
+	(grid_remap_prebody_decls): Likewise.
+	(grid_var_segment): Likewise.
+	(grid_mark_variable_segment): Likewise.
+	(grid_copy_leading_local_assignments): Likewise.
+	(grid_process_grid_body): Likewise.
+	(grid_eliminate_combined_simd_part): Likewise.
+	(grid_mark_tiling_loops): Likewise.
+	(grid_mark_tiling_parallels_and_loops): Likewise.
+	(grid_process_kernel_body_copy): Likewise.
+	(grid_attempt_target_gridification): Likewise.
+	(grid_gridify_all_targets_stmt): Likewise.
+	(grid_gridify_all_targets): Renamed to omp_grid_gridify_all_targets
+	and moved to omp-grid.c, made public.
+	(make_gimple_omp_edges): Renamed to omp_make_gimple_edges and moved to
+	omp-expand.c.
+	(add_decls_addresses_to_decl_constructor): Moved to omp-offload.c.
+	(omp_finish_file): Likewise.
+	(oacc_thread_numbers): Likewise.
+	(oacc_xform_loop): Likewise.
+	(oacc_default_dims, oacc_min_dims): Likewise.
+	(oacc_parse_default_dims): Likewise.
+	(oacc_validate_dims): Likewise.
+	(new_oacc_loop_raw): Likewise.
+	(new_oacc_loop_outer): Likewise.
+	(new_oacc_loop): Likewise.
+	(new_oacc_loop_routine): Likewise.
+	(finish_oacc_loop): Likewise.
+	(free_oacc_loop): Likewise.
+	(dump_oacc_loop_part): Likewise.
+	(dump_oacc_loop): Likewise.
+	(debug_oacc_loop): Likewise.
+	(oacc_loop_discover_walk): Likewise.
+	(oacc_loop_sibling_nreverse): Likewise.
+	(oacc_loop_discovery): Likewise.
+	(oacc_loop_xform_head_tail): Likewise.
+	(oacc_loop_xform_loop): Likewise.
+	(oacc_loop_process): Likewise.
+	(oacc_loop_fixed_partitions): Likewise.
+	(oacc_loop_auto_partitions): Likewise.
+	(oacc_loop_partition): Likewise.
+	(default_goacc_fork_join): Likewise.
+	(default_goacc_reduction): Likewise.
+	(execute_oacc_device_lower): Likewise.
+	(default_goacc_validate_dims): Likewise.
+	(default_goacc_dim_limit): Likewise.
+	(pass_data_oacc_device_lower): Likewise.
+	(pass_oacc_device_lower): Likewise.
+	(make_pass_oacc_device_lower): Likewise.
+	(execute_omp_device_lower): Likewise.
+	(pass_data_omp_device_lower): Likewise.
+	(pass_omp_device_lower): Likewise.
+	(make_pass_omp_device_lower): Likewise.
+	(pass_data_omp_target_link): Likewise.
+	(pass_omp_target_link): Likewise.
+	(find_link_var_op): Likewise.
+	(pass_omp_target_link::execute): Likewise.
+	(make_pass_omp_target_link): Likewise.
+	* Makefile.in (OBJS): Added omp-offload.o, omp-expand.o, omp-general.o
+	and omp-grid.o.
+	(GTFILES): Added omp-offload.h, omp-offload.c and omp-expand.c, removed
+	omp-low.h.
+	* gimple-fold.c: Include omp-general.h instead of omp-low.h.
+	(fold_internal_goacc_dim): Adjusted calls to
+	get_oacc_ifn_dim_arg and get_oacc_fn_dim_size to use their new names.
+	* gimplify.c: Include omp-low.h.
+	(omp_notice_variable): Adjust the call to get_oacc_fn_attrib to use
+	its new name.
+	(gimplify_omp_task): Adjusted calls to find_omp_clause to use its new
+	name.
+	(gimplify_omp_for): Likewise.
+	* lto-cgraph.c: Include omp-offload.h instead of omp-low.h.
+	* toplev.c: Include omp-offload.h instead of omp-low.h.
+	* tree-cfg.c: Include omp-general.h instead of omp-low.h.  Also
+	include omp-expand.h.
+	(make_edges_bb): Adjusted the call to make_gimple_omp_edges to use its
+	new name.
+	(make_edges): Adjust the call to free_omp_regions to use its new name.
+	* tree-parloops.c: Include omp-general.h.
+	(create_parallel_loop): Adjusted the call to set_oacc_fn_attrib to use
+	its new name.
+	(parallelize_loops): Adjusted the call to get_oacc_fn_attrib to use
+	its new name.
+	* tree-ssa-loop.c: Include omp-general.h instead of omp-low.h.
+	(gate_oacc_kernels): Adjusted the call to get_oacc_fn_attrib to use
+	its new name.
+	* tree-vrp.c: Include omp-general.h instead of omp-low.h.
+	(extract_range_basic): Adjusted calls to get_oacc_ifn_dim_arg and
+	get_oacc_fn_dim_size to use their new names.
+	* varpool.c: Include omp-offload.h instead of omp-low.h.
+	* gengtype.c (open_base_files): Replace omp-low.h with omp-offload.h in
+	ifiles.
+	* config/nvptx/nvptx.c: Include omp-general.c.
+	(nvptx_expand_call): Adjusted the call to get_oacc_fn_attrib to use
+	its new name.
+	(nvptx_reorg): Likewise.
+	(nvptx_record_offload_symbol): Likewise.
+
+2016-12-14  Martin Sebor  <msebor@redhat.com>
+
+	PR middle-end/78786
+	* gimple-ssa-sprintf.c (target_dir_max): New macro.
+	(get_mpfr_format_length): New function.
+	(format_integer): Use HOST_WIDE_INT instead of int.
+	(format_floating_max): Same.
+	(format_floating): Call get_mpfr_format_length.
+	(format_directive): Use target_dir_max.
+
+2016-12-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/78791
+	* config/i386/i386.h (enum ix86_stack_slot): Add SLOT_STV_TEMP.
+	* config/i386/i386.c (dimode_scalar_chain::make_vector_copies,
+	dimode_scalar_chain::convert_reg): Use SLOT_STV_TEMP instead of
+	SLOT_TEMP.
+
+2016-12-14  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/59874
+	* config/i386/i386-builtin.def: Add __builtin_clzs and __builtin_ctzs.
+	(ix86_fold_builtin): Handle IX86_BUILTIN_CTZS and IX86_BUILTIN_CLZS.
+	* config/i386/i386.md (*ctzhi2): New insn_and_split pattern.
+	(*clzhi2): Ditto.
+
+2016-12-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/77844
+	* valtrack.c: Include rtl-iter.h.
+	(struct rtx_subst_pair): Add insn field.
+	(propagate_for_debug_subst): If pair->to contains at least 2
+	regs, create a DEBUG_INSN with a debug temp before pair->insn
+	and replace from with the debug temp instead of pair->to.
+	(propagate_for_debug): Initialize p.insn.
+	* combine.c (insn_uid_check): New inline function.
+	(INSN_COST, LOG_LINKS): Use it instead of INSN_UID.
+	(find_single_use, combine_instructions,
+	cant_combine_insn_p, try_combine): Use NONDEBUG_INSN_P instead of
+	INSN_P.
+
+2016-12-14  Martin Sebor  <msebor@redhat.com>
+
+	PR c/17308
+	* builtin-attrs.def (ATTR_NONNULL_1_1, ATTR_NONNULL_1_2): Defined.
+	(ATTR_NONNULL_1_3, ATTR_NONNULL_1_4, ATTR_NONNULL_1_5): Same.
+	(ATTR_NOTHROW_NONNULL_1_1, ATTR_NOTHROW_NONNULL_1_2): Same.
+	(ATTR_NOTHROW_NONNULL_1_3, ATTR_NOTHROW_NONNULL_1_4): Same.
+	(ATTR_NOTHROW_NONNULL_1_5): Same.
+	(ATTR_NONNULL_1_FORMAT_PRINTF_1_2): Same.
+	(ATTR_NONNULL_1_FORMAT_PRINTF_2_0): Same.
+	(ATTR_NONNULL_1_FORMAT_PRINTF_2_3): Same.
+	(ATTR_NONNULL_1_FORMAT_PRINTF_3_0): Same.
+	(ATTR_NONNULL_1_FORMAT_PRINTF_3_4): Same.
+	(ATTR_NONNULL_1_FORMAT_PRINTF_4_0): Same.
+	(ATTR_NONNULL_1_FORMAT_PRINTF_4_5): Same.
+	* builtins.c (validate_arg): Add argument.  Treat null pointers
+	passed to nonnull arguments as invalid.
+	(validate_arglist): Same.
+	* builtins.def (fprintf, fprintf_unlocked): Add nonnull attribute.
+	(printf, printf_unlocked, sprintf. vfprintf, vsprintf): Same.
+	(__sprintf_chk, __vsprintf_chk, __fprintf_chk, __vfprintf_chk): Same.
+	* calls.c (get_nonnull_ags, maybe_warn_null_arg): New functions.
+	(initialize_argument_information): Diagnose null pointers passed to
+	arguments declared nonnull.
+	* calls.h (get_nonnull_args): Declared.
+
+2016-12-14  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* config/rs6000/rs6000.c (rs6000_split_vec_extract_var): On ISA
+	3.0/power9, add support to use the VEXTU{B,H,W}{L,R}X extract
+	instructions.
+	* config/rs6000/vsx.md (VSr2): Add IEEE 128-bit floating point
+	type constraint registers.
+	(VSr3): Likewise.
+	(FL_CONV): New mode iterator for binary floating types that have a
+	direct conversion from 64-bit integer to floating point.
+	(vsx_extract_<mode>_p9): Add support for the ISA 3.0/power9
+	VEXTU{B,H,W}{L,R}X extract instructions.
+	(vsx_extract_<mode>_p9 splitter): Add splitter to load up the
+	extract byte position into the GPR if we are using the
+	VEXTU{B,H,W}{L,R}X extract instructions.
+	(vsx_extract_<mode>_di_p9): Support extracts to GPRs.
+	(vsx_extract_<mode>_store_p9): Support extracting to GPRs so that
+	we can use reg+offset address instructions.
+	(vsx_extract_<mode>_var): Support extracts to GPRs.
+	(vsx_extract_<VSX_EXTRACT_I:mode>_<SDI:mode>_var): New combiner
+	insn to combine vector extracts with zero_extend.
+	(vsx_ext_<VSX_EXTRACT_I:VS_scalar>_fl_<FL_CONV:mode>): Optimize
+	extracting a small integer vector element and converting it to a
+	floating point type.
+	(vsx_ext_<VSX_EXTRACT_I:VS_scalar>_ufl_<FL_CONV:mode>): Likewise.
+	(UNSPEC_XXEXTRACTUW): New unspec.
+	(UNSPEC_XXINSERTW): Likewise.
+	(vextract4b): Add support for the vec_vextract4b built-in
+	function.
+	(vextract4b_internal): Likewise.
+	(vinsert4b): Add support for the vec_insert4b built-in function.
+	Include both a version that inserts element 1 from a V4SI object
+	and one that inserts a DI object.
+	(vinsert4b_internal): Likewise.
+	(vinsert4b_di): Likewise.
+	(vinsert4b_di_internal): Likewise.
+	* config/rs6000/predicates.md (const_0_to_11_operand): New
+	predicate, match 0..11.
+	* config/rs6000/rs6000-builtin.def (BU_P9V_VSX_3): Set built-in
+	type to ternary, not binary.
+	(BU_P9V_64BIT_VSX_3): Likewise.
+	(P9V_BUILTIN_VEXTRACT4B): Add support for vec_vinsert4b and
+	vec_extract4b non-overloaded built-in functions.
+	(P9V_BUILTIN_VINSERT4B): Likewise.
+	(P9V_BUILTIN_VINSERT4B_DI): Likewise.
+	(P9V_BUILTIN_VEC_VEXTULX): Move to section that adds 2 operand ISA
+	3.0 built-in functions.
+	(P9V_BUILTIN_VEC_VEXTURX): Likewise.
+	(P9V_BUILTIN_VEC_VEXTRACT4B): Add support for overloaded
+	vec_insert4b and vec_extract4 built-in functions.
+	(P9V_BUILTIN_VEC_VINSERT4B): Likewise.
+	* config/rs6000/rs6000-c.c (altivec_overloaded_builtins): Add
+	overloaded support for vec_vinsert4b and vec_extract4b.
+	* config/rs6000/rs6000.c (altivec_expand_builtin): Add checks for
+	the vec_insert4b and vec_extract4b byte number being a constant in
+	the range 0..11.
+	* config/rs6000/altivec.h (vec_vinsert4b): Support vec_vinsert4b
+	and vec_extract4b built-in functions.
+	* doc/extend.doc (PowerPC VSX built-in functions): Document
+	vec_insert4b and vec_extract4b.
+
+2016-12-14  Martin Liska  <mliska@suse.cz>
+
+	* gimple-pretty-print.c (dump_probability): New function.
+	(dump_edge_probability): Use the function.
+	(dump_gimple_label): Likewise.
+	(dump_gimple_bb_header): Likewise.
+
+2016-12-14  Prathamesh Kulkarni  <prathamesh.kulkarni@linaro.org>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	* tree-ssa-strlen.c (fold_strstr_to_memcmp): New function.
+	(strlen_optimize_stmt): Call fold_strstr_to_memcmp.
+
+2016-12-14  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* lra-constraints.c (process_address_1): Do not attempt to decompose
+	addresses for MEMs that satisfy fixed-form constraints.
+
+2016-12-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/78788
+	* tree-vrp.c (set_value_range): Allow [-INF(OVF), +INF(OVF)].
+	(set_and_canonicalize_value_range): Do not drop the above to
+	VARYING.
+
+2016-12-13  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* config/rs6000/rs600.c (rs6000_builtin_vectorization_cost):
+	Adjust unaligned load cost.
+
+2016-12-13  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/78794
+	* config/i386/i386.c (dimode_scalar_chain::compute_convert_gain):
+	Calculate additional gain for andnot for targets without BMI.
+
+2016-12-13  Carl Love  <cel@us.ibm.com>
+
+	* config/rs6000/rs6000-c.c: Add built-in support for
+	vector float vec_pack (vector double, vector double)
+	vector double vec_sld (vector double, vector double)
+	* config/rs6000/rs6000.c: Add icode check for vsldoi_v2df to allow
+	4-bit unsigned literal.
+	* config/rs6000/rs6000-builtin.def: Add definition for VSLDOI_2DF
+	* doc/extend.texi: Update the built-in documentation file for the
+	new powerpc vec_pack and vec_sld built-ins.
+
+2016-12-13  Martin Liska  <mliska@suse.cz>
+
+	* sanopt.c (sanopt_optimize_walker): Set contains_asan_mark.
+	(sanopt_optimize): Add new argument.
+	(sanitize_asan_mark_unpoison): New function.
+	(maybe_contains_asan_check): Likewise.
+	(sanitize_asan_mark_poison): Likewise.
+	(pass_sanopt::execute): Call the new functions.
+
+2016-12-13  Martin Liska  <mliska@suse.cz>
+
+	PR tree-optimization/78428
+	* expr.c (store_constructor_field): Add new arguments to the function.
+	(store_constructor): Set up bitregion_end and add gcc_unreachable to
+	fields that have either non-constant size or (and) offset.
+
+2016-12-13  Marek Polacek  <polacek@redhat.com>
+
+	* tree-data-ref.c (compute_overlap_steps_for_affine_univar): Change
+	parameters' type from int to HOST_WIDE_INT.
+	(compute_overlap_steps_for_affine_1_2): Change parameters' type from
+	int to HOST_WIDE_INT.
+	(build_classic_dist_vector_1): Likewise.
+	(add_multivariate_self_dist): Likewise.
+
+2016-12-13  Michael Matz  <matz@suse.de>
+
+	PR tree-optimization/78725
+	* tree-ssa-loop-split.c (split_at_bb_p): Check for overflow and
+	at correct use point.
+
+2016-12-13  Martin Liska  <mliska@suse.cz>
+
+	* asan.c (asan_expand_mark_ifn): Use renamed
+	BUILT_IN_ASAN_{UN}CLOBBER_N to BUILT_IN_ASAN_{UN}POISON_STACK_MEMORY.
+	* sanitizer.def: Likewise.
+
+2016-12-13  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	* doc/extend.texi (Half-Precision): Update to document current
+	compiler behaviour.
+
+2016-12-13  James Greenhalgh  <james.greenhalgh@arm.com>
+
+	* doc/extend.texi (Floating Types): Document availability of
+	_Float16 on ARM/AArch64.
+
+2016-12-13  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/78699
+	* tree-vect-data-refs.c (vect_analyze_group_access_1): Limit
+	group size.
+
+2016-12-13  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/78742
+	* tree.c (cst_and_fits_in_hwi): Look if the actual value fits.
+	* tree-object-size.c (compute_builtin_object_size): Use
+	tree_fits_shwi_p.
+	* tree-data-ref.c (initialize_matrix_A): Remove excess assert.
+
+2016-12-13  Martin Liska  <mliska@suse.cz>
+
+	* asan.c (asan_mark_poison_p): Remove.
+	(asan_mark_p): New function.
+	(transform_statements): Use the function.
+	(asan_expand_mark_ifn): Do not use masked enum.
+	* asan.h (enum asan_mark_flags): Declare it via a macro.
+	* gimple-pretty-print.c (dump_gimple_call_args): Dump first
+	argument of ASAN_MARK.
+	* gimplify.c (build_asan_poison_call_expr): Use new enum values.
+	(asan_poison_variable): Likewise.
+
+2016-12-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR ipa/77905
+	* ipa-pure-const.c (cdtor_p): Return true for
+	DECL_STATIC_{CON,DE}STRUCTOR even when it is
+	DECL_LOOPING_CONST_OR_PURE_P.
+
+2016-12-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/78777
+	* gimple-ssa-strength-reduction.c (create_add_on_incoming_edge,
+	insert_initializers): Use stmt_ends_bb_p instead of is_ctrl_stmt.
+
+	PR other/78766
+	* opt-functions.awk (opt_args): Use [{] instead of { in regexps.
+	Formatting fix.
+
+2016-12-12  Martin Sebor  <msebor@redhat.com>
+
+	PR middle-end/78622
+	PR middle-end78606
+	* gimple-ssa-sprintf.c (min_bytes_remaining): Use res.knownrange
+	rather than res.bounded.
+	(get_width_and_precision): Set precision to -1 when negative.
+	(adjust_range_for_overflow): New function.
+	(format_integer): Correct the handling of the space, plus, and pound
+	flags, and the special case of zero precision.
+	Always set res.bounded to true unless either precision or width
+	is specified and unknown.
+	Call adjust_range_for_overflow.
+	Avoid use zero as the shortest value when precision is specified
+	but unknown.
+	(format_directive): Remove vestigial quoting.  Always inform of
+	argument value or range when it's available.
+	(add_bytes): Correct the computation of boundrange used to
+	decide whether a warning is of a "maybe" or "defnitely" kind.
+
+2016-12-12  Dominik Vogt  <vogt@linux.vnet.ibm.com>
+
+	* combine.c (change_zero_ext): Handle mode expanding zero_extracts.
+
+2016-12-12  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/78738
+	* config/i386/i386.h (X87_ENABLE_ARITH): Also enable for
+	flag_unsafe_math_optimizations.
+	(X87_ENABLE_FLOAT): Ditto.
+
+2016-12-12  Marek Polacek  <polacek@redhat.com>
+
+	PR middle-end/78716
+	* gimplify.c (gimplify_va_arg_expr): Don't require ADDR_EXPR for
+	Case 1; check POINTER_TYPE_P instead.
+
+2016-12-12  Bernd Schmidt  <bschmidt@redhat.com>
+
+	PR rtl-optimization/78669
+	* ira.c (combine_and_move_insns): When deleting an insn, clear the
+	replace flag for all used regs in that insn.
+
+2016-12-12  Thomas Preud'homme  <thomas.preudhomme@arm.com>
+
+	* config/arm/arm-opts.h: Move struct arm_arch_core_flag and
+	arm_arch_core_flags to ...
+	* common/config/arm/arm-common.c: There.
+
+2016-12-12  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/sparc/constraints.md (T): Use special memory constraint.
+	(U): Minor tweak.
+	(W): Add TARGET_ARCH64 test.
+	* config/sparc/sparc.md (*movdi_insn_sp32): Replace 'W' with 'T'.
+	(*movdf_insn_sp32): Likewise.
+	(*mov<VM64:mode>_insn_sp32): Likewise.  Replace 'e' with 'f' in
+	conjunction with offsettable memory references.
+
+2016-12-11  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* config/nios2/nios2.c (nios2_emit_move_sequence): Call copy_rtx
+	to avoid shared structure error.
+
+2016-12-11  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	PR target/78695
+	* config/rs6000/rs6000.c (find_alignment_op): Discard from
+	consideration any artificial definition.
+
+2016-12-11  Iain Sandoe  <iain@codesourcery.com>
+
+	* configure.ac (CROSS directory tests): Remove the assumption that
+	Darwin hosts contain suitable target sysroots in "/".
+	* configure: Regenerate.
+
+2016-12-11  Iain Sandoe  <iain@codesourcery.com>
+
+	PR rtl-optimization/71496
+	* config/rs6000/darwin.md (load_macho_picbase_si): Mark as non-
+	copyable.  (load_macho_picbase_di, reload_macho_picbase_si,
+	reload_macho_picbase_di): Likewise.
+
+2012-12-11  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.c (pa_callee_copies): New function.
+	* config/pa/pa.opt (mcaller-copies): New option.
+	* doc/invoke.texi (mcaller-copies): Document option.
+
+2016-12-11  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/70799
+	* config/i386/i386.c (dimode_scalar_to_vector_candidate_p)
+	<case ASHIFT, case LSHIFTRT>: Consider all constant shifts.
+	Add FIXME comment.
+	(dimode_scalar_chain::compute_convert_gain): Reduce gain for
+	constant shifts larger or equal than 32.
+
+2016-12-11  Roger Pau Monné  <roger.pau@citrix.com>
+
+	* config/i386/x86-64.h: Append --32 to the assembler options when
+	-m16 is used on non-glibc systems as well.
+
+2016-12-10  Allan Sandfeld Jensen  <allan.jensen@qt.io>
+
+	PR target/70118
+	* config/i386/mmintrin.h (__m64_u): New type
+	* config/i386/emmintrin.h (_mm_loadl_epi64, _mm_storel_epi64):
+	Make the allowed unaligned memory access explicit.
+
+2016-12-10  Krister Walfridsson  <krister.walfridsson@gmail.com>
+
+	* config.gcc (i386-*-netbsd*): Make i486 the default arch on NetBSD.
+	Generally use cpu generic.
+
+2016-12-10  Jakub Jelinek  <jakub@redhat.com>
+	    Marc Glisse  <marc.glisse@inria.fr>
+
+	PR tree-optimization/78720
+	* match.pd (A < 0 ? C : 0): Only optimize for signed A.  If shift
+	is negative, sign extend to @1's type and than AND with C.
+
+2016-12-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/78758
+	* tree-object-size.c (compute_object_offset) <case ARRAY_REF>: Handle
+	non-zero low bound or non-standard element sizes.
+
+	PR sanitizer/78708
+	* lto-streamer-in.c (input_function): In addition to debug stmts
+	without -g, remove IFN_*SAN_* calls if corresponding flag_sanitize
+	bit is not enabled.
+
 2016-12-09  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
 
 	* config/rs6000/rs6000-passes.def: New file.
@@ -10,8 +1305,8 @@
 2016-12-09  Kugan Vivekanandarajah  <kuganv@linaro.org>
 
 	PR ipa/78721
-	* ipa-cp.c (propagate_vr_accross_jump_function): drop_tree_overflow
-	after fold_convert.
+	* ipa-cp.c (propagate_vr_accross_jump_function): Call
+	drop_tree_overflow after fold_convert.
 
 2016-12-09  Jakub Jelinek  <jakub@redhat.com>
 

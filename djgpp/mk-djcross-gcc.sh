@@ -24,7 +24,7 @@ sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 case "x$gcc_src_ext" in
     xgz) archiver=gzip ;;
     xbz2) archiver=bzip2 ;;
-    xxz) archiver=xz ;;
+    xxz) archiver="xz -T 0" ;;
     *) echo "Unknown archive extension $gcc_src_ext"; exit 1; ;;
 esac
 

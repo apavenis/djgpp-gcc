@@ -1,3 +1,88 @@
+2016-12-16  Richard Biener  <rguenther@suse.de>
+
+	PR c++/71694
+	* cp-objcp-common.h (cp_unit_size_without_reusable_padding): Declare.
+	(LANG_HOOKS_UNIT_SIZE_WITHOUT_REUSABLE_PADDING): Define.
+	* cp-objcp-common.c (cp_unit_size_without_reusable_padding): New.
+
+2016-12-15  Jakub Jelinek  <jakub@redhat.com>
+
+	P0490R0 GB 20: decomposition declaration should commit to tuple
+	interpretation early
+	* decl.c (get_tuple_size): Make static.  If inst is error_mark_node
+	or non-complete type, return NULL_TREE, otherwise if
+	lookup_qualified_name fails or doesn't fold into INTEGER_CST, return
+	error_mark_node.
+	(get_tuple_element_type, get_tuple_decomp_init): Make static.
+	(cp_finish_decomp): Pass LOC to get_tuple_size.  If it returns
+	error_mark_node, complain and fail.
+
+2016-12-15  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/77585
+	* pt.c (instantiate_decl): Push to class scope lambda resides
+	within when instantiating a generic lambda function.
+
+2016-12-14  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/78774
+	* pt.c (convert_template_argument): Avoid assuming operand type
+	is non-null since that of SCOPE_REF is not.
+
+2016-12-14  Martin Jambor  <mjambor@suse.cz>
+
+	* parser.c: Include omp-general.h and omp-offload.h instead of
+	omp-low.h.
+	(cp_parser_omp_simd): Adjusted calls to find_omp_clause to use its new
+	name.
+	(cp_parser_omp_target_update): Likewise.
+	(cp_parser_oacc_declare): Likewise.
+	(cp_parser_oacc_enter_exit_data): Likewise.
+	(cp_parser_oacc_update): Likewise.
+	(cp_finalize_oacc_routine): Adjusted call to get_oacc_fn_attrib,
+	build_oacc_routine_dims and replace_oacc_fn_attrib to use their new
+	names.
+	* semantics.c: Include omp-general insteda of omp-low.h.
+	(finish_omp_for): Adjusted calls to find_omp_clause to use its new
+	name.
+	(finish_omp_cancel): Likewise.
+	(finish_omp_cancellation_point): Likewise.
+
+2016-12-14  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/72775
+	* init.c (perform_member_init): Diagnose member initializer for
+	flexible array member. 
+
+2016-12-14  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/78701
+	* pt.c (type_unification_real): Check tsubst arg doesn't have
+	remaining template parms before converting it.
+
+	PR c++/69481
+	* cp-tree.h (TYPE_TEMPLATE_INFO_MAYBE_ALIAS): Always use
+	TYPE_ALIAS_TEMPLATE_INFO for aliases.
+
+2016-12-13  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/69481
+	* cp-tree.h (TYPE_TEMPLATE_INFO): Remove alias type checking.
+	(TYPE_ALIAS_TEMPLATE_INFO): New.
+	(TYPE_TEMPLATE_INFO_MAYBE_ALIAS): New.  Use those macros.
+	* error.c (dump_alias_template_specialization): Adjust.
+	* pt.c (maybe_process_partial_specialization,
+	iterative_has_template_arg, find_parameter_packs_r,
+	alias_template_specialization_p, dependent_alias_template_spec_p,
+	get_underlying_template, lookup_template_class_1, unify): Adjust
+	template using decl access.
+
+2016-12-11  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/78637
+	* parser.c (cp_parser_namespace_definition): Increment
+	nested_definition_count only if push_namespace succeeds.
+
 2016-12-08  Nathan Sidwell  <nathan@acm.org>
 
 	PR c++/78551

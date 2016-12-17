@@ -55,7 +55,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa-threadupdate.h"
 #include "tree-ssa-scopedtables.h"
 #include "tree-ssa-threadedge.h"
-#include "omp-low.h"
+#include "omp-general.h"
 #include "target.h"
 #include "case-cfn-macros.h"
 #include "params.h"
@@ -365,10 +365,6 @@ set_value_range (value_range *vr, enum value_range_type t, tree min,
 
       cmp = compare_values (min, max);
       gcc_assert (cmp == 0 || cmp == -1 || cmp == -2);
-
-      if (needs_overflow_infinity (TREE_TYPE (min)))
-	gcc_assert (!is_overflow_infinity (min)
-		    || !is_overflow_infinity (max));
     }
 
   if (flag_checking
@@ -506,14 +502,9 @@ set_and_canonicalize_value_range (value_range *vr, enum value_range_type t,
         }
     }
 
-  /* Drop [-INF(OVF), +INF(OVF)] to varying.  */
-  if (needs_overflow_infinity (TREE_TYPE (min))
-      && is_overflow_infinity (min)
-      && is_overflow_infinity (max))
-    {
-      set_value_range_to_varying (vr);
-      return;
-    }
+  /* Do not drop [-INF(OVF), +INF(OVF)] to varying.  (OVF) has to be sticky
+     to make sure VRP iteration terminates, otherwise we can get into
+     oscillations.  */
 
   set_value_range (vr, t, min, max, equiv);
 }
@@ -4012,8 +4003,8 @@ extract_range_basic (value_range *vr, gimple *stmt)
 	     and pos is [0,N-1].  */
 	  {
 	    bool is_pos = cfn == CFN_GOACC_DIM_POS;
-	    int axis = get_oacc_ifn_dim_arg (stmt);
-	    int size = get_oacc_fn_dim_size (current_function_decl, axis);
+	    int axis = oacc_get_ifn_dim_arg (stmt);
+	    int size = oacc_get_fn_dim_size (current_function_decl, axis);
 
 	    if (!size)
 	      /* If it's dynamic, the backend might know a hardware
@@ -6060,10 +6051,17 @@ find_switch_asserts (basic_block bb, gswitch *last)
   /* Now register along the default label assertions that correspond to the
      anti-range of each label.  */
   int insertion_limit = PARAM_VALUE (PARAM_MAX_VRP_SWITCH_ASSERTIONS);
+  if (insertion_limit == 0)
+    return;
+
+  /* We can't do this if the default case shares a label with another case.  */
+  tree default_cl = gimple_switch_default_label (last);
   for (idx = 1; idx < n; idx++)
     {
       tree min, max;
       tree cl = gimple_switch_label (last, idx);
+      if (CASE_LABEL (cl) == CASE_LABEL (default_cl))
+	continue;
 
       min = CASE_LOW (cl);
       max = CASE_HIGH (cl);
@@ -6074,6 +6072,8 @@ find_switch_asserts (basic_block bb, gswitch *last)
 	{
 	  tree next_min, next_max;
 	  tree next_cl = gimple_switch_label (last, idx);
+	  if (CASE_LABEL (next_cl) == CASE_LABEL (default_cl))
+	    break;
 
 	  next_min = CASE_LOW (next_cl);
 	  next_max = CASE_HIGH (next_cl);
