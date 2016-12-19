@@ -120,7 +120,12 @@ rm -rf $gcc_dir/liboffloadmic
 rm -rf $gcc_dir/libvtv
 
 if $remove_tests ; then
-    rm -rf $gcc_dir/gcc/testsuite
+    for name in $gcc_dir/gcc/testsuite; do
+        case name in
+            */selftest) ;;
+            *) rm -rf $name ;;
+        esac
+    done
 fi
 
 #
