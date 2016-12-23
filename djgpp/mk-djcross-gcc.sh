@@ -144,16 +144,16 @@ ext_files="
     gmp-$gmp_version.tar.bz2
     mpfr-$mpfr_version.tar.bz2
     mpc-$mpc_version.tar.gz
-    autoconf-$autoconf_version.tar.bz2
-    automake-$automake_version.tar.bz2";
+    autoconf-$autoconf_version.tar.gz
+    automake-$automake_version.tar.gz";
 
 for file in $ext_files ; do
     case $file in
         gmp*) url=ftp://ftp.gmplib.org/pub/gmp-${gmp_version}/gmp-${gmp_version}.tar.bz2 ;;
         mpfr*) url=http://ftp.gnu.org/gnu/mpfr/mpfr-${mpfr_version}.tar.bz2 ;;
         mpc*) url=http://www.multiprecision.org/mpc/download/mpc-${mpc_version}.tar.gz ;;
-        autoconf*) url=http://ftp.gnu.org/gnu/autoconf/autoconf-${autoconf_version}.tar.bz2 ;;
-        automake*) url=http://ftp.gnu.org/gnu/automake/automake-${automake_version}.tar.bz2 ;;
+        autoconf*) url=http://ftp.gnu.org/gnu/autoconf/autoconf-${autoconf_version}.tar.gz ;;
+        automake*) url=http://ftp.gnu.org/gnu/automake/automake-${automake_version}.tar.gz ;;
         *) exit 1 ;;
     esac
 
