@@ -15,7 +15,7 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=tags-6.3.0
+upstream=tags/6.3.0
 dj_branch=tags/6.3.0-djgpp
 djn_branch=tags/6.3.0-djgpp-native
 
