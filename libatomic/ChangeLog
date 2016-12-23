@@ -1,3 +1,11 @@
+2016-12-21  Release Manager
+
+	* GCC 6.3.0 released.
+
+2016-08-22  Release Manager
+
+	* GCC 6.2.0 released.
+
 2016-05-10  Sebastian Huber  <sebastian.huber@embedded-brains.de>
 
 	Backport from mainline:

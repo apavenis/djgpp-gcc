@@ -572,6 +572,38 @@
     }
 })
 
+;; Return 1 if the operand is a CONST_VECTOR or VEC_DUPLICATE of a constant
+;; that can loaded with a XXSPLTIB instruction and then a VUPKHSB, VECSB2W or
+;; VECSB2D instruction.
+
+(define_predicate "xxspltib_constant_split"
+  (match_code "const_vector,vec_duplicate,const_int")
+{
+  int value = 256;
+  int num_insns = -1;
+
+  if (!xxspltib_constant_p (op, mode, &num_insns, &value))
+    return false;
+
+  return num_insns > 1;
+})
+
+
+;; Return 1 if the operand is a CONST_VECTOR that can loaded directly with a
+;; XXSPLTIB instruction.
+
+(define_predicate "xxspltib_constant_nosplit"
+  (match_code "const_vector,vec_duplicate,const_int")
+{
+  int value = 256;
+  int num_insns = -1;
+
+  if (!xxspltib_constant_p (op, mode, &num_insns, &value))
+    return false;
+
+  return num_insns == 1;
+})
+
 ;; Return 1 if the operand is a CONST_VECTOR and can be loaded into a
 ;; vector register without using memory.
 (define_predicate "easy_vector_constant"
@@ -590,7 +622,14 @@
 
   if (VECTOR_MEM_ALTIVEC_OR_VSX_P (mode))
     {
-      if (zero_constant (op, mode))
+      int value = 256;
+      int num_insns = -1;
+
+      if (zero_constant (op, mode) || all_ones_constant (op, mode))
+	return true;
+
+      if (TARGET_P9_VECTOR
+          && xxspltib_constant_p (op, mode, &num_insns, &value))
 	return true;
 
       return easy_altivec_constant (op, mode);
@@ -709,7 +748,7 @@
   if (GET_MODE_SIZE (mode) != 16 || !MEM_P (op) || MEM_ALIGN (op) < 128)
     return false;
 
-  return quad_address_p (XEXP (op, 0), mode, true);
+  return quad_address_p (XEXP (op, 0), mode, false);
 })
 
 ;; Return 1 if the operand is suitable for load/store to vector registers with
@@ -1036,6 +1075,10 @@
 	mode = V2DFmode;
       else if (mode == DImode)
 	mode = V2DImode;
+      else if (mode == SImode && TARGET_P9_VECTOR)
+	mode = V4SImode;
+      else if (mode == SFmode && TARGET_P9_VECTOR)
+	mode = V4SFmode;
       else
 	gcc_unreachable ();
       return memory_address_addr_space_p (mode, XEXP (op, 0),
@@ -1119,6 +1162,12 @@
 ;; comparisons that generate a -1/0 mask.
 (define_predicate "fpmask_comparison_operator"
   (match_code "eq,gt,ge"))
+
+;; Return 1 if OP is a comparison operator suitable for vector/scalar
+;; comparisons that generate a 0/-1 mask (i.e. the inverse of
+;; fpmask_comparison_operator).
+(define_predicate "invert_fpmask_comparison_operator"
+  (match_code "ne,unlt,unle"))
 
 ;; Return 1 if OP is a comparison operation that is valid for a branch
 ;; insn, which is true if the corresponding bit in the CC register is set.
@@ -1786,7 +1835,7 @@
 ;; Match a GPR load (lbz, lhz, lwz, ld) that uses a combined address in the
 ;; memory field with both the addis and the memory offset.  Sign extension
 ;; is not handled here, since lha and lwa are not fused.
-;; With extended fusion, also match a FPR load (lfd, lfs) and float_extend
+;; With P9 fusion, also match a fpr/vector load and float_extend
 (define_predicate "fusion_addis_mem_combo_load"
   (match_code "mem,zero_extend,float_extend")
 {
@@ -1815,8 +1864,12 @@
       break;
 
     case SFmode:
-    case DFmode:
       if (!TARGET_P9_FUSION)
+	return 0;
+      break;
+
+    case DFmode:
+      if ((!TARGET_POWERPC64 && !TARGET_DF_FPR) || !TARGET_P9_FUSION)
 	return 0;
       break;
 
@@ -1862,6 +1915,7 @@
     case QImode:
     case HImode:
     case SImode:
+    case SFmode:
       break;
 
     case DImode:
@@ -1869,13 +1923,8 @@
 	return 0;
       break;
 
-    case SFmode:
-      if (!TARGET_SF_FPR)
-	return 0;
-      break;
-
     case DFmode:
-      if (!TARGET_DF_FPR)
+      if (!TARGET_POWERPC64 && !TARGET_DF_FPR)
 	return 0;
       break;
 
