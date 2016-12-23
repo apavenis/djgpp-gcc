@@ -343,8 +343,11 @@ struct d_print_info
   struct d_print_mod *modifiers;
   /* Set to 1 if we saw a demangling error.  */
   int demangle_failure;
+  /* Non-zero if we're printing a lambda argument.  A template
+     parameter reference actually means 'auto'.  */
+  int is_lambda_arg;
   /* The current index into any template argument packs we are using
-     for printing.  */
+     for printing, or -1 to print the whole pack.  */
   int pack_index;
   /* Number of d_print_flush calls so far.  */
   unsigned long int flush_count;
@@ -466,6 +469,7 @@ static struct demangle_component *
 d_template_param (struct d_info *);
 
 static struct demangle_component *d_template_args (struct d_info *);
+static struct demangle_component *d_template_args_1 (struct d_info *);
 
 static struct demangle_component *
 d_template_arg (struct d_info *);
@@ -1761,6 +1765,10 @@ const struct demangle_operator_info cplus_demangle_operators[] =
   { "eO", NL ("^="),        2 },
   { "eo", NL ("^"),         2 },
   { "eq", NL ("=="),        2 },
+  { "fL", NL ("..."),       3 },
+  { "fR", NL ("..."),       3 },
+  { "fl", NL ("..."),       2 },
+  { "fr", NL ("..."),       2 },
   { "ge", NL (">="),        2 },
   { "gs", NL ("::"),	    1 },
   { "gt", NL (">"),         2 },
@@ -1795,6 +1803,8 @@ const struct demangle_operator_info cplus_demangle_operators[] =
   { "rc", NL ("reinterpret_cast"), 2 },
   { "rm", NL ("%"),         2 },
   { "rs", NL (">>"),        2 },
+  { "sP", NL ("sizeof..."), 1 },
+  { "sZ", NL ("sizeof..."), 1 },
   { "sc", NL ("static_cast"), 2 },
   { "st", NL ("sizeof "),   1 },
   { "sz", NL ("sizeof "),   1 },
@@ -2542,7 +2552,11 @@ cplus_demangle_type (struct d_info *di)
 	  /* auto */
 	  ret = d_make_name (di, "auto", 4);
 	  break;
-	  
+	case 'c':
+	  /* decltype(auto) */
+	  ret = d_make_name (di, "decltype(auto)", 14);
+	  break;
+
 	case 'f':
 	  /* 32-bit decimal floating point */
 	  ret = d_make_builtin_type (di, &cplus_demangle_builtin_types[26]);
@@ -2995,6 +3009,19 @@ d_template_param (struct d_info *di)
 static struct demangle_component *
 d_template_args (struct d_info *di)
 {
+  if (d_peek_char (di) != 'I'
+      && d_peek_char (di) != 'J')
+    return NULL;
+  d_advance (di, 1);
+
+  return d_template_args_1 (di);
+}
+
+/* <template-arg>* E  */
+
+static struct demangle_component *
+d_template_args_1 (struct d_info *di)
+{
   struct demangle_component *hold_last_name;
   struct demangle_component *al;
   struct demangle_component **pal;
@@ -3003,11 +3030,6 @@ d_template_args (struct d_info *di)
      clobber it, as that would give us the wrong name for a subsequent
      constructor or destructor.  */
   hold_last_name = di->last_name;
-
-  if (d_peek_char (di) != 'I'
-      && d_peek_char (di) != 'J')
-    return NULL;
-  d_advance (di, 1);
 
   if (d_peek_char (di) == 'E')
     {
@@ -3270,6 +3292,8 @@ d_expression_1 (struct d_info *di)
 	    if (op->type == DEMANGLE_COMPONENT_CAST
 		&& d_check_char (di, '_'))
 	      operand = d_exprlist (di, 'E');
+	    else if (code && !strcmp (code, "sP"))
+	      operand = d_template_args_1 (di);
 	    else
 	      operand = d_expression_1 (di);
 
@@ -3292,6 +3316,9 @@ d_expression_1 (struct d_info *di)
 	      return NULL;
 	    if (op_is_new_cast (op))
 	      left = cplus_demangle_type (di);
+	    else if (code[0] == 'f')
+	      /* fold-expression.  */
+	      left = d_operator_name (di);
 	    else
 	      left = d_expression_1 (di);
 	    if (!strcmp (code, "cl"))
@@ -3323,6 +3350,13 @@ d_expression_1 (struct d_info *di)
 	      {
 		/* ?: expression.  */
 		first = d_expression_1 (di);
+		second = d_expression_1 (di);
+		third = d_expression_1 (di);
+	      }
+	    else if (code[0] == 'f')
+	      {
+		/* fold-expression.  */
+		first = d_operator_name (di);
 		second = d_expression_1 (di);
 		third = d_expression_1 (di);
 	      }
@@ -4023,6 +4057,7 @@ d_print_init (struct d_print_info *dpi, demangle_callbackref callback,
   dpi->opaque = opaque;
 
   dpi->demangle_failure = 0;
+  dpi->is_lambda_arg = 0;
 
   dpi->component_stack = NULL;
 
@@ -4179,12 +4214,16 @@ cplus_demangle_print (int options, const struct demangle_component *dc,
 }
 
 /* Returns the I'th element of the template arglist ARGS, or NULL on
-   failure.  */
+   failure.  If I is negative, return the entire arglist.  */
 
 static struct demangle_component *
 d_index_template_argument (struct demangle_component *args, int i)
 {
   struct demangle_component *a;
+
+  if (i < 0)
+    /* Print the whole argument pack.  */
+    return args;
 
   for (a = args;
        a != NULL;
@@ -4285,6 +4324,30 @@ d_pack_length (const struct demangle_component *dc)
   return count;
 }
 
+/* Returns the number of template args in DC, expanding any pack expansions
+   found there.  */
+
+static int
+d_args_length (struct d_print_info *dpi, const struct demangle_component *dc)
+{
+  int count = 0;
+  for (; dc && dc->type == DEMANGLE_COMPONENT_TEMPLATE_ARGLIST;
+       dc = d_right (dc))
+    {
+      struct demangle_component *elt = d_left (dc);
+      if (elt == NULL)
+	break;
+      if (elt->type == DEMANGLE_COMPONENT_PACK_EXPANSION)
+	{
+	  struct demangle_component *a = d_find_pack (dpi, d_left (elt));
+	  count += d_pack_length (a);
+	}
+      else
+	++count;
+    }
+  return count;
+}
+
 /* DC is a component of a mangled expression.  Print it, wrapped in parens
    if needed.  */
 
@@ -4359,6 +4422,70 @@ d_get_saved_scope (struct d_print_info *dpi,
       return &dpi->saved_scopes[i];
 
   return NULL;
+}
+
+/* If DC is a C++17 fold-expression, print it and return true; otherwise
+   return false.  */
+
+static int
+d_maybe_print_fold_expression (struct d_print_info *dpi, int options,
+			       const struct demangle_component *dc)
+{
+  const struct demangle_component *ops, *operator_, *op1, *op2;
+  int save_idx;
+
+  const char *fold_code = d_left (dc)->u.s_operator.op->code;
+  if (fold_code[0] != 'f')
+    return 0;
+
+  ops = d_right (dc);
+  operator_ = d_left (ops);
+  op1 = d_right (ops);
+  op2 = 0;
+  if (op1->type == DEMANGLE_COMPONENT_TRINARY_ARG2)
+    {
+      op2 = d_right (op1);
+      op1 = d_left (op1);
+    }
+
+  /* Print the whole pack.  */
+  save_idx = dpi->pack_index;
+  dpi->pack_index = -1;
+
+  switch (fold_code[1])
+    {
+      /* Unary left fold, (... + X).  */
+    case 'l':
+      d_append_string (dpi, "(...");
+      d_print_expr_op (dpi, options, operator_);
+      d_print_subexpr (dpi, options, op1);
+      d_append_char (dpi, ')');
+      break;
+
+      /* Unary right fold, (X + ...).  */
+    case 'r':
+      d_append_char (dpi, '(');
+      d_print_subexpr (dpi, options, op1);
+      d_print_expr_op (dpi, options, operator_);
+      d_append_string (dpi, "...)");
+      break;
+
+      /* Binary left fold, (42 + ... + X).  */
+    case 'L':
+      /* Binary right fold, (X + ... + 42).  */
+    case 'R':
+      d_append_char (dpi, '(');
+      d_print_subexpr (dpi, options, op1);
+      d_print_expr_op (dpi, options, operator_);
+      d_append_string (dpi, "...");
+      d_print_expr_op (dpi, options, operator_);
+      d_print_subexpr (dpi, options, op2);
+      d_append_char (dpi, ')');
+      break;
+    }
+
+  dpi->pack_index = save_idx;
+  return 1;
 }
 
 /* Subroutine to handle components.  */
@@ -4595,33 +4722,41 @@ d_print_comp_inner (struct d_print_info *dpi, int options,
       }
 
     case DEMANGLE_COMPONENT_TEMPLATE_PARAM:
-      {
-	struct d_print_template *hold_dpt;
-	struct demangle_component *a = d_lookup_template_argument (dpi, dc);
+      if (dpi->is_lambda_arg)
+	{
+	  /* Show the template parm index, as that's how g++ displays
+	     these, and future proofs us against potential
+	     '[]<typename T> (T *a, T *b) {...}'.  */
+	  d_append_buffer (dpi, "auto:", 5);
+	  d_append_num (dpi, dc->u.s_number.number + 1);
+	}
+      else
+	{
+	  struct d_print_template *hold_dpt;
+	  struct demangle_component *a = d_lookup_template_argument (dpi, dc);
 
-	if (a && a->type == DEMANGLE_COMPONENT_TEMPLATE_ARGLIST)
-	  a = d_index_template_argument (a, dpi->pack_index);
+	  if (a && a->type == DEMANGLE_COMPONENT_TEMPLATE_ARGLIST)
+	    a = d_index_template_argument (a, dpi->pack_index);
 
-	if (a == NULL)
-	  {
-	    d_print_error (dpi);
-	    return;
-	  }
+	  if (a == NULL)
+	    {
+	      d_print_error (dpi);
+	      return;
+	    }
 
-	/* While processing this parameter, we need to pop the list of
-	   templates.  This is because the template parameter may
-	   itself be a reference to a parameter of an outer
-	   template.  */
+	  /* While processing this parameter, we need to pop the list
+	     of templates.  This is because the template parameter may
+	     itself be a reference to a parameter of an outer
+	     template.  */
 
-	hold_dpt = dpi->templates;
-	dpi->templates = hold_dpt->next;
+	  hold_dpt = dpi->templates;
+	  dpi->templates = hold_dpt->next;
 
-	d_print_comp (dpi, options, a);
+	  d_print_comp (dpi, options, a);
 
-	dpi->templates = hold_dpt;
-
-	return;
-      }
+	  dpi->templates = hold_dpt;
+	}
+      return;
 
     case DEMANGLE_COMPONENT_CTOR:
       d_print_comp (dpi, options, dc->u.s_ctor.name);
@@ -4758,7 +4893,8 @@ d_print_comp_inner (struct d_print_info *dpi, int options,
       {
 	/* Handle reference smashing: & + && = &.  */
 	const struct demangle_component *sub = d_left (dc);
-	if (sub->type == DEMANGLE_COMPONENT_TEMPLATE_PARAM)
+	if (!dpi->is_lambda_arg
+	    && sub->type == DEMANGLE_COMPONENT_TEMPLATE_PARAM)
 	  {
 	    struct d_saved_scope *scope = d_get_saved_scope (dpi, sub);
 	    struct demangle_component *a;
@@ -5121,6 +5257,21 @@ d_print_comp_inner (struct d_print_info *dpi, int options,
 	      }
 	  }
 
+	/* For sizeof..., just print the pack length.  */
+	if (code && !strcmp (code, "sZ"))
+	  {
+	    struct demangle_component *a = d_find_pack (dpi, operand);
+	    int len = d_pack_length (a);
+	    d_append_num (dpi, len);
+	    return;
+	  }
+	else if (code && !strcmp (code, "sP"))
+	  {
+	    int len = d_args_length (dpi, operand);
+	    d_append_num (dpi, len);
+	    return;
+	  }
+
 	if (op->type != DEMANGLE_COMPONENT_CAST)
 	  d_print_expr_op (dpi, options, op);
 	else
@@ -5161,6 +5312,9 @@ d_print_comp_inner (struct d_print_info *dpi, int options,
 	  d_append_char (dpi, ')');
 	  return;
 	}
+
+      if (d_maybe_print_fold_expression (dpi, options, dc))
+	return;
 
       /* We wrap an expression which uses the greater-than operator in
 	 an extra layer of parens so that it does not get confused
@@ -5217,6 +5371,8 @@ d_print_comp_inner (struct d_print_info *dpi, int options,
 	  d_print_error (dpi);
 	  return;
 	}
+      if (d_maybe_print_fold_expression (dpi, options, dc))
+	return;
       {
 	struct demangle_component *op = d_left (dc);
 	struct demangle_component *first = d_left (d_right (dc));
@@ -5413,7 +5569,11 @@ d_print_comp_inner (struct d_print_info *dpi, int options,
 
     case DEMANGLE_COMPONENT_LAMBDA:
       d_append_string (dpi, "{lambda(");
+      /* Generic lambda auto parms are mangled as the template type
+	 parm they are.  */
+      dpi->is_lambda_arg++;
       d_print_comp (dpi, options, dc->u.s_unary_num.sub);
+      dpi->is_lambda_arg--;
       d_append_string (dpi, ")#");
       d_append_num (dpi, dc->u.s_unary_num.num + 1);
       d_append_char (dpi, '}');

@@ -1166,6 +1166,7 @@ gfc_copy_class_to_class (tree from, tree to, tree nelems, bool unlimited)
       stmtblock_t body;
       stmtblock_t ifbody;
       gfc_loopinfo loop;
+      tree orig_nelems = nelems; /* Needed for bounds check.  */
 
       gfc_init_block (&body);
       tmp = fold_build2_loc (input_location, MINUS_EXPR,
@@ -1192,6 +1193,31 @@ gfc_copy_class_to_class (tree from, tree to, tree nelems, bool unlimited)
 					gfc_build_array_ref (tmp, index, to));
 	}
       vec_safe_push (args, to_ref);
+
+      /* Add bounds check.  */
+      if ((gfc_option.rtcheck & GFC_RTCHECK_BOUNDS) > 0 && is_from_desc)
+	{
+	  char *msg;
+	  const char *name = "<<unknown>>";
+	  tree from_len;
+
+	  if (DECL_P (to))
+	    name = (const char *)(DECL_NAME (to)->identifier.id.str);
+
+	  from_len = gfc_conv_descriptor_size (from_data, 1);
+	  tmp = fold_build2_loc (input_location, NE_EXPR,
+				  boolean_type_node, from_len, orig_nelems);
+	  msg = xasprintf ("Array bound mismatch for dimension %d "
+			   "of array '%s' (%%ld/%%ld)",
+			   1, name);
+
+	  gfc_trans_runtime_check (true, false, tmp, &body,
+				   &gfc_current_locus, msg,
+			     fold_convert (long_integer_type_node, orig_nelems),
+			       fold_convert (long_integer_type_node, from_len));
+
+	  free (msg);
+	}
 
       tmp = build_call_vec (fcn_type, fcn, args);
 
@@ -7200,6 +7226,12 @@ gfc_trans_subcomponent_assign (tree dest, gfc_component * cm, gfc_expr * expr,
       tmp = gfc_trans_alloc_subarray_assign (tmp, cm, expr);
       gfc_add_expr_to_block (&block, tmp);
     }
+  else if (init && cm->attr.allocatable && expr->expr_type == EXPR_NULL)
+    {
+      /* NULL initialization for allocatable components.  */
+      gfc_add_modify (&block, dest, fold_convert (TREE_TYPE (dest),
+						  null_pointer_node));
+    }
   else if (init && (cm->attr.allocatable
 	   || (cm->ts.type == BT_CLASS && CLASS_DATA (cm)->attr.allocatable
 	       && expr->ts.type != BT_CLASS)))
@@ -7358,7 +7390,6 @@ gfc_trans_structure_assign (tree dest, gfc_expr * expr, bool init)
     {
       gfc_se se, lse;
 
-      gcc_assert (cm->backend_decl == NULL);
       gfc_init_se (&se, NULL);
       gfc_init_se (&lse, NULL);
       gfc_conv_expr (&se, gfc_constructor_first (expr->value.constructor)->expr);

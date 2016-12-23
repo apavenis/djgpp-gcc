@@ -1,7 +1,7 @@
 #! /bin/sh
 
-gcc_src_ext=xz
-gmp_version=6.1.0
+gcc_src_ext=bz2
+gmp_version=6.1.2
 mpfr_version=3.1.4
 mpc_version=1.0.3
 autoconf_version=2.64
@@ -15,9 +15,9 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=gcc-6-branch
-dj_branch=gcc_6_djgpp
-djn_branch=gcc_6_djgpp_native
+upstream=tags/6.3.0
+dj_branch=tags/6.3.0-djgpp
+djn_branch=tags/6.3.0-djgpp-native
 
 sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 
@@ -144,16 +144,16 @@ ext_files="
     gmp-$gmp_version.tar.bz2
     mpfr-$mpfr_version.tar.bz2
     mpc-$mpc_version.tar.gz
-    autoconf-$autoconf_version.tar.bz2
-    automake-$automake_version.tar.bz2";
+    autoconf-$autoconf_version.tar.gz
+    automake-$automake_version.tar.gz";
 
 for file in $ext_files ; do
     case $file in
         gmp*) url=ftp://ftp.gmplib.org/pub/gmp-${gmp_version}/gmp-${gmp_version}.tar.bz2 ;;
         mpfr*) url=http://ftp.gnu.org/gnu/mpfr/mpfr-${mpfr_version}.tar.bz2 ;;
         mpc*) url=http://www.multiprecision.org/mpc/download/mpc-${mpc_version}.tar.gz ;;
-        autoconf*) url=http://ftp.gnu.org/gnu/autoconf/autoconf-${autoconf_version}.tar.bz2 ;;
-        automake*) url=http://ftp.gnu.org/gnu/automake/automake-${automake_version}.tar.bz2 ;;
+        autoconf*) url=http://ftp.gnu.org/gnu/autoconf/autoconf-${autoconf_version}.tar.gz ;;
+        automake*) url=http://ftp.gnu.org/gnu/automake/automake-${automake_version}.tar.gz ;;
         *) exit 1 ;;
     esac
 
