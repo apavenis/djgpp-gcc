@@ -1,7 +1,7 @@
 #! /bin/sh
 
 gcc_src_ext=xz
-gmp_version=6.1.0
+gmp_version=6.1.2
 mpfr_version=3.1.4
 mpc_version=1.0.3
 autoconf_version=2.64
@@ -15,9 +15,9 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=gcc-6-branch
-dj_branch=gcc_6_djgpp
-djn_branch=gcc_6_djgpp_native
+upstream=tags-6.3.0
+dj_branch=tags/6.3.0-djgpp
+djn_branch=tags/6.3.0-djgpp-native
 
 sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 
