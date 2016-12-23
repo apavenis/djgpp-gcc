@@ -455,6 +455,13 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri Dec 23 2016 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-6.3.0
+- Use GMP-6.1.2
+
+* Mon Aug 22 2016 Andris Pavenis <nadris.pavenis@iki.fi>
+- Update to GCC-6.2.0
+
 * Wed Apr 27 2016 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-6.1.0
 
