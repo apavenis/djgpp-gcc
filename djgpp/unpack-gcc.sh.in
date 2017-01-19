@@ -120,11 +120,8 @@ rm -rf $gcc_dir/liboffloadmic
 rm -rf $gcc_dir/libvtv
 
 if $remove_tests ; then
-    for name in $gcc_dir/gcc/testsuite; do
-        case name in
-            */selftest) ;;
-            *) rm -rf $name ;;
-        esac
+    for name in $(cd gcc_dir/gcc/testsuite && ls -1b | grep -v selftest); do
+        rm -f gcc_dir/gcc/testsuite/$name
     done
 fi
 
@@ -164,7 +161,7 @@ for copy_instr in $file_copy_list_1 $file_copy_list_2 ; do
     fi
     if ! [ -f $gcc_dir/$orig_fn ] ; then
         echo "ERROR: File $orig_fn is not found"
-        patching_ok=false
+         patching_ok=false
     fi
     cp -Pv $gcc_dir/$orig_fn $gcc_dir/$new_fn
 done
