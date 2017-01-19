@@ -1,5 +1,5 @@
 /* PowerPC AltiVec include file.
-   Copyright (C) 2002-2016 Free Software Foundation, Inc.
+   Copyright (C) 2002-2017 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez (aldyh@redhat.com).
    Rewritten by Paolo Bonzini (bonzini@gnu.org).
 
@@ -189,6 +189,7 @@
 #define vec_vupklsh __builtin_vec_vupklsh
 #define vec_vupklsb __builtin_vec_vupklsb
 #define vec_abs __builtin_vec_abs
+#define vec_nabs __builtin_vec_nabs
 #define vec_abss __builtin_vec_abss
 #define vec_add __builtin_vec_add
 #define vec_adds __builtin_vec_adds

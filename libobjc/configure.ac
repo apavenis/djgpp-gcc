@@ -1,5 +1,5 @@
 # Process this file with autoconf to produce a configure script.
-#   Copyright (C) 1994-2016 Free Software Foundation, Inc.
+#   Copyright (C) 1994-2017 Free Software Foundation, Inc.
 #   Originally contributed by Dave Love (d.love@dl.ac.uk).
 #
 #This file is part of GCC.
@@ -346,6 +346,9 @@ AC_SUBST(OBJC_GCFLAGS)
 AC_SUBST(OBJC_BOEHM_GC)
 AC_SUBST(OBJC_BOEHM_GC_INCLUDES)
 AC_SUBST(OBJC_BOEHM_GC_LIBS)
+
+# Determine what GCC version number to use in filesystem paths.
+GCC_BASE_VER
 
 # ------
 # Output

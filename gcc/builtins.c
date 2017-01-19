@@ -1,5 +1,5 @@
 /* Expand builtin functions.
-   Copyright (C) 1988-2016 Free Software Foundation, Inc.
+   Copyright (C) 1988-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -147,7 +147,7 @@ static tree fold_builtin_classify_type (tree);
 static tree fold_builtin_strlen (location_t, tree, tree);
 static tree fold_builtin_inf (location_t, tree, int);
 static tree rewrite_call_expr (location_t, tree, int, tree, int, ...);
-static bool validate_arg (const_tree, enum tree_code code, bool = false);
+static bool validate_arg (const_tree, enum tree_code code);
 static rtx expand_builtin_fabs (tree, rtx, rtx);
 static rtx expand_builtin_signbit (tree, rtx);
 static tree fold_builtin_memcmp (location_t, tree, tree, tree);
@@ -1050,12 +1050,12 @@ validate_arglist (const_tree callexpr, ...)
   init_const_call_expr_arg_iterator (callexpr, &iter);
 
   /* Get a bitmap of pointer argument numbers declared attribute nonnull.  */
-  bitmap argmap = get_nonnull_args (callexpr);
+  tree fn = CALL_EXPR_FN (callexpr);
+  bitmap argmap = get_nonnull_args (TREE_TYPE (TREE_TYPE (fn)));
 
   for (unsigned argno = 1; ; ++argno)
     {
       code = (enum tree_code) va_arg (ap, int);
-      bool nonnull = false;
 
       switch (code)
 	{
@@ -1072,15 +1072,21 @@ validate_arglist (const_tree callexpr, ...)
 	  /* The actual argument must be nonnull when either the whole
 	     called function has been declared nonnull, or when the formal
 	     argument corresponding to the actual argument has been.  */
-	  if (argmap)
-	    nonnull = bitmap_empty_p (argmap) || bitmap_bit_p (argmap, argno);
+	  if (argmap
+	      && (bitmap_empty_p (argmap) || bitmap_bit_p (argmap, argno)))
+	    {
+	      arg = next_const_call_expr_arg (&iter);
+	      if (!validate_arg (arg, code) || integer_zerop (arg))
+		goto end;
+	      break;
+	    }
 	  /* FALLTHRU */
 	default:
 	  /* If no parameters remain or the parameter's code does not
 	     match the specified code, return false.  Otherwise continue
 	     checking any remaining arguments.  */
 	  arg = next_const_call_expr_arg (&iter);
-	  if (!validate_arg (arg, code, nonnull))
+	  if (!validate_arg (arg, code))
 	    goto end;
 	  break;
 	}
@@ -3023,42 +3029,6 @@ expand_builtin_memcpy_args (tree dest, tree src, tree len, rtx target, tree exp)
     }
 
   return dest_addr;
-}
-
-/* Fill the 2-element RANGE array with the minimum and maximum values
-   EXP is known to have and return true, otherwise null and return
-   false.  */
-
-static bool
-get_size_range (tree exp, tree range[2])
-{
-  if (tree_fits_uhwi_p (exp))
-    {
-      range[0] = range[1] = exp;
-      return true;
-    }
-
-  if (TREE_CODE (exp) == SSA_NAME)
-    {
-      wide_int min, max;
-      enum value_range_type range_type = get_range_info (exp, &min, &max);
-
-      if (range_type == VR_RANGE)
-	{
-	  /* Interpret the bound in the variable's type.  */
-	  range[0] = wide_int_to_tree (TREE_TYPE (exp), min);
-	  range[1] = wide_int_to_tree (TREE_TYPE (exp), max);
-	  return true;
-	}
-      else if (range_type == VR_ANTI_RANGE)
-	{
-	  /* FIXME: Handle anti-ranges.  */
-	}
-    }
-
-  range[0] = NULL_TREE;
-  range[1] = NULL_TREE;
-  return false;
 }
 
 /* Try to verify that the sizes and lengths of the arguments to a string
@@ -9134,17 +9104,15 @@ rewrite_call_expr (location_t loc, tree exp, int skip, tree fndecl, int n, ...)
 }
 
 /* Validate a single argument ARG against a tree code CODE representing
-   a type.  When NONNULL is true consider a pointer argument valid only
-   if it's non-null.  Return true when argument is valid.  */
+   a type.  Return true when argument is valid.  */
 
 static bool
-validate_arg (const_tree arg, enum tree_code code, bool nonnull /*= false*/)
+validate_arg (const_tree arg, enum tree_code code)
 {
   if (!arg)
     return false;
   else if (code == POINTER_TYPE)
-    return POINTER_TYPE_P (TREE_TYPE (arg))
-      && (!nonnull || !integer_zerop (arg));
+    return POINTER_TYPE_P (TREE_TYPE (arg));
   else if (code == INTEGER_TYPE)
     return INTEGRAL_TYPE_P (TREE_TYPE (arg));
   return code == TREE_CODE (TREE_TYPE (arg));

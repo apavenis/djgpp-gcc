@@ -1,6 +1,6 @@
 ; Options for the rs6000 port of the compiler
 ;
-; Copyright (C) 2005-2016 Free Software Foundation, Inc.
+; Copyright (C) 2005-2017 Free Software Foundation, Inc.
 ; Contributed by Aldy Hernandez <aldy@quesejoda.com>.
 ;
 ; This file is part of GCC.
@@ -336,6 +336,10 @@ Specify how many bytes should be moved inline before calling out to memcpy/memmo
 mblock-compare-inline-limit=
 Target Report Var(rs6000_block_compare_inline_limit) Init(5) RejectNegative Joined UInteger Save
 Specify the maximum number pairs of load instructions that should be generated inline for the compare.  If the number needed exceeds the limit, a call to memcmp will be generated instead.
+
+mstring-compare-inline-limit=
+Target Report Var(rs6000_string_compare_inline_limit) Init(8) RejectNegative Joined UInteger Save
+Specify the maximum number pairs of load instructions that should be generated inline for the compare.  If the number needed exceeds the limit, a call to strncmp will be generated instead.
 
 misel
 Target Report Mask(ISEL) Var(rs6000_isa_flags)

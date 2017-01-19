@@ -1,5 +1,5 @@
 /* Convert function calls to rtl insns, for GNU C compiler.
-   Copyright (C) 1989-2016 Free Software Foundation, Inc.
+   Copyright (C) 1989-2017 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1197,92 +1197,144 @@ alloc_max_size (void)
     {
       alloc_object_size_limit = TYPE_MAX_VALUE (ssizetype);
 
-      unsigned HOST_WIDE_INT unit = 1;
-
-      char *end;
-      errno = 0;
-      unsigned HOST_WIDE_INT limit
-	= warn_alloc_size_limit ? strtoull (warn_alloc_size_limit, &end, 10) : 0;
-
-      if (limit && !errno)
+      if (warn_alloc_size_limit)
 	{
-	  if (end && *end)
-	    {
-	      /* Numeric option arguments are at most INT_MAX.  Make it
-		 possible to specify a larger value by accepting common
-		 suffixes.  */
-	      if (!strcmp (end, "kB"))
-		unit = 1000;
-	      else if (!strcasecmp (end, "KiB") || strcmp (end, "KB"))
-		unit = 1024;
-	      else if (!strcmp (end, "MB"))
-		unit = 1000LU * 1000;
-	      else if (!strcasecmp (end, "MiB"))
-		unit = 1024LU * 1024;
-	      else if (!strcasecmp (end, "GB"))
-		unit = 1000LU * 1000 * 1000;
-	      else if (!strcasecmp (end, "GiB"))
-		unit = 1024LU * 1024 * 1024;
-	      else if (!strcasecmp (end, "TB"))
-		unit = 1000LU * 1000 * 1000 * 1000;
-	      else if (!strcasecmp (end, "TiB"))
-		unit = 1024LU * 1024 * 1024 * 1024;
-	      else if (!strcasecmp (end, "PB"))
-		unit = 1000LU * 1000 * 1000 * 1000 * 1000;
-	      else if (!strcasecmp (end, "PiB"))
-		unit = 1024LU * 1024 * 1024 * 1024 * 1024;
-	      else if (!strcasecmp (end, "EB"))
-		unit = 1000LU * 1000 * 1000 * 1000 * 1000 * 1000;
-	      else if (!strcasecmp (end, "EiB"))
-		unit = 1024LU * 1024 * 1024 * 1024 * 1024 * 1024;
-	      else
-		unit = 0;
-	    }
+	  char *end = NULL;
+	  errno = 0;
+	  unsigned HOST_WIDE_INT unit = 1;
+	  unsigned HOST_WIDE_INT limit
+	    = strtoull (warn_alloc_size_limit, &end, 10);
 
-	  if (unit)
-	    alloc_object_size_limit = build_int_cst (ssizetype, limit * unit);
+	  if (!errno)
+	    {
+	      if (end && *end)
+		{
+		  /* Numeric option arguments are at most INT_MAX.  Make it
+		     possible to specify a larger value by accepting common
+		     suffixes.  */
+		  if (!strcmp (end, "kB"))
+		    unit = 1000;
+		  else if (!strcasecmp (end, "KiB") || strcmp (end, "KB"))
+		    unit = 1024;
+		  else if (!strcmp (end, "MB"))
+		    unit = 1000LU * 1000;
+		  else if (!strcasecmp (end, "MiB"))
+		    unit = 1024LU * 1024;
+		  else if (!strcasecmp (end, "GB"))
+		    unit = 1000LU * 1000 * 1000;
+		  else if (!strcasecmp (end, "GiB"))
+		    unit = 1024LU * 1024 * 1024;
+		  else if (!strcasecmp (end, "TB"))
+		    unit = 1000LU * 1000 * 1000 * 1000;
+		  else if (!strcasecmp (end, "TiB"))
+		    unit = 1024LU * 1024 * 1024 * 1024;
+		  else if (!strcasecmp (end, "PB"))
+		    unit = 1000LU * 1000 * 1000 * 1000 * 1000;
+		  else if (!strcasecmp (end, "PiB"))
+		    unit = 1024LU * 1024 * 1024 * 1024 * 1024;
+		  else if (!strcasecmp (end, "EB"))
+		    unit = 1000LU * 1000 * 1000 * 1000 * 1000 * 1000;
+		  else if (!strcasecmp (end, "EiB"))
+		    unit = 1024LU * 1024 * 1024 * 1024 * 1024 * 1024;
+		  else
+		    unit = 0;
+		}
+
+	      if (unit)
+		alloc_object_size_limit
+		  = build_int_cst (ssizetype, limit * unit);
+	    }
 	}
     }
   return alloc_object_size_limit;
 }
 
-/* Return true if the type of OP is signed, looking through any casts
-   to an unsigned type.  */
+/* Return true when EXP's range can be determined and set RANGE[] to it
+   after adjusting it if necessary to make EXP a valid size argument to
+   an allocation function declared with attribute alloc_size (whose
+   argument may be signed), or to a string manipulation function like
+   memset.  */
 
-static bool
-operand_signed_p (tree op)
+bool
+get_size_range (tree exp, tree range[2])
 {
-  if (TREE_CODE (op) == SSA_NAME)
+  if (tree_fits_uhwi_p (exp))
     {
-      gimple *def = SSA_NAME_DEF_STMT (op);
-      if (is_gimple_assign (def))
-	{
-	  /* In an assignment involving a cast, ignore the type
-	     of the cast and consider the type of its  operand.  */
-	  tree_code code = gimple_assign_rhs_code (def);
-	  if (code == NOP_EXPR)
-	    op = gimple_assign_rhs1 (def);
-	}
-      else if (gimple_code (def) == GIMPLE_PHI)
-	{
-	  /* In a phi, a constant argument may be unsigned even
-	     if in the source it's signed and negative.  Ignore
-	     those and consider the result of a phi signed if
-	     all its non-constant operands are.  */
-	  unsigned nargs = gimple_phi_num_args (def);
-	  for (unsigned i = 0; i != nargs; ++i)
-	    {
-	      tree op = gimple_phi_arg_def (def, i);
-	      if (TREE_CODE (op) != INTEGER_CST
-		  && !operand_signed_p (op))
-		return false;
-	    }
+      /* EXP is a constant.  */
+      range[0] = range[1] = exp;
+      return true;
+    }
 
-	  return true;
+  wide_int min, max;
+  enum value_range_type range_type
+    = (TREE_CODE (exp) == SSA_NAME
+       ? get_range_info (exp, &min, &max) : VR_VARYING);
+
+  if (range_type == VR_VARYING)
+    {
+      /* No range information available.  */
+      range[0] = NULL_TREE;
+      range[1] = NULL_TREE;
+      return false;
+    }
+
+  tree exptype = TREE_TYPE (exp);
+  unsigned expprec = TYPE_PRECISION (exptype);
+  wide_int wzero = wi::zero (expprec);
+  wide_int wmaxval = wide_int (TYPE_MAX_VALUE (exptype));
+
+  bool signed_p = !TYPE_UNSIGNED (exptype);
+
+  if (range_type == VR_ANTI_RANGE)
+    {
+      if (signed_p)
+	{
+	  if (wi::les_p (max, wzero))
+	    {
+	      /* EXP is not in a strictly negative range.  That means
+		 it must be in some (not necessarily strictly) positive
+		 range which includes zero.  Since in signed to unsigned
+		 conversions negative values end up converted to large
+		 positive values, and otherwise they are not valid sizes,
+		 the resulting range is in both cases [0, TYPE_MAX].  */
+	      min = wzero;
+	      max = wmaxval;
+	    }
+	  else if (wi::les_p (min - 1, wzero))
+	    {
+	      /* EXP is not in a negative-positive range.  That means EXP
+		 is either negative, or greater than max.  Since negative
+		 sizes are invalid make the range [MAX + 1, TYPE_MAX].  */
+	      min = max + 1;
+	      max = wmaxval;
+	    }
+	  else
+	    {
+	      max = min - 1;
+	      min = wzero;
+	    }
+	}
+      else if (wi::eq_p (wzero, min - 1))
+	{
+	  /* EXP is unsigned and not in the range [1, MAX].  That means
+	     it's either zero or greater than MAX.  Even though 0 would
+	     normally be detected by -Walloc-zero set the range to
+	     [MAX, TYPE_MAX] so that when MAX is greater than the limit
+	     the whole range is diagnosed.  */
+	  min = max + 1;
+	  max = wmaxval;
+	}
+      else
+	{
+	  max = min - 1;
+	  min = wzero;
 	}
     }
 
-  return !TYPE_UNSIGNED (TREE_TYPE (op));
+  range[0] = wide_int_to_tree (exptype, min);
+  range[1] = wide_int_to_tree (exptype, max);
+
+  return true;
 }
 
 /* Diagnose a call EXP to function FN decorated with attribute alloc_size
@@ -1316,8 +1368,8 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 	  if (tree_int_cst_lt (args[i], integer_zero_node))
 	    {
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "argument %i value %qE is negative",
-				   idx[i] + 1, args[i]);
+				   "%Kargument %i value %qE is negative",
+				   exp, idx[i] + 1, args[i]);
 	    }
 	  else if (integer_zerop (args[i]))
 	    {
@@ -1334,8 +1386,8 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 		      && !lookup_attribute ("returns_nonnull",
 					    TYPE_ATTRIBUTES (TREE_TYPE (fn)))))
 		warned = warning_at (loc, OPT_Walloc_zero,
-				     "argument %i value is zero",
-				     idx[i] + 1);
+				     "%Kargument %i value is zero",
+				     exp, idx[i] + 1);
 	    }
 	  else if (tree_int_cst_lt (maxobjsize, args[i]))
 	    {
@@ -1351,79 +1403,31 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 		continue;
 
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "argument %i value %qE exceeds "
+				   "%Kargument %i value %qE exceeds "
 				   "maximum object size %E",
-				   idx[i] + 1, args[i], maxobjsize);
+				   exp, idx[i] + 1, args[i], maxobjsize);
 	    }
 	}
-      else if (TREE_CODE (args[i]) == SSA_NAME)
+      else if (TREE_CODE (args[i]) == SSA_NAME
+	       && get_size_range (args[i], argrange[i]))
 	{
-	  tree type = TREE_TYPE (args[i]);
-
-	  wide_int min, max;
-	  value_range_type range_type = get_range_info (args[i], &min, &max);
-	  if (range_type == VR_RANGE)
-	    {
-	      argrange[i][0] = wide_int_to_tree (type, min);
-	      argrange[i][1] = wide_int_to_tree (type, max);
-	    }
-	  else if (range_type == VR_ANTI_RANGE)
-	    {
-	      /* For an anti-range, if the type of the formal argument
-		 is unsigned and the bounds of the range are of opposite
-		 signs when interpreted as signed, check to see if the
-		 type of the actual argument is signed.  If so, the lower
-		 bound must be taken to be zero (rather than a large
-		 positive value corresonding to the actual lower bound
-		 interpreted as unsigned) and there is nothing else that
-		 can be inferred from it.  */
-	      --min;
-	      ++max;
-	      wide_int zero = wi::uhwi (0, TYPE_PRECISION (type));
-	      if (TYPE_UNSIGNED (type)
-		  && wi::lts_p (zero, min) && wi::lts_p (max, zero)
-		  && operand_signed_p (args[i]))
-		continue;
-
-	      argrange[i][0] = wide_int_to_tree (type, max);
-	      argrange[i][1] = wide_int_to_tree (type, min);
-
-	      /* Verify that the anti-range doesn't make all arguments
-		 invalid (treat the anti-range ~[0, 0] as invalid).  */
-	      if (tree_int_cst_lt (maxobjsize, argrange[i][0])
-		  && tree_int_cst_le (argrange[i][1], integer_zero_node))
-		{
-		  warned
-		    = warning_at (loc, OPT_Walloc_size_larger_than_,
-				  (TYPE_UNSIGNED (type)
-				   ? G_("argument %i range [%E, %E] exceeds "
-					"maximum object size %E")
-				   : G_("argument %i range [%E, %E] is both "
-					"negative and exceeds maximum object "
-					"size %E")),
-				  idx[i] + 1, argrange[i][0],
-				  argrange[i][1], maxobjsize);
-		}
-	      continue;
-	    }
-	  else
-	    continue;
-
 	  /* Verify that the argument's range is not negative (including
 	     upper bound of zero).  */
 	  if (tree_int_cst_lt (argrange[i][0], integer_zero_node)
 	      && tree_int_cst_le (argrange[i][1], integer_zero_node))
 	    {
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "argument %i range [%E, %E] is negative",
-				   idx[i] + 1, argrange[i][0], argrange[i][1]);
+				   "%Kargument %i range [%E, %E] is negative",
+				   exp, idx[i] + 1,
+				   argrange[i][0], argrange[i][1]);
 	    }
 	  else if (tree_int_cst_lt (maxobjsize, argrange[i][0]))
 	    {
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "argument %i range [%E, %E] exceeds "
+				   "%Kargument %i range [%E, %E] exceeds "
 				   "maximum object size %E",
-				   idx[i] + 1, argrange[i][0], argrange[i][1],
+				   exp, idx[i] + 1,
+				   argrange[i][0], argrange[i][1],
 				   maxobjsize);
 	    }
 	}
@@ -1450,15 +1454,15 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 
       if (vflow)
 	warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-			     "product %<%E * %E%> of arguments %i and %i "
+			     "%Kproduct %<%E * %E%> of arguments %i and %i "
 			     "exceeds %<SIZE_MAX%>",
-			     argrange[0][0], argrange[1][0],
+			     exp, argrange[0][0], argrange[1][0],
 			     idx[0] + 1, idx[1] + 1);
       else if (wi::ltu_p (wi::to_wide (maxobjsize, szprec), prod))
 	warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-			     "product %<%E * %E%> of arguments %i and %i "
+			     "%Kproduct %<%E * %E%> of arguments %i and %i "
 			     "exceeds maximum object size %E",
-			     argrange[0][0], argrange[1][0],
+			     exp, argrange[0][0], argrange[1][0],
 			     idx[0] + 1, idx[1] + 1,
 			     maxobjsize);
 
@@ -1499,91 +1503,6 @@ maybe_complain_about_tail_call (tree call_expr, const char *reason)
     return;
 
   error_at (EXPR_LOCATION (call_expr), "cannot tail-call: %s", reason);
-}
-
-/* Return a bitmap with a bit set corresponding to each argument in
-   a function call expression CALLEXPR declared with attribute nonnull,
-   or null if none of the function's argument are nonnull.  The caller
-   must free the bitmap.  */
-
-bitmap
-get_nonnull_args (const_tree callexpr)
-{
-  tree fn = CALL_EXPR_FN (callexpr);
-  if (!fn || TREE_CODE (fn) != ADDR_EXPR)
-    return NULL;
-
-  tree fndecl = TREE_OPERAND (fn, 0);
-  tree fntype = TREE_TYPE (fndecl);
-  tree attrs = TYPE_ATTRIBUTES (fntype);
-  if (!attrs)
-    return NULL;
-
-  bitmap argmap = NULL;
-
-  /* A function declaration can specify multiple attribute nonnull,
-     each with zero or more arguments.  The loop below creates a bitmap
-     representing a union of all the arguments.  An empty (but non-null)
-     bitmap means that all arguments have been declaraed nonnull.  */
-  for ( ; attrs; attrs = TREE_CHAIN (attrs))
-    {
-      attrs = lookup_attribute ("nonnull", attrs);
-      if (!attrs)
-	break;
-
-      if (!argmap)
-	argmap = BITMAP_ALLOC (NULL);
-
-      if (!TREE_VALUE (attrs))
-	{
-	  /* Clear the bitmap in case a previous attribute nonnull
-	     set it and this one overrides it for all arguments.  */
-	  bitmap_clear (argmap);
-	  return argmap;
-	}
-
-      /* Iterate over the indices of the format arguments declared nonnull
-	 and set a bit for each.  */
-      for (tree idx = TREE_VALUE (attrs); idx; idx = TREE_CHAIN (idx))
-	{
-	  unsigned int val = TREE_INT_CST_LOW (TREE_VALUE (idx)) - 1;
-	  bitmap_set_bit (argmap, val);
-	}
-    }
-
-  return argmap;
-}
-
-/* In a call EXP to a function FNDECL some of whose arguments may have
-   been declared with attribute nonnull as described by NONNULLARGS,
-   check actual argument ARG at the zero-based position ARGPOS for
-   equality to null and issue a warning if it is not expected to be.  */
-
-static void
-maybe_warn_null_arg (tree fndecl, tree exp, tree arg,
-		     unsigned argpos, bitmap nonnullargs)
-{
-  if (!optimize
-      || !nonnullargs
-      || TREE_CODE (TREE_TYPE (arg)) != POINTER_TYPE
-      || !integer_zerop (arg)
-      || (!bitmap_empty_p (nonnullargs)
-	  && !bitmap_bit_p (nonnullargs, argpos)))
-    return;
-
-  ++argpos;
-
-  location_t exploc EXPR_LOCATION (exp);
-
-  if (warning_at (exploc, OPT_Wnonnull,
-		  "argument %u null where non-null expected", argpos))
-    {
-      if (DECL_IS_BUILTIN (fndecl))
-	inform (exploc, "in a call to built-in function %qD", fndecl);
-      else
-	inform (DECL_SOURCE_LOCATION (fndecl),
-		"in a call to function %qD declared here", fndecl);
-    }
 }
 
 /* Fill in ARGS_SIZE and ARGS array based on the parameters found in
@@ -1768,9 +1687,6 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 
   /* Array for up to the two attribute alloc_size arguments.  */
   tree alloc_args[] = { NULL_TREE, NULL_TREE };
-
-  /* Get a bitmap of pointer argument numbers declared attribute nonnull.  */
-  bitmap nonnullargs = get_nonnull_args (exp);
 
   /* I counts args in order (to be) pushed; ARGPOS counts in order written.  */
   for (argpos = 0; argpos < num_actuals; i--, argpos++)
@@ -2003,11 +1919,6 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
       if (args[i].locate.size.var)
 	ADD_PARM_SIZE (*args_size, args[i].locate.size.var);
 
-      /* Check pointer argument for equality to NULL that is being passed
-	 to arguments declared with attribute nonnull and warn.  */
-      maybe_warn_null_arg (fndecl, exp, args[i].tree_value, argpos,
-			   nonnullargs);
-
       /* Increment ARGS_SO_FAR, which has info about which arg-registers
 	 have been used, etc.  */
 
@@ -2028,8 +1939,6 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 	 alloc_size.  */
       maybe_warn_alloc_args_overflow (fndecl, exp, alloc_args, alloc_idx);
     }
-
-  BITMAP_FREE (nonnullargs);
 }
 
 /* Update ARGS_SIZE to contain the total size for the argument block.

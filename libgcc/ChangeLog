@@ -1,3 +1,43 @@
+2017-01-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR other/79046
+	* configure.ac: Add GCC_BASE_VER.
+	* Makefile.in (version): Use @get_gcc_base_ver@ instead of cat to get
+	version from BASE-VER file.
+	* configure: Regenerated.
+
+2017-01-13  Joe Seymour  <joe.s@somniumtech.com>
+
+	* config/msp430/t-msp430 (libmul_none.a, libmul_16.a, libmul_32.a,
+	libmul_f5.a): Filter archived prerequisites.
+
+2017-01-10  Andrew Senkevich  <andrew.senkevich@intel.com>
+
+	* config/i386/cpuinfo.h (processor_features): Add
+	FEATURE_AVX512VPOPCNTDQ.
+	* config/i386/cpuinfo.c (get_available_features): Habdle new
+	feature.
+
+2017-01-04  Joseph Myers  <joseph@codesourcery.com>
+
+	* config/mips/sfp-machine.h (_FP_CHOOSENAN): Always preserve NaN
+	payload if [__mips_nan2008].
+
+2017-01-04  Alan Modra  <amodra@gmail.com>
+
+	* Makefile.in (configure_deps): Update.
+	* configure: Regenerate.
+
+2017-01-01  Jakub Jelinek  <jakub@redhat.com>
+
+	Update copyright years.
+
+2016-12-19  Krister Walfridsson  <krister.walfridsson@gmail.com>
+
+	* config.host (*-*-netbsd*): Add t-eh-dw2-dip to tmake_file.
+	* crtstuff.c (BSD_DL_ITERATE_PHDR_AVAILABLE): Define for NetBSD.
+	* unwind-dw2-fde-dip.c (USE_PT_GNU_EH_FRAME, ElfW): Likewise.
+
 2016-12-17  Matthias Klose  <doko@ubuntu.com>
 
 	* config/arc/gmon: Remove empty directory.
@@ -8249,7 +8289,7 @@
 	shared-object.mk, siditi-object.mk, static-object.mk: New files.
 	* configure: Generated.
 
-Copyright (C) 2007-2016 Free Software Foundation, Inc.
+Copyright (C) 2007-2017 Free Software Foundation, Inc.
 
 Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright

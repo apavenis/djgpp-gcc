@@ -1,5 +1,5 @@
 ;; AltiVec patterns.
-;; Copyright (C) 2002-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2017 Free Software Foundation, Inc.
 ;; Contributed by Aldy Hernandez (aldy@quesejoda.com)
 
 ;; This file is part of GCC.
@@ -2729,6 +2729,33 @@
   "<VI_unit>"
 {
   int i, n_elt = GET_MODE_NUNITS (<MODE>mode);
+  rtvec v = rtvec_alloc (n_elt);
+
+  /* Create an all 0 constant.  */
+  for (i = 0; i < n_elt; ++i)
+    RTVEC_ELT (v, i) = const0_rtx;
+
+  operands[2] = gen_reg_rtx (<MODE>mode);
+  operands[3] = gen_rtx_CONST_VECTOR (<MODE>mode, v);
+  operands[4] = gen_reg_rtx (<MODE>mode);
+})
+
+;; Generate
+;;    vspltisw SCRATCH1,0
+;;    vsubu?m SCRATCH2,SCRATCH1,%1
+;;    vmins? %0,%1,SCRATCH2"
+(define_expand "nabs<mode>2"
+  [(set (match_dup 2) (match_dup 3))
+   (set (match_dup 4)
+        (minus:VI2 (match_dup 2)
+		   (match_operand:VI2 1 "register_operand" "v")))
+   (set (match_operand:VI2 0 "register_operand" "=v")
+        (smin:VI2 (match_dup 1) (match_dup 4)))]
+  "<VI_unit>"
+{
+  int i;
+  int n_elt = GET_MODE_NUNITS (<MODE>mode);
+
   rtvec v = rtvec_alloc (n_elt);
 
   /* Create an all 0 constant.  */
