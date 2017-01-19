@@ -1,3 +1,286 @@
+2017-01-19  Javier Miranda  <miranda@adacore.com>
+
+	* ghost.adb (Propagate_Ignored_Ghost_Code): Protect access to the
+	identifier attribute of a block-statement node. Required to avoid
+	assertion failure when building the new containers library.
+
+2017-01-19  Bob Duff  <duff@adacore.com>
+
+	* exp_ch3.adb: Update comment.
+
+2017-01-19  Vincent Celier  <celier@adacore.com>
+
+	* gprep.adb (Gnatprep): Parse the definition file without
+	"replace in comments" even when switch -C is used.
+
+2017-01-19  Justin Squirek  <squirek@adacore.com>
+
+	* exp_ch9.adb (Is_Pure_Barrier): Create function
+	Is_Count_Attribute to identify an expansion of the 'Count
+	attribute.
+
+2017-01-19  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* exp_dbug.adb (Debug_Renaming_Declaration): Process underlying types.
+	Emit GNAT encodings for object renamings involving record components
+	whose normalized bit offset is not null.
+	* uintp.h (UI_No_Uint): Declare.
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* sem_ch5.adb (Analyze_Loop_Statement): In GNATprove mode the
+	statements within an element iterator loop are only analyzed
+	agter the loop is rewritten. Within a generic the analysis must
+	be performed in any case to complete name capture.
+
+2017-01-19  Bob Duff  <duff@adacore.com>
+
+	* sem_prag.adb (Analyze_Pragma): Check for ignored pragmas first,
+	before checking for unrecognized pragmas.
+	Initialize Pname on its declarations; that's always good style.
+
+2017-01-19  Claire Dross  <dross@adacore.com>
+
+	* exp_ch7.adb (Build_Invariant_Procedure_Body): Semi-insert the
+	body into the tree for GNATprove by setting its Parent field. The
+	components invariants of composite types are not checked by
+	the composite type's invariant procedure in GNATprove mode.
+	(Build_Invariant_Procedure_Declaration): Semi-insert the
+	declaration into the tree for GNATprove by setting its Parent
+	field.
+	* freeze.adb (Freeze_Arry_Type):In GNATprove mode, do not add
+	the component invariants to the array type  invariant procedure
+	so that the procedure can be used to  check the array type
+	invariants if any.
+	(Freeze_Record_Type): In GNATprove mode, do
+	not add the component invariants to the record type  invariant
+	procedure so that the procedure can be used to	check the record
+	type invariants if any.
+
+2017-01-19  Hristian Kirtchev  <kirtchev@adacore.com>
+
+	* lib-xref-spark_specific.adb: Minor reformatting.
+	* exp_ch7.adb (Add_Parent_Invariants): Do not process array types.
+
+2017-01-19  Tristan Gingold  <gingold@adacore.com>
+
+	* fe.h (Constant_Value): Export.
+
+2017-01-19  Javier Miranda  <miranda@adacore.com>
+
+	* exp_aggr.adb (Pass_Aggregate_To_Back_End): Renamed as
+	Build_Back_End_Aggregate.
+	(Generate_Aggregate_For_Derived_Type): Code cleanup.
+	(Prepend_Stored_Values): Code cleanup.
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* sem_ch6.adb (Analyze_Expression_Function): Check for an
+	incomplete return type after attempting to freeze it, so that
+	other freeze actiona are generated in the proper order.
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* sem_aggr.adb (Resolve_Aggregate): If the type is a string
+	type, ie. a type whose component is a character type, and the
+	aggregate is positional, do not convert into a string literal
+	if the index type is not an integer type, because the original
+	type may be required in an enclosing operation.
+
+2017-01-19  Bob Duff  <duff@adacore.com>
+
+	* binde.adb, debug.adb: Enable new elaboration order algorithm
+	by default. -dp switch reverts to the old algorithm.
+
+2017-01-19  Hristian Kirtchev  <kirtchev@adacore.com>
+
+	* sem_ch3.adb Add with and use clauses for Exp_Ch7.
+	(Analyze_Declarations): Create the DIC and Invariant
+	procedure bodies s after all freezing has taken place.
+	(Build_Assertion_Bodies): New routine.
+	* sem_ch7.adb Remove the with and use clauses for Exp_Ch7
+	and Exp_Util.
+	(Analyze_Package_Specification): Remove the
+	generation of the DIC and Invariant procedure bodies. This is
+	now done by Analyze_Declarations.
+	* sem_disp.adb (Check_Dispatching_Operation): DIC and Invariant
+	procedures are never treated as primitives.
+
+2017-01-19  Yannick Moy  <moy@adacore.com>
+
+	* frontend.adb: Analyze inlined bodies and check elaboration
+	rules in GNATprove mode too.
+	* sem_elab.adb (Delay_Element): Add Boolean component to save
+	indication that call is in SPARK code.	(Check_Elab_Calls):
+	Check elaboration rules in GNATprove mode, and correctly set
+	the current value of SPARK_Mode.
+	* lib-xref-spark_specific.adb
+	(Add_SPARK_Xrefs): Simplify iteration over dereferences.
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* exp_ch4.adb (Expand_Concatenate): Do no enable overflow
+	checks on the expression for the high bound of concatenation
+	when checks are disabled, to suppress warnings about potential
+	constraint errors in restricted runtimes.
+
+2017-01-19  Hristian Kirtchev  <kirtchev@adacore.com>
+
+	* exp_ch3.adb (Expand_Freeze_Enumeration_Type): Mark the
+	representation-to-position function as inlined.
+	* sem_cat.adb (Set_Categorization_From_Scope): Do not modify
+	the purity of an internally generated entity if it has been
+	explicitly marked as pure for optimization purposes.
+	* exp_aggr.adb: Minor reformatting.
+
+2017-01-19  Javier Miranda  <miranda@adacore.com>
+
+	* exp_ch6.adb (Expand_Call): Remove side effects on
+	actuals that are allocators with qualified expression since the
+	initialization of the object is performed by means of individual
+	statements (and hence it must be done before the call).
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* sem_ch3.adb (Analyze_Declarations): Minor reformatting.
+	(Build_Derived_Enumeration_Type): If the derived type inherits a
+	dynamic predicate from its parent, the bounds of the type must
+	freeze because an explicit constraint is constructed for the
+	type and the corresponding range is elaborated now.
+
+2017-01-19  Arnaud Charlet  <charlet@adacore.com>
+
+	* sem_attr.ads: minor fix of inconsistent casing in comment
+	* lib-writ.ads: minor align comments in columns
+	* sem_ch3.adb: Minor reformatting.
+	* spark_xrefs.ads: minor fix typo in SPARK-related comment
+	* table.ads: minor style fix in comment
+	* lib-xref-spark_specific.adb
+	(Add_SPARK_Xrefs): simplify processing of SPARK cross-references.
+	* sem_ch12.adb: minor whitespace fix
+	* freeze.adb: Add comment.
+	* sem_util.adb (Unique_Name): for instances of
+	generic subprograms ignore the name of the wrapper package.
+
+2017-01-19  Javier Miranda  <miranda@adacore.com>
+
+	* exp_aggr.adb (Resolve_Record_Aggregate):
+	Factorize code needed for aggregates of limited and unlimited
+	types in a new routine.
+	(Pass_Aggregate_To_Back_End): New subprogram.
+
+2017-01-19  Yannick Moy  <moy@adacore.com>
+
+	* sinfo.adb (Pragma_Name): Only access up to Last_Pair of Pragma_Map.
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* sem_ch4.ads, sem_ch4.adb (Try_Object_Operation): Make subprogram
+	public, for use elsewhere.
+	* sem_ch6.adb (Analyze_Procedure_Call): In SPARK_Mode and within
+	an Inlined_body, recognize a call that uses object notation
+	and has not been rewritten as a regular call because regular
+	expansion has not taken place.
+
+2017-01-19  Bob Duff  <duff@adacore.com>
+
+	* checks.adb (Apply_Type_Conversion_Checks): Disable small optimization
+	in case of generic formal discrete types, because it causes crashes in
+	the compiler when built with assertions on.
+
+2017-01-19  Hristian Kirtchev  <kirtchev@adacore.com>
+
+	* lib-xref-spark_specific.adb, sem_util.adb, sem_util.ads,
+	sem_ch4.adb, sem_ch8.adb, lib-xref.ads: Minor reformatting.
+
+2017-01-19  Bob Duff  <duff@adacore.com>
+
+	* bcheck.adb (Check_Consistent_Dynamic_Elaboration_Checking):
+	Increment Warnings_Detected.  It was decrementing, which is
+	wrong since we just issued a warning message.
+	* binderr.ads (Errors_Detected, Warnings_Detected): Declare
+	these variables to be of subtype Nat instead of Int, because
+	they should never be negative.
+
+2017-01-19  Javier Miranda  <miranda@adacore.com>
+
+	* contracts.adb (Build_Postconditions_Procedure): Replace
+	Generate_C_Code by Modify_Tree_For_C.
+	* exp_aggr.adb (Build_Record_Aggr_Code, Expand_Array_Aggregate):
+	Replace Generate_C_Code by Modify_Tree_For_C.
+	* exp_attr.adb (Float_Valid, Is_GCC_Target): Replace Generate_C_Code by
+	Modify_Tree_For_C.
+	* exp_ch11.adb (Expand_N_Exception_Declaration): Replace
+	Generate_C_Code by Modify_Tree_For_C.
+	* exp_ch4.adb (Expand_Allocator_Expression): Replace
+	Generate_C_Code by Modify_Tree_For_C.
+	* exp_dbug.adb (Qualify_Entity_Name): Replace Generate_C_Code
+	by Modify_Tree_For_C.
+	* exp_util.adb (Remove_Side_Effects, Side_Effect_Free): Replace
+	Generate_C_Code by Modify_Tree_For_C.
+	* sem_res.adb (Resolve_Type_Conversion): Replace Generate_C_Code
+	by Modify_Tree_For_C.
+	* sinfo.ads (Modify_Tree_For_C): Adding documentation.
+
+2017-01-19  Javier Miranda  <miranda@adacore.com>
+
+	* sem_util.ads, sem_util.adb (Expression_Of_Expression_Function): New
+	subprogram.
+	(Is_Inlinable_Expression_Function): New subprogram.
+	* exp_ch6.ads, exp_ch6.adb (Expression_Of_Expression_Function): Moved
+	to Sem_Util.
+	(Is_Inlinable_Expression_Function): Moved to Sem_Util.
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* sem_ch4.adb (Diagnose_Call): Improve error message when a
+	selected component has a prefix that might be interpreted
+	as a parameterless function call, but none of the candidate
+	interpretations is parameterless, and there is a hidden homonym
+	of the prefix that is a package.
+	* sem_ch8.adb (Find_Selected_Component): If the prefix might be
+	interpreted as a parameterless function call and its analysis
+	fails, do not call Analyze_Selected_Component.
+
+2017-01-19  Steve Baird  <baird@adacore.com>
+
+	* sem_util.ads: Add new Use_Full_View Boolean parameter to
+	Get_Index_Bounds.
+	* sem_util.adb (Get_Index_Bounds): replace calls to Scalar_Range with
+	calls to a newly-defined Scalar_Range_Of_Right_View function.
+
+2017-01-19  Arnaud Charlet  <charlet@adacore.com>
+
+	* gnat1drv.adb: minor fix of unbalanced parens in comment
+	* lib-xref.ads (Traverse_Compilation_Unit): declaration moved
+	to visible part of the package to allow re-use in GNATprove.
+	* lib-xref-spark_specific.adb (Traverse_Stub): routine refactored
+	from repeated code of Traverse_Compilation_Unit.
+	(Traverse_Declaration_Or_Statement): fixed detection of
+	generic subprograms and packages; also, iteration over case
+	statement alternatives rewritten to avoid testing if the first
+	alternative is present (since it must be present due to Ada
+	syntax restrictions).
+
+2017-01-19  Hristian Kirtchev  <kirtchev@adacore.com>
+
+	* exp_ch6.adb (Expand_N_Subprogram_Body): Mark the spec as
+	returning by reference not just for subprogram body stubs,
+	but for all subprogram cases.
+	* sem_util.adb: Code reformatting.
+	(Requires_Transient_Scope): Update the call to Results_Differ.
+	(Results_Differ): Update the parameter profile and the associated
+	comment on usage.
+
+2017-01-19  Ed Schonberg  <schonberg@adacore.com>
+
+	* sem_dim.adb (Analyze_Dimension): Analyze object declaration and
+	identifier nodes that do not come from source, to handle properly
+	dimensionality check within an inlined body which inclddes both
+	original operands and rewritten operands. This removes spurious
+	dimensionality errors in the presence of front-end inlining,
+	as well as in SPARK mode.
+
 2017-01-16  Jakub Jelinek  <jakub@redhat.com>
 
 	PR driver/49726

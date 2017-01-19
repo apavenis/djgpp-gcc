@@ -592,25 +592,6 @@
   [(set_attr "type" "branch")]
 )
 
-(define_insn "eh_return"
-  [(unspec_volatile [(match_operand:DI 0 "register_operand" "r")]
-    UNSPECV_EH_RETURN)]
-  ""
-  "#"
-  [(set_attr "type" "branch")]
-
-)
-
-(define_split
-  [(unspec_volatile [(match_operand:DI 0 "register_operand" "")]
-    UNSPECV_EH_RETURN)]
-  "reload_completed"
-  [(set (match_dup 1) (match_dup 0))]
-  {
-    operands[1] = aarch64_final_eh_return_addr ();
-  }
-)
-
 (define_insn "*cb<optab><mode>1"
   [(set (pc) (if_then_else (EQL (match_operand:GPI 0 "register_operand" "r")
 				(const_int 0))
@@ -5025,7 +5006,7 @@
  [(set (match_operand:GPF_TF 0 "register_operand" "=w")
        (mem:GPF_TF (match_operand 1 "aarch64_constant_pool_symref" "S")))
   (clobber (match_operand:P 2 "register_operand" "=&r"))]
- "TARGET_FLOAT && aarch64_nopcrelative_literal_loads"
+ "TARGET_FLOAT"
  {
    aarch64_expand_mov_immediate (operands[2], XEXP (operands[1], 0));
    emit_move_insn (operands[0], gen_rtx_MEM (<GPF_TF:MODE>mode, operands[2]));
@@ -5038,7 +5019,7 @@
  [(set (match_operand:VALL 0 "register_operand" "=w")
        (mem:VALL (match_operand 1 "aarch64_constant_pool_symref" "S")))
   (clobber (match_operand:P 2 "register_operand" "=&r"))]
- "TARGET_FLOAT && aarch64_nopcrelative_literal_loads"
+ "TARGET_FLOAT"
  {
    aarch64_expand_mov_immediate (operands[2], XEXP (operands[1], 0));
    emit_move_insn (operands[0], gen_rtx_MEM (<VALL:MODE>mode, operands[2]));

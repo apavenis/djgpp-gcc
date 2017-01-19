@@ -1041,6 +1041,8 @@ See RS/6000 and PowerPC Options.
 -mupper-regs  -mno-upper-regs @gol
 -mfloat128  -mno-float128  -mfloat128-hardware  -mno-float128-hardware @gol
 -mgnu-attribute  -mno-gnu-attribute @gol
+-mstack-protector-guard=@var{guard} -mstack-protector-guard-reg=@var{reg} @gol
+-mstack-protector-guard-offset=@var{offset} @gol
 -mlra  -mno-lra}
 
 @emph{RX Options}
@@ -2250,8 +2252,10 @@ attributes that affect type identity, such as ia32 calling convention
 attributes (e.g. @samp{stdcall}).
 
 Version 11, which first appeared in G++ 7, corrects the mangling of
-sizeof... expressions.  It also implies
-@option{-fnew-inheriting-ctors}.
+sizeof... expressions and operator names.  For multiple entities with
+the same name within a function, that are declared in different scopes,
+the mangling now changes starting with the twelfth occurrence.  It also
+implies @option{-fnew-inheriting-ctors}.
 
 See also @option{-Wabi}.
 
@@ -19928,6 +19932,12 @@ it is unused.
 
 This optimization is off by default at all optimization levels.
 
+@item -mlxc1-sxc1
+@itemx -mno-lxc1-sxc1
+@opindex mlxc1-sxc1
+When applicable, enable (disable) the generation of @code{lwxc1},
+@code{swxc1}, @code{ldxc1}, @code{sdxc1} instructions.  Enabled by default.
+
 @end table
 
 @node MMIX Options
@@ -22202,6 +22212,23 @@ that is compatible with functions compiled with older versions of
 GCC.
 
 The @option{-mno-compat-align-parm} option is the default.
+
+@item -mstack-protector-guard=@var{guard}
+@itemx -mstack-protector-guard-reg=@var{reg}
+@itemx -mstack-protector-guard-offset=@var{offset}
+@opindex mstack-protector-guard
+@opindex mstack-protector-guard-reg
+@opindex mstack-protector-guard-offset
+Generate stack protection code using canary at @var{guard}.  Supported
+locations are @samp{global} for global canary or @samp{tls} for per-thread
+canary in the TLS block (the default with GNU libc version 2.4 or later).
+
+With the latter choice the options
+@option{-mstack-protector-guard-reg=@var{reg}} and
+@option{-mstack-protector-guard-offset=@var{offset}} furthermore specify
+which register to use as base register for reading the canary, and from what
+offset from that base register. The default for those is as specified in the
+relevant ABI.
 @end table
 
 @node RX Options

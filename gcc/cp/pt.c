@@ -9035,7 +9035,7 @@ finish_template_variable (tree var, tsubst_flags_t complain)
 /* Construct a TEMPLATE_ID_EXPR for the given variable template TEMPL having
    TARGS template args, and instantiate it if it's not dependent.  */
 
-static tree
+tree
 lookup_and_finish_template_variable (tree templ, tree targs,
 				     tsubst_flags_t complain)
 {
@@ -17142,19 +17142,34 @@ tsubst_copy_and_build (tree t,
 
 		if (unq != function)
 		  {
-		    tree fn = unq;
-		    if (INDIRECT_REF_P (fn))
-		      fn = TREE_OPERAND (fn, 0);
-		    if (TREE_CODE (fn) == COMPONENT_REF)
-		      fn = TREE_OPERAND (fn, 1);
-		    if (is_overloaded_fn (fn))
-		      fn = get_first_fn (fn);
-		    if (permerror (EXPR_LOC_OR_LOC (t, input_location),
-				   "%qD was not declared in this scope, "
-				   "and no declarations were found by "
-				   "argument-dependent lookup at the point "
-				   "of instantiation", function))
+		    /* In a lambda fn, we have to be careful to not
+		       introduce new this captures.  Legacy code can't
+		       be using lambdas anyway, so it's ok to be
+		       stricter.  */
+		    bool in_lambda = (current_class_type
+				      && LAMBDA_TYPE_P (current_class_type));
+		    char const *msg = "%qD was not declared in this scope, "
+		      "and no declarations were found by "
+		      "argument-dependent lookup at the point "
+		      "of instantiation";
+
+		    bool diag = true;
+		    if (in_lambda)
+		      error_at (EXPR_LOC_OR_LOC (t, input_location),
+				msg, function);
+		    else
+		      diag = permerror (EXPR_LOC_OR_LOC (t, input_location),
+					msg, function);
+		    if (diag)
 		      {
+			tree fn = unq;
+			if (INDIRECT_REF_P (fn))
+			  fn = TREE_OPERAND (fn, 0);
+			if (TREE_CODE (fn) == COMPONENT_REF)
+			  fn = TREE_OPERAND (fn, 1);
+			if (is_overloaded_fn (fn))
+			  fn = get_first_fn (fn);
+
 			if (!DECL_P (fn))
 			  /* Can't say anything more.  */;
 			else if (DECL_CLASS_SCOPE_P (fn))
@@ -17177,7 +17192,13 @@ tsubst_copy_and_build (tree t,
 			  inform (DECL_SOURCE_LOCATION (fn),
 				  "%qD declared here, later in the "
 				  "translation unit", fn);
+			if (in_lambda)
+			  {
+			    release_tree_vector (call_args);
+			    RETURN (error_mark_node);
+			  }
 		      }
+
 		    function = unq;
 		  }
 	      }
@@ -24947,6 +24968,13 @@ build_deduction_guide (tree ctor, tree outer_args, tsubst_flags_t complain)
       current_template_parms = save_parms;
       --processing_template_decl;
     }
+  else
+    {
+      /* Copy the parms so we can set DECL_PRIMARY_TEMPLATE.  */
+      tparms = copy_node (tparms);
+      INNERMOST_TEMPLATE_PARMS (tparms)
+	= copy_node (INNERMOST_TEMPLATE_PARMS (tparms));
+    }
 
   tree fntype = build_function_type (type, fparms);
   tree ded_fn = build_lang_decl_loc (DECL_SOURCE_LOCATION (ctor),
@@ -24957,6 +24985,7 @@ build_deduction_guide (tree ctor, tree outer_args, tsubst_flags_t complain)
   DECL_TEMPLATE_RESULT (ded_tmpl) = ded_fn;
   TREE_TYPE (ded_tmpl) = TREE_TYPE (ded_fn);
   DECL_TEMPLATE_INFO (ded_fn) = build_template_info (ded_tmpl, targs);
+  DECL_PRIMARY_TEMPLATE (ded_tmpl) = ded_tmpl;
   if (ci)
     set_constraints (ded_tmpl, ci);
 

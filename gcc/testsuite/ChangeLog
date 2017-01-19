@@ -1,3 +1,162 @@
+2017-01-19  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR testsuite/79051
+	* gcc.dg/attr-alloc_size-4.c (test_int_range) [__i386__ ||
+	__x86_64__]: Allow for target i?86-*-*.
+
+2017-01-19  Matthew Fortune  <matthew.fortune@imgtec.com>
+
+	PR target/78176
+	* gcc.target/mips/lxc1-sxc1-1.c: New file.
+	* gcc.target/mips/lxc1-sxc1-2.c: Likewise.
+	* gcc.target/mips/mips.exp (mips_option_groups): Add ghost option
+	HAS_LXC1.
+	(mips_option_groups): Add -m[no-]lxc1-sxc1.
+	(mips-dg-init): Detect default -mno-lxc1-sxc1.
+	(mips-dg-options): Handle HAS_LXC1 arch upgrade/downgrade.
+
+2017-01-19  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/70696
+	* gfortran.dg/coarray_43.f90: New test.
+
+2017-01-19  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR rtl-optimization/79121
+	* gcc.c-torture/execute/pr79121.c: New test.
+
+2017-01-18  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* gcc.target/powerpc/p9-xxbr-1.c: Fix typos in submission.
+	* gcc.target/powerpc/p9-xxbr-2.c: Likewise.
+
+2017-01-18  Louis Krupp  <louis.krupp@zoho.com>
+
+	PR fortran/50069
+	PR fortran/55086
+	* gfortran.dg/pr50069_1.f90: New test.
+	* gfortran.dg/pr50069_2.f90: New test.
+	* gfortran.dg/pr55086_1.f90: New test.
+	* gfortran.dg/pr55086_1_tfat.f90: New test.
+	* gfortran.dg/pr55086_2.f90: New test.
+	* gfortran.dg/pr55086_2_tfat.f90: New test.
+	* gfortran.dg/pr55086_aliasing_dummy_4_tfat.f90: New test.
+
+2017-01-18  Aaron Sawdey  <acsawdey@linux.vnet.ibm.com>
+	* gcc.dg/strcmp-1.c: New test.
+	* gcc.dg/strncmp-1.c: Add test for a bug that escaped.
+
+2017-01-18  David Malcolm  <dmalcolm@redhat.com>
+
+	* jit.dg/test-threads.c (dejagnu_pass): Remove decl.
+	(dejagnu_fail): Likewise.
+	(dejagnu_note): Likewise.
+	(pass): Provide forward decl, moving true decl to after #include
+	of harness.h.
+	(fail): Likewise.
+	(note): Likewise.
+
+2017-01-18  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	* gcc.target/powerpc/p9-xxbr-1.c: New test.
+	* gcc.target/powerpc/p9-xxbr-2.c: Likewise.
+
+2017-01-18  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/78488
+	* g++.dg/cpp1z/inh-ctor37.C: New.
+
+2017-01-18  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR rtl-optimization/78952
+	* gcc.target/i386/pr78952-1.c: New test.
+	* gcc.target/i386/pr78952-2.c: Ditto.
+
+2017-01-18  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	* gfortran.dg/coarray_alloc_with_implicit_sync_2.f90: New test.
+
+2017-01-18  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/70696
+	* gfortran.dg/coarray_event_1.f08: New test.
+
+2017-01-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/77416
+	* gcc.target/powerpc/pr77416.c Guard the test only for ilp32 effective
+	target.  Use powerpc* instead of powerpc64* in targets.  Remove -m32
+	from dg-options.
+	* gcc.target/powerpc/pr64205.c: Remove -m32 from dg-options of ilp32
+	guarded test.
+	* gcc.target/powerpc/fusion4.c: Likewise.
+	* gcc.target/powerpc/pr63491.c: Remove -m64 from dg-options of lp64
+	guarded test.
+	* gcc.target/powerpc/pr58673-1.c: Likewise.
+	* gcc.target/powerpc/pr58673-2.c: Likewise.
+	* gcc.target/powerpc/pr59054.c: Likewise.
+
+2017-01-18  Maxim Ostapenko  <m.ostapenko@samsung.com>
+
+	PR lto/79061
+	* gcc.dg/cpp/mi1.c: Adjust testcase.
+	* gcc.dg/pch/cpp-3.c: Likewise.
+
+2016-01-18  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* gcc.target/powerpc/p8vector-builtin-8.c: Add new form for
+	vec_bperm.
+	* gcc.target/powerpc/p9-vbpermd.c: New file.
+
+2017-01-18  Andreas Krebbel  <krebbel@linux.vnet.ibm.com>
+
+	* gcc.target/s390/htm-builtins-compile-2.c (must_not_compile1):
+	(must_not_compile2): Downcase first letter of error messages.
+	* gcc.target/s390/target-attribute/tattr-13.c (b): Likewise.
+	* gcc.target/s390/vector/vec-abi-vararg-2.c: Likewise.
+
+2017-01-18  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/79091
+	* g++.dg/pr79091.C: New.
+
+2017-01-18  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.target/s390/target-attribute/tattr-2.c: Add -fno-ipa-icf
+	to dg-options.
+	(p0): Add missing dg-error.
+
+2017-01-17  Joe Seymour  <joe.s@somniumtech.com>
+
+	* gcc.target/msp430/mul_f5_muldef.c: New test.
+
+2017-01-17  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR target/79004
+	* gcc.target/powerpc/pr79004.c: Add -mfloat128 to the test
+	options.  Fix up the syntax for using \m and \M.
+
+2017-01-17  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR target/78875
+	* gcc.target/powerpc/ssp-1.c: New testcase.
+	* gcc.target/powerpc/ssp-2.c: New testcase.
+
+2017-01-17  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* gcc.target/aarch64/eh_return.c: New test.
+
+2017-01-17  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* vec-rlmi-rlnm.c: New file.
+
+2017-01-17  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/61636
+	* g++.dg/cpp1y/pr61636-1.C: New.
+	* g++.dg/cpp1y/pr61636-2.C: New.
+	* g++.dg/cpp1y/pr61636-3.C: New.
+
 2017-01-17  Martin Sebor  <msebor@redhat.com>
 
 	PR testsuite/79115
@@ -98,7 +257,7 @@
 2017-01-16  Paolo Carlini  <paolo.carlini@oracle.com>
 
 	Revert:
-        2017-01-16  Paolo Carlini  <paolo.carlini@oracle.com>
+	2017-01-16  Paolo Carlini  <paolo.carlini@oracle.com>
 
 	PR c++/71737
 	* g++.dg/cpp0x/pr71737.C: New.
@@ -119,8 +278,8 @@
 
 2017-01-14  Bernd Schmidt  <bschmidt@redhat.com>
 
-        PR rtl-optimization/78626
-        PR rtl-optimization/78727
+	PR rtl-optimization/78626
+	PR rtl-optimization/78727
 	* gcc.dg/torture/pr78626.c: New test.
 	* gcc.dg/torture/pr78727.c: New test.
 
@@ -214,6 +373,7 @@
 
 	PR target/79004
 	* gcc.target/powerpc/pr79004.c: New test.
+
 2017-01-12  Martin Sebor  <msebor@redhat.com>
 
 	* gcc.dg/pr78138.c: Adjust.

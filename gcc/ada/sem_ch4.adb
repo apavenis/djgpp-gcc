@@ -323,18 +323,6 @@ package body Sem_Ch4 is
    --  subprogram, and the call F (X) interpreted as F.all (X). In this case
    --  the call may be overloaded with both interpretations.
 
-   function Try_Object_Operation
-     (N            : Node_Id;
-      CW_Test_Only : Boolean := False) return Boolean;
-   --  Ada 2005 (AI-252): Support the object.operation notation. If node N
-   --  is a call in this notation, it is transformed into a normal subprogram
-   --  call where the prefix is a parameter, and True is returned. If node
-   --  N is not of this form, it is unchanged, and False is returned. If
-   --  CW_Test_Only is true then N is an N_Selected_Component node which
-   --  is part of a call to an entry or procedure of a tagged concurrent
-   --  type and this routine is invoked to search for class-wide subprograms
-   --  conflicting with the target entity.
-
    procedure wpo (T : Entity_Id);
    pragma Warnings (Off, wpo);
    --  Used for debugging: obtain list of primitive operations even if
@@ -5881,8 +5869,41 @@ package body Sem_Ch4 is
          end loop;
       end if;
 
-      --   Analyze each candidate call again, with full error reporting
-      --   for each.
+      --  Before listing the possible candidates, check whether this is
+      --  a prefix of a selected component that has been rewritten as a
+      --  parameterless function call because there is a callable candidate
+      --  interpretation. If there is a hidden package in the list of homonyms
+      --  of the function name (bad programming style in any case) suggest that
+      --  this is the intended entity.
+
+      if No (Parameter_Associations (N))
+        and then Nkind (Parent (N)) = N_Selected_Component
+        and then Nkind (Parent (Parent (N))) in N_Declaration
+        and then Is_Overloaded (Nam)
+      then
+         declare
+            Ent : Entity_Id;
+
+         begin
+            Ent := Current_Entity (Nam);
+            while Present (Ent) loop
+               if Ekind (Ent) = E_Package then
+                  Error_Msg_N
+                    ("no legal interpretations as function call,!", Nam);
+                  Error_Msg_NE ("\package& is not visible", N, Ent);
+
+                  Rewrite (Parent (N),
+                    New_Occurrence_Of (Any_Type, Sloc (N)));
+                  return;
+               end if;
+
+               Ent := Homonym (Ent);
+            end loop;
+         end;
+      end if;
+
+      --  Analyze each candidate call again, with full error reporting for
+      --  each.
 
       Error_Msg_N
         ("no candidate interpretations match the actuals:!", Nam);
