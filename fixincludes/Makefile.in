@@ -41,8 +41,6 @@ VPATH = $(srcdir)
 libdir = @libdir@
 # Directory in which GCC puts its executables.
 libexecdir = @libexecdir@
-# GCC version for subdirectory names (editted if host requires it)
-gcc_version_dir = @gcc_version_dir@
 
 # End of variables for you to override.
 
@@ -54,9 +52,9 @@ target_noncanonical:=@target_noncanonical@
 gcc_version := $(shell cat $(srcdir)/../gcc/BASE-VER)
 
 # Directory in which the compiler finds libraries etc.
-libsubdir = $(libdir)/gcc/$(target_noncanonical)/$(gcc_version_dir)
+libsubdir = $(libdir)/gcc/$(target_noncanonical)/$(gcc_version)
 # Directory in which the compiler finds executables
-libexecsubdir = $(libexecdir)/gcc/$(target_noncanonical)/$(gcc_version_dir)
+libexecsubdir = $(libexecdir)/gcc/$(target_noncanonical)/$(gcc_version)
 # Where our executable files go
 itoolsdir = $(libexecsubdir)/install-tools
 # Where our data files go

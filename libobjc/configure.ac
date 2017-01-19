@@ -192,19 +192,6 @@ AC_CHECK_HEADERS(sched.h)
 # Check if we have thread-local storage
 GCC_CHECK_TLS
 
-# For DJGPP there should not be more than 1 dot. Therefore edit
-# version in case of DJGPP
-[case $build in
-	i?86-*-msdosdjgpp*)
-		gcc_version_dir='$(shell echo $(gcc_version) | sed -e "s:\.::2g")'
-		;;
-
-	* )
-		gcc_version_dir='$(gcc_version)'
-		;;
-esac]
-AC_SUBST(gcc_version_dir)
-
 gt_BITFIELD_TYPE_MATTERS
 
 # -----------

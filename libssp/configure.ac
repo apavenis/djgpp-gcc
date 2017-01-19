@@ -195,18 +195,5 @@ else
   multilib_arg=
 fi
 
-# For DJGPP there should not be more than 1 dot. Therefore edit
-# version in case of DJGPP
-[case $build in
-       i?86-*-msdosdjgpp*)
-               gcc_version_dir='$(shell echo $(gcc_version) | sed -e "s:\.::2g")'
-               ;;
-
-       * )
-               gcc_version_dir='$(gcc_version)'
-               ;;
-esac]
-AC_SUBST(gcc_version_dir)
-
 AC_CONFIG_FILES([Makefile ssp/ssp.h])
 AC_OUTPUT

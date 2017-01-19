@@ -818,17 +818,15 @@ AC_DEFUN([GLIBCXX_EXPORT_INSTALL_INFO], [
   case "$build" in
     *-msdosdjgpp*)
        libstdcxx_incdir_base=cxx
-       gcc_version_alias='$(shell echo $(gcc_version) | sed -e "s:\.::2g")'
        ;;
     *)
        libstdcxx_incdir_base=c++
-       gcc_version_alias='$(gcc_version)'
        ;; 
   esac
 
   # Default case for install directory for include files.
   if test $version_specific_libs = no && test $gxx_include_dir = no; then
-    gxx_include_dir='include/$(libstdcxx_incdir_base)/${gcc_version_alias}'
+    gxx_include_dir='include/$(libstdcxx_incdir_base)/${gcc_version}'
     if test -n "$with_cross_host" &&
        test x"$with_cross_host" != x"no"; then
       gxx_include_dir='${prefix}/${target_alias}/'"$gxx_include_dir"
@@ -844,10 +842,10 @@ AC_DEFUN([GLIBCXX_EXPORT_INSTALL_INFO], [
     # is selected.  FIXME: these variables are misnamed, there are
     # no executables installed in _toolexecdir or _toolexeclibdir.
     if test x"$gxx_include_dir" = x"no"; then
-      gxx_include_dir='${libdir}/gcc/${host_alias}/${gcc_version_alias}/include/${libstdcxx_incdir_base}'
+      gxx_include_dir='${libdir}/gcc/${host_alias}/${gcc_version}/include/${libstdcxx_incdir_base}'
     fi
     glibcxx_toolexecdir='${libdir}/gcc/${host_alias}'
-    glibcxx_toolexeclibdir='${toolexecdir}/${gcc_version_alias}$(MULTISUBDIR)'
+    glibcxx_toolexeclibdir='${toolexecdir}/${gcc_version}$(MULTISUBDIR)'
   fi
 
   # Calculate glibcxx_toolexecdir, glibcxx_toolexeclibdir
@@ -876,7 +874,6 @@ AC_DEFUN([GLIBCXX_EXPORT_INSTALL_INFO], [
   AC_SUBST(glibcxx_toolexecdir)
   AC_SUBST(glibcxx_toolexeclibdir)
   AC_SUBST(libstdcxx_incdir_base)
-  AC_SUBST(gcc_version_alias)
 ])
 
 

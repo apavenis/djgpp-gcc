@@ -114,19 +114,6 @@ AC_SUBST(MAINT)
 AC_DEFINE_UNQUOTED([SED_PROGRAM], "${SED}",
    [Defined to the best working sed program on the host system])
 
-# For DJGPP there should not be more than 1 dot. Therefore edit
-# version in case of DJGPP
-[case $host in
-	i?86-*-msdosdjgpp*)
-		gcc_version_dir='$(shell echo $(gcc_version) | sed -e "s:\.::2g")'
-		;;
-
-	* )
-		gcc_version_dir='$(gcc_version)'
-		;;
-esac]
-AC_SUBST(gcc_version_dir)
-
 AC_CONFIG_HEADERS(config.h, [echo timestamp > stamp-h])
 AC_CONFIG_FILES(Makefile mkheaders.almost:mkheaders.in)
 AC_OUTPUT

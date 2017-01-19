@@ -148,19 +148,6 @@ ACX_NONCANONICAL_HOST
 ACX_NONCANONICAL_TARGET
 GCC_TOPLEV_SUBDIRS
 
-# Convert GCC version string (to be used as directory name)
-# Does nothing except for DJGPP
-case "$build" in
-  *-msdosdjgpp*)
-     gcc_version_alias='$(shell echo $(gcc_version) | sed -e "s:\.::2g")'
-     ;;
-  *)
-     gcc_version_alias='$(gcc_version)'
-     ;; 
-esac
-
-AC_SUBST(gcc_version_alias)
-
 # Calculate toolexeclibdir
 # Also toolexecdir, though it's only used in toolexeclibdir
 case ${version_specific_libs} in
@@ -169,7 +156,7 @@ case ${version_specific_libs} in
     # and header files if --enable-version-specific-runtime-libs option
     # is selected.
     toolexecdir='$(libdir)/gcc/$(target_noncanonical)'
-    toolexeclibdir='$(toolexecdir)/$(gcc_version_alias)$(MULTISUBDIR)'
+    toolexeclibdir='$(toolexecdir)/$(gcc_version)$(MULTISUBDIR)'
     ;;
   no)
     if test -n "$with_cross_host" &&

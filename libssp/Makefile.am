@@ -39,7 +39,7 @@ AM_CFLAGS = -Wall
 toolexeclib_LTLIBRARIES = libssp.la libssp_nonshared.la
 
 target_noncanonical = @target_noncanonical@
-libsubincludedir = $(libdir)/gcc/$(target_noncanonical)/$(gcc_version_dir)/include
+libsubincludedir = $(libdir)/gcc/$(target_noncanonical)/$(gcc_version)/include
 nobase_libsubinclude_HEADERS = ssp/ssp.h ssp/string.h ssp/stdio.h ssp/unistd.h
 
 libssp_la_SOURCES = \

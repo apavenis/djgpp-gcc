@@ -72,9 +72,6 @@ AM_INIT_AUTOMAKE([1.9.6 no-define foreign no-dist -Wall -Wno-portability])
 AM_MAINTAINER_MODE
 AM_ENABLE_MULTILIB(, ..)
 
-# Add test for DJGPP
-AM_CONDITIONAL(DJGPP,echo $build | grep msdosdjgpp)
-
 # Handy for debugging:
 #AC_MSG_NOTICE($build / $host / $target / $host_alias / $target_alias); sleep 5
 
@@ -90,19 +87,6 @@ fi
 
 AC_USE_SYSTEM_EXTENSIONS
 
-# Convert GCC version string (to be used as directory name)
-# Does nothing except for DJGPP
-case "$build" in
-  *-msdosdjgpp*)
-     gcc_version_alias='$(shell echo $(gcc_version) | sed -e "s:\.::2g")'
-     ;;
-  *)
-     gcc_version_alias='$(gcc_version)'
-     ;; 
-esac
-
-AC_SUBST(gcc_version_alias)
-
 # Calculate toolexeclibdir
 # Also toolexecdir, though it's only used in toolexeclibdir
 case ${version_specific_libs} in
@@ -111,7 +95,7 @@ case ${version_specific_libs} in
     # and header files if --enable-version-specific-runtime-libs option
     # is selected.
     toolexecdir='$(libdir)/gcc/$(target_alias)'
-    toolexeclibdir='$(toolexecdir)/$(gcc_version_alias)$(MULTISUBDIR)'
+    toolexeclibdir='$(toolexecdir)/$(gcc_version)$(MULTISUBDIR)'
     ;;
   no)
     if test -n "$with_cross_host" &&

@@ -12,12 +12,6 @@ ifeq ($(findstring -pc-msdosdjgpp,$(target_alias)),-pc-msdosdjgpp)
 target_alias=djgpp
 endif
 
-# The version string must be modified to contain just one dot
-# because DOS filenames can only have one dot when long filenames
-# are not available.
-#
-version := $(shell echo $(version) | sed -e 's:\.::2g')
-
 # on DJGPP the 'ln -s' does not work correctly
 LN = cp -p
 LN_S = cp -p

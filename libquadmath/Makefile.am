@@ -41,7 +41,7 @@ libquadmath_la_LDFLAGS = -version-info `grep -v '^\#' $(srcdir)/libtool-version`
 libquadmath_la_DEPENDENCIES = $(version_dep) $(libquadmath_la_LIBADD)
 
 nodist_libsubinclude_HEADERS = quadmath.h quadmath_weak.h
-libsubincludedir = $(libdir)/gcc/$(target_alias)/$(gcc_version_alias)/include
+libsubincludedir = $(libdir)/gcc/$(target_alias)/$(gcc_version)/include
 
 libquadmath_la_SOURCES = \
   math/x2y2m1q.c math/isinf_nsq.c math/acoshq.c math/fmodq.c \
