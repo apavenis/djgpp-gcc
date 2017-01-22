@@ -243,12 +243,6 @@ char __gnat_dir_separator = DIR_SEPARATOR;
 
 char __gnat_path_separator = PATH_SEPARATOR;
 
-#ifdef __DJGPP__
-int __gnat_is_djgpp = 1;
-#else
-int __gnat_is_djgpp = 0;
-#endif
-
 /* The GNAT_LIBRARY_TEMPLATE contains a list of expressions that define
    the base filenames that libraries specified with -lsomelib options
    may have. This is used by GNATMAKE to check whether an executable
@@ -615,7 +609,9 @@ __gnat_get_default_identifier_character_set (void)
 void
 __gnat_get_current_dir (char *dir, int *length)
 {
-#if defined (__MINGW32__)
+#ifdef __DJGPP__
+  int i;
+#elif defined (__MINGW32__)
   TCHAR wdir[GNAT_MAX_PATH_LEN];
 
   _tgetcwd (wdir, *length);
@@ -627,6 +623,14 @@ __gnat_get_current_dir (char *dir, int *length)
 #endif
 
    *length = strlen (dir);
+
+#if __DJGPP__
+   for (i = 0; i < *length; i++)
+     {
+       if (dir[i] == '/')
+	 dir[i] = '\\';
+     }
+#endif
 
    if (dir [*length - 1] != DIR_SEPARATOR)
      {
