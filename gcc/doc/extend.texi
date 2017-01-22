@@ -3513,6 +3513,12 @@ Specifies the core for which to tune the performance of this function and also
 whose architectural features to use.  The behavior and valid arguments are the
 same as for the @option{-mcpu=} command-line option.
 
+@item sign-return-address
+@cindex @code{sign-return-address} function attribute, AArch64
+Select the function scope on which return address signing will be applied.  The
+behaviour and permissible arguments are the same as for the command-line option
+@option{-msign-return-address=}.  The default value is @code{none}.
+
 @end table
 
 The above target attributes can be specified as follows:
@@ -21496,7 +21502,7 @@ In C++, if an initializer is present for a thread-local variable, it must
 be a @var{constant-expression}, as defined in 5.19.2 of the ANSI/ISO C++
 standard.
 
-See @uref{http://www.akkadia.org/drepper/tls.pdf,
+See @uref{https://www.akkadia.org/drepper/tls.pdf,
 ELF Handling For Thread-Local Storage} for a detailed explanation of
 the four thread-local storage addressing models, and how the runtime
 is expected to function.

@@ -909,6 +909,7 @@ Objective-C and Objective-C++ Dialects}.
 -mcompact-branches=@var{policy} @gol
 -mfp-exceptions  -mno-fp-exceptions @gol
 -mvr4130-align  -mno-vr4130-align  -msynci  -mno-synci @gol
+-mlxc1-sxc1 -mno-lxc1-sxc1 -mmadd4 -mno-madd4 @gol
 -mrelax-pic-calls  -mno-relax-pic-calls  -mmcount-ra-address @gol
 -mframe-header-opt  -mno-frame-header-opt}
 
@@ -3733,7 +3734,7 @@ Options} and @ref{Objective-C and Objective-C++ Dialect Options}.
 -Warray-bounds=1 @r{(only with} @option{-O2}@r{)}  @gol
 -Wbool-compare  @gol
 -Wbool-operation  @gol
--Wc++11-compat  -Wc++14-compat@gol
+-Wc++11-compat  -Wc++14-compat  @gol
 -Wchar-subscripts  @gol
 -Wcomment  @gol
 -Wduplicate-decl-specifier @r{(C and Objective-C only)} @gol
@@ -5261,6 +5262,22 @@ which rarely makes sense.  (In C++, decrementing a boolean is always invalid.
 Incrementing a boolean is invalid in C++1z, and deprecated otherwise.)
 
 This warning is enabled by @option{-Wall}.
+
+@item -Wduplicated-branches
+@opindex Wno-duplicated-branches
+@opindex Wduplicated-branches
+Warn when an if-else has identical branches.  This warning detects cases like
+@smallexample
+if (p != NULL)
+  return 0;
+else
+  return 0;
+@end smallexample
+It doesn't warn when both branches contain just a null statement.  This warning
+also warn for conditional operators:
+@smallexample
+  int i = x ? *p : *p;
+@end smallexample
 
 @item -Wduplicated-cond
 @opindex Wno-duplicated-cond
@@ -12454,7 +12471,7 @@ The default if @option{-fvisibility} isn't specified is
 A good explanation of the benefits offered by ensuring ELF
 symbols have the correct visibility is given by ``How To Write
 Shared Libraries'' by Ulrich Drepper (which can be found at
-@w{@uref{http://www.akkadia.org/drepper/}})---however a superior
+@w{@uref{https://www.akkadia.org/drepper/}})---however a superior
 solution made possible by this option to marking things hidden when
 the default is public is to make the default hidden and mark things
 public.  This is the norm with DLLs on Windows and with @option{-fvisibility=hidden}
@@ -14010,7 +14027,10 @@ more feature modifiers.  This option has the form
 @option{-march=@var{arch}@r{@{}+@r{[}no@r{]}@var{feature}@r{@}*}}.
 
 The permissible values for @var{arch} are @samp{armv8-a},
-@samp{armv8.1-a}, @samp{armv8.2-a} or @var{native}.
+@samp{armv8.1-a}, @samp{armv8.2-a}, @samp{armv8.3-a} or @var{native}.
+
+The value @samp{armv8.3-a} implies @samp{armv8.2-a} and enables compiler
+support for the ARMv8.3-A architecture extensions.
 
 The value @samp{armv8.2-a} implies @samp{armv8.1-a} and enables compiler
 support for the ARMv8.2-A architecture extensions.
@@ -14095,6 +14115,14 @@ Enable PC-relative literal loads.  With this option literal pools are
 accessed using a single instruction and emitted after each function.  This
 limits the maximum size of functions to 1MB.  This is enabled by default for
 @option{-mcmodel=tiny}.
+
+@item -msign-return-address=@var{scope}
+@opindex msign-return-address
+Select the function scope on which return address signing will be applied.
+Permissible values are @samp{none}, which disables return address signing,
+@samp{non-leaf}, which enables pointer signing for functions which are not leaf
+functions, and @samp{all}, which enables pointer signing for all functions.  The
+default value is @samp{none}.
 
 @end table
 
@@ -19937,6 +19965,12 @@ This optimization is off by default at all optimization levels.
 @opindex mlxc1-sxc1
 When applicable, enable (disable) the generation of @code{lwxc1},
 @code{swxc1}, @code{ldxc1}, @code{sdxc1} instructions.  Enabled by default.
+
+@item -mmadd4
+@itemx -mno-madd4
+@opindex mmadd4
+When applicable, enable (disable) the generation of 4-operand @code{madd.s},
+@code{madd.d} and related instructions.  Enabled by default.
 
 @end table
 

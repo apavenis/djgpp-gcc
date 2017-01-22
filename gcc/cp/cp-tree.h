@@ -146,6 +146,7 @@ operator == (const cp_expr &lhs, tree rhs)
       BLOCK_OUTER_CURLY_BRACE_P (in BLOCK)
       FOLD_EXPR_MODOP_P (*_FOLD_EXPR)
       IF_STMT_CONSTEXPR_P (IF_STMT)
+      TEMPLATE_TYPE_PARM_FOR_CLASS (TEMPLATE_TYPE_PARM)
    1: IDENTIFIER_VIRTUAL_P (in IDENTIFIER_NODE)
       TI_PENDING_TEMPLATE_FLAG.
       TEMPLATE_PARMS_FOR_INLINE.
@@ -5207,6 +5208,11 @@ enum auto_deduction_context
   adc_decomp_type    /* Decomposition declaration initializer deduction */
 };
 
+/* True if this type-parameter belongs to a class template, used by C++17
+   class template argument deduction.  */
+#define TEMPLATE_TYPE_PARM_FOR_CLASS(NODE) \
+  (TREE_LANG_FLAG_0 (TEMPLATE_TYPE_PARM_CHECK (NODE)))
+
 /* True iff this TEMPLATE_TYPE_PARM represents decltype(auto).  */
 #define AUTO_IS_DECLTYPE(NODE) \
   (TYPE_LANG_FLAG_5 (TEMPLATE_TYPE_PARM_CHECK (NODE)))
@@ -6931,7 +6937,8 @@ extern tree cp_fully_fold			(tree);
 extern void clear_fold_cache			(void);
 
 /* in name-lookup.c */
-extern void suggest_alternatives_for            (location_t, tree);
+extern void suggest_alternatives_for            (location_t, tree, bool);
+extern bool suggest_alternative_in_explicit_scope (location_t, tree, tree);
 extern tree strip_using_decl                    (tree);
 
 /* in constraint.cc */

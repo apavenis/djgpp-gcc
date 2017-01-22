@@ -1758,10 +1758,8 @@ static const struct attribute_spec rs6000_attribute_table[] =
 #define TARGET_VECTORIZE_BUILTIN_MD_VECTORIZED_FUNCTION \
   rs6000_builtin_md_vectorized_function
 
-#ifdef TARGET_THREAD_SSP_OFFSET
 #undef TARGET_STACK_PROTECT_GUARD
-#define TARGET_STACK_PROTECT_GUARD hook_tree_void_null
-#endif
+#define TARGET_STACK_PROTECT_GUARD rs6000_init_stack_protect_guard
 
 #if !TARGET_MACHO
 #undef TARGET_STACK_PROTECT_FAIL
@@ -9479,6 +9477,17 @@ rs6000_legitimize_tls_address (rtx addr, enum tls_model model)
   return dest;
 }
 
+/* Only create the global variable for the stack protect guard if we are using
+   the global flavor of that guard.  */
+static tree
+rs6000_init_stack_protect_guard (void)
+{
+  if (rs6000_stack_protector_guard == SSP_GLOBAL)
+    return default_stack_protect_guard ();
+
+  return NULL_TREE;
+}
+
 /* Implement TARGET_CANNOT_FORCE_CONST_MEM.  */
 
 static bool
@@ -13675,6 +13684,7 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
 
   size = int_size_in_bytes (type);
   rsize = (size + 3) / 4;
+  int pad = 4 * rsize - size;
   align = 1;
 
   machine_mode mode = TYPE_MODE (type);
@@ -13756,6 +13766,10 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
 	  && mode == SDmode)
 	t = fold_build_pointer_plus_hwi (t, size);
 
+      /* Args are passed right-aligned.  */
+      if (BYTES_BIG_ENDIAN)
+	t = fold_build_pointer_plus_hwi (t, pad);
+
       gimplify_assign (addr, t, pre_p);
 
       gimple_seq_add_stmt (pre_p, gimple_build_goto (lab_over));
@@ -13781,6 +13795,11 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
       t = build2 (BIT_AND_EXPR, TREE_TYPE (t), t,
 		  build_int_cst (TREE_TYPE (t), -align));
     }
+
+  /* Args are passed right-aligned.  */
+  if (BYTES_BIG_ENDIAN)
+    t = fold_build_pointer_plus_hwi (t, pad);
+
   gimplify_expr (&t, pre_p, NULL, is_gimple_val, fb_rvalue);
 
   gimplify_assign (unshare_expr (addr), t, pre_p);
@@ -19869,10 +19888,13 @@ expand_strn_compare (rtx operands[], int no_length)
 	}
 
       if (no_length)
-	emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "strcmp"),
-				 target, LCT_NORMAL, GET_MODE (target), 2,
-				 force_reg (Pmode, XEXP (src1, 0)), Pmode,
-				 force_reg (Pmode, XEXP (src2, 0)), Pmode);
+	{
+	  tree fun = builtin_decl_explicit (BUILT_IN_STRCMP);
+	  emit_library_call_value (XEXP (DECL_RTL (fun), 0),
+				   target, LCT_NORMAL, GET_MODE (target), 2,
+				   force_reg (Pmode, XEXP (src1, 0)), Pmode,
+				   force_reg (Pmode, XEXP (src2, 0)), Pmode);
+	}
       else
 	{
 	  /* -m32 -mpowerpc64 results in word_mode being DImode even
@@ -19886,7 +19908,8 @@ expand_strn_compare (rtx operands[], int no_length)
 
 	  emit_move_insn (len_rtx, bytes_rtx);
 
-	  emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "strncmp"),
+	  tree fun = builtin_decl_explicit (BUILT_IN_STRNCMP);
+	  emit_library_call_value (XEXP (DECL_RTL (fun), 0),
 				   target, LCT_NORMAL, GET_MODE (target), 3,
 				   force_reg (Pmode, XEXP (src1, 0)), Pmode,
 				   force_reg (Pmode, XEXP (src2, 0)), Pmode,
@@ -20131,10 +20154,13 @@ expand_strn_compare (rtx operands[], int no_length)
 
       /* Construct call to strcmp/strncmp to compare the rest of the string.  */
       if (no_length)
-	emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "strcmp"),
-				 target, LCT_NORMAL, GET_MODE (target), 2,
-				 force_reg (Pmode, XEXP (src1, 0)), Pmode,
-				 force_reg (Pmode, XEXP (src2, 0)), Pmode);
+	{
+	  tree fun = builtin_decl_explicit (BUILT_IN_STRCMP);
+	  emit_library_call_value (XEXP (DECL_RTL (fun), 0),
+				   target, LCT_NORMAL, GET_MODE (target), 2,
+				   force_reg (Pmode, XEXP (src1, 0)), Pmode,
+				   force_reg (Pmode, XEXP (src2, 0)), Pmode);
+	}
       else
 	{
 	  rtx len_rtx;
@@ -20144,7 +20170,8 @@ expand_strn_compare (rtx operands[], int no_length)
 	    len_rtx = gen_reg_rtx (SImode);
 
 	  emit_move_insn (len_rtx, GEN_INT (bytes - compare_length));
-	  emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "strncmp"),
+	  tree fun = builtin_decl_explicit (BUILT_IN_STRNCMP);
+	  emit_library_call_value (XEXP (DECL_RTL (fun), 0),
 				   target, LCT_NORMAL, GET_MODE (target), 3,
 				   force_reg (Pmode, XEXP (src1, 0)), Pmode,
 				   force_reg (Pmode, XEXP (src2, 0)), Pmode,
