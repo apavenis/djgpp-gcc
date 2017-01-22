@@ -17,6 +17,13 @@ my $gcc_ver_s2a = $gcc_ver_s2; $gcc_ver_s2a =~ s/-.*$//;
 my $gcc_ver_s1a = $gcc_ver_s1; $gcc_ver_s1a =~ s/-.*$//;
 my $docdir = "gnu/gcc-$gcc_ver_s1";
 
+if ( ! -f "include/cxx/$base_ver_s1/iostream" ) {
+  $base_ver_s1 =~ s/\..*//;
+  if ( ! -f "include/cxx/$base_ver_s1/iostream" ) {
+     exit 1;
+  }
+}
+
 my $djver = getdjver();
 my ($djver_desc, $djreq);
 
@@ -731,7 +738,7 @@ sub mk_manifest
         'include/ssp/', 'info/(?:cpp|gcc|libquadmath)', '/djgpp\.ver$',
         '/include/(?:am|bm|em|m|nm|pm|sm|tm|xm)mintrin',
         '/include/(?:cpuid|float|iso646|mm_malloc|mm3dnow|mmintcommon)\.h$',
-        '/include/(?:avx|imm|wmm|x86|bmi|tbm|pku|clzero)intrin\.h$',
+        '/include/(?:avx|imm|wmm|x86|bmi|tbm|pku|clzero|sgx)intrin\.h$',
         '/include/(?:avx2|bmi2|f16c|fma|lzcnt)intrin.\h$',
         '/include/std(?:align|noreturn)\.h$',
         '/include/quadmath(?:|_weak).h',
