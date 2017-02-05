@@ -120,8 +120,8 @@ rm -rf $gcc_dir/liboffloadmic
 rm -rf $gcc_dir/libvtv
 
 if $remove_tests ; then
-    for name in $(cd gcc_dir/gcc/testsuite && ls -1b | grep -v selftest); do
-        rm -f gcc_dir/gcc/testsuite/$name
+    for name in $(cd $gcc_dir/gcc/testsuite && ls -1b | grep -v selftest); do
+        rm -rf $gcc_dir/gcc/testsuite/$name
     done
 fi
 
