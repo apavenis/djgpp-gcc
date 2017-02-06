@@ -1,3 +1,128 @@
+2017-01-23  Martin Liska  <mliska@suse.cz>
+
+	PR tree-optimization/79196
+	* tree-ssa-strlen.c (fold_strstr_to_memcmp): Rename to ...
+	(fold_strstr_to_strncmp): ... this.  Fold the pattern to strncmp
+	instead of memcmp.
+	(strlen_optimize_stmt): Call the renamed function.
+
+2017-01-23  Michael Matz  <matz@suse.de>
+
+	PR tree-optimization/78384
+	* tree-ssa-loop-split.c (patch_loop_exit): Use correct edge.
+
+2017-01-23  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/79186
+	* tree-vrp.c (register_new_assert_for): Make sure we've seen
+	both incoming edges before moving an assert.
+
+2017-01-23  Martin Jambor  <mjambor@suse.cz>
+
+	* ipa-prop.c (load_from_param_1): Removed.
+	(load_from_unmodified_param): Bits from load_from_param_1 put back
+	here.
+	(load_from_param): Removed.
+	(compute_complex_assign_jump_func): Removed stmt2 and just replaced it
+	with stmt.  Reverted back to use of load_from_unmodified_param.
+
+2017-01-23  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/79108
+	* ipa-prop.h (ipa_param_descriptor): Anotate with with GTY(()).
+	(ipa_node_params): Annotate with GTY((for_user)).  Make descriptors
+	field a pointer to garbage collected vector, mark lattices and
+	ipcp_orig_node with GTY((skip)).
+	(ipa_get_param_count): Adjust to descriptors being a pointer.
+	(ipa_get_param): Likewise.
+	(ipa_get_type): Likewise.
+	(ipa_get_param_move_cost): Likewise.
+	(ipa_set_param_used): Likewise.
+	(ipa_get_controlled_uses): Likewise.
+	(ipa_set_controlled_uses): Likewise.
+	(ipa_is_param_used): Likewise.
+	(ipa_node_params_t): Move into garbage collector.  New methods insert
+	and remove.
+	(ipa_node_params_sum): Annotate wth GTY(()).
+	(ipa_check_create_node_params): Adjust to ipa_node_params_sum being
+	garbage collected.
+	(ipa_load_from_parm_agg): Adjust declaration.
+	* ipa-icf.c (param_used_p): Adjust to descriptors being a pointer.
+	* ipa-profile.c (ipa_profile): Likewise.
+	* ipa-prop.c (ipa_get_param_decl_index_1): Likewise.
+	(ipa_populate_param_decls): Make descriptors parameter garbage
+	collected.
+	(ipa_dump_param): Adjust to descriptors being a pointer.
+	(ipa_alloc_node_params): Likewise.
+	(ipa_initialize_node_params): Likewise.
+	(load_from_param_1): Make descriptors parameter garbage collected.
+	(load_from_unmodified_param): Likewise.
+	(load_from_param): Likewise.
+	(ipa_load_from_parm_agg): Likewise.
+	(ipa_node_params::~ipa_node_params): Removed.
+	(ipa_free_all_node_params): Remove call to delete operator.
+	(ipa_node_params_t::insert): New.
+	(ipa_node_params_t::remove): Likewise.
+	(ipa_node_params_t::duplicate): Adjust to descriptors being a pointer,
+	copy known_csts and known_contexts vectors.
+	(ipa_read_node_info): Adjust to descriptors being a pointer.
+	(ipcp_modif_dom_walker): Make m_descriptors field garbage
+	collected.
+	(ipcp_transform_function): Make descriptors variable garbage
+	collected.
+
+2017-01-23  Andrew Senkevich  <andrew.senkevich@intel.com>
+
+	* config/i386/avx512bwintrin.h: Add k-mask test, kortest intrinsics.
+	* config/i386/avx512dqintrin.h: Ditto.
+	* config/i386/avx512fintrin.h: Ditto.
+	* gcc/config/i386/i386.c: Handle new builtins.
+	* config/i386/i386-builtin.def: Add new builtins.
+	* config/i386/sse.md (ktest<mode>, kortest<mode>): New.
+	(UNSPEC_KORTEST, UNSPEC_KTEST): New.
+
+2017-01-23  Jakub Jelinek  <jakub@redhat.com>
+	    Martin Liska  <mliska@suse.cz>
+
+	* asan.h: Define ASAN_USE_AFTER_SCOPE_ATTRIBUTE.
+	* asan.c (asan_expand_poison_ifn): Support stores and use
+	appropriate ASAN report function.
+	* internal-fn.c (expand_ASAN_POISON_USE): New function.
+	* internal-fn.def (ASAN_POISON_USE): Declare.
+	* tree-into-ssa.c (maybe_add_asan_poison_write): New function.
+	(maybe_register_def): Create ASAN_POISON_USE when sanitizing.
+	* tree-ssa-dce.c (eliminate_unnecessary_stmts): Remove
+	ASAN_POISON calls w/o LHS.
+	* tree-ssa.c (execute_update_addresses_taken): Create clobber
+	for ASAN_MARK (UNPOISON, &x, ...) in order to prevent usage of a LHS
+	from ASAN_MARK (POISON, &x, ...) coming to a PHI node.
+	* gimplify.c (asan_poison_variables): Add attribute
+	use_after_scope_memory to variables that really needs to live
+	in memory.
+	* tree-ssa.c (is_asan_mark_p): Do not rewrite into SSA when
+	having the attribute.
+
+2017-01-23  Martin Liska  <mliska@suse.cz>
+
+	* asan.c (create_asan_shadow_var): New function.
+	(asan_expand_poison_ifn): Likewise.
+	* asan.h (asan_expand_poison_ifn): New declaration.
+	* internal-fn.c (expand_ASAN_POISON): Likewise.
+	* internal-fn.def (ASAN_POISON): New builtin.
+	* sanopt.c (pass_sanopt::execute): Expand
+	asan_expand_poison_ifn.
+	* tree-inline.c (copy_decl_for_dup_finish): Make function
+	external.
+	* tree-inline.h (copy_decl_for_dup_finish): Likewise.
+	* tree-ssa.c (is_asan_mark_p): New function.
+	(execute_update_addresses_taken): Rewrite local variables
+	(identified just by use-after-scope as addressable) into SSA.
+
+2017-01-22  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* doc/install.texi (Specific): opensource.apple.com uses https
+	now. Remove trailing slash.
+
 2017-01-22  Gerald Pfeifer  <gerald@pfeifer.com>
 
 	* README.Portability: Remove note on an Irix compatibility issue.
@@ -7,7 +132,7 @@
 	* gcov.c (INCLUDE_ALGORITHM): Define.
 	(INCLUDE_VECTOR): Define.
 	No longer include <vector> and <algorithm> directly.
-	
+
 2017-01-21  Gerald Pfeifer  <gerald@pfeifer.com>
 
 	* doc/extend.texi (Thread-Local): Change www.akkadia.org reference
@@ -395,15 +520,6 @@
 	* config/aarch64/aarch64.c (aarch64_sched_adjust_priority)
 	New function.
 	(TARGET_SCHED_ADJUST_PRIORITY): Define target hook.
-
-2017-01-18  Maxim Ostapenko  <m.ostapenko@samsung.com>
-
-	PR lto/79061
-	* asan.c (get_translation_unit_decl): New function.
-	(asan_add_global): Extract modules file name from globals
-	TRANSLATION_UNIT_DECL in lto mode.
-	* tree.c (build_translation_unit_decl): Add source location for newly
-	built TRANSLATION_UNIT_DECL.
 
 2017-01-18  Matthias Klose  <doko@ubuntu.com>
 
