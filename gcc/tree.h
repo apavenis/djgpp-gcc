@@ -4706,7 +4706,7 @@ extern tree tree_strip_nop_conversions (tree);
 extern tree tree_strip_sign_nop_conversions (tree);
 extern const_tree strip_invariant_refs (const_tree);
 extern tree lhd_gcc_personality (void);
-extern void assign_assembler_name_if_neeeded (tree);
+extern void assign_assembler_name_if_needed (tree);
 extern void warn_deprecated_use (tree, tree);
 extern void cache_integer_cst (tree);
 extern const char *combined_fn_name (combined_fn);
@@ -4855,8 +4855,10 @@ extern tree array_ref_low_bound (tree);
 
 /* Returns true if REF is an array reference to an array at the end of
    a structure.  If this is the case, the array may be allocated larger
-   than its upper bound implies.  */
-extern bool array_at_struct_end_p (tree);
+   than its upper bound implies.  When second argument is true considers
+   REF when it's a COMPONENT_REF in addition ARRAY_REF and
+   ARRAY_RANGE_REF.  */
+extern bool array_at_struct_end_p (tree, bool = false);
 
 /* Return a tree representing the offset, in bytes, of the field referenced
    by EXP.  This does not include any offset in DECL_FIELD_BIT_OFFSET.  */

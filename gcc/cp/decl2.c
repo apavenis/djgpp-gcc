@@ -1059,8 +1059,11 @@ grokbitfield (const cp_declarator *declarator,
 	  && !INTEGRAL_OR_UNSCOPED_ENUMERATION_TYPE_P (TREE_TYPE (width)))
 	error ("width of bit-field %qD has non-integral type %qT", value,
 	       TREE_TYPE (width));
-      DECL_INITIAL (value) = width;
-      SET_DECL_C_BIT_FIELD (value);
+      else
+	{
+	  DECL_INITIAL (value) = width;
+	  SET_DECL_C_BIT_FIELD (value);
+	}
     }
 
   DECL_IN_AGGR_P (value) = 1;
@@ -1816,6 +1819,14 @@ vague_linkage_p (tree decl)
 {
   if (!TREE_PUBLIC (decl))
     {
+      /* maybe_thunk_body clears TREE_PUBLIC on the maybe-in-charge 'tor
+	 variants, check one of the "clones" for the real linkage.  */
+      if ((DECL_MAYBE_IN_CHARGE_DESTRUCTOR_P (decl)
+	   || DECL_MAYBE_IN_CHARGE_CONSTRUCTOR_P (decl))
+	  && DECL_CHAIN (decl)
+	  && DECL_CLONED_FUNCTION (DECL_CHAIN (decl)))
+	return vague_linkage_p (DECL_CHAIN (decl));
+
       gcc_checking_assert (!DECL_COMDAT (decl));
       return false;
     }
@@ -4378,7 +4389,7 @@ maybe_warn_sized_delete (enum tree_code code)
   tree sized = NULL_TREE;
   tree unsized = NULL_TREE;
 
-  for (tree ovl = IDENTIFIER_GLOBAL_VALUE (ansi_opname (code));
+  for (tree ovl = IDENTIFIER_GLOBAL_VALUE (cp_operator_id (code));
        ovl; ovl = OVL_NEXT (ovl))
     {
       tree fn = OVL_CURRENT (ovl);

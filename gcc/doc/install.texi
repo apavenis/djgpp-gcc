@@ -2665,7 +2665,10 @@ separately.
 
 Second, you must have the testing tools installed.  This includes
 @uref{http://www.gnu.org/software/dejagnu/,,DejaGnu}, Tcl, and Expect;
-the DejaGnu site has links to these.
+the DejaGnu site has links to these. For running the BRIG frontend
+tests, a tool to assemble the binary BRIGs from HSAIL text,
+@uref{https://github.com/HSAFoundation/HSAIL-Tools/,,HSAILasm} must
+be installed.
 
 If the directories where @command{runtest} and @command{expect} were
 installed are not in the @env{PATH}, you may need to set the following
@@ -4290,6 +4293,36 @@ Embedded PowerPC system in little endian mode.
 @heading rl78-*-elf
 The Renesas RL78 processor.
 This configuration is intended for embedded systems.
+
+@html
+<hr />
+@end html
+@anchor{riscv32-x-elf}
+@heading riscv32-*-elf
+The RISC-V RV32 instruction set.
+This configuration is intended for embedded systems.
+
+@html
+<hr />
+@end html
+@anchor{riscv64-x-elf}
+@heading riscv64-*-elf
+The RISC-V RV64 instruction set.
+This configuration is intended for embedded systems.
+
+@html
+<hr />
+@end html
+@anchor{riscv32-x-linux}
+@heading riscv32-*-linux
+The RISC-V RV32 instruction set running GNU/Linux.
+
+@html
+<hr />
+@end html
+@anchor{riscv64-x-linux}
+@heading riscv64-*-linux
+The RISC-V RV64 instruction set running GNU/Linux.
 
 @html
 <hr />

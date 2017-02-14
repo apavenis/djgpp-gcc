@@ -3622,11 +3622,26 @@ dimode_scalar_chain::convert_reg (unsigned regno)
 
       if (scalar_copy)
 	{
-	  rtx vcopy = gen_reg_rtx (V2DImode);
-
 	  start_sequence ();
-	  if (TARGET_INTER_UNIT_MOVES_FROM_VEC)
+	  if (TARGET_SSE4_1)
 	    {
+	      rtx tmp = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (1, const0_rtx));
+	      emit_insn
+		(gen_rtx_SET
+		 (gen_rtx_SUBREG (SImode, scopy, 0),
+		  gen_rtx_VEC_SELECT (SImode,
+				      gen_rtx_SUBREG (V4SImode, reg, 0), tmp)));
+
+	      tmp = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (1, const1_rtx));
+	      emit_insn
+		(gen_rtx_SET
+		 (gen_rtx_SUBREG (SImode, scopy, 4),
+		  gen_rtx_VEC_SELECT (SImode,
+				      gen_rtx_SUBREG (V4SImode, reg, 0), tmp)));
+	    }
+	  else if (TARGET_INTER_UNIT_MOVES_FROM_VEC)
+	    {
+	      rtx vcopy = gen_reg_rtx (V2DImode);
 	      emit_move_insn (vcopy, gen_rtx_SUBREG (V2DImode, reg, 0));
 	      emit_move_insn (gen_rtx_SUBREG (SImode, scopy, 0),
 			      gen_rtx_SUBREG (SImode, vcopy, 0));
@@ -14944,6 +14959,7 @@ ix86_expand_split_stack_prologue (void)
   allocate_rtx = GEN_INT (allocate);
   args_size = crtl->args.size >= 0 ? crtl->args.size : 0;
   call_fusage = NULL_RTX;
+  rtx pop = NULL_RTX;
   if (TARGET_64BIT)
     {
       rtx reg10, reg11;
@@ -15021,13 +15037,18 @@ ix86_expand_split_stack_prologue (void)
     }
   else
     {
-      emit_insn (gen_push (GEN_INT (args_size)));
-      emit_insn (gen_push (allocate_rtx));
+      rtx_insn *insn = emit_insn (gen_push (GEN_INT (args_size)));
+      add_reg_note (insn, REG_ARGS_SIZE, GEN_INT (UNITS_PER_WORD));
+      insn = emit_insn (gen_push (allocate_rtx));
+      add_reg_note (insn, REG_ARGS_SIZE, GEN_INT (2 * UNITS_PER_WORD));
+      pop = GEN_INT (2 * UNITS_PER_WORD);
     }
   call_insn = ix86_expand_call (NULL_RTX, gen_rtx_MEM (QImode, fn),
 				GEN_INT (UNITS_PER_WORD), constm1_rtx,
-				NULL_RTX, false);
+				pop, false);
   add_function_usage_to (call_insn, call_fusage);
+  if (!TARGET_64BIT)
+    add_reg_note (call_insn, REG_ARGS_SIZE, GEN_INT (0));
 
   /* In order to make call/return prediction work right, we now need
      to execute a return instruction.  See
@@ -17592,7 +17613,7 @@ print_reg (rtx x, int code, FILE *file)
   else
     msize = GET_MODE_SIZE (GET_MODE (x));
 
-  regno = true_regnum (x);
+  regno = REGNO (x);
 
   gcc_assert (regno != ARG_POINTER_REGNUM
 	      && regno != FRAME_POINTER_REGNUM
@@ -41670,10 +41691,9 @@ x86_file_start (void)
 }
 
 int
-x86_field_alignment (tree field, int computed)
+x86_field_alignment (tree type, int computed)
 {
   machine_mode mode;
-  tree type = TREE_TYPE (field);
 
   if (TARGET_64BIT || TARGET_ALIGN_DOUBLE)
     return computed;
@@ -50486,6 +50506,28 @@ ix86_spill_class (reg_class_t rclass, machine_mode mode)
   return NO_REGS;
 }
 
+/* Implement TARGET_MAX_NOCE_IFCVT_SEQ_COST.  Like the default implementation,
+   but returns a lower bound.  */
+
+static unsigned int
+ix86_max_noce_ifcvt_seq_cost (edge e)
+{
+  bool predictable_p = predictable_edge_p (e);
+
+  enum compiler_param param
+    = (predictable_p
+       ? PARAM_MAX_RTL_IF_CONVERSION_PREDICTABLE_COST
+       : PARAM_MAX_RTL_IF_CONVERSION_UNPREDICTABLE_COST);
+
+  /* If we have a parameter set, use that, otherwise take a guess using
+     BRANCH_COST.  */
+  if (global_options_set.x_param_values[param])
+    return PARAM_VALUE (param);
+  else
+    return BRANCH_COST (true, predictable_p) * COSTS_N_INSNS (2);
+}
+
+
 /* Implement targetm.vectorize.init_cost.  */
 
 static void *
@@ -52035,6 +52077,8 @@ ix86_run_selftests (void)
 #undef TARGET_EXPAND_DIVMOD_LIBFUNC
 #define TARGET_EXPAND_DIVMOD_LIBFUNC ix86_expand_divmod_libfunc
 
+#undef TARGET_MAX_NOCE_IFCVT_SEQ_COST
+#define TARGET_MAX_NOCE_IFCVT_SEQ_COST ix86_max_noce_ifcvt_seq_cost
 #if CHECKING_P
 #undef TARGET_RUN_TARGET_SELFTESTS
 #define TARGET_RUN_TARGET_SELFTESTS selftest::ix86_run_selftests

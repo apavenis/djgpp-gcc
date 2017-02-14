@@ -5899,7 +5899,7 @@ find_decls_types_in_var (varpool_node *v, struct free_lang_data_d *fld)
 /* If T needs an assembler name, have one created for it.  */
 
 void
-assign_assembler_name_if_neeeded (tree t)
+assign_assembler_name_if_needed (tree t)
 {
   if (need_assembler_name_p (t))
     {
@@ -5966,7 +5966,7 @@ free_lang_data_in_cgraph (void)
      now because free_lang_data_in_decl will invalidate data needed
      for mangling.  This breaks mangling on interdependent decls.  */
   FOR_EACH_VEC_ELT (fld.decls, i, t)
-    assign_assembler_name_if_neeeded (t);
+    assign_assembler_name_if_needed (t);
 
   /* Traverse every decl found freeing its language data.  */
   FOR_EACH_VEC_ELT (fld.decls, i, t)
@@ -6684,6 +6684,7 @@ build_aligned_type (tree type, unsigned int align)
 
   t = build_variant_type_copy (type);
   SET_TYPE_ALIGN (t, align);
+  TYPE_USER_ALIGN (t) = 1;
 
   return t;
 }
@@ -13194,13 +13195,16 @@ array_ref_up_bound (tree exp)
 
 /* Returns true if REF is an array reference to an array at the end of
    a structure.  If this is the case, the array may be allocated larger
-   than its upper bound implies.  */
+   than its upper bound implies.  When ALLOW_COMPREF is true considers
+   REF when it's a COMPONENT_REF in addition ARRAY_REF and
+   ARRAY_RANGE_REF.  */
 
 bool
-array_at_struct_end_p (tree ref)
+array_at_struct_end_p (tree ref, bool allow_compref)
 {
   if (TREE_CODE (ref) != ARRAY_REF
-      && TREE_CODE (ref) != ARRAY_RANGE_REF)
+      && TREE_CODE (ref) != ARRAY_RANGE_REF
+      && (!allow_compref || TREE_CODE (ref) != COMPONENT_REF))
     return false;
 
   while (handled_component_p (ref))

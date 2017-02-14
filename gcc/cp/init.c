@@ -2924,7 +2924,7 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
   tree fnname;
   tree fns;
 
-  fnname = ansi_opname (array_p ? VEC_NEW_EXPR : NEW_EXPR);
+  fnname = cp_operator_id (array_p ? VEC_NEW_EXPR : NEW_EXPR);
 
   member_new_p = !globally_qualified_p
 		 && CLASS_TYPE_P (elt_type)
@@ -3262,8 +3262,10 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 	    }
 	  else if (explicit_value_init_p)
 	    {
-	      /* Something like `new int()'.  */
-	      tree val = build_value_init (type, complain);
+	      /* Something like `new int()'.  NO_CLEANUP is needed so
+		 we don't try and build a (possibly ill-formed)
+		 destructor.  */
+	      tree val = build_value_init (type, complain | tf_no_cleanup);
 	      if (val == error_mark_node)
 		return error_mark_node;
 	      init_expr = build2 (INIT_EXPR, type, init_expr, val);

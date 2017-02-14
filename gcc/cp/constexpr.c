@@ -696,23 +696,21 @@ massage_constexpr_body (tree fun, tree body)
   return body;
 }
 
-/* FUN is a constexpr constructor with massaged body BODY.  Return true
-   if some bases/fields are uninitialized, and complain if COMPLAIN.  */
+/* CTYPE is a type constructed from BODY.  Return true if some
+   bases/fields are uninitialized, and complain if COMPLAIN.  */
 
 static bool
-cx_check_missing_mem_inits (tree fun, tree body, bool complain)
+cx_check_missing_mem_inits (tree ctype, tree body, bool complain)
 {
-  bool bad;
-  tree field;
-  unsigned i, nelts;
-  tree ctype;
-
-  if (TREE_CODE (body) != CONSTRUCTOR)
-    return false;
-
-  nelts = CONSTRUCTOR_NELTS (body);
-  ctype = DECL_CONTEXT (fun);
-  field = TYPE_FIELDS (ctype);
+  unsigned nelts = 0;
+  
+  if (body)
+    {
+      if (TREE_CODE (body) != CONSTRUCTOR)
+	return false;
+      nelts = CONSTRUCTOR_NELTS (body);
+    }
+  tree field = TYPE_FIELDS (ctype);
 
   if (TREE_CODE (ctype) == UNION_TYPE)
     {
@@ -726,13 +724,13 @@ cx_check_missing_mem_inits (tree fun, tree body, bool complain)
       return false;
     }
 
-  bad = false;
-  for (i = 0; i <= nelts; ++i)
+  /* Iterate over the CONSTRUCTOR, checking any missing fields don't
+     need an explicit initialization.  */
+  bool bad = false;
+  for (unsigned i = 0; i <= nelts; ++i)
     {
-      tree index;
-      if (i == nelts)
-	index = NULL_TREE;
-      else
+      tree index = NULL_TREE;
+      if (i < nelts)
 	{
 	  index = CONSTRUCTOR_ELT (body, i)->index;
 	  /* Skip base and vtable inits.  */
@@ -740,13 +738,25 @@ cx_check_missing_mem_inits (tree fun, tree body, bool complain)
 	      || DECL_ARTIFICIAL (index))
 	    continue;
 	}
+
       for (; field != index; field = DECL_CHAIN (field))
 	{
 	  tree ftype;
-	  if (TREE_CODE (field) != FIELD_DECL
-	      || (DECL_C_BIT_FIELD (field) && !DECL_NAME (field))
-	      || DECL_ARTIFICIAL (field))
+	  if (TREE_CODE (field) != FIELD_DECL)
 	    continue;
+	  if (DECL_C_BIT_FIELD (field) && !DECL_NAME (field))
+	    continue;
+	  if (DECL_ARTIFICIAL (field))
+	    continue;
+	  if (ANON_AGGR_TYPE_P (TREE_TYPE (field)))
+	    {
+	      /* Recurse to check the anonummous aggregate member.  */
+	      bad |= cx_check_missing_mem_inits
+		(TREE_TYPE (field), NULL_TREE, complain);
+	      if (bad && !complain)
+		return true;
+	      continue;
+	    }
 	  ftype = strip_array_types (TREE_TYPE (field));
 	  if (type_has_constexpr_default_constructor (ftype))
 	    {
@@ -766,6 +776,15 @@ cx_check_missing_mem_inits (tree fun, tree body, bool complain)
 	}
       if (field == NULL_TREE)
 	break;
+
+      if (ANON_AGGR_TYPE_P (TREE_TYPE (index)))
+	{
+	  /* Check the anonymous aggregate initializer is valid.  */
+	  bad |= cx_check_missing_mem_inits
+	    (TREE_TYPE (index), CONSTRUCTOR_ELT (body, i)->value, complain);
+	  if (bad && !complain)
+	    return true;
+	}
       field = DECL_CHAIN (field);
     }
 
@@ -803,7 +822,8 @@ register_constexpr_fundef (tree fun, tree body)
     }
 
   if (DECL_CONSTRUCTOR_P (fun)
-      && cx_check_missing_mem_inits (fun, massaged, !DECL_GENERATED_P (fun)))
+      && cx_check_missing_mem_inits (DECL_CONTEXT (fun),
+				     massaged, !DECL_GENERATED_P (fun)))
     return NULL;
 
   /* Create the constexpr function table if necessary.  */
@@ -864,7 +884,7 @@ explain_invalid_constexpr_fn (tree fun)
 	  body = massage_constexpr_body (fun, DECL_SAVED_TREE (fun));
 	  require_potential_rvalue_constant_expression (body);
 	  if (DECL_CONSTRUCTOR_P (fun))
-	    cx_check_missing_mem_inits (fun, body, true);
+	    cx_check_missing_mem_inits (DECL_CONTEXT (fun), body, true);
 	}
     }
   input_location = save_loc;
@@ -4498,6 +4518,14 @@ cxx_eval_constant_expression (const constexpr_ctx *ctx, tree t,
         *non_constant_p = true;
       return t;
 
+    case ANNOTATE_EXPR:
+      gcc_assert (tree_to_uhwi (TREE_OPERAND (t, 1)) == annot_expr_ivdep_kind);
+      r = cxx_eval_constant_expression (ctx, TREE_OPERAND (t, 0),
+					lval,
+					non_constant_p, overflow_p,
+					jump_target);
+      break;
+
     default:
       if (STATEMENT_CODE_P (TREE_CODE (t)))
 	{
@@ -4757,8 +4785,10 @@ fold_simple (tree t)
    Otherwise, if T does not have TREE_CONSTANT set, returns T.
    Otherwise, returns a version of T without TREE_CONSTANT.  */
 
-static tree
-maybe_constant_value_1 (tree t, tree decl)
+static GTY((deletable)) hash_map<tree, tree> *cv_cache;
+
+tree
+maybe_constant_value (tree t, tree decl)
 {
   tree r;
 
@@ -4771,6 +4801,14 @@ maybe_constant_value_1 (tree t, tree decl)
 	}
       return t;
     }
+  else if (CONSTANT_CLASS_P (t))
+    /* No caching or evaluation needed.  */
+    return t;
+
+  if (cv_cache == NULL)
+    cv_cache = hash_map<tree, tree>::create_ggc (101);
+  if (tree *cached = cv_cache->get (t))
+    return *cached;
 
   r = cxx_eval_outermost_constant_expr (t, true, true, decl);
   gcc_checking_assert (r == t
@@ -4778,27 +4816,8 @@ maybe_constant_value_1 (tree t, tree decl)
 		       || TREE_CODE (t) == VIEW_CONVERT_EXPR
 		       || (TREE_CONSTANT (t) && !TREE_CONSTANT (r))
 		       || !cp_tree_equal (r, t));
+  cv_cache->put (t, r);
   return r;
-}
-
-static GTY((deletable)) hash_map<tree, tree> *cv_cache;
-
-/* If T is a constant expression, returns its reduced value.
-   Otherwise, if T does not have TREE_CONSTANT set, returns T.
-   Otherwise, returns a version of T without TREE_CONSTANT.  */
-
-tree
-maybe_constant_value (tree t, tree decl)
-{
-  if (cv_cache == NULL)
-    cv_cache = hash_map<tree, tree>::create_ggc (101);
-
-  if (tree *cached = cv_cache->get (t))
-    return *cached;
-
-  tree ret = maybe_constant_value_1 (t, decl);
-  cv_cache->put (t, ret);
-  return ret;
 }
 
 /* Dispose of the whole CV_CACHE.  */
@@ -4896,6 +4915,8 @@ maybe_constant_init (tree t, tree decl)
     t = TARGET_EXPR_INITIAL (t);
   if (!potential_nondependent_static_init_expression (t))
     /* Don't try to evaluate it.  */;
+  else if (CONSTANT_CLASS_P (t))
+    /* No evaluation needed.  */;
   else
     t = cxx_eval_outermost_constant_expr (t, true, false, decl);
   if (TREE_CODE (t) == TARGET_EXPR)
@@ -5675,6 +5696,10 @@ potential_constant_expression_1 (tree t, bool want_rval, bool strict,
 	  error ("%<goto%> is not a constant expression");
 	return false;
       }
+
+    case ANNOTATE_EXPR:
+      gcc_assert (tree_to_uhwi (TREE_OPERAND (t, 1)) == annot_expr_ivdep_kind);
+      return RECUR (TREE_OPERAND (t, 0), rval);
 
     default:
       if (objc_is_property_ref (t))

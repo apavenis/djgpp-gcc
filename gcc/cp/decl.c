@@ -4071,7 +4071,8 @@ cxx_init_decl_processing (void)
   gcc_assert (global_namespace == NULL_TREE);
   global_namespace = build_lang_decl (NAMESPACE_DECL, global_scope_name,
 				      void_type_node);
-  DECL_CONTEXT (global_namespace) = build_translation_unit_decl (NULL_TREE);
+  DECL_CONTEXT (global_namespace)
+    = build_translation_unit_decl (get_identifier (main_input_filename));
   debug_hooks->register_main_translation_unit
     (DECL_CONTEXT (global_namespace));
   TREE_PUBLIC (global_namespace) = 1;
@@ -4563,7 +4564,7 @@ static tree
 push_cp_library_fn (enum tree_code operator_code, tree type,
 		    int ecf_flags)
 {
-  tree fn = build_cp_library_fn (ansi_opname (operator_code),
+  tree fn = build_cp_library_fn (cp_operator_id (operator_code),
 				 operator_code,
 				 type, ecf_flags);
   pushdecl (fn);
@@ -7377,6 +7378,7 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 	    }
 	  first = DECL_CHAIN (first);
 	}
+      TREE_TYPE (decl) = error_mark_node;
       if (DECL_P (decl) && DECL_NAMESPACE_SCOPE_P (decl))
 	SET_DECL_ASSEMBLER_NAME (decl, get_identifier ("<decomp>"));
       return;
@@ -7559,6 +7561,11 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
   else if (!CLASS_TYPE_P (type))
     {
       error_at (loc, "cannot decompose non-array non-class type %qT", type);
+      goto error_out;
+    }
+  else if (LAMBDA_TYPE_P (type))
+    {
+      error_at (loc, "cannot decompose lambda closure type %qT", type);
       goto error_out;
     }
   else
@@ -11796,8 +11803,19 @@ grokdeclarator (const cp_declarator *declarator,
 		error ("flexible array member in union");
 		type = error_mark_node;
 	      }
-	    else 
+	    else
 	      {
+		/* Array is a flexible member.  */
+		if (in_system_header_at (input_location))
+		  /* Do not warn on flexible array members in system
+		     headers because glibc uses them.  */;
+		else if (name)
+		  pedwarn (input_location, OPT_Wpedantic,
+			   "ISO C++ forbids flexible array member %<%s%>", name);
+		else
+		  pedwarn (input_location, OPT_Wpedantic,
+			   "ISO C++ forbids flexible array members");
+
 		/* Flexible array member has a null domain.  */
 		type = build_cplus_array_type (TREE_TYPE (type), NULL_TREE);
 	      }
@@ -12920,12 +12938,12 @@ grok_op_properties (tree decl, bool complain)
     do
       {
 #define DEF_OPERATOR(NAME, CODE, MANGLING, ARITY, ASSN_P)	\
-	if (ansi_opname (CODE) == name)				\
+	if (cp_operator_id (CODE) == name)			\
 	  {							\
 	    operator_code = (CODE);				\
 	    break;						\
 	  }							\
-	else if (ansi_assopname (CODE) == name)			\
+	else if (cp_assignment_operator_id (CODE) == name)	\
 	  {							\
 	    operator_code = (CODE);				\
 	    DECL_ASSIGNMENT_OPERATOR_P (decl) = 1;		\

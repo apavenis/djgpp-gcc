@@ -2730,19 +2730,9 @@ finish_class_member_access_expr (cp_expr object, tree name, bool template_p,
     {
       bool is_template_id = false;
       tree template_args = NULL_TREE;
-      tree scope;
+      tree scope = NULL_TREE;
 
-      if (TREE_CODE (name) == TEMPLATE_ID_EXPR)
-	{
-	  is_template_id = true;
-	  template_args = TREE_OPERAND (name, 1);
-	  name = TREE_OPERAND (name, 0);
-
-	  if (TREE_CODE (name) == OVERLOAD)
-	    name = DECL_NAME (get_first_fn (name));
-	  else if (DECL_P (name))
-	    name = DECL_NAME (name);
-	}
+      access_path = object_type;
 
       if (TREE_CODE (name) == SCOPE_REF)
 	{
@@ -2761,9 +2751,25 @@ finish_class_member_access_expr (cp_expr object, tree name, bool template_p,
 		       scope, name, object_type);
 	      return error_mark_node;
 	    }
+	}
+      
+      if (TREE_CODE (name) == TEMPLATE_ID_EXPR)
+	{
+	  is_template_id = true;
+	  template_args = TREE_OPERAND (name, 1);
+	  name = TREE_OPERAND (name, 0);
 
+	  if (TREE_CODE (name) == OVERLOAD)
+	    name = DECL_NAME (get_first_fn (name));
+	  else if (DECL_P (name))
+	    name = DECL_NAME (name);
+	}
+
+      if (scope)
+	{
 	  if (TREE_CODE (scope) == ENUMERAL_TYPE)
 	    {
+	      gcc_assert (!is_template_id);
 	      /* Looking up a member enumerator (c++/56793).  */
 	      if (!TYPE_CLASS_SCOPE_P (scope)
 		  || !DERIVED_FROM_P (TYPE_CONTEXT (scope), object_type))
@@ -2811,11 +2817,6 @@ finish_class_member_access_expr (cp_expr object, tree name, bool template_p,
 		error ("%qT is not a base of %qT", scope, object_type);
 	      return error_mark_node;
 	    }
-	}
-      else
-	{
-	  scope = NULL_TREE;
-	  access_path = object_type;
 	}
 
       if (TREE_CODE (name) == BIT_NOT_EXPR)
@@ -2949,7 +2950,10 @@ build_ptrmemfunc_access_expr (tree ptrmem, tree member_name)
        member = DECL_CHAIN (member))
     if (DECL_NAME (member) == member_name)
       break;
-  return build_simple_component_ref (ptrmem, member);
+  tree res = build_simple_component_ref (ptrmem, member);
+
+  TREE_NO_WARNING (res) = 1;
+  return res;
 }
 
 /* Given an expression PTR for a pointer, return an expression
@@ -8880,7 +8884,7 @@ check_return_expr (tree retval, bool *no_warning)
 
   /* Effective C++ rule 15.  See also start_function.  */
   if (warn_ecpp
-      && DECL_NAME (current_function_decl) == ansi_assopname(NOP_EXPR))
+      && DECL_NAME (current_function_decl) == cp_assignment_operator_id (NOP_EXPR))
     {
       bool warn = true;
 
