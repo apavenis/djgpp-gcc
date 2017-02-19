@@ -2005,7 +2005,11 @@ add_function_candidate (struct z_candidate **candidates,
      considered in overload resolution.  */
   if (DECL_CONSTRUCTOR_P (fn))
     {
-      parmlist = skip_artificial_parms_for (fn, parmlist);
+      if (ctor_omit_inherited_parms (fn))
+	/* Bring back parameters omitted from an inherited ctor.  */
+	parmlist = FUNCTION_FIRST_USER_PARMTYPE (DECL_ORIGIN (fn));
+      else
+	parmlist = skip_artificial_parms_for (fn, parmlist);
       skip = num_artificial_parms_for (fn);
       if (skip > 0 && first_arg != NULL_TREE)
 	{
@@ -6420,7 +6424,8 @@ enforce_access (tree basetype_path, tree decl, tree diag_decl,
 	 accessible when used to construct an object of the corresponding base
 	 class.  */
       decl = strip_inheriting_ctors (decl);
-      basetype_path = TYPE_BINFO (DECL_CONTEXT (decl));
+      basetype_path = lookup_base (basetype_path, DECL_CONTEXT (decl),
+				   ba_any, NULL, complain);
     }
 
   if (!accessible_p (basetype_path, decl, true))
@@ -7950,7 +7955,14 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 
       /* Pull out the real argument, disregarding const-correctness.  */
       targ = arg;
-      while (CONVERT_EXPR_P (targ)
+      /* Strip the reference binding for the constructor parameter.  */
+      if (CONVERT_EXPR_P (targ)
+	  && TREE_CODE (TREE_TYPE (targ)) == REFERENCE_TYPE)
+	targ = TREE_OPERAND (targ, 0);
+      /* But don't strip any other reference bindings; binding a temporary to a
+	 reference prevents copy elision.  */
+      while ((CONVERT_EXPR_P (targ)
+	      && TREE_CODE (TREE_TYPE (targ)) != REFERENCE_TYPE)
 	     || TREE_CODE (targ) == NON_LVALUE_EXPR)
 	targ = TREE_OPERAND (targ, 0);
       if (TREE_CODE (targ) == ADDR_EXPR)

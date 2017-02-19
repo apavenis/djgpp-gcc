@@ -7612,6 +7612,10 @@ convert_template_argument (tree parm,
 
       if (tree a = type_uses_auto (t))
 	{
+	  if (ARGUMENT_PACK_P (orig_arg))
+	    /* There's nothing to check for an auto argument pack.  */
+	    return orig_arg;
+
 	  t = do_auto_deduction (t, arg, a, complain, adc_unify, args);
 	  if (t == error_mark_node)
 	    return error_mark_node;
@@ -10073,6 +10077,28 @@ apply_late_template_attributes (tree *decl_p, tree attributes, int attr_flags,
   tree t;
   tree *p;
 
+  if (attributes == NULL_TREE)
+    return;
+
+  if (DECL_P (*decl_p))
+    {
+      if (TREE_TYPE (*decl_p) == error_mark_node)
+	return;
+      p = &DECL_ATTRIBUTES (*decl_p);
+      /* DECL_ATTRIBUTES comes from copy_node in tsubst_decl, and is identical
+         to our attributes parameter.  */
+      gcc_assert (*p == attributes);
+    }
+  else
+    {
+      p = &TYPE_ATTRIBUTES (*decl_p);
+      /* TYPE_ATTRIBUTES was set up (with abi_tag and may_alias) in
+	 lookup_template_class_1, and should be preserved.  */
+      gcc_assert (*p != attributes);
+      while (*p)
+	p = &TREE_CHAIN (*p);
+    }
+
   for (t = attributes; t; t = TREE_CHAIN (t))
     if (ATTR_IS_DEPENDENT (t))
       {
@@ -10081,21 +10107,13 @@ apply_late_template_attributes (tree *decl_p, tree attributes, int attr_flags,
 	break;
       }
 
-  if (DECL_P (*decl_p))
-    {
-      if (TREE_TYPE (*decl_p) == error_mark_node)
-	return;
-      p = &DECL_ATTRIBUTES (*decl_p);
-    }
-  else
-    p = &TYPE_ATTRIBUTES (*decl_p);
-
+  *p = attributes;
   if (last_dep)
     {
       tree late_attrs = NULL_TREE;
       tree *q = &late_attrs;
 
-      for (*p = attributes; *p; )
+      for (; *p; )
 	{
 	  t = *p;
 	  if (ATTR_IS_DEPENDENT (t))
@@ -10253,6 +10271,7 @@ instantiate_class_template_1 (tree type)
   TYPE_PACKED (type) = TYPE_PACKED (pattern);
   SET_TYPE_ALIGN (type, TYPE_ALIGN (pattern));
   TYPE_USER_ALIGN (type) = TYPE_USER_ALIGN (pattern);
+  CLASSTYPE_NON_AGGREGATE (type) = CLASSTYPE_NON_AGGREGATE (pattern);
   if (ANON_AGGR_TYPE_P (pattern))
     SET_ANON_AGGR_TYPE_P (type);
   if (CLASSTYPE_VISIBILITY_SPECIFIED (pattern))
@@ -11634,8 +11653,11 @@ tsubst_template_args (tree t, tree args, tsubst_flags_t complain, tree in_decl)
             new_arg = error_mark_node;
 
           if (TREE_CODE (new_arg) == NONTYPE_ARGUMENT_PACK) {
-            TREE_TYPE (new_arg) = tsubst (TREE_TYPE (orig_arg), args,
-                                          complain, in_decl);
+	    if (type_uses_auto (TREE_TYPE (orig_arg)))
+	      TREE_TYPE (new_arg) = TREE_TYPE (orig_arg);
+	    else
+	      TREE_TYPE (new_arg) = tsubst (TREE_TYPE (orig_arg), args,
+					    complain, in_decl);
             TREE_CONSTANT (new_arg) = TREE_CONSTANT (orig_arg);
 
             if (TREE_TYPE (new_arg) == error_mark_node)
@@ -12876,11 +12898,11 @@ tsubst_decl (tree t, tree args, tsubst_flags_t complain)
 					args, complain, in_decl);
 
 	/* Preserve a typedef that names a type.  */
-	if (is_typedef_decl (r))
+	if (is_typedef_decl (r) && type != error_mark_node)
 	  {
 	    DECL_ORIGINAL_TYPE (r) = NULL_TREE;
 	    set_underlying_type (r);
-	    if (TYPE_DECL_ALIAS_P (r) && type != error_mark_node)
+	    if (TYPE_DECL_ALIAS_P (r))
 	      /* An alias template specialization can be dependent
 		 even if its underlying type is not.  */
 	      TYPE_DEPENDENT_P_VALID (TREE_TYPE (r)) = false;
@@ -15078,6 +15100,7 @@ tsubst_omp_clauses (tree clauses, enum c_omp_region_type ort,
 	    = tsubst_omp_clause_decl (OMP_CLAUSE_DECL (oc), args, complain,
 				      in_decl);
 	  break;
+	case OMP_CLAUSE_TILE:
 	case OMP_CLAUSE_IF:
 	case OMP_CLAUSE_NUM_THREADS:
 	case OMP_CLAUSE_SCHEDULE:
@@ -15171,19 +15194,6 @@ tsubst_omp_clauses (tree clauses, enum c_omp_region_type ort,
 	case OMP_CLAUSE_INDEPENDENT:
 	case OMP_CLAUSE_AUTO:
 	case OMP_CLAUSE_SEQ:
-	  break;
-	case OMP_CLAUSE_TILE:
-	  {
-	    tree lnc, loc;
-	    for (lnc = OMP_CLAUSE_TILE_LIST (nc),
-		   loc = OMP_CLAUSE_TILE_LIST (oc);
-		 loc;
-		 loc = TREE_CHAIN (loc), lnc = TREE_CHAIN (lnc))
-	      {
-		TREE_VALUE (lnc) = tsubst_expr (TREE_VALUE (loc), args,
-						complain, in_decl, false);
-	      }
-	  }
 	  break;
 	default:
 	  gcc_unreachable ();
@@ -23829,6 +23839,7 @@ type_dependent_expression_p (tree expression)
      we couldn't determine its length in cp_complete_array_type because
      it is dependent.  */
   if (VAR_P (expression)
+      && TREE_TYPE (expression) != NULL_TREE
       && TREE_CODE (TREE_TYPE (expression)) == ARRAY_TYPE
       && !TYPE_DOMAIN (TREE_TYPE (expression))
       && DECL_INITIAL (expression))
@@ -23921,6 +23932,10 @@ type_dependent_expression_p (tree expression)
 bool
 type_dependent_object_expression_p (tree object)
 {
+  /* An IDENTIFIER_NODE can sometimes have a TREE_TYPE, but it's still
+     dependent.  */
+  if (TREE_CODE (object) == IDENTIFIER_NODE)
+    return true;
   tree scope = TREE_TYPE (object);
   return (!scope || dependent_scope_p (scope));
 }
@@ -24798,7 +24813,7 @@ dguide_name_p (tree name)
 /* True if FN is a deduction guide.  */
 
 bool
-deduction_guide_p (tree fn)
+deduction_guide_p (const_tree fn)
 {
   if (DECL_P (fn))
     if (tree name = DECL_NAME (fn))
@@ -25011,6 +25026,7 @@ build_deduction_guide (tree ctor, tree outer_args, tsubst_flags_t complain)
 				     dguide_name (type), fntype);
   DECL_ARGUMENTS (ded_fn) = fargs;
   DECL_ARTIFICIAL (ded_fn) = true;
+  DECL_NONCONVERTING_P (ded_fn) = DECL_NONCONVERTING_P (ctor);
   tree ded_tmpl = build_template_decl (ded_fn, tparms, /*member*/false);
   DECL_ARTIFICIAL (ded_tmpl) = true;
   DECL_TEMPLATE_RESULT (ded_tmpl) = ded_fn;
@@ -25027,8 +25043,9 @@ build_deduction_guide (tree ctor, tree outer_args, tsubst_flags_t complain)
    template TMPL based on the initializer INIT, and return the resulting
    type.  */
 
-tree
-do_class_deduction (tree ptype, tree tmpl, tree init, tsubst_flags_t complain)
+static tree
+do_class_deduction (tree ptype, tree tmpl, tree init, int flags,
+		    tsubst_flags_t complain)
 {
   if (!DECL_CLASS_TEMPLATE_P (tmpl))
     {
@@ -25095,9 +25112,48 @@ do_class_deduction (tree ptype, tree tmpl, tree init, tsubst_flags_t complain)
       return error_mark_node;
     }
 
+  /* Prune explicit deduction guides in copy-initialization context.  */
+  tree old_cands = cands;
+  if (flags & LOOKUP_ONLYCONVERTING)
+    {
+      tree t = cands;
+      for (; t; t = OVL_NEXT (t))
+	if (DECL_NONCONVERTING_P (DECL_TEMPLATE_RESULT (OVL_CURRENT (t))))
+	  break;
+      if (t)
+	{
+	  tree pruned = NULL_TREE;
+	  for (t = cands; t; t = OVL_NEXT (t))
+	    {
+	      tree f = OVL_CURRENT (t);
+	      if (!DECL_NONCONVERTING_P (DECL_TEMPLATE_RESULT (f)))
+		pruned = build_overload (f, pruned);
+	    }
+	  cands = pruned;
+	  if (cands == NULL_TREE)
+	    {
+	      error ("cannot deduce template arguments for copy-initialization"
+		     " of %qT, as it has no non-explicit deduction guides or "
+		     "user-declared constructors", type);
+	      return error_mark_node;
+	    }
+	}
+    }
+
   ++cp_unevaluated_operand;
   tree t = build_new_function_call (cands, &args, /*koenig*/false,
-				    complain|tf_decltype);
+				    tf_decltype);
+
+  if (t == error_mark_node && (complain & tf_warning_or_error))
+    {
+      error ("class template argument deduction failed:");
+      t = build_new_function_call (cands, &args, /*koenig*/false,
+				   complain | tf_decltype);
+      if (old_cands != cands)
+	inform (input_location, "explicit deduction guides not considered "
+		"for copy-initialization");
+    }
+
   --cp_unevaluated_operand;
   release_tree_vector (args);
 
@@ -25118,7 +25174,10 @@ do_auto_deduction (tree type, tree init, tree auto_node)
 /* Replace occurrences of 'auto' in TYPE with the appropriate type deduced
    from INIT.  AUTO_NODE is the TEMPLATE_TYPE_PARM used for 'auto' in TYPE.
    The CONTEXT determines the context in which auto deduction is performed
-   and is used to control error diagnostics.
+   and is used to control error diagnostics.  FLAGS are the LOOKUP_* flags.
+   OUTER_TARGS are used during template argument deduction
+   (context == adc_unify) to properly substitute the result, and is ignored
+   in other contexts.
 
    For partial-concept-ids, extra args may be appended to the list of deduced
    template arguments prior to determining constraint satisfaction.  */
@@ -25126,7 +25185,7 @@ do_auto_deduction (tree type, tree init, tree auto_node)
 tree
 do_auto_deduction (tree type, tree init, tree auto_node,
                    tsubst_flags_t complain, auto_deduction_context context,
-		   tree outer_targs)
+		   tree outer_targs, int flags)
 {
   tree targs;
 
@@ -25141,7 +25200,11 @@ do_auto_deduction (tree type, tree init, tree auto_node,
 
   if (tree tmpl = CLASS_PLACEHOLDER_TEMPLATE (auto_node))
     /* C++17 class template argument deduction.  */
-    return do_class_deduction (type, tmpl, init, complain);
+    return do_class_deduction (type, tmpl, init, flags, complain);
+
+  if (TREE_TYPE (init) == NULL_TREE)
+    /* Nothing we can do with this, even in deduction context.  */
+    return type;
 
   /* [dcl.spec.auto]: Obtain P from T by replacing the occurrences of auto
      with either a new invented type template parameter U or, if the

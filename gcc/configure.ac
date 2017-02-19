@@ -933,7 +933,7 @@ AC_ARG_WITH(specs,
 AC_SUBST(CONFIGURE_SPECS)
 
 ACX_PKGVERSION([GCC])
-ACX_BUGURL([http://gcc.gnu.org/bugs.html])
+ACX_BUGURL([https://gcc.gnu.org/bugs/])
 
 # Sanity check enable_languages in case someone does not run the toplevel
 # configure # script.
@@ -6194,30 +6194,6 @@ AC_ARG_VAR(ISLLIBS,[How to link isl])
 AC_ARG_VAR(ISLINC,[How to find isl include files])
 if test "x${ISLLIBS}" != "x" ; then 
    AC_DEFINE(HAVE_isl, 1, [Define if isl is in use.])
-fi
-
-# Check whether isl_options_set_schedule_serialize_sccs is available;
-# it's new in isl 0.15.
-if test "x${ISLLIBS}" != "x" ; then
-  saved_CXXFLAGS="$CXXFLAGS"
-  CXXFLAGS="$CXXFLAGS $ISLINC $GMPINC"
-  saved_LIBS="$LIBS"
-  LIBS="$LIBS $ISLLIBS $GMPLIBS"
-
-  AC_MSG_CHECKING([Checking for isl_options_set_schedule_serialize_sccs])
-  AC_TRY_LINK([#include <isl/schedule.h>],
-              [isl_options_set_schedule_serialize_sccs (NULL, 0);],
-              [ac_has_isl_options_set_schedule_serialize_sccs=yes],
-              [ac_has_isl_options_set_schedule_serialize_sccs=no])
-  AC_MSG_RESULT($ac_has_isl_options_set_schedule_serialize_sccs)
-
-  LIBS="$saved_LIBS"
-  CXXFLAGS="$saved_CXXFLAGS"
-
-  if test x"$ac_has_isl_options_set_schedule_serialize_sccs" = x"yes"; then
-     AC_DEFINE(HAVE_ISL_OPTIONS_SET_SCHEDULE_SERIALIZE_SCCS, 1,
-               [Define if isl_options_set_schedule_serialize_sccs exists.])
-  fi
 fi
 
 GCC_ENABLE_PLUGINS
