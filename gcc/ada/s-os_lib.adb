@@ -2246,8 +2246,11 @@ package body System.OS_Lib is
       end File_Name_Conversion;
 
       --  Replace all '/' by Directory Separators (this is for Windows)
+      --  No need to do that however for DJGPP
 
-      if Directory_Separator /= '/' then
+      if Directory_Separator /= '/'
+        and then Is_Djgpp = 0
+      then
          for Index in 1 .. End_Path loop
             if Path_Buffer (Index) = '/' then
                Path_Buffer (Index) := Directory_Separator;
