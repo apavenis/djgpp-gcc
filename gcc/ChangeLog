@@ -1,3 +1,105 @@
+2017-03-06  Julia Koval  <julia.koval@intel.com>
+
+	PR target/79793
+	* config/i386/i386.c (ix86_minimum_incoming_stack_boundary): Set
+	incoming stack boundary to 128 for 64-bit targets.
+
+2017-03-06  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/79894
+	* tree-vectorizer.c (vectorize_loops): Set loop_vectorized_call
+	to NULL after folding it.
+
+2017-03-06  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/79824
+	* tree-vect-stmts.c (get_group_load_store_type): Fix alignment
+	check disabling peeling for gaps.
+
+2017-03-06  Toma Tabacu  <toma.tabacu@imgtec.com>
+
+	* doc/sourcebuild.texi (Effective-Target Keywords, Environment
+	attributes): Document gettimeofday.
+
+2017-03-06  Robin Dapp  <rdapp@linux.vnet.ibm.com>
+
+	* config/s390/s390.c (s390_option_override_internal): Set
+	PARAM_MIN_VECT_LOOP_BOUND
+
+2017-03-06  Robin Dapp  <rdapp@linux.vnet.ibm.com>
+
+	* config/s390/s390.c (s390_asm_output_function_label): Use nopr %r0.
+	* config/s390/s390.md: Likewise.
+
+2017-03-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/79812
+	* config/i386/sse.md (VI8F_256_512): Remove mode iterator.
+	(<avx2_avx512>_perm<mode>): Rename to ...
+	(avx2_perm<mode>): ... this.  Use VI8F_256 iterator instead
+	of VI8F_256_512.
+	(<avx512>_perm<mode>_mask): Rename to ...
+	(avx512vl_perm<mode>_mask): ... this.  Use VI8F_256 iterator instead
+	of VI8F_256_512.
+	(<avx2_avx512>_perm<mode>_1<mask_name>): Rename to ...
+	(avx2_perm<mode>_1<mask_name): ... this.  Use VI8F_256 iterator
+	instead of VI8F_256_512.
+	(avx512f_perm<mode>): New define_expand.
+	(avx512f_perm<mode>_mask): Likewise.
+	(avx512f_perm<mode>_1<mask_name>): New define_insn.
+	(<avx512>_vec_dup<mode>_1): Fix up vec_select mode.
+
+2017-03-06  Prachi Godbole  <prachi.godbole@imgtec.com>
+
+	* config/mips/mips-msa.md (msa_fmax_a_<msafmt>, msa_fmin_a_<msafmt>,
+	msa_max_a_<msafmt>, msa_min_a_<msafmt>): Introduce mode interator for
+	if_then_else.
+	(smin<mode>3, smax<mode>3): Change operand print code from 'B' to 'E'.
+
+2017-03-06  Martin Liska  <mliska@suse.cz>
+
+	PR sanitize/79783
+	* asan.c (asan_expand_poison_ifn): Do not expand ASAN_POISON
+	when having a SSA NAME w/o VAR_DECL assigned to it.
+
+2017-03-06  Prachi Godbole  <prachi.godbole@imgtec.com>
+
+	* config/mips/mips-msa.md (msa_dotp_<su>_d, msa_dpadd_<su>_d,
+	msa_dpsub_<su>_d): Fix MODE for vec_select.
+
+2017-03-06  Prachi Godbole  <prachi.godbole@imgtec.com>
+
+	* config/mips/mips.c (mips_gen_const_int_vector): Change type of last
+	argument.
+	* config/mips/mips-protos.h (mips_gen_const_int_vector): Likewise.
+
+2017-03-06  Richard Biener  <rguenther@suse.de>
+
+	* lto-streamer.c (lto_check_version): Use %qs in diagnostics.
+	* plugin.c (register_plugin_info): Likewise.
+	* tree-chkp.c (chkp_make_static_const_bounds): Likewise.
+
+2017-03-05  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/i386/sse.md (sse_storehps, sse_storelps,
+	avx_<castmode><avxsizesuffix>_<castmode>,
+	avx512f_<castmode><avxsizesuffix>_<castmode>,
+	avx512f_<castmode><avxsizesuffix>_256<castmode>): Require
+	in condition that at least one operand is not a MEM.
+
+2017-03-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/79805
+	* internal-fn.def (ATOMIC_BIT_TEST_AND_SET, ATOMIC_BIT_TEST_AND_RESET,
+	ATOMIC_BIT_TEST_AND_COMPLEMENT, ATOMIC_COMPARE_EXCHANGE): Remove
+	ECF_NOTHROW.
+	* gimple-fold.c (fold_builtin_atomic_compare_exchange): Set
+	gimple_call_nothrow_p flag based on whether original builtin can throw.
+	If it can, emit following stmts on the fallthrough edge.
+	* tree-ssa-ccp.c (optimize_atomic_bit_test_and): Similarly, except
+	don't create new bb if inserting just debug stmts on the edge, try to
+	insert them on the fallthru bb or just reset debug stmts.
+
 2017-03-03  Segher Boesssenkool  <segher@kernel.crashing.org>
 
 	PR target/43763
