@@ -38,7 +38,7 @@ msgstr ""
 "Project-Id-Version: gcc 7.1-b20170226\n"
 "Report-Msgid-Bugs-To: https://gcc.gnu.org/bugs/\n"
 "POT-Creation-Date: 2017-02-25 19:14+0000\n"
-"PO-Revision-Date: 2017-02-26 12:25+0100\n"
+"PO-Revision-Date: 2017-03-29 00:08+0200\n"
 "Last-Translator: Antonio Ceballos <aceballos@gmail.com>\n"
 "Language-Team: Spanish <es@tp.org.es>\n"
 "Language: es\n"
@@ -17880,10 +17880,9 @@ msgid "%<%.*s%> directive writing %wu byte into a region of size %wu"
 msgstr "directiva %<%.*s%> escribiendo %wu byte en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2221
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing %wu bytes into a region of size %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse al escribir %wu bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2223
 #, gcc-internal-format
@@ -17896,40 +17895,34 @@ msgid "%<%.*s%> directive writing %wu bytes into a region of size %wu"
 msgstr "directiva %<%.*s%> escribiendo %wu bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2238
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing up to %wu bytes into a region of size %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse al escribir hasta %wu bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2240
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing up to %wu bytes into a region of size %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo hasta %wu bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2242
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing up to %wu bytes into a region of size %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo hasta %wu bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2258
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output may be truncated writing %wu or more bytes a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing likely %wu or more bytes into a region of size %wu"
-msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo probablemente %wu o más bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2260
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing likely %wu or more bytes into a region of size %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo probablemente %wu o más bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2262
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing likely %wu or more bytes into a region of size %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo probablemente %wu o más bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2275
 #, gcc-internal-format
@@ -17947,8 +17940,7 @@ msgid "%<%.*s%> directive writing between %wu and %wu bytes into a region of siz
 msgstr "directiva %<%.*s%> escribiendo entre %wu y %wu bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2291
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output may be truncated writing %wu or more bytes a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing %wu or more bytes into a region of size %wu"
 msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo %wu o más bytes en una región de tamaño %wu"
 
@@ -17963,124 +17955,104 @@ msgid "%<%.*s%> directive writing %wu or more bytes into a region of size %wu"
 msgstr "directiva %<%.*s%> escribiendo %wu o más bytes en una región de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2341
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing %wu byte into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse al escribir %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2343
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing %wu byte into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2345
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu byte into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing %wu byte into a region of size between %wu and %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu byte en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo %wu byte en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2349
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing %wu bytes into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse al escribir %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2351
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2353
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing %wu bytes into a region of size between %wu and %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2367
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output may be truncated writing between %wu and %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing up to %wu bytes into a region of size between %wu and %wu"
-msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo entre %wu y %wu bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo hasta %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2370
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing up to %wu bytes into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo hasta %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2373
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing up to %wu bytes into a region of size between %wu and %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo hasta %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2389
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output may be truncated writing %wu or more bytes a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing likely %wu or more bytes into a region of size between %wu and %wu"
-msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo probablemente %wu o más bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2392
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing likely %wu or more bytes into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo probablemente %wu o más bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2395
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing likely %wu or more bytes into a region of size between %wu and %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo probablemente %wu o más bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2408
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output may be truncated writing between %wu and %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing between %wu and %wu bytes into a region of size between %wu and %wu"
-msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo entre %wu y %wu bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo entre %wu y %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2411
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing between %wu and %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing between %wu and %wu bytes into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo entre %wu y %wu bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo entre %wu y %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2414
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing between %wu and %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing between %wu and %wu bytes into a region of size between %wu and %wu"
-msgstr "directiva %<%.*s%> escribiendo entre %wu y %wu bytes en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo entre %wu y %wu bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2426
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output may be truncated writing %wu or more bytes a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output may be truncated writing %wu or more bytes into a region of size between %wu and %wu"
-msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "la salida de la directiva %<%.*s%> podría truncarse escribiendo %wu o más bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2429
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output truncated writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output truncated writing %wu or more bytes into a region of size between %wu and %wu"
-msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "salida de la directiva %<%.*s%> truncada escribiendo %wu o más bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2432
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%<%.*s%> directive writing %wu or more bytes into a region of size between %wu and %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "directiva %<%.*s%> escribiendo %wu o más bytes en una región de un tamaño entre %wu y %wu"
 
 #: gimple-ssa-sprintf.c:2597
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output between %qu and %wu bytes may exceed minimum required size of 4095"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output between %wu and %wu bytes may exceed minimum required size of 4095"
-msgstr "la salida de la directiva %<%.*s%> entre %qu y %wu bytes podría superar el tamaño mínimo requerido de 4095"
+msgstr "la salida de la directiva %<%.*s%> entre %wu y %wu bytes podría superar el tamaño mínimo requerido de 4095"
 
 #: gimple-ssa-sprintf.c:2599
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive output between %qu and %wu bytes exceeds minimum required size of 4095"
+#, gcc-internal-format
 msgid "%<%.*s%> directive output between %wu and %wu bytes exceeds minimum required size of 4095"
-msgstr "la salida de la directiva %<%.*s%> entre %qu y %wu bytes supera el tamaño mínimo requerido de 4095"
+msgstr "la salida de la directiva %<%.*s%> entre %wu y %wu bytes supera el tamaño mínimo requerido de 4095"
 
 #: gimple-ssa-sprintf.c:2638
 #, gcc-internal-format
@@ -18095,12 +18067,12 @@ msgstr "la salida de la directiva %<%.*s%> entre %wu y %wu bytes podría provoca
 #: gimple-ssa-sprintf.c:2654
 #, gcc-internal-format
 msgid "assuming directive output of %wu byte"
-msgstr ""
+msgstr "se asume salida de directiva de %wu byte"
 
 #: gimple-ssa-sprintf.c:2655
 #, gcc-internal-format
 msgid "assuming directive output of %wu bytes"
-msgstr ""
+msgstr "se asume salida de directiva de %wu bytes"
 
 #: gimple-ssa-sprintf.c:2662
 #, gcc-internal-format
@@ -18118,34 +18090,29 @@ msgid "using the range [%E, %E] for directive argument"
 msgstr "se utiliza el rango [%E, %E] para el argumento de la directiva"
 
 #: gimple-ssa-sprintf.c:2688
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu byte into a region of size %wu"
+#, gcc-internal-format
 msgid "%qE output %wu byte into a destination of size %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu byte en una región de tamaño %wu"
+msgstr "%qE manda %wu byte a un destino de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2689
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%qE output %wu bytes into a destination of size %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu bytes en una región de tamaño %wu"
+msgstr "%qE manda %wu bytes a un destino de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2693
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing between %wu and %wu bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%qE output between %wu and %wu bytes into a destination of size %wu"
-msgstr "directiva %<%.*s%> escribiendo entre %wu y %wu bytes en una región de tamaño %wu"
+msgstr "%qE manda entre %wu y %wu bytes a un destino de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2698
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%qE output %wu or more bytes (assuming %wu) into a destination of size %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "%qE manda %wu o más bytes (se asume %wu) a un destino de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:2703
-#, fuzzy, gcc-internal-format
-#| msgid "%<%.*s%> directive writing %wu or more bytes into a region of size %wu"
+#, gcc-internal-format
 msgid "%qE output %wu or more bytes into a destination of size %wu"
-msgstr "directiva %<%.*s%> escribiendo %wu o más bytes en una región de tamaño %wu"
+msgstr "%qE manda %wu o más bytes a un destino de tamaño %wu"
 
 #: gimple-ssa-sprintf.c:3475
 #, gcc-internal-format
@@ -18333,43 +18300,39 @@ msgid "enclosing %s"
 msgstr "%s contenedora"
 
 #: gimplify.c:6936
-#, fuzzy, gcc-internal-format
-#| msgid "%qE not specified in enclosing parallel"
+#, gcc-internal-format
 msgid "%qE not specified in enclosing OpenACC %qs construct"
-msgstr "no se especificó %qE en el paralelo que lo contiene"
+msgstr "no se especificó %qE en la construcción OpenACC %qs que lo contiene"
 
 #: gimplify.c:6938
 #, gcc-internal-format
 msgid "enclosing OpenACC %qs construct"
-msgstr ""
+msgstr "construcción OpenACC %qs que lo contiene"
 
 #: gimplify.c:6989
 #, gcc-internal-format
 msgid "%qE with %<link%> clause used in %<routine%> function"
-msgstr ""
+msgstr "%qE con cláusula %<link%> usada en la función %<routine%>"
 
 #: gimplify.c:6997
-#, fuzzy, gcc-internal-format
-#| msgid "%qE undeclared (first use in this function)"
+#, gcc-internal-format
 msgid "%qE requires a %<declare%> directive for use in a %<routine%> function"
-msgstr "%qE no se declaró aquí (primer uso en esta función)"
+msgstr "%qE requiere una directiva %<declare%> para poder usarse en una función%<routine%>"
 
 #: gimplify.c:7063 gimplify.c:7662
-#, fuzzy, gcc-internal-format
-#| msgid "variable %q+D declared %<inline%>"
+#, gcc-internal-format
 msgid "variable %qE declared in enclosing %<host_data%> region"
-msgstr "la variable %q+D se declaró como %<inline%>"
+msgstr "la variable %qE se declaró en la región %<host_data%> que la contiene"
 
 #: gimplify.c:7084
 #, gcc-internal-format
 msgid "%qD referenced in target region does not have a mappable type"
-msgstr ""
+msgstr "%qD referenciada en la región de destino no tiene un tipo al que asociarla"
 
 #: gimplify.c:7202 gimplify.c:7234
-#, fuzzy, gcc-internal-format
-#| msgid "%Hiteration variable %qE is unsigned"
+#, gcc-internal-format
 msgid "iteration variable %qE is predetermined linear"
-msgstr "%Hla variable de iteración %qE no tiene signo"
+msgstr "la variable de iteración %qE se predetermina lineal"
 
 #: gimplify.c:7205
 #, gcc-internal-format
@@ -18387,44 +18350,39 @@ msgid "iteration variable %qE should not be reduction"
 msgstr "la variable de iteración %qE no debe ser reduction"
 
 #: gimplify.c:7225
-#, fuzzy, gcc-internal-format
-#| msgid "iteration variable %qE should not be reduction"
+#, gcc-internal-format
 msgid "iteration variable %qE should not be linear"
-msgstr "la variable de iteración %qE no debe ser reduction"
+msgstr "la variable de iteración %qE no debe ser lineal"
 
 #: gimplify.c:7228
-#, fuzzy, gcc-internal-format
-#| msgid "iteration variable %qE should not be firstprivate"
+#, gcc-internal-format
 msgid "iteration variable %qE should not be lastprivate"
-msgstr "la variable de iteración %qE no debe ser firstprivate"
+msgstr "la variable de iteración %qE no debe ser lastprivate"
 
 #: gimplify.c:7231
-#, fuzzy, gcc-internal-format
-#| msgid "iteration variable %qE should be private"
+#, gcc-internal-format
 msgid "iteration variable %qE should not be private"
-msgstr "la variable de iteración %qE debe ser private"
+msgstr "la variable de iteración %qE no debe ser private"
 
 #: gimplify.c:7532
 #, gcc-internal-format
 msgid "%<linear%> clause for variable other than loop iterator specified on construct combined with %<distribute%>"
-msgstr ""
+msgstr "cláusula %<linear%> para una variable que no es iterador de bucle especificada en una construcción combinada con %<distribute%>"
 
 #: gimplify.c:7739
 #, gcc-internal-format
 msgid "mapping field %qE of variable length structure"
-msgstr ""
+msgstr "se asocia el campo %qE de una estructura de longitud variable"
 
 #: gimplify.c:7950
-#, fuzzy, gcc-internal-format
-#| msgid "%qE appears more than once in data clauses"
+#, gcc-internal-format
 msgid "%qE appears more than once in map clauses"
-msgstr "%qE aparece más de una vez en las cláusulas de datos"
+msgstr "%qE aparece más de una vez en las cláusulas map"
 
 #: gimplify.c:8254
-#, fuzzy, gcc-internal-format
-#| msgid "%s variable %qE is private in outer context"
+#, gcc-internal-format
 msgid "copyprivate variable %qE is not threadprivate or private in outer context"
-msgstr "la variable %s %qE es private en el contexto externo"
+msgstr "la variable copyprivate %qE no es threadprivate o private en el contexto externo"
 
 #: gimplify.c:8274
 #, gcc-internal-format
@@ -18434,71 +18392,67 @@ msgstr "la variable %s %qE es private en el contexto externo"
 #: gimplify.c:8300
 #, gcc-internal-format
 msgid "expected %qs %<if%> clause modifier rather than %qs"
-msgstr ""
+msgstr "se esperaba el modificador de cláusula %qs %<if%> en vez de %qs"
 
 #: gimplify.c:8566
 #, gcc-internal-format
 msgid "%<_Atomic%> %qD in implicit %<map%> clause"
-msgstr ""
+msgstr "%<_Atomic%> %qD en cláusula %<map%> implícita"
 
 #: gimplify.c:8599
 #, gcc-internal-format
 msgid "%<_Atomic%> %qD in implicit %<firstprivate%> clause on %<target%> construct"
-msgstr ""
+msgstr "%<_Atomic%> %qD en cláusula %<firstprivate%> implícita en una construcción %<target%>"
 
 #: gimplify.c:8772
 #, gcc-internal-format
 msgid "%<_Atomic%> %qD in %<firstprivate%> clause on %<target%> construct"
-msgstr ""
+msgstr "%<_Atomic%> %qD en cláusula %<firstprivate%> en una construcción %<target%>"
 
 #: gimplify.c:8823
 #, gcc-internal-format
 msgid "same variable used in %<firstprivate%> and %<lastprivate%> clauses on %<distribute%> construct"
-msgstr ""
+msgstr "se ha usado la misma variable en cláusulas %<firstprivate%> y %<lastprivate%> en una construcción %<distribute%>"
 
 #: gimplify.c:8905
 #, gcc-internal-format
 msgid "incompatible data clause with reduction on %qE; promoting to present_or_copy"
-msgstr ""
+msgstr "cláusula de datos incompatible con reducción en %qE; se promociona a present_or_copy"
 
 #: gimplify.c:9050
-#, fuzzy, gcc-internal-format
-#| msgid "invalid template declaration of %qD"
+#, gcc-internal-format
 msgid "invalid private reduction on %qE"
-msgstr "declaración de la plantilla de %qD no válida"
+msgstr "reducción privada no válida en %qE"
 
 #: gimplify.c:10858 omp-low.c:2812
-#, fuzzy, gcc-internal-format
-#| msgid "ordered region must be closely nested inside a loop region with an ordered clause"
+#, gcc-internal-format
 msgid "%<ordered%> construct with %<depend%> clause must be closely nested inside a loop with %<ordered%> clause with a parameter"
-msgstr "la región ordenada puede estar bien anidada dentro de una región de bucle con una cláusula ordenada"
+msgstr "la construcción %<ordered%> con cláusula %<depend%> debe estar bien anidada dentro de un bucle con una cláusula %<ordered%> con un parámetro"
 
 #: gimplify.c:10876
 #, gcc-internal-format
 msgid "variable %qE is not an iteration of outermost loop %d, expected %qE"
-msgstr ""
+msgstr "la variable %qE no es una iteración del bucle más externo %d; se esperaba %qE"
 
 #: gimplify.c:10889
-#, fuzzy, gcc-internal-format
-#| msgid "number of results does not match number of values"
+#, gcc-internal-format
 msgid "number of variables in %<depend(sink)%> clause does not match number of iteration variables"
-msgstr "el número de resultados no coincide con el número de valores"
+msgstr "el número de variables en la cláusula %<depend(sink)%> no coincide con el número de variables de iteración"
 
 #: gimplify.c:10902
 #, gcc-internal-format
 msgid "more than one %<depend(source)%> clause on an %<ordered%> construct"
-msgstr ""
+msgstr "más de una cláusula %<depend(source)%> en una construcción %<ordered%>"
 
 #: gimplify.c:10913
 #, gcc-internal-format
 msgid "%<depend(source)%> clause specified together with %<depend(sink:)%> clauses on the same construct"
-msgstr ""
+msgstr "cláusula %<depend(source)%> especificada junto con cláusulas %<depend(sink:)%> en la misma construcción"
 
 #: gimplify.c:11856
-#, fuzzy, gcc-internal-format
-#| msgid "expected %<}%> before %<else%>"
+#, gcc-internal-format
 msgid "expected %<_Cilk_spawn%> before %<_Cilk_sync%>"
-msgstr "se esperaba %<}%> antes de %<else%>"
+msgstr "se esperaba %<_Cilk_spawn%> antes de %<_Cilk_sync%>"
 
 #: gimplify.c:12155
 #, gcc-internal-format
@@ -18536,95 +18490,89 @@ msgid "can%'t open %s: %m"
 msgstr "no se puede abrir %s: %m"
 
 #: graphite.c:350
-#, fuzzy, gcc-internal-format
-#| msgid "Graphite loop optimizations cannot be used"
+#, gcc-internal-format
 msgid "Graphite loop optimizations cannot be used (isl is not available)."
-msgstr "No se pueden usar las optimizaciones de bucle Graphite."
+msgstr "No se pueden usar las optimizaciones de bucle Graphite (isl no está disponible)."
 
 #: hsa-brig.c:908
 #, gcc-internal-format
 msgid "Support for HSA does not implement immediate 16 bit FPU operands"
-msgstr ""
+msgstr "El soporte de HSA no implementa operandos FPU de 16 bits inmediatos"
 
 #: hsa-common.c:241
-#, fuzzy, gcc-internal-format
-#| msgid "move insn not handled"
+#, gcc-internal-format
 msgid "HSA image ops not handled"
-msgstr "no se maneja move insn"
+msgstr "no se maneja ops de imagen HSA"
 
 #: hsa-gen.c:1185
 #, gcc-internal-format
 msgid "HSA SSA name defined by instruction that is supposed to be using it"
-msgstr ""
+msgstr "nombre HSA SSA definido por una instrucción que se suponeque va a usarlo"
 
 #: hsa-gen.c:1189 hsa-gen.c:1202
-#, fuzzy, gcc-internal-format
-#| msgid "verification failed: %s"
+#, gcc-internal-format
 msgid "HSA SSA verification failed"
-msgstr "error de verificación: %s"
+msgstr "error de verificación HSA SSA"
 
 #: hsa-gen.c:1198
 #, gcc-internal-format
 msgid "HSA SSA name not among operands of instruction that is supposed to use it"
-msgstr ""
+msgstr "el nombre HSA SSA no se encuentra entre los operandos de la instrucción que se supone que va a usarlo"
 
 #: hsa-gen.c:1458
 #, gcc-internal-format
 msgid "HSA instruction uses a register but is not among recorded register uses"
-msgstr ""
+msgstr "la instrucción HSA usa un registro pero no se encuentra entre los usos de registro registrados"
 
 #: hsa-gen.c:1462
-#, fuzzy, gcc-internal-format
-#| msgid "verification failed: %s"
+#, gcc-internal-format
 msgid "HSA instruction verification failed"
-msgstr "error de verificación: %s"
+msgstr "error de verificación de instrucción HSA"
 
 #: input.c:1147
 #, gcc-internal-format, gfc-internal-format
 msgid "expansion point is location %i"
-msgstr ""
+msgstr "el punto de expansión es la ubicación %i"
 
 #: input.c:1177
 #, gcc-internal-format, gfc-internal-format
 msgid "token %u has x-location == y-location == %u"
-msgstr ""
+msgstr "el elemento %u tiene ubicación-x == ubicación-y == %u"
 
 #: input.c:1185
 #, gcc-internal-format, gfc-internal-format
 msgid "token %u has x-location == %u"
-msgstr ""
+msgstr "el elemento %u tiene ubicación-x == %u"
 
 #: input.c:1186
 #, gcc-internal-format, gfc-internal-format
 msgid "token %u has y-location == %u"
-msgstr ""
+msgstr "el elemento %u tiene ubicación-y == %u"
 
 #: internal-fn.c:413
-#, fuzzy, gcc-internal-format
-#| msgid "invalid use of %<auto%>"
+#, gcc-internal-format
 msgid "invalid use of attribute %<fallthrough%>"
-msgstr "uso no válido de %<auto%>"
+msgstr "uso no válido del atribute  %<fallthrough%>"
 
 #: ipa-chkp.c:667
-#, fuzzy, gcc-internal-format
-#| msgid "%qs function cannot have arguments"
+#, gcc-internal-format
 msgid "function cannot be instrumented"
-msgstr "la función %qs no puede tener argumentos"
+msgstr "no se puede instrumentar la función"
 
 #: ipa-devirt.c:752 ipa-devirt.c:903
 #, gcc-internal-format
 msgid "virtual table of type %qD violates one definition rule"
-msgstr ""
+msgstr "la tabla virtual de tipo %qD viola la regla de definición única"
 
 #: ipa-devirt.c:755
 #, gcc-internal-format
 msgid "variable of same assembler name as the virtual table is defined in another translation unit"
-msgstr ""
+msgstr "variable del mismo nombre de ensamblador que la tabla virtual está definida en otra unidad de traducción"
 
 #: ipa-devirt.c:794
 #, gcc-internal-format
 msgid "virtual table of type %qD contains RTTI information"
-msgstr ""
+msgstr "la tabla virtual de tipo %qD contiene información RTTI"
 
 #: ipa-devirt.c:800
 #, gcc-internal-format
@@ -18634,115 +18582,108 @@ msgstr ""
 #: ipa-devirt.c:804
 #, gcc-internal-format
 msgid "RTTI will not work on this type"
-msgstr ""
+msgstr "RTTI no funcionará en este tipo"
 
 #: ipa-devirt.c:834 ipa-devirt.c:862 ipa-devirt.c:933
 #, gcc-internal-format
 msgid "virtual table of type %qD violates one definition rule  "
-msgstr ""
+msgstr "la tabla virtual de tipo %qD viola la regla de definición única "
 
 #: ipa-devirt.c:840
 #, gcc-internal-format
 msgid "the conflicting type defined in another translation unit has virtual table of different size"
-msgstr ""
+msgstr "el tipo conflictivo definido en otra unidad de traducción tiene una tabla virtual de tamaño diferente"
 
 #: ipa-devirt.c:868
 #, gcc-internal-format
 msgid "the conflicting type defined in another translation unit with different RTTI information"
-msgstr ""
+msgstr "el tipo conflictivo definido en otra unidad de traducción tiene una información RTTI diferente"
 
 #: ipa-devirt.c:911 ipa-devirt.c:941
 #, gcc-internal-format
 msgid "the conflicting type defined in another translation unit"
-msgstr ""
+msgstr "el tipo conflictivo definido en otra unidad de traducción"
 
 #: ipa-devirt.c:915
-#, fuzzy, gcc-internal-format
-#| msgid "invalid initializer for virtual method %qD"
+#, gcc-internal-format
 msgid "contains additional virtual method %qD"
-msgstr "inicializador no válido para el método virtual %qD"
+msgstr "contiene el método virtual adicional %qD"
 
 #: ipa-devirt.c:922
 #, gcc-internal-format
 msgid "the conflicting type defined in another translation unit has virtual table with more entries"
-msgstr ""
+msgstr "el tipo conflictivo definido en otra unidad de traducción tiene una una tabla virtual con más entradas"
 
 #: ipa-devirt.c:947
-#, fuzzy, gcc-internal-format
-#| msgid "virtual function %q+D"
+#, gcc-internal-format
 msgid "virtual method %qD"
-msgstr "función virtual %q+D"
+msgstr "método virtual %qD"
 
 #: ipa-devirt.c:951
 #, gcc-internal-format
 msgid "ought to match virtual method %qD but does not"
-msgstr ""
+msgstr "debería concordar con el método virtual %qD pero no concuerda"
 
 #: ipa-devirt.c:957
 #, gcc-internal-format
 msgid "the conflicting type defined in another translation unit has virtual table with different contents"
-msgstr ""
+msgstr "el tipo conflictivo definido en otra unidad de traducción tiene una una tabla virtual con diferente contenido"
 
 #: ipa-devirt.c:987
 #, gcc-internal-format
 msgid "type %qT violates the C++ One Definition Rule"
-msgstr ""
+msgstr "el tipo %qT viola la regla de definición única de C++"
 
 #: ipa-devirt.c:998 ipa-devirt.c:1013 ipa-devirt.c:1263 ipa-devirt.c:1355
 #: ipa-devirt.c:1394 ipa-devirt.c:1412
-#, fuzzy, gcc-internal-format
-#| msgid "%q+D declared here, later in the translation unit"
+#, gcc-internal-format
 msgid "a different type is defined in another translation unit"
-msgstr "%q+D se declaró aquí, después en la unidad de translación"
+msgstr "hay definido un tipo diferente en otra unidad de traducción"
 
 #: ipa-devirt.c:1005
 #, gcc-internal-format
 msgid "the first difference of corresponding definitions is field %qD"
-msgstr ""
+msgstr "la primera diferencia de las definiciones correspondientes es el campo %qD"
 
 #: ipa-devirt.c:1015
 #, gcc-internal-format
 msgid "the first difference of corresponding definitions is method %qD"
-msgstr ""
+msgstr "la primera diferencia de las definiciones correspondientes es el método %qD"
 
 #: ipa-devirt.c:1109
 #, gcc-internal-format
 msgid "type %qT defined in anonymous namespace can not match type %qT across the translation unit boundary"
-msgstr ""
+msgstr "el tipo %qT definido en el espacio de nombres anónimo no puede coincidir con el tipo %qT a través del contorno de la unidad de traducción"
 
 #: ipa-devirt.c:1114
 #, gcc-internal-format
 msgid "type %qT defined in anonymous namespace can not match across the translation unit boundary"
-msgstr ""
+msgstr "el tipo %qT definido en el espacio de nombres anónimo no puede coincidir a través del contorno de la unidad de traducción"
 
 #: ipa-devirt.c:1119
-#, fuzzy, gcc-internal-format
-#| msgid "incompatible types in binary expression"
+#, gcc-internal-format
 msgid "the incompatible type defined in another translation unit"
-msgstr "tipos incompatibles en la expresión binaria"
+msgstr "el tipo incompatible definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1142
 #, gcc-internal-format
 msgid "type name %<%s%> should match type name %<%s%>"
-msgstr ""
+msgstr "el nombre de tipo %<%s%> debería concordar con el nombre de tipo %<%s%>"
 
 #: ipa-devirt.c:1146 ipa-devirt.c:1238
-#, fuzzy, gcc-internal-format
-#| msgid "incompatible types in send"
+#, gcc-internal-format
 msgid "the incompatible type is defined here"
-msgstr "tipos incompatibles en send"
+msgstr "el tipo incompatible está definido aquí"
 
 #: ipa-devirt.c:1174
-#, fuzzy, gcc-internal-format
-#| msgid "Array reference out of bounds"
+#, gcc-internal-format
 msgid "array types have different bounds"
-msgstr "La referencia de la matriz está fuera de los límites"
+msgstr "Los tipos de array tienen límites diferentes"
 
 #: ipa-devirt.c:1189
-#, fuzzy, gcc-internal-format
-#| msgid "field initializer type mismatch"
+#, gcc-internal-format
 msgid "return value type mismatch"
-msgstr "no coincide el tipo del inicializador del campo"
+msgstr "no coincide el tipo del valor de retorno"
 
 #: ipa-devirt.c:1204
 #, fuzzy, gcc-internal-format
@@ -18751,222 +18692,211 @@ msgid "implicit this pointer type mismatch"
 msgstr "no coincide el tipo del inicializador del campo"
 
 #: ipa-devirt.c:1207
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "type mismatch in nontype parameter pack"
+#, gcc-internal-format, gfc-internal-format
 msgid "type mismatch in parameter %i"
-msgstr "los tipos no coinciden en el parámetro pack que no es de tipo"
+msgstr "los tipos no coinciden en el parámetro %i"
 
 #: ipa-devirt.c:1218
-#, fuzzy, gcc-internal-format
-#| msgid "different parameter types"
+#, gcc-internal-format
 msgid "types have different parameter counts"
-msgstr "tipos de parámetro diferentes"
+msgstr "tipos con número de parámetros diferentes"
 
 #: ipa-devirt.c:1229
 #, gcc-internal-format
 msgid "type %qT itself violate the C++ One Definition Rule"
-msgstr ""
+msgstr "el propio tipo %qT viola la regla de una sola definición de C++"
 
 #: ipa-devirt.c:1235
-#, fuzzy, gcc-internal-format
-#| msgid "type %qT is not derived from type %qT"
+#, gcc-internal-format
 msgid "type %qT should match type %qT"
-msgstr "el tipo %qT no es derivado del tipo %T"
+msgstr "el tipo %qT debería coincidir con el tipo %T"
 
 #: ipa-devirt.c:1270
 #, gcc-internal-format
 msgid "a type with different qualifiers is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con cualificadores distintos definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1288
 #, gcc-internal-format
 msgid "a type with different attributes is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con atributos distintos definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1303
 #, gcc-internal-format
 msgid "an enum with different value name is defined in another translation unit"
-msgstr ""
+msgstr "hay un enum con nombre de valor distinto definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1312
 #, gcc-internal-format
 msgid "an enum with different values is defined in another translation unit"
-msgstr ""
+msgstr "hay un enum con valores distintos definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1320
 #, gcc-internal-format
 msgid "an enum with mismatching number of values is defined in another translation unit"
-msgstr ""
+msgstr "hay un enum con distinto número de valores definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1338
 #, gcc-internal-format
 msgid "a type with different precision is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con distinta precisión definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1345
 #, gcc-internal-format
 msgid "a type with different signedness is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con diferente tipo de signo definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1370
 #, gcc-internal-format
 msgid "it is defined as a pointer in different address space in another translation unit"
-msgstr ""
+msgstr "está definido como puntero en un espacio de direcciones diferente en otra unidad de traducción"
 
 #: ipa-devirt.c:1379
 #, gcc-internal-format
 msgid "it is defined as a pointer to different type in another translation unit"
-msgstr ""
+msgstr "está definido como puntero a un tipo diferente en otra unidad de traducción"
 
 #: ipa-devirt.c:1439
 #, gcc-internal-format
 msgid "an array of different size is defined in another translation unit"
-msgstr ""
+msgstr "hay un array de distinto tamaño definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1454
-#, fuzzy, gcc-internal-format
-#| msgid "%q+D declared here, later in the translation unit"
+#, gcc-internal-format
 msgid "has different return value in another translation unit"
-msgstr "%q+D se declaró aquí, después en la unidad de translación"
+msgstr "tiene distinto valor de retorno en otra unidad de translación"
 
 #: ipa-devirt.c:1477 ipa-devirt.c:1489
-#, fuzzy, gcc-internal-format
-#| msgid "%q+D declared here, later in the translation unit"
+#, gcc-internal-format
 msgid "has different parameters in another translation unit"
-msgstr "%q+D se declaró aquí, después en la unidad de translación"
+msgstr "tiene parámetros distintos en otra unidad de translación"
 
 #: ipa-devirt.c:1512
 #, gcc-internal-format
 msgid "a type defined in another translation unit is not polymorphic"
-msgstr ""
+msgstr "un tipo definido en otra unidad de traducción no es polimórfico"
 
 #: ipa-devirt.c:1516
 #, gcc-internal-format
 msgid "a type defined in another translation unit is polymorphic"
-msgstr ""
+msgstr "un tipo definido en otra unidad de traducción es polimórfico"
 
 #: ipa-devirt.c:1534 ipa-devirt.c:1590
 #, gcc-internal-format
 msgid "a type with different virtual table pointers is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con punteros de tabla virtual distinta definidos en otra unidad de traducción"
 
 #: ipa-devirt.c:1541 ipa-devirt.c:1595
 #, gcc-internal-format
 msgid "a type with different bases is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con bases distintas definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1549
-#, fuzzy, gcc-internal-format
-#| msgid "%q+D declared here, later in the translation unit"
+#, gcc-internal-format
 msgid "a field with different name is defined in another translation unit"
-msgstr "%q+D se declaró aquí, después en la unidad de translación"
+msgstr "hay un campo con un nombre distinto definido en otra unidad de translación"
 
 #: ipa-devirt.c:1563
 #, gcc-internal-format
 msgid "a field of same name but different type is defined in another translation unit"
-msgstr ""
+msgstr "hay un campo con el mismo nombre pero distinto tipo definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1576
-#, fuzzy, gcc-internal-format
-#| msgid "%q+D declared here, later in the translation unit"
+#, gcc-internal-format
 msgid "fields has different layout in another translation unit"
-msgstr "%q+D se declaró aquí, después en la unidad de translación"
+msgstr "los campos tienen distinta disposición en otra unidad de translación"
 
 #: ipa-devirt.c:1599
 #, gcc-internal-format
 msgid "a type with different number of fields is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con distinto número de campos definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1623
 #, gcc-internal-format
 msgid "a different method of same type is defined in another translation unit"
-msgstr ""
+msgstr "hay un método distinto del mismo tipo definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1631
-#, fuzzy, gcc-internal-format
-#| msgid "%q+D declared here, later in the translation unit"
+#, gcc-internal-format
 msgid "a definition that differs by virtual keyword in another translation unit"
-msgstr "%q+D se declaró aquí, después en la unidad de translación"
+msgstr "hay una definición que difiere en la palabra clave virtual en otra unidad de translación"
 
 #: ipa-devirt.c:1638
-#, fuzzy, gcc-internal-format
-#| msgid "%q+D declared here, later in the translation unit"
+#, gcc-internal-format
 msgid "virtual table layout differs in another translation unit"
-msgstr "%q+D se declaró aquí, después en la unidad de translación"
+msgstr "la disposición de la tabla virtual es distinta en otra unidad de translación"
 
 #: ipa-devirt.c:1647
 #, gcc-internal-format
 msgid "method with incompatible type is defined in another translation unit"
-msgstr ""
+msgstr "método con tipo incompatible definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1655
 #, gcc-internal-format
 msgid "a type with different number of methods is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con distinto número de métodos definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1677
 #, gcc-internal-format
 msgid "a type with different size is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con distinto tamaño definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1685
 #, gcc-internal-format
 msgid "a type with different alignment is defined in another translation unit"
-msgstr ""
+msgstr "hay un tipo con distinto alineamiento definido en otra unidad de traducción"
 
 #: ipa-devirt.c:1808
-#, fuzzy, gcc-internal-format
-#| msgid "label %qD defined here"
+#, gcc-internal-format
 msgid "the extra base is defined here"
-msgstr "la etiqueta %qD se define aquí"
+msgstr "la base extra se define aquí"
 
 #: ipa-devirt.c:3777
 #, gcc-internal-format
 msgid "Declaring type %qD final would enable devirtualization of %i call"
 msgid_plural "Declaring type %qD final would enable devirtualization of %i calls"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Declarar el tipo %qD final permitiría desvirtualizar %i llamada"
+msgstr[1] "Declarar el tipo %qD final permitiría desvirtualizar %i llamadas"
 
 #: ipa-devirt.c:3786
 #, gcc-internal-format
 msgid "Declaring type %qD final would enable devirtualization of %i call executed %lli times"
 msgid_plural "Declaring type %qD final would enable devirtualization of %i calls executed %lli times"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Declarar el tipo %qD final permitiría desvirtualizar %i llamada ejecutada %lli veces"
+msgstr[1] "Declarar el tipo %qD final permitiría desvirtualizar %i llamadas ejecutadas %lli veces"
 
 #: ipa-devirt.c:3815
 #, gcc-internal-format
 msgid "Declaring virtual destructor of %qD final would enable devirtualization of %i call"
 msgid_plural "Declaring virtual destructor of %qD final would enable devirtualization of %i calls"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Declarar el destructor virtual de %qD final permitiría desvirtualizar %i llamada"
+msgstr[1] "Declarar el destructor virtual de %qD final permitiría desvirtualizar %i llamadas"
 
 #: ipa-devirt.c:3823
 #, gcc-internal-format
 msgid "Declaring method %qD final would enable devirtualization of %i call"
 msgid_plural "Declaring method %qD final would enable devirtualization of %i calls"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Declarar el método %qD final permitiría desvirtualizar %i llamada"
+msgstr[1] "Declarar el método %qD final permitiría desvirtualizar %i llamadas"
 
 #: ipa-devirt.c:3831
 #, gcc-internal-format
 msgid "Declaring virtual destructor of %qD final would enable devirtualization of %i call executed %lli times"
 msgid_plural "Declaring virtual destructor of %qD final would enable devirtualization of %i calls executed %lli times"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Declarar el destructor virtual de %qD final permitiría desvirtualizar %i llamada ejecutada %lli veces"
+msgstr[1] "Declarar el destructor virtual de %qD final permitiría desvirtualizar %i llamadas ejecutadas %lli veces"
 
 #: ipa-devirt.c:3841
 #, gcc-internal-format
 msgid "Declaring method %qD final would enable devirtualization of %i call executed %lli times"
 msgid_plural "Declaring method %qD final would enable devirtualization of %i calls executed %lli times"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Declarar el método %qD final permitiría desvirtualizar %i llamada ejecutada %lli veces"
+msgstr[1] "Declarar el método %qD final permitiría desvirtualizar %i llamadas ejecutadas %lli veces"
 
 #: ipa-hsa.c:57
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "%qE is neither function nor member function; cannot be declared friend"
+#, gcc-internal-format, gfc-internal-format
 msgid "could not emit HSAIL for function %s: function cannot be cloned"
-msgstr "%qE no es ni función ni función miembro; no se puede declarar friend"
+msgstr "no se ha podido emitir HSAIL para la función %s: la función no se puede clonar"
 
 #: ipa-inline-analysis.c:4400
 #, gcc-internal-format
@@ -18986,13 +18916,12 @@ msgstr "no se puede usar %s en asm aquí"
 #: ira.c:5537
 #, gcc-internal-format
 msgid "frame pointer required, but reserved"
-msgstr ""
+msgstr "se requiere puntero de marco, mas reservado"
 
 #: ira.c:5538
-#, fuzzy, gcc-internal-format
-#| msgid "as %qD"
+#, gcc-internal-format
 msgid "for %qD"
-msgstr "como %qD"
+msgstr "para %qD"
 
 #: ira.c:5552
 #, gcc-internal-format
@@ -19005,15 +18934,14 @@ msgid "%<asm%> operand has impossible constraints"
 msgstr "el operando %<asm%> tiene restricciones imposibles"
 
 #: lra-assigns.c:1456
-#, fuzzy, gcc-internal-format
-#| msgid "unable to find a register to spill in class %qs"
+#, gcc-internal-format
 msgid "unable to find a register to spill"
-msgstr "no se puede encontrar un registro para vaciar la clase %qs"
+msgstr "no se puede encontrar un registro para vaciar"
 
 #: lra-assigns.c:1684
 #, gcc-internal-format, gfc-internal-format
 msgid "Maximum number of LRA assignment passes is achieved (%d)\n"
-msgstr ""
+msgstr "Se ha alcanzado el número máximo de pasos de asignación de LRA (%d)\n"
 
 #: lra-constraints.c:3787 reload.c:3823 reload.c:4078
 #, gcc-internal-format
@@ -19023,13 +18951,12 @@ msgstr "restricciones de operandos inconsistentes en un %<asm%>"
 #: lra-constraints.c:4677
 #, gcc-internal-format, gfc-internal-format
 msgid "Max. number of generated reload insns per insn is achieved (%d)\n"
-msgstr ""
+msgstr "Se ha alcanzado el número máximo de insns de recarga generadas (%d)\n"
 
 #: lto-cgraph.c:1293
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "bytecode stream: found multiple instances of cgraph node %d"
+#, gcc-internal-format, gfc-internal-format
 msgid "bytecode stream: found multiple instances of cgraph node with uid %d"
-msgstr "flujo de bytecode: se encontraron instancias múltiples del nodo cgraph %d"
+msgstr "flujo de bytecode: se encontraron instancias múltiples del nodo cgraph con uid %d"
 
 #: lto-cgraph.c:1472
 #, gcc-internal-format
@@ -19067,10 +18994,9 @@ msgid "cannot find LTO section refs in %s"
 msgstr "no se pueden encontrar las referencias de sección LTO en %s"
 
 #: lto-cgraph.c:1942
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "invalid rotate insn"
+#, gcc-internal-format, gfc-internal-format
 msgid "invalid offload table in %s"
-msgstr "insn rotate no válida"
+msgstr "tabla de descarga no válida en %s"
 
 #: lto-compress.c:193 lto-compress.c:201 lto-compress.c:222 lto-compress.c:285
 #: lto-compress.c:293 lto-compress.c:314
@@ -19094,39 +19020,34 @@ msgid "bytecode stream: unexpected tag %s"
 msgstr "flujo de bytecode: etiqueta %s inesperada"
 
 #: lto-streamer-in.c:903 lto-streamer-in.c:913
-#, fuzzy, gcc-internal-format
-#| msgid "array tuple index out of range"
+#, gcc-internal-format
 msgid "Cgraph edge statement index out of range"
-msgstr "índice de la tupla matriz fuera de rango"
+msgstr "Índice de sentencia de borde de cgraph fuera de rango"
 
 #: lto-streamer-in.c:907 lto-streamer-in.c:916
 #, gcc-internal-format
 msgid "Cgraph edge statement index not found"
-msgstr ""
+msgstr "Índice de sentencia de borde de cgraph no encontrado"
 
 #: lto-streamer-in.c:923
-#, fuzzy, gcc-internal-format
-#| msgid "array tuple index out of range"
+#, gcc-internal-format
 msgid "Reference statement index out of range"
-msgstr "índice de la tupla matriz fuera de rango"
+msgstr "Índice de sentencia de referencia fuera de rango"
 
 #: lto-streamer-in.c:926
-#, fuzzy, gcc-internal-format
-#| msgid "Warn if deprecated empty statements are found"
+#, gcc-internal-format
 msgid "Reference statement index not found"
-msgstr "Avisa si se encuentran declaraciones vacías obsoletas"
+msgstr "Índice de sentencia de referencia no encontrado"
 
 #: lto-streamer-in.c:1545
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "cannot read LTO decls from %s"
+#, gcc-internal-format, gfc-internal-format
 msgid "cannot read LTO mode table from %s"
-msgstr "no se pueden leer las decls LTO de %s"
+msgstr "no se pueden leer la tabla de modo LTO de %s"
 
 #: lto-streamer-in.c:1643
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "support for mode %qs"
+#, gcc-internal-format, gfc-internal-format
 msgid "unsupported mode %s\n"
-msgstr "se admite el modo %qs"
+msgstr "no se admite el modo %s\n"
 
 #: lto-streamer-out.c:420 lto-streamer-out.c:664
 #, gcc-internal-format
@@ -19139,16 +19060,14 @@ msgid "bytecode stream: unexpected LTO section %s"
 msgstr "flujo de bytecode: sección LTO %s inesperada"
 
 #: lto-streamer.c:383
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "bytecode stream generated with LTO version %d.%d instead of the expected %d.%d"
+#, gcc-internal-format, gfc-internal-format
 msgid "bytecode stream in file '%s' generated with LTO version %d.%d instead of the expected %d.%d"
-msgstr "flujo de bytecode generado con LTO versión %d.%d en lugar de la versión esperada %d.%d"
+msgstr "flujo de bytecode en el fichero '%s' generado con LTO versión %d.%d en lugar de la versión esperada %d.%d"
 
 #: lto-wrapper.c:114
-#, fuzzy, gcc-internal-format
-#| msgid "deleting LTRANS file %s"
+#, gcc-internal-format
 msgid "deleting LTRANS file %s: %m"
-msgstr "se borra el fichero LTRANS %s"
+msgstr "se borra el fichero LTRANS %s: %m"
 
 #: lto-wrapper.c:151
 #, gcc-internal-format
@@ -19156,37 +19075,34 @@ msgid "malformed COLLECT_GCC_OPTIONS"
 msgstr "COLLECT_GCC_OPTIONS malformado"
 
 #: lto-wrapper.c:307
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "created and used with different endianness"
+#, gcc-internal-format, gfc-internal-format
 msgid "Option %s with different values"
-msgstr "creado y usado con diferente orden de bits"
+msgstr "Opción %s con valores diferentes"
 
 #: lto-wrapper.c:318 lto-wrapper.c:330
 #, gcc-internal-format, gfc-internal-format
 msgid "Option %s not used consistently in all LTO input files"
-msgstr ""
+msgstr "Opción %s no usada con coherencia en todos los ficheros de entrada LTO"
 
 #: lto-wrapper.c:815
 #, gcc-internal-format, gfc-internal-format
 msgid "problem with building target image for %s\n"
-msgstr ""
+msgstr "problema al construir la imagen de destino para %s\n"
 
 #: lto-wrapper.c:835
-#, fuzzy, gcc-internal-format
-#| msgid "no input files"
+#, gcc-internal-format
 msgid "reading input file"
-msgstr "no hay ficheros de entrada"
+msgstr "leyendo fichero de entrada"
 
 #: lto-wrapper.c:840
-#, fuzzy, gcc-internal-format
-#| msgid "Error writing output file '%s'\n"
+#, gcc-internal-format
 msgid "writing output file"
-msgstr "Error al escribir el fichero de salida '%s'\n"
+msgstr "escribiendo fichero de salida"
 
 #: lto-wrapper.c:870
 #, gcc-internal-format
 msgid "installation error, can't find crtoffloadtable.o"
-msgstr ""
+msgstr "error de instalación, no se puede encontrar crtoffloadtable.o"
 
 #: lto-wrapper.c:974
 #, gcc-internal-format
@@ -19199,114 +19115,104 @@ msgid "environment variable COLLECT_GCC_OPTIONS must be set"
 msgstr "se debe establecer la variable de entorno COLLECT_GCC_OPTIONS"
 
 #: lto-wrapper.c:1135 lto-wrapper.c:1191
-#, fuzzy, gcc-internal-format
-#| msgid "can't open %s: %m"
+#, gcc-internal-format
 msgid "cannot open %s: %m"
 msgstr "no se puede abrir %s: %m"
 
 #: lto-wrapper.c:1138 lto-wrapper.c:1197
-#, fuzzy, gcc-internal-format
-#| msgid "can%'t read %s: %m"
+#, gcc-internal-format
 msgid "cannot read %s: %m"
 msgstr "no se puede leer %s: %m"
 
 #: lto-wrapper.c:1165
-#, fuzzy, gcc-internal-format, gfc-internal-format
-#| msgid "invalid operation (%s)"
+#, gcc-internal-format, gfc-internal-format
 msgid "invalid format of %s"
-msgstr "operación no válida (%s)"
+msgstr "formato no válido de %s"
 
 #: lto-wrapper.c:1301
-#, fuzzy, gcc-internal-format
-#| msgid "fopen %s: %m"
+#, gcc-internal-format
 msgid "fopen: %s: %m"
-msgstr "fopen %s: %m"
+msgstr "fopen: %s: %m"
 
 #: multiple_target.c:67
-#, fuzzy, gcc-internal-format
-#| msgid "nested functions not supported on this target"
+#, gcc-internal-format
 msgid "the call requires ifunc, which is not supported by this target"
-msgstr "no se admiten funciones anidadas en este objetivo"
+msgstr "la llamada requiere ifunc, que no se admite en este objetivo"
 
 #: multiple_target.c:76
-#, fuzzy, gcc-internal-format
-#| msgid "version attribute is not a string"
+#, gcc-internal-format
 msgid "default target_clones attribute was not set"
-msgstr "el atributo version no es una cadena"
+msgstr "no se ha especificado el atributo target_clones predefinido"
 
 #: multiple_target.c:251
-#, fuzzy, gcc-internal-format
-#| msgid "%qE incompatible attribute ignored"
+#, gcc-internal-format
 msgid "single target_clones attribute is ignored"
-msgstr "se descarta el atributo incompatible %qE"
+msgstr "se descarta el atributo sencillo target_clones"
 
 #: multiple_target.c:263
-#, fuzzy, gcc-internal-format
-#| msgid "default argument %qE uses %qD"
+#, gcc-internal-format
 msgid "default target was not set"
-msgstr "el argumento por defecto %qE usa %qD"
+msgstr "no se ha especificado el objetivo predefinido"
 
 #: omp-expand.c:2029
 #, gcc-internal-format
 msgid "%<depend(sink)%> clause waiting for lexically later iteration"
-msgstr ""
+msgstr "cláusula %<depend(sink)%> esperando iteración léxica posterior"
 
 #: omp-expand.c:2166
 #, gcc-internal-format
 msgid "%<depend(sink)%> refers to iteration never in the iteration space"
-msgstr ""
+msgstr "%<depend(sink)%> se refiere a una iteración ajena al espacio de iteración"
 
 #: omp-general.c:592
-#, fuzzy, gcc-internal-format
-#| msgid "storage class specified for typename"
+#, gcc-internal-format
 msgid "multiple loop axes specified for routine"
-msgstr "se especificó una clase de almacenamiento para el nombre de tipo"
+msgstr "se especificaron múltiples ejes de bucle para la rutina"
 
 #: omp-low.c:2118 omp-offload.c:1120
 #, gcc-internal-format
 msgid "%<seq%> overrides other OpenACC loop specifiers"
-msgstr ""
+msgstr "%<seq%> ignora otros especificadores de bucle OpenACC"
 
 #: omp-low.c:2121
 #, gcc-internal-format
 msgid "%<auto%> conflicts with other OpenACC loop specifiers"
-msgstr ""
+msgstr "%<auto%> está en conflicto con otros especificadores de bucle OpenACC"
 
 #: omp-low.c:2125
 #, gcc-internal-format
 msgid "inner loop uses same OpenACC parallelism as containing loop"
-msgstr ""
+msgstr "el bucle interno usa el mismo paralelismo OpenACC que el bucle que lo contiene"
 
 #: omp-low.c:2172
 #, gcc-internal-format
 msgid "argument not permitted on %qs clause in OpenACC %<parallel%>"
-msgstr ""
+msgstr "argumento no permitido en la cláusula %qs en OpenACC %<parallel%>"
 
 #: omp-low.c:2441
 #, gcc-internal-format
 msgid "non-OpenACC construct inside of OpenACC routine"
-msgstr ""
+msgstr "construcción no OpenACC dentro de rutina OpenACC"
 
 #: omp-low.c:2450
 #, gcc-internal-format
 msgid "non-OpenACC construct inside of OpenACC region"
-msgstr ""
+msgstr "construcción no OpenACC dentro de región OpenACC"
 
 #: omp-low.c:2475
-#, fuzzy, gcc-internal-format
-#| msgid "ordered region may not be closely nested inside of critical or explicit task region"
+#, gcc-internal-format
 msgid "%<ordered simd threads%> must be closely nested inside of %<for simd%> region"
-msgstr "la región ordenada puede no estar bien anidada dentro de la región crítica o de tarea explícita"
+msgstr "%<ordered simd threads%> debe estar estar bien anidada dentro de la región %<for simd%>"
 
 #: omp-low.c:2483
 #, gcc-internal-format
 msgid "OpenMP constructs other than %<#pragma omp ordered simd%> may not be nested inside %<simd%> region"
-msgstr ""
+msgstr "Las construcciones OpenACC distintas de %<#pragma omp ordered simd%> pueden no estar anidadas dentro de la región %<simd%>"
 
 #: omp-low.c:2495
 #, gcc-internal-format
 msgid "only %<distribute%> or %<parallel%> regions are allowed to be strictly nested inside %<teams%> region"
-msgstr ""
+msgstr "solamente a las regiones %<distribute%> o %<parallel%> se les permite estar estrictamente anidadas dentro de la región %<teams%>"
 
 #: omp-low.c:2512
 #, gcc-internal-format
