@@ -390,6 +390,8 @@ rm -fr %{buildroot}
 %{_mandir}/man1/%{target}-cpp.1.gz
 %{_mandir}/man1/%{target}-gcc.1.gz
 %{_mandir}/man1/%{target}-gcov.1.gz
+%{_mandir}/man1/%{target}-gcov-dump.1.gz
+%{_mandir}/man1/%{target}-gcov-tool.1.gz
 %doc COPYING* README readme.DJGPP
 
 %files c++
