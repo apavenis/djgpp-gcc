@@ -1,3 +1,90 @@
+2017-04-04  Bill Schmidt  <wschmidt@linux.vnet.ibm.com>
+
+	* doc/extend.texi (PowerPC AltiVec Built-in Functions): Grammar
+	correction.
+
+2017-04-04  Thomas Preud'homme  <thomas.preudhomme@arm.com>
+
+	PR target/80307
+	* config/arm/arm.c (thumb1_rtx_costs): Give a cost of 32
+	instructions for small multiply cores.
+
+2017-04-04  Jeff Law  <law@redhat.com>
+
+	* config/mips/mips.c (mips_multi_add): Zero initialize the newly
+	added member.
+	(mips_expand_vec_perm_const): Initialize elements in orig_perm
+	that are not set by the loop over the elements.
+
+2017-04-04  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/80286
+	* config/i386/i386.c (ix86_expand_args_builtin): If op has scalar
+	int mode, convert_modes it to mode as unsigned, otherwise use
+	lowpart_subreg to mode rather than SImode.
+	* config/i386/sse.md (<mask_codefor>ashr<mode>3<mask_name>,
+	ashr<mode>3, ashr<mode>3<mask_name>, <shift_insn><mode>3<mask_name>):
+	Use DImode instead of SImode for the shift count operand.
+	* config/i386/mmx.md (mmx_ashr<mode>3, mmx_<shift_insn><mode>3):
+	Likewise.
+
+2017-04-04  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/80281
+	* match.pd (A + (-B) -> A - B): Make sure to preserve unsigned
+	arithmetic done for the negate or the plus.  Simplify.
+	(A - (-B) -> A + B): Likewise.
+	* fold-const.c (split_tree): Make sure to not negate pointers.
+
+2017-04-04  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR rtl-optimization/60818
+	* simplify-rtx.c (simplify_binary_operation_1): Do not replace
+	a compare of comparisons with the thing compared if this results
+	in a different machine mode.
+
+2017-04-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	* alias.c (base_alias_check): Fix typo in comment.
+	* cgraph.h (class ipa_polymorphic_call_context): Likewise.
+	* cgraphunit.c (symbol_table::compile): Likewise.
+	* collect2.c (maybe_run_lto_and_relink): Likewise.
+	* config/arm/arm.c (arm_thumb1_mi_thunk): Likewise.
+	* config/avr/avr-arch.h (avr_arch_info_t): Likewise.
+	* config/avr/avr.c (avr_map_op_t): Likewise.
+	* config/cr16/cr16.h (DATA_ALIGNMENT): Likewise.
+	* config/epiphany/epiphany.c (TARGET_ARG_PARTIAL_BYTES): Likewise.
+	* config/epiphany/epiphany.md (movcc): Likewise.
+	* config/i386/i386.c (legitimize_pe_coff_extern_decl): Likewise.
+	* config/m68k/m68k.c (struct _sched_ib, m68k_sched_variable_issue):
+	Likewise.
+	* config/mips/mips.c (mips_save_restore_reg): Likewise.
+	* config/rx/rx.c (rx_is_restricted_memory_address): Likewise.
+	* config/s390/s390.c (Z10_EARLYLOAD_DISTANCE): Likewise.
+	* config/sh/sh.c (sh_rtx_costs): Likewise.
+	* fold-const.c (fold_truth_andor): Likewise.
+	* genautomata.c (collapse_flag): Likewise.
+	* gengtype.h (struct type::u::s): Likewise.
+	* gensupport.c (has_subst_attribute, add_mnemonic_string): Likewise.
+	* input.c (FORMAT_AMOUNT): Likewise.
+	* ipa-cp.c (class ipcp_lattice, agg_replacements_to_vector)
+	(known_aggs_to_agg_replacement_list): Likewise.
+	* ipa-inline-analysis.c: Likewise.
+	* ipa-inline.h (estimate_edge_time, estimate_edge_hints): Likewise.
+	* ipa-polymorphic-call.c
+	(ipa_polymorphic_call_context::restrict_to_inner_class): Likewise.
+	* loop-unroll.c (analyze_insn_to_expand_var): Likewise.
+	* lra.c (lra_optional_reload_pseudos, lra_subreg_reload_pseudos):
+	Likewise.
+	* modulo-sched.c (apply_reg_moves): Likewise.
+	* omp-expand.c (build_omp_regions_1): Likewise.
+	* trans-mem.c (struct tm_wrapper_hasher): Likewise.
+	* tree-ssa-loop-ivopts.c (may_eliminate_iv): Likewise.
+	* tree-ssa-loop-niter.c (maybe_lower_iteration_bound): Likewise.
+	* tree-vect-data-refs.c (vect_enhance_data_refs_alignment): Likewise.
+	* value-prof.c: Likewise.
+	* var-tracking.c (val_reset): Likewise.
+
 2017-04-03  Richard Biener  <rguenther@suse.de>
 
 	PR tree-optimization/80275

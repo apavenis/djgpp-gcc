@@ -1,3 +1,30 @@
+2017-04-04  Volker Reichelt  <v.reichelt@netcologne.de>
+
+	PR c++/80296
+	* cxx-pretty-print.c (cxx_pretty_printer::expression): Add
+	UNARY_PLUS_EXPR case.
+
+2017-04-03  Jason Merrill  <jason@redhat.com>
+
+	* semantics.c (finish_template_type): Check CLASSTYPE_TEMPLATE_INFO.
+
+2017-04-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	* class.c (update_vtable_entry_for_fn): Fix typo in comment.
+	* decl2.c (one_static_initialization_or_destruction): Likewise.
+	* name-lookup.c (store_bindings): Likewise.
+	* parser.c (make_call_declarator): Likewise.
+	* pt.c (check_explicit_specialization): Likewise.
+
+2017-04-03  Jason Merrill  <jason@redhat.com>
+
+	PR sanitizer/79993 - ICE with VLA initialization from string
+	PR c++/69487 - wrong VLA initialization from string
+	* init.c (finish_length_check): Split out from build_vec_init.
+	(build_vec_init): Handle STRING_CST.
+	* typeck2.c (split_nonconstant_init): Handle STRING_CST.
+	(digest_init_r): Don't give a STRING_CST VLA type.
+
 2017-03-31  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/79572

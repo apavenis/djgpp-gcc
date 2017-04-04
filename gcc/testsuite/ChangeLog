@@ -1,3 +1,72 @@
+2017-04-04  Volker Reichelt  <v.reichelt@netcologne.de>
+
+	PR c++/80296
+	* g++.dg/cpp0x/alias-decl-80296.C: New test.
+
+2017-04-04  Thomas Preud'homme  <thomas.preudhomme@arm.com>
+
+	PR target/80307
+	* gcc.target/arm/small-multiply-m0-1.c: Do not skip test if not
+	targeting any CPU or architecture.
+	* gcc.target/arm/small-multiply-m0-2.c: Likewise.
+	* gcc.target/arm/small-multiply-m0-3.c: Likewise.
+	* gcc.target/arm/small-multiply-m0plus-1.c: Likewise.
+	* gcc.target/arm/small-multiply-m0plus-2.c: Likewise.
+	* gcc.target/arm/small-multiply-m0plus-3.c: Likewise.
+	* gcc.target/arm/small-multiply-m1-1.c: Likewise.
+	* gcc.target/arm/small-multiply-m1-2.c: Likewise.
+	* gcc.target/arm/small-multiply-m1-3.c: Likewise.
+
+2017-04-04  Nicolas Koenig  <koenigni@student.ethz.ch> 
+
+	PR fortran/69498
+	* gfortran.dg/submodule_unexp.f90: New test.
+
+2017-04-04  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/80286
+	* gcc.target/i386/avx-pr80286.c: New test.
+	* gcc.dg/pr80286.c: New test.
+
+2017-04-04  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/80281
+	* gcc.dg/torture/pr80281.c: New testcase.
+
+2017-04-04  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/80275
+	* g++.dg/opt/pr80275.C: Make g static.
+
+2017-04-04  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR rtl-optimization/60818
+	* gcc.c-torture/compile/pr60818.c: New testcase.
+
+2017-04-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	* g++.old-deja/g++.benjamin/scope02.C: Fix typo in comment.
+	* gcc.dg/20031012-1.c: Likewise.
+	* gcc.dg/ipa/ipcp-1.c: Likewise.
+	* gcc.dg/torture/matrix-3.c: Likewise.
+	* gcc.target/powerpc/ppc-spe.c: Likewise.
+	* gcc.target/rx/zero-width-bitfield.c: Likewise.
+
+2017-04-03  Peter Bergner  <bergner@vnet.ibm.com>
+
+	PR target/80246
+	* gcc.target/powerpc/dfp-builtin-1.c: Require hard_dfp, not
+	powerpc_vsx_ok.
+	(std, ld): Limit scan-assembler-times check to lp64.
+	(stwu, stw, lwz): Add scan-assembler-times check for ilp32.
+	* gcc.target/powerpc/dfp-builtin-2.c: Require hard_dfp, not
+	powerpc_vsx_ok.
+
+2017-04-03  Peter Bergner  <bergner@vnet.ibm.com>
+
+	PR target/80246
+	* gcc.target/powerpc/pr80246.c: Require hard_dfp.
+
 2017-04-03  Richard Biener  <rguenther@suse.de>
 
 	PR tree-optimization/80275
