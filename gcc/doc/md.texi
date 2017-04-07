@@ -3139,13 +3139,13 @@ asm ("xsaddqp %x0,%x1,%x2" : "=v" (v1) : "v" (v2), "v" (v3));
 is incorrect.
 
 @item wb
-Altivec register if @option{-mpower9-dform} is used or NO_REGS.
+Altivec register if @option{-mcpu=power9} is used or NO_REGS.
 
 @item wd
 VSX vector register to hold vector double data or NO_REGS.
 
 @item we
-VSX register if the @option{-mpower9-vector} and @option{-m64} options
+VSX register if the @option{-mcpu=power9} and @option{-m64} options
 were used or NO_REGS.
 
 @item wf
@@ -3211,8 +3211,14 @@ FP or VSX register to perform ISA 2.07 float ops or NO_REGS.
 @item wz
 Floating point register if the LFIWZX instruction is enabled or NO_REGS.
 
+@item wA
+Address base register if 64-bit instructions are enabled or NO_REGS.
+
 @item wD
 Int constant that is the element number of the 64-bit scalar in a vector.
+
+@item wE
+Vector constant that can be loaded with the XXSPLTIB instruction.
 
 @item wF
 Memory operand suitable for power9 fusion load/stores.
@@ -3221,8 +3227,11 @@ Memory operand suitable for power9 fusion load/stores.
 Memory operand suitable for TOC fusion memory references.
 
 @item wL
-Int constant that is the element number that the MFVSRLD instruction
+Int constant that is the element number that the MFVSRLD instruction.
 targets.
+
+@item wM
+Match vector constant with all 1's if the XXLORC instruction is available.
 
 @item wO
 A memory operand suitable for the ISA 3.0 vector d-form instructions.
@@ -3230,6 +3239,9 @@ A memory operand suitable for the ISA 3.0 vector d-form instructions.
 @item wQ
 A memory address that will work with the @code{lq} and @code{stq}
 instructions.
+
+@item wS
+Vector constant that can be loaded with XXSPLTIB & sign extension.
 
 @item h
 @samp{MQ}, @samp{CTR}, or @samp{LINK} register

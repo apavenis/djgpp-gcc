@@ -1,3 +1,181 @@
+2017-03-28  Andreas Schwab  <schwab@suse.de>
+
+	Backport from trunk
+
+	2017-03-28  Andreas Schwab  <schwab@suse.de>
+
+	PR ada/80117
+	* system-linux-aarch64-ilp32.ads: New file.
+	* gcc-interface/Makefile.in (LIBGNAT_TARGET_PAIRS_COMMON): Rename
+	from LIBGNAT_TARGET_PAIRS.
+	(LIBGNAT_TARGET_PAIRS_32, LIBGNAT_TARGET_PAIRS_64): Define.
+	(LIBGNAT_TARGET_PAIRS): Use LIBGNAT_TARGET_PAIRS_COMMON, and
+	LIBGNAT_TARGET_PAIRS_64 or LIBGNAT_TARGET_PAIRS_32 for -mabi=lp64
+	or -mabi=ilp32, resp.
+
+2017-03-08  Thanassis Tsiodras  <ttsiodras@gmail.com>
+
+	PR ada/79903
+	* socket.c (__gnat_gethostbyaddr): Add missing test for __rtems__.
+
+2017-03-08  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR ada/79945
+	* system-linux-ppc.ads (Default_Bit_Order): Use Standard's setting.
+
+2017-02-24  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_field): Do not remove the wrapper
+	around a justified modular type if it doesn't have the same scalar
+	storage order as the enclosing record type.
+
+2017-02-24  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/trans.c (gnat_to_gnu): Do not apply special handling
+	of boolean rvalues to function calls.
+
+2017-02-24  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/utils.c (fold_bit_position): New function.
+	(rest_of_record_type_compilation): Call it instead of bit_position to
+	compute the field position and remove the call to remove_conversions.
+	(compute_related_constant): Factor out the multiplication in both
+	operands, if any, and streamline the final test.
+
+2017-02-24  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/trans.c (return_value_ok_for_nrv_p): Add sanity check.
+
+2017-02-12  John Marino  <gnugcc@marino.st>
+
+	* gcc-interface/Makefile.in: Support aarch64-freebsd.
+
+2016-12-21  Release Manager
+
+	* GCC 6.3.0 released.
+
+2016-12-07  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_entity) <E_Enumeration_Subtype>:
+	Also call finish_character_type on Character subtypes.
+	* gcc-interface/utils.c (finish_character_type): Deal with subtypes.
+
+2016-11-22  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc-interface/Make-lang.in (check-acats): Fix detection
+	of -j argument.
+
+2016-11-13  Bob Duff  <duff@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_entity): In assertion about known
+	Esize, protect with !is_type and change !Unknown_Esize to Known_Esize.
+
+2016-11-13  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/utils2.c (gnat_protect_expr): Also protect only the
+	address if the expression is the component of a dereference.
+	Do not use a reference type for the final temporary reference.
+
+2016-11-02  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	Backport from mainline
+	2016-10-24  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* gcc-interface/Make-lang.in (lang_checks_parallelized): New target.
+	(check_gnat_parallelize): Likewise.
+
+2016-10-17  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* system-darwin-ppc64.ads (Support_64_Bit_Divides): Delete.
+	* system-linux-armeb.ads (Support_64_Bit_Divides): Likewise.
+	* system-linux-mips.ads (Support_64_Bit_Divides): Likewise.
+	* system-linux-mips64el.ads (Support_64_Bit_Divides): Likewise.
+	* system-linux-mipsel.ads (Support_64_Bit_Divides): Likewise.
+	* system-linux-sparcv9.ads (Support_64_Bit_Divides): Likewise.
+	* system-rtems.ads (Support_64_Bit_Divides): Likewise.
+
+2016-10-16  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* system-aix.ads (Always_Compatible_Rep): Change to False.
+	* system-aix64.ads (Always_Compatible_Rep): Likewise.
+	* system-hpux-ia64.ads (Always_Compatible_Rep): Likewise.
+	* system-hpux.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-alpha.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-hppa.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-ia64.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-mips.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-mips64el.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-mipsel.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-s390.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-s390x.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-sh4.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-sparc.ads (Always_Compatible_Rep): Likewise.
+	* system-linux-sparcv9.ads (Always_Compatible_Rep): Likewise.
+	* system-rtems.ads (Always_Compatible_Rep): Likewise.
+
+2016-10-11  Eric Botcazou  <ebotcazou@adacore.com>
+
+	Backport from mainline
+	2016-10-11  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* system-linux-armeb.ads (Backend_Overflow_Checks): Change to True.
+	* system-linux-mips.ads (Backend_Overflow_Checks): Likewise.
+	* system-linux-mips64el.ads (Backend_Overflow_Checks): Likewise.
+	* system-linux-mipsel.ads (Backend_Overflow_Checks): Likewise.
+	* system-linux-sparcv9.ads (Backend_Overflow_Checks): Likewise.
+	* system-rtems.ads (Always_Compatible_Rep): Likewise.
+
+	2016-10-11  Eric Botcazou  <ebotcazou@adacore.com>
+		    Tristan Gingold  <gingold@adacore.com>
+
+	* system-linux-ppc64.ads: Delete.
+	* system-linux-ppc.ads: Make 32-bit/64-bit neutral.
+	* gcc-interface/Makefile.in (PowerPC/Linux): Simplify.
+
+2016-10-10  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/utils2.c (find_common_type): Do not return the LHS type
+	if it's an array with non-constant lower bound and the RHS type is an
+	array with a constant one.
+
+2016-10-10  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/utils.c (convert): For a biased input type, convert the
+	bias itself to the base type before adding it.
+
+2016-08-22  Release Manager
+
+	* GCC 6.2.0 released.
+
+2016-06-13  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_entity) <E_Variable>: Deal with
+	PLUS_EXPR in the expression of a renaming.
+
+2016-06-11  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/trans.c (Case_Statement_to_gnu): Deal with characters.
+
+2016-06-11  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_entity): Do not clobber
+	gnat_entity_name with temporary names for XUP and XUT types.
+
+2016-06-06  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/utils.c (gnat_internal_attribute_table): Add support
+	for noinline and noclone attributes.
+	(handle_noinline_attribute): New handler.
+	(handle_noclone_attribute): Likewise.
+
+2016-06-06  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/utils2.c (build_call_alloc_dealloc): Do not substitute
+	placeholder expressions here but...
+	* gcc-interface/trans.c (gnat_to_gnu) <N_Free_Statement>: ...here.
+	Make an exception to the protection of a CALL_EXPR result with an
+	unconstrained type only in the same cases as Call_to_gnu.
+
 2016-06-01  Simon Wright  <simon@pushface.org>
 
 	PR ada/71358

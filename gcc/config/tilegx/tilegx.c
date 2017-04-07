@@ -3996,8 +3996,11 @@ tilegx_expand_prologue (void)
   /* Save lr first in its special location because code after this
      might use the link register as a scratch register.  */
   if (df_regs_ever_live_p (TILEGX_LINK_REGNUM) || crtl->calls_eh_return)
-    FRP (frame_emit_store (TILEGX_LINK_REGNUM, TILEGX_LINK_REGNUM,
-			   stack_pointer_rtx, stack_pointer_rtx, 0));
+    {
+      FRP (frame_emit_store (TILEGX_LINK_REGNUM, TILEGX_LINK_REGNUM,
+			     stack_pointer_rtx, stack_pointer_rtx, 0));
+      emit_insn (gen_blockage ());
+    }
 
   if (total_size == 0)
     {
@@ -4468,8 +4471,7 @@ tilegx_gen_bundles (void)
       rtx_insn *end = NEXT_INSN (BB_END (bb));
 
       prev = NULL;
-      for (insn = next_insn_to_bundle (BB_HEAD (bb), end); insn;
-	   prev = insn, insn = next)
+      for (insn = next_insn_to_bundle (BB_HEAD (bb), end); insn; insn = next)
 	{
 	  next = next_insn_to_bundle (NEXT_INSN (insn), end);
 
@@ -4505,7 +4507,11 @@ tilegx_gen_bundles (void)
 		PUT_MODE (prev, QImode);
 	      }
 	    delete_insn (insn);
+
+            // Note: prev remains the same for next iteration.
 	  }
+          else
+            prev = insn;
 	}
     }
 }

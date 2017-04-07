@@ -2159,6 +2159,9 @@ transform_statements (void)
 tree
 asan_dynamic_init_call (bool after_p)
 {
+  if (shadow_ptr_types[0] == NULL_TREE)
+    asan_init_shadow_ptr_types ();
+
   tree fn = builtin_decl_implicit (after_p
 				   ? BUILT_IN_ASAN_AFTER_DYNAMIC_INIT
 				   : BUILT_IN_ASAN_BEFORE_DYNAMIC_INIT);
@@ -2168,8 +2171,6 @@ asan_dynamic_init_call (bool after_p)
       pretty_printer module_name_pp;
       pp_string (&module_name_pp, main_input_filename);
 
-      if (shadow_ptr_types[0] == NULL_TREE)
-	asan_init_shadow_ptr_types ();
       module_name_cst = asan_pp_string (&module_name_pp);
       module_name_cst = fold_convert (const_ptr_type_node,
 				      module_name_cst);
@@ -2274,7 +2275,11 @@ asan_add_global (tree decl, tree type, vec<constructor_elt, va_gc> *v)
   CONSTRUCTOR_APPEND_ELT (vinner, NULL_TREE,
 			  fold_convert (const_ptr_type_node, module_name_cst));
   varpool_node *vnode = varpool_node::get (decl);
-  int has_dynamic_init = vnode ? vnode->dynamically_initialized : 0;
+  int has_dynamic_init = 0;
+  /* FIXME: Enable initialization order fiasco detection in LTO mode once
+     proper fix for PR 79061 will be applied.  */
+  if (!in_lto_p)
+    has_dynamic_init = vnode ? vnode->dynamically_initialized : 0;
   CONSTRUCTOR_APPEND_ELT (vinner, NULL_TREE,
 			  build_int_cst (uptr, has_dynamic_init));
   tree locptr = NULL_TREE;

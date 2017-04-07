@@ -81,6 +81,7 @@ static tree get_guard_bits (tree);
 static void determine_visibility_from_class (tree, tree);
 static bool determine_hidden_inline (tree);
 static bool decl_defined_p (tree);
+static void maybe_instantiate_decl (tree);
 
 /* A list of static class variables.  This is needed, because a
    static class variable can be declared inside the class without
@@ -1874,6 +1875,14 @@ vague_linkage_p (tree decl)
 {
   if (!TREE_PUBLIC (decl))
     {
+      /* maybe_thunk_body clears TREE_PUBLIC on the maybe-in-charge 'tor
+	 variants, check one of the "clones" for the real linkage.  */
+      if ((DECL_MAYBE_IN_CHARGE_DESTRUCTOR_P (decl)
+	   || DECL_MAYBE_IN_CHARGE_CONSTRUCTOR_P (decl))
+	  && DECL_CHAIN (decl)
+	  && DECL_CLONED_FUNCTION (DECL_CHAIN (decl)))
+	return vague_linkage_p (DECL_CHAIN (decl));
+
       gcc_checking_assert (!DECL_COMDAT (decl));
       return false;
     }
@@ -2271,11 +2280,6 @@ constrain_visibility_for_template (tree decl, tree targs)
 void
 determine_visibility (tree decl)
 {
-  tree class_type = NULL_TREE;
-  bool use_template;
-  bool orig_visibility_specified;
-  enum symbol_visibility orig_visibility;
-
   /* Remember that all decls get VISIBILITY_DEFAULT when built.  */
 
   /* Only relevant for names with external linkage.  */
@@ -2287,25 +2291,28 @@ determine_visibility (tree decl)
      maybe_clone_body.  */
   gcc_assert (!DECL_CLONED_FUNCTION_P (decl));
 
-  orig_visibility_specified = DECL_VISIBILITY_SPECIFIED (decl);
-  orig_visibility = DECL_VISIBILITY (decl);
+  bool orig_visibility_specified = DECL_VISIBILITY_SPECIFIED (decl);
+  enum symbol_visibility orig_visibility = DECL_VISIBILITY (decl);
 
+  /* The decl may be a template instantiation, which could influence
+     visibilty.  */
+  tree template_decl = NULL_TREE;
   if (TREE_CODE (decl) == TYPE_DECL)
     {
       if (CLASS_TYPE_P (TREE_TYPE (decl)))
-	use_template = CLASSTYPE_USE_TEMPLATE (TREE_TYPE (decl));
+	{
+	  if (CLASSTYPE_USE_TEMPLATE (TREE_TYPE (decl)))
+	    template_decl = decl;
+	}
       else if (TYPE_TEMPLATE_INFO (TREE_TYPE (decl)))
-	use_template = 1;
-      else
-	use_template = 0;
+	template_decl = decl;
     }
-  else if (DECL_LANG_SPECIFIC (decl))
-    use_template = DECL_USE_TEMPLATE (decl);
-  else
-    use_template = 0;
+  else if (DECL_LANG_SPECIFIC (decl) && DECL_USE_TEMPLATE (decl))
+    template_decl = decl;
 
   /* If DECL is a member of a class, visibility specifiers on the
      class can influence the visibility of the DECL.  */
+  tree class_type = NULL_TREE;
   if (DECL_CLASS_SCOPE_P (decl))
     class_type = DECL_CONTEXT (decl);
   else
@@ -2348,8 +2355,11 @@ determine_visibility (tree decl)
 	    }
 
 	  /* Local classes in templates have CLASSTYPE_USE_TEMPLATE set,
-	     but have no TEMPLATE_INFO, so don't try to check it.  */
-	  use_template = 0;
+	     but have no TEMPLATE_INFO.  Their containing template
+	     function does, and the local class could be constrained
+	     by that.  */
+	  if (template_decl)
+	    template_decl = fn;
 	}
       else if (VAR_P (decl) && DECL_TINFO_P (decl)
 	       && flag_visibility_ms_compat)
@@ -2379,7 +2389,7 @@ determine_visibility (tree decl)
 	      && !CLASSTYPE_VISIBILITY_SPECIFIED (TREE_TYPE (DECL_NAME (decl))))
 	    targetm.cxx.determine_class_data_visibility (decl);
 	}
-      else if (use_template)
+      else if (template_decl)
 	/* Template instantiations and specializations get visibility based
 	   on their template unless they override it with an attribute.  */;
       else if (! DECL_VISIBILITY_SPECIFIED (decl))
@@ -2396,11 +2406,11 @@ determine_visibility (tree decl)
 	}
     }
 
-  if (use_template)
+  if (template_decl)
     {
       /* If the specialization doesn't specify visibility, use the
 	 visibility from the template.  */
-      tree tinfo = get_template_info (decl);
+      tree tinfo = get_template_info (template_decl);
       tree args = TI_ARGS (tinfo);
       tree attribs = (TREE_CODE (decl) == TYPE_DECL
 		      ? TYPE_ATTRIBUTES (TREE_TYPE (decl))
@@ -4217,7 +4227,7 @@ decl_constant_var_p (tree decl)
      in the case of a constexpr variable, we can't treat it as a
      constant until its initializer is complete in case it's used in
      its own initializer.  */
-  mark_used (decl);
+  maybe_instantiate_decl (decl);
   return DECL_INITIALIZED_BY_CONSTANT_EXPRESSION_P (decl);
 }
 
@@ -5054,6 +5064,38 @@ possibly_inlined_p (tree decl)
   return true;
 }
 
+/* Normally, we can wait until instantiation-time to synthesize DECL.
+   However, if DECL is a static data member initialized with a constant
+   or a constexpr function, we need it right now because a reference to
+   such a data member or a call to such function is not value-dependent.
+   For a function that uses auto in the return type, we need to instantiate
+   it to find out its type.  For OpenMP user defined reductions, we need
+   them instantiated for reduction clauses which inline them by hand
+   directly.  */
+
+static void
+maybe_instantiate_decl (tree decl)
+{
+  if (DECL_LANG_SPECIFIC (decl)
+      && DECL_TEMPLATE_INFO (decl)
+      && (decl_maybe_constant_var_p (decl)
+	  || (TREE_CODE (decl) == FUNCTION_DECL
+	      && DECL_OMP_DECLARE_REDUCTION_P (decl))
+	  || undeduced_auto_decl (decl))
+      && !DECL_DECLARED_CONCEPT_P (decl)
+      && !uses_template_parms (DECL_TI_ARGS (decl)))
+    {
+      /* Instantiating a function will result in garbage collection.  We
+	 must treat this situation as if we were within the body of a
+	 function so as to avoid collecting live data only referenced from
+	 the stack (such as overload resolution candidates).  */
+      ++function_depth;
+      instantiate_decl (decl, /*defer_ok=*/false,
+			/*expl_inst_class_mem_p=*/false);
+      --function_depth;
+    }
+}
+
 /* Mark DECL (either a _DECL or a BASELINK) as "used" in the program.
    If DECL is a specialization or implicitly declared class member,
    generate the actual definition.  Return false if something goes
@@ -5148,24 +5190,7 @@ mark_used (tree decl, tsubst_flags_t complain)
      it to find out its type.  For OpenMP user defined reductions, we need
      them instantiated for reduction clauses which inline them by hand
      directly.  */
-  if (DECL_LANG_SPECIFIC (decl)
-      && DECL_TEMPLATE_INFO (decl)
-      && (decl_maybe_constant_var_p (decl)
-	  || (TREE_CODE (decl) == FUNCTION_DECL
-	      && DECL_OMP_DECLARE_REDUCTION_P (decl))
-	  || undeduced_auto_decl (decl))
-      && !DECL_DECLARED_CONCEPT_P (decl)
-      && !uses_template_parms (DECL_TI_ARGS (decl)))
-    {
-      /* Instantiating a function will result in garbage collection.  We
-	 must treat this situation as if we were within the body of a
-	 function so as to avoid collecting live data only referenced from
-	 the stack (such as overload resolution candidates).  */
-      ++function_depth;
-      instantiate_decl (decl, /*defer_ok=*/false,
-			/*expl_inst_class_mem_p=*/false);
-      --function_depth;
-    }
+  maybe_instantiate_decl (decl);
 
   if (processing_template_decl || in_template_function ())
     return true;
