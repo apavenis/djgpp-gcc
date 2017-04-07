@@ -1104,16 +1104,16 @@ struct processor_costs power9_cost = {
   COSTS_N_INSNS (3),	/* mulsi_const */
   COSTS_N_INSNS (3),	/* mulsi_const9 */
   COSTS_N_INSNS (3),	/* muldi */
-  COSTS_N_INSNS (19),	/* divsi */
-  COSTS_N_INSNS (35),	/* divdi */
+  COSTS_N_INSNS (8),	/* divsi */
+  COSTS_N_INSNS (12),	/* divdi */
   COSTS_N_INSNS (3),	/* fp */
   COSTS_N_INSNS (3),	/* dmul */
-  COSTS_N_INSNS (14),	/* sdiv */
-  COSTS_N_INSNS (17),	/* ddiv */
+  COSTS_N_INSNS (13),	/* sdiv */
+  COSTS_N_INSNS (18),	/* ddiv */
   128,			/* cache line size */
   32,			/* l1 cache */
-  256,			/* l2 cache */
-  12,			/* prefetch streams */
+  512,			/* l2 cache */
+  8,			/* prefetch streams */
   COSTS_N_INSNS (3),	/* SF->DF convert */
 };
 
@@ -1328,6 +1328,7 @@ static bool rs6000_secondary_reload_move (enum rs6000_reg_type,
 					  bool);
 rtl_opt_pass *make_pass_analyze_swaps (gcc::context*);
 static bool rs6000_keep_leaf_when_profiled () __attribute__ ((unused));
+static tree rs6000_fold_builtin (tree, int, tree *, bool);
 
 /* Hash table stuff for keeping track of TOC entries.  */
 
@@ -1601,6 +1602,9 @@ static const struct attribute_spec rs6000_attribute_table[] =
 #define TARGET_INIT_BUILTINS rs6000_init_builtins
 #undef TARGET_BUILTIN_DECL
 #define TARGET_BUILTIN_DECL rs6000_builtin_decl
+
+#undef TARGET_FOLD_BUILTIN
+#define TARGET_FOLD_BUILTIN rs6000_fold_builtin
 
 #undef TARGET_EXPAND_BUILTIN
 #define TARGET_EXPAND_BUILTIN rs6000_expand_builtin
@@ -1882,7 +1886,7 @@ rs6000_hard_regno_nregs_internal (int regno, machine_mode mode)
      128-bit floating point that can go in vector registers, which has VSX
      memory addressing.  */
   if (FP_REGNO_P (regno))
-    reg_size = (VECTOR_MEM_VSX_P (mode)
+    reg_size = (VECTOR_MEM_VSX_P (mode) || FLOAT128_VECTOR_P (mode)
 		? UNITS_PER_VSX_WORD
 		: UNITS_PER_FP_WORD);
 
@@ -1913,6 +1917,9 @@ static int
 rs6000_hard_regno_mode_ok (int regno, machine_mode mode)
 {
   int last_regno = regno + rs6000_hard_regno_nregs[mode][regno] - 1;
+
+  if (COMPLEX_MODE_P (mode))
+    mode = GET_MODE_INNER (mode);
 
   /* PTImode can only go in GPRs.  Quad word memory operations require even/odd
      register combinations, and use PTImode where we need to deal with quad
@@ -2398,6 +2405,7 @@ rs6000_debug_reg_global (void)
 	   "wx reg_class = %s\n"
 	   "wy reg_class = %s\n"
 	   "wz reg_class = %s\n"
+	   "wA reg_class = %s\n"
 	   "\n",
 	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_d]],
 	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_f]],
@@ -2425,7 +2433,8 @@ rs6000_debug_reg_global (void)
 	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_ww]],
 	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_wx]],
 	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_wy]],
-	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_wz]]);
+	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_wz]],
+	   reg_class_names[rs6000_constraints[RS6000_CONSTRAINT_wA]]);
 
   nl = "\n";
   for (m = 0; m < NUM_MACHINE_MODES; ++m)
@@ -2716,8 +2725,17 @@ rs6000_setup_reg_addr_masks (void)
 
   for (m = 0; m < NUM_MACHINE_MODES; ++m)
     {
-      machine_mode m2 = (machine_mode)m;
-      unsigned short msize = GET_MODE_SIZE (m2);
+      machine_mode m2 = (machine_mode) m;
+      bool complex_p = false;
+      size_t msize;
+
+      if (COMPLEX_MODE_P (m2))
+	{
+	  complex_p = true;
+	  m2 = GET_MODE_INNER (m2);
+	}
+
+      msize = GET_MODE_SIZE (m2);
 
       /* SDmode is special in that we want to access it only via REG+REG
 	 addressing on power7 and above, since we want to use the LFIWZX and
@@ -2739,7 +2757,7 @@ rs6000_setup_reg_addr_masks (void)
 	      /* Indicate if the mode takes more than 1 physical register.  If
 		 it takes a single register, indicate it can do REG+REG
 		 addressing.  */
-	      if (nregs > 1 || m == BLKmode)
+	      if (nregs > 1 || m == BLKmode || complex_p)
 		addr_mask |= RELOAD_REG_MULTIPLE;
 	      else
 		addr_mask |= RELOAD_REG_INDEXED;
@@ -2755,7 +2773,7 @@ rs6000_setup_reg_addr_masks (void)
 		  && msize <= 8
 		  && !VECTOR_MODE_P (m2)
 		  && !FLOAT128_VECTOR_P (m2)
-		  && !COMPLEX_MODE_P (m2)
+		  && !complex_p
 		  && (m2 != DFmode || !TARGET_UPPER_REGS_DF)
 		  && (m2 != SFmode || !TARGET_UPPER_REGS_SF)
 		  && !(TARGET_E500_DOUBLE && msize == 8))
@@ -3103,7 +3121,10 @@ rs6000_init_hard_regno_mode_ok (bool global_init_p)
     }
 
   if (TARGET_POWERPC64)
-    rs6000_constraints[RS6000_CONSTRAINT_wr] = GENERAL_REGS;
+    {
+      rs6000_constraints[RS6000_CONSTRAINT_wr] = GENERAL_REGS;
+      rs6000_constraints[RS6000_CONSTRAINT_wA] = BASE_REGS;
+    }
 
   if (TARGET_P8_VECTOR && TARGET_UPPER_REGS_SF)			/* SFmode  */
     {
@@ -3317,28 +3338,28 @@ rs6000_init_hard_regno_mode_ok (bool global_init_p)
 
       static const struct fuse_insns addis_insns[] = {
 	{ SFmode, DImode, RELOAD_REG_FPR,
-	  CODE_FOR_fusion_fpr_di_sf_load,
-	  CODE_FOR_fusion_fpr_di_sf_store },
+	  CODE_FOR_fusion_vsx_di_sf_load,
+	  CODE_FOR_fusion_vsx_di_sf_store },
 
 	{ SFmode, SImode, RELOAD_REG_FPR,
-	  CODE_FOR_fusion_fpr_si_sf_load,
-	  CODE_FOR_fusion_fpr_si_sf_store },
+	  CODE_FOR_fusion_vsx_si_sf_load,
+	  CODE_FOR_fusion_vsx_si_sf_store },
 
 	{ DFmode, DImode, RELOAD_REG_FPR,
-	  CODE_FOR_fusion_fpr_di_df_load,
-	  CODE_FOR_fusion_fpr_di_df_store },
+	  CODE_FOR_fusion_vsx_di_df_load,
+	  CODE_FOR_fusion_vsx_di_df_store },
 
 	{ DFmode, SImode, RELOAD_REG_FPR,
-	  CODE_FOR_fusion_fpr_si_df_load,
-	  CODE_FOR_fusion_fpr_si_df_store },
+	  CODE_FOR_fusion_vsx_si_df_load,
+	  CODE_FOR_fusion_vsx_si_df_store },
 
 	{ DImode, DImode, RELOAD_REG_FPR,
-	  CODE_FOR_fusion_fpr_di_di_load,
-	  CODE_FOR_fusion_fpr_di_di_store },
+	  CODE_FOR_fusion_vsx_di_di_load,
+	  CODE_FOR_fusion_vsx_di_di_store },
 
 	{ DImode, SImode, RELOAD_REG_FPR,
-	  CODE_FOR_fusion_fpr_si_di_load,
-	  CODE_FOR_fusion_fpr_si_di_store },
+	  CODE_FOR_fusion_vsx_si_di_load,
+	  CODE_FOR_fusion_vsx_si_di_store },
 
 	{ QImode, DImode, RELOAD_REG_GPR,
 	  CODE_FOR_fusion_gpr_di_qi_load,
@@ -3398,6 +3419,14 @@ rs6000_init_hard_regno_mode_ok (bool global_init_p)
 
 	  reg_addr[xmode].fusion_addis_ld[rtype] = addis_insns[i].load;
 	  reg_addr[xmode].fusion_addis_st[rtype] = addis_insns[i].store;
+
+	  if (rtype == RELOAD_REG_FPR && TARGET_P9_DFORM_SCALAR)
+	    {
+	      reg_addr[xmode].fusion_addis_ld[RELOAD_REG_VMX]
+		= addis_insns[i].load;
+	      reg_addr[xmode].fusion_addis_st[RELOAD_REG_VMX]
+		= addis_insns[i].store;
+	    }
 	}
     }
 
@@ -3653,13 +3682,15 @@ rs6000_builtin_mask_calculate (void)
 	  | ((rs6000_cpu == PROCESSOR_CELL) ? RS6000_BTM_CELL      : 0)
 	  | ((TARGET_P8_VECTOR)		    ? RS6000_BTM_P8_VECTOR : 0)
 	  | ((TARGET_P9_VECTOR)		    ? RS6000_BTM_P9_VECTOR : 0)
+	  | ((TARGET_P9_MISC)		    ? RS6000_BTM_P9_MISC   : 0)
 	  | ((TARGET_MODULO)		    ? RS6000_BTM_MODULO    : 0)
 	  | ((TARGET_64BIT)		    ? RS6000_BTM_64BIT     : 0)
 	  | ((TARGET_CRYPTO)		    ? RS6000_BTM_CRYPTO	   : 0)
 	  | ((TARGET_HTM)		    ? RS6000_BTM_HTM	   : 0)
 	  | ((TARGET_DFP)		    ? RS6000_BTM_DFP	   : 0)
 	  | ((TARGET_HARD_FLOAT)	    ? RS6000_BTM_HARD_FLOAT : 0)
-	  | ((TARGET_LONG_DOUBLE_128)	    ? RS6000_BTM_LDBL128 : 0));
+	  | ((TARGET_LONG_DOUBLE_128)	    ? RS6000_BTM_LDBL128   : 0)
+	  | ((TARGET_FLOAT128)		    ? RS6000_BTM_FLOAT128  : 0));
 }
 
 /* Implement TARGET_MD_ASM_ADJUST.  All asm statements are considered
@@ -3723,6 +3754,13 @@ rs6000_option_override_internal (bool global_init_p)
   if (optimize >= 3 && global_init_p
       && !global_options_set.x_flag_ira_loop_pressure)
     flag_ira_loop_pressure = 1;
+
+  /* -fsanitize=address needs to turn on -fasynchronous-unwind-tables in order
+     for tracebacks to be complete but not if any -fasynchronous-unwind-tables
+     options were already specified.  */
+  if (flag_sanitize & SANITIZE_USER_ADDRESS
+      && !global_options_set.x_flag_asynchronous_unwind_tables)
+    flag_asynchronous_unwind_tables = 1;
 
   /* Set the pointer size.  */
   if (TARGET_64BIT)
@@ -3818,22 +3856,7 @@ rs6000_option_override_internal (bool global_init_p)
   if (rs6000_tune_index >= 0)
     tune_index = rs6000_tune_index;
   else if (have_cpu)
-    {
-      /* Until power9 tuning is available, use power8 tuning if -mcpu=power9.  */
-      if (processor_target_table[cpu_index].processor != PROCESSOR_POWER9)
-	rs6000_tune_index = tune_index = cpu_index;
-      else
-	{
-	  size_t i;
-	  tune_index = -1;
-	  for (i = 0; i < ARRAY_SIZE (processor_target_table); i++)
-	    if (processor_target_table[i].processor == PROCESSOR_POWER8)
-	      {
-		rs6000_tune_index = tune_index = i;
-		break;
-	      }
-	}
-    }
+    rs6000_tune_index = tune_index = cpu_index;
   else
     {
       size_t i;
@@ -4179,6 +4202,10 @@ rs6000_option_override_internal (bool global_init_p)
     {
       if (rs6000_isa_flags_explicit & OPTION_MASK_P8_FUSION)
 	{
+	  /* We prefer to not mention undocumented options in
+	     error messages.  However, if users have managed to select
+	     power9-fusion without selecting power8-fusion, they
+	     already know about undocumented flags.  */
 	  error ("-mpower9-fusion requires -mpower8-fusion");
 	  rs6000_isa_flags &= ~OPTION_MASK_P9_FUSION;
 	}
@@ -4223,14 +4250,23 @@ rs6000_option_override_internal (bool global_init_p)
       && !(rs6000_isa_flags_explicit & OPTION_MASK_TOC_FUSION))
     rs6000_isa_flags |= OPTION_MASK_TOC_FUSION;
 
+  /* ISA 3.0 vector instructions include ISA 2.07.  */
+  if (TARGET_P9_VECTOR && !TARGET_P8_VECTOR)
+    {
+      /* We prefer to not mention undocumented options in
+	 error messages.  However, if users have managed to select
+	 power9-vector without selecting power8-vector, they
+	 already know about undocumented flags.  */
+      if (rs6000_isa_flags_explicit & OPTION_MASK_P8_VECTOR)
+	error ("-mpower9-vector requires -mpower8-vector");
+      rs6000_isa_flags &= ~OPTION_MASK_P9_VECTOR;
+    }
+
   /* -mpower9-dform turns on both -mpower9-dform-scalar and
-      -mpower9-dform-vector. There are currently problems if
-      -mpower9-dform-vector instructions are enabled when we use the RELOAD
-      register allocator.  */
+      -mpower9-dform-vector.  */
   if (TARGET_P9_DFORM_BOTH > 0)
     {
-      if (!(rs6000_isa_flags_explicit & OPTION_MASK_P9_DFORM_VECTOR)
-	  && TARGET_LRA)
+      if (!(rs6000_isa_flags_explicit & OPTION_MASK_P9_DFORM_VECTOR))
 	rs6000_isa_flags |= OPTION_MASK_P9_DFORM_VECTOR;
 
       if (!(rs6000_isa_flags_explicit & OPTION_MASK_P9_DFORM_SCALAR))
@@ -4248,6 +4284,10 @@ rs6000_option_override_internal (bool global_init_p)
   /* ISA 3.0 D-form instructions require p9-vector and upper-regs.  */
   if ((TARGET_P9_DFORM_SCALAR || TARGET_P9_DFORM_VECTOR) && !TARGET_P9_VECTOR)
     {
+      /* We prefer to not mention undocumented options in
+	 error messages.  However, if users have managed to select
+	 power9-dform without selecting power9-vector, they
+	 already know about undocumented flags.  */
       if (rs6000_isa_flags_explicit & OPTION_MASK_P9_VECTOR)
 	error ("-mpower9-dform requires -mpower9-vector");
       rs6000_isa_flags &= ~(OPTION_MASK_P9_DFORM_SCALAR
@@ -4256,6 +4296,10 @@ rs6000_option_override_internal (bool global_init_p)
 
   if (TARGET_P9_DFORM_SCALAR && !TARGET_UPPER_REGS_DF)
     {
+      /* We prefer to not mention undocumented options in
+	 error messages.  However, if users have managed to select
+	 power9-dform without selecting upper-regs-df, they
+	 already know about undocumented flags.  */
       if (rs6000_isa_flags_explicit & OPTION_MASK_UPPER_REGS_DF)
 	error ("-mpower9-dform requires -mupper-regs-df");
       rs6000_isa_flags &= ~OPTION_MASK_P9_DFORM_SCALAR;
@@ -4268,19 +4312,10 @@ rs6000_option_override_internal (bool global_init_p)
       rs6000_isa_flags &= ~OPTION_MASK_P9_DFORM_SCALAR;
     }
 
-  /* ISA 3.0 vector instructions include ISA 2.07.  */
-  if (TARGET_P9_VECTOR && !TARGET_P8_VECTOR)
-    {
-      if (rs6000_isa_flags_explicit & OPTION_MASK_P8_VECTOR)
-	error ("-mpower9-vector requires -mpower8-vector");
-      rs6000_isa_flags &= ~OPTION_MASK_P9_VECTOR;
-    }
-
-  /* There have been bugs with both -mvsx-timode and -mpower9-dform-vector that
-     don't show up with -mlra, but do show up with -mno-lra.  Given -mlra will
-     become the default once PR 69847 is fixed, turn off the options with
-     problems by default if -mno-lra was used, and warn if the user explicitly
-     asked for the option.
+  /* There have been bugs with -mvsx-timode that don't show up with -mlra,
+     but do show up with -mno-lra.  Given -mlra will become the default once
+     PR 69847 is fixed, turn off the options with problems by default if
+     -mno-lra was used, and warn if the user explicitly asked for the option.
 
      Enable -mpower9-dform-vector by default if LRA and other power9 options.
      Enable -mvsx-timode by default if LRA and VSX.  */
@@ -4294,15 +4329,6 @@ rs6000_option_override_internal (bool global_init_p)
 	  else
 	    rs6000_isa_flags &= ~OPTION_MASK_VSX_TIMODE;
 	}
-
-      if (TARGET_P9_DFORM_VECTOR)
-	{
-	  if ((rs6000_isa_flags_explicit & OPTION_MASK_P9_DFORM_VECTOR) != 0)
-	    warning (0, "-mpower9-dform-vector might need -mlra");
-
-	  else
-	    rs6000_isa_flags &= ~OPTION_MASK_P9_DFORM_VECTOR;
-	}
     }
 
   else
@@ -4310,11 +4336,6 @@ rs6000_option_override_internal (bool global_init_p)
       if (TARGET_VSX && !TARGET_VSX_TIMODE
 	  && (rs6000_isa_flags_explicit & OPTION_MASK_VSX_TIMODE) == 0)
 	rs6000_isa_flags |= OPTION_MASK_VSX_TIMODE;
-
-      if (TARGET_VSX && TARGET_P9_VECTOR && !TARGET_P9_DFORM_VECTOR
-	  && TARGET_P9_DFORM_SCALAR && TARGET_P9_DFORM_BOTH < 0
-	  && (rs6000_isa_flags_explicit & OPTION_MASK_P9_DFORM_VECTOR) == 0)
-	rs6000_isa_flags |= OPTION_MASK_P9_DFORM_VECTOR;
     }
 
   /* Set -mallow-movmisalign to explicitly on if we have full ISA 2.07
@@ -4366,23 +4387,27 @@ rs6000_option_override_internal (bool global_init_p)
       rs6000_isa_flags &= ~(OPTION_MASK_FLOAT128 | OPTION_MASK_FLOAT128_HW);
     }
 
+  /* If we have -mfloat128 and full ISA 3.0 support, enable -mfloat128-hardware
+     by default.  */
+  if (TARGET_FLOAT128 && !TARGET_FLOAT128_HW
+      && (rs6000_isa_flags & ISA_3_0_MASKS_IEEE) == ISA_3_0_MASKS_IEEE
+      && !(rs6000_isa_flags_explicit & OPTION_MASK_FLOAT128_HW))
+    {
+      rs6000_isa_flags |= OPTION_MASK_FLOAT128_HW;
+      if ((rs6000_isa_flags & OPTION_MASK_FLOAT128) != 0)
+	rs6000_isa_flags_explicit |= OPTION_MASK_FLOAT128_HW;
+    }
+
   /* IEEE 128-bit floating point hardware instructions imply enabling
      __float128.  */
   if (TARGET_FLOAT128_HW
-      && (rs6000_isa_flags & (OPTION_MASK_P9_VECTOR
-			      | OPTION_MASK_DIRECT_MOVE
-			      | OPTION_MASK_UPPER_REGS_DF
-			      | OPTION_MASK_UPPER_REGS_SF)) == 0)
+      && (rs6000_isa_flags & ISA_3_0_MASKS_IEEE) != ISA_3_0_MASKS_IEEE)
     {
       if ((rs6000_isa_flags_explicit & OPTION_MASK_FLOAT128_HW) != 0)
 	error ("-mfloat128-hardware requires full ISA 3.0 support");
 
       rs6000_isa_flags &= ~OPTION_MASK_FLOAT128_HW;
     }
-
-  else if (TARGET_P9_VECTOR && !TARGET_FLOAT128_HW
-	   && (rs6000_isa_flags_explicit & OPTION_MASK_FLOAT128_HW) == 0)
-    rs6000_isa_flags |= OPTION_MASK_FLOAT128_HW;
 
   if (TARGET_FLOAT128_HW
       && (rs6000_isa_flags_explicit & OPTION_MASK_FLOAT128) == 0)
@@ -4593,8 +4618,7 @@ rs6000_option_override_internal (bool global_init_p)
   rs6000_sched_groups = (rs6000_cpu == PROCESSOR_POWER4
 			 || rs6000_cpu == PROCESSOR_POWER5
 			 || rs6000_cpu == PROCESSOR_POWER7
-			 || rs6000_cpu == PROCESSOR_POWER8
-			 || rs6000_cpu == PROCESSOR_POWER9);
+			 || rs6000_cpu == PROCESSOR_POWER8);
   rs6000_align_branch_targets = (rs6000_cpu == PROCESSOR_POWER4
 				 || rs6000_cpu == PROCESSOR_POWER5
 				 || rs6000_cpu == PROCESSOR_POWER6
@@ -5776,8 +5800,8 @@ rs6000_file_start (void)
     }
 
 #ifdef USING_ELFOS_H
-  if (rs6000_default_cpu == 0 || rs6000_default_cpu[0] == '\0'
-      || !global_options_set.x_rs6000_cpu_index)
+  if (!(rs6000_default_cpu && rs6000_default_cpu[0])
+      && !global_options_set.x_rs6000_cpu_index)
     {
       fputs ("\t.machine ", asm_out_file);
       if ((rs6000_isa_flags & OPTION_MASK_MODULO) != 0)
@@ -6233,6 +6257,128 @@ gen_easy_altivec_constant (rtx op)
   gcc_unreachable ();
 }
 
+/* Return true if OP is of the given MODE and can be synthesized with ISA 3.0
+   instructions (xxspltib, vupkhsb/vextsb2w/vextb2d).
+
+   Return the number of instructions needed (1 or 2) into the address pointed
+   via NUM_INSNS_PTR.
+
+   If NOSPLIT_P, only return true for constants that only generate the XXSPLTIB
+   instruction and can go in any VSX register.  If !NOSPLIT_P, only return true
+   for constants that generate XXSPLTIB and need a sign extend operation, which
+   restricts us to the Altivec registers.
+
+   Allow either (vec_const [...]) or (vec_duplicate <const>).  If OP is a valid
+   XXSPLTIB constant, return the constant being set via the CONST_PTR
+   pointer.  */
+
+bool
+xxspltib_constant_p (rtx op,
+		     machine_mode mode,
+		     int *num_insns_ptr,
+		     int *constant_ptr)
+{
+  size_t nunits = GET_MODE_NUNITS (mode);
+  size_t i;
+  HOST_WIDE_INT value;
+  rtx element;
+
+  /* Set the returned values to out of bound values.  */
+  *num_insns_ptr = -1;
+  *constant_ptr = 256;
+
+  if (!TARGET_P9_VECTOR)
+    return false;
+
+  if (mode == VOIDmode)
+    mode = GET_MODE (op);
+
+  else if (mode != GET_MODE (op))
+    return false;
+
+  /* Handle (vec_duplicate <constant>).  */
+  if (GET_CODE (op) == VEC_DUPLICATE)
+    {
+      if (mode != V16QImode && mode != V8HImode && mode != V4SImode
+	  && mode != V2DImode)
+	return false;
+
+      element = XEXP (op, 0);
+      if (!CONST_INT_P (element))
+	return false;
+
+      value = INTVAL (element);
+      if (!IN_RANGE (value, -128, 127))
+	return false;
+    }
+
+  /* Handle (const_vector [...]).  */
+  else if (GET_CODE (op) == CONST_VECTOR)
+    {
+      if (mode != V16QImode && mode != V8HImode && mode != V4SImode
+	  && mode != V2DImode)
+	return false;
+
+      element = CONST_VECTOR_ELT (op, 0);
+      if (!CONST_INT_P (element))
+	return false;
+
+      value = INTVAL (element);
+      if (!IN_RANGE (value, -128, 127))
+	return false;
+
+      for (i = 1; i < nunits; i++)
+	{
+	  element = CONST_VECTOR_ELT (op, i);
+	  if (!CONST_INT_P (element))
+	    return false;
+
+	  if (value != INTVAL (element))
+	    return false;
+	}
+
+      /* See if we could generate vspltisw/vspltish directly instead of
+	 xxspltib + sign extend.  Special case 0/-1 to allow getting
+         any VSX register instead of an Altivec register.  */
+      if (!IN_RANGE (value, -1, 0) && EASY_VECTOR_15 (value)
+	  && (mode == V4SImode || mode == V8HImode))
+	return false;
+    }
+
+  /* Handle integer constants being loaded into the upper part of the VSX
+     register as a scalar.  If the value isn't 0/-1, only allow it if
+     the mode can go in Altivec registers.  */
+  else if (CONST_INT_P (op))
+    {
+      if (!SCALAR_INT_MODE_P (mode))
+	return false;
+
+      value = INTVAL (op);
+      if (!IN_RANGE (value, -128, 127))
+	return false;
+
+      if (!IN_RANGE (value, -1, 0)
+	  && (reg_addr[mode].addr_mask[RELOAD_REG_VMX] & RELOAD_REG_VALID) == 0)
+	return false;
+    }
+
+  else
+    return false;
+
+  /* Return # of instructions and the constant byte for XXSPLTIB.  */
+  if (mode == V16QImode)
+    *num_insns_ptr = 1;
+
+  else if (IN_RANGE (value, -1, 0))
+    *num_insns_ptr = 1;
+
+  else
+    *num_insns_ptr = 2;
+
+  *constant_ptr = (int) value;
+  return true;
+}
+
 const char *
 output_vec_const_move (rtx *operands)
 {
@@ -6246,23 +6392,60 @@ output_vec_const_move (rtx *operands)
 
   if (TARGET_VSX)
     {
+      bool dest_vmx_p = ALTIVEC_REGNO_P (REGNO (dest));
+      int xxspltib_value = 256;
+      int num_insns = -1;
+
       if (zero_constant (vec, mode))
-	return "xxlxor %x0,%x0,%x0";
+	{
+	  if (TARGET_P9_VECTOR)
+	    return "xxspltib %x0,0";
 
-      if (TARGET_P8_VECTOR && vec == CONSTM1_RTX (mode))
-	return "xxlorc %x0,%x0,%x0";
+	  else if (dest_vmx_p)
+	    return "vspltisw %0,0";
 
-      if ((mode == V2DImode || mode == V1TImode)
-	  && INTVAL (CONST_VECTOR_ELT (vec, 0)) == -1
-	  && INTVAL (CONST_VECTOR_ELT (vec, 1)) == -1)
-	return (TARGET_P8_VECTOR) ? "xxlorc %x0,%x0,%x0" : "vspltisw %0,-1";
+	  else
+	    return "xxlxor %x0,%x0,%x0";
+	}
+
+      if (all_ones_constant (vec, mode))
+	{
+	  if (TARGET_P9_VECTOR)
+	    return "xxspltib %x0,255";
+
+	  else if (dest_vmx_p)
+	    return "vspltisw %0,-1";
+
+	  else if (TARGET_P8_VECTOR)
+	    return "xxlorc %x0,%x0,%x0";
+
+	  else
+	    gcc_unreachable ();
+	}
+
+      if (TARGET_P9_VECTOR
+	  && xxspltib_constant_p (vec, mode, &num_insns, &xxspltib_value))
+	{
+	  if (num_insns == 1)
+	    {
+	      operands[2] = GEN_INT (xxspltib_value & 0xff);
+	      return "xxspltib %x0,%2";
+	    }
+
+	  return "#";
+	}
     }
 
   if (TARGET_ALTIVEC)
     {
       rtx splat_vec;
+
+      gcc_assert (ALTIVEC_REGNO_P (REGNO (dest)));
       if (zero_constant (vec, mode))
-	return "vxor %0,%0,%0";
+	return "vspltisw %0,0";
+
+      if (all_ones_constant (vec, mode))
+	return "vspltisw %0,-1";
 
       /* Do we need to construct a value using VSLDOI?  */
       shift = vspltis_shifted (vec);
@@ -6512,26 +6695,53 @@ rs6000_expand_vector_init (rtx target, rtx vals)
   /* Double word values on VSX can use xxpermdi or lxvdsx.  */
   if (VECTOR_MEM_VSX_P (mode) && (mode == V2DFmode || mode == V2DImode))
     {
-      rtx op0 = XVECEXP (vals, 0, 0);
-      rtx op1 = XVECEXP (vals, 0, 1);
+      rtx op[2];
+      size_t i;
+      size_t num_elements = (all_same) ? 1 : 2;
+      for (i = 0; i < num_elements; i++)
+	{
+	  op[i] = XVECEXP (vals, 0, i);
+	  /* Just in case there is a SUBREG with a smaller mode, do a
+	     conversion.  */
+	  if (GET_MODE (op[i]) != inner_mode)
+	    {
+	      rtx tmp = gen_reg_rtx (inner_mode);
+	      convert_move (tmp, op[i], 0);
+	      op[i] = tmp;
+	    }
+	  /* Allow load with splat double word.  */
+	  else if (MEM_P (op[i]))
+	    {
+	      if (!all_same)
+		op[i] = force_reg (inner_mode, op[i]);
+	    }
+	  else if (!REG_P (op[i]))
+	    op[i] = force_reg (inner_mode, op[i]);
+	}
+
       if (all_same)
 	{
-	  if (!MEM_P (op0) && !REG_P (op0))
-	    op0 = force_reg (inner_mode, op0);
 	  if (mode == V2DFmode)
-	    emit_insn (gen_vsx_splat_v2df (target, op0));
+	    emit_insn (gen_vsx_splat_v2df (target, op[0]));
 	  else
-	    emit_insn (gen_vsx_splat_v2di (target, op0));
+	    emit_insn (gen_vsx_splat_v2di (target, op[0]));
 	}
       else
 	{
-	  op0 = force_reg (inner_mode, op0);
-	  op1 = force_reg (inner_mode, op1);
 	  if (mode == V2DFmode)
-	    emit_insn (gen_vsx_concat_v2df (target, op0, op1));
+	    emit_insn (gen_vsx_concat_v2df (target, op[0], op[1]));
 	  else
-	    emit_insn (gen_vsx_concat_v2di (target, op0, op1));
+	    emit_insn (gen_vsx_concat_v2di (target, op[0], op[1]));
 	}
+      return;
+    }
+
+  /* Word values on ISA 3.0 can use mtvsrws, lxvwsx, or vspltisw.  V4SF is
+     complicated since scalars are stored as doubles in the registers.  */
+  if (TARGET_P9_VECTOR && mode == V4SImode && all_same
+      && VECTOR_MEM_VSX_P (mode))
+    {
+      emit_insn (gen_vsx_splat_v4si (target, XVECEXP (vals, 0, 0)));
       return;
     }
 
@@ -6543,14 +6753,23 @@ rs6000_expand_vector_init (rtx target, rtx vals)
     {
       if (all_same)
 	{
-	  rtx freg = gen_reg_rtx (V4SFmode);
-	  rtx sreg = force_reg (SFmode, XVECEXP (vals, 0, 0));
-	  rtx cvt  = ((TARGET_XSCVDPSPN)
-		      ? gen_vsx_xscvdpspn_scalar (freg, sreg)
-		      : gen_vsx_xscvdpsp_scalar (freg, sreg));
+	  rtx op0 = XVECEXP (vals, 0, 0);
 
-	  emit_insn (cvt);
-	  emit_insn (gen_vsx_xxspltw_v4sf_direct (target, freg, const0_rtx));
+	  if (TARGET_P9_VECTOR)
+	    emit_insn (gen_vsx_splat_v4sf (target, op0));
+
+	  else
+	    {
+	      rtx freg = gen_reg_rtx (V4SFmode);
+	      rtx sreg = force_reg (SFmode, op0);
+	      rtx cvt  = (TARGET_XSCVDPSPN
+			  ? gen_vsx_xscvdpspn_scalar (freg, sreg)
+			  : gen_vsx_xscvdpsp_scalar (freg, sreg));
+
+	      emit_insn (cvt);
+	      emit_insn (gen_vsx_xxspltw_v4sf_direct (target, freg,
+						      const0_rtx));
+	    }
 	}
       else
 	{
@@ -7025,34 +7244,24 @@ quad_address_offset_p (HOST_WIDE_INT offset)
    3.0 LXV/STXV instruction.  */
 
 bool
-quad_address_p (rtx addr, machine_mode mode, bool gpr_p)
+quad_address_p (rtx addr, machine_mode mode, bool strict)
 {
   rtx op0, op1;
 
   if (GET_MODE_SIZE (mode) != 16)
     return false;
 
-  if (gpr_p)
-    {
-      if (!TARGET_QUAD_MEMORY && !TARGET_SYNC_TI)
-	return false;
+  if (legitimate_indirect_address_p (addr, strict))
+    return true;
 
-      /* LQ/STQ can handle indirect addresses.  */
-      if (base_reg_operand (addr, Pmode))
-	return true;
-    }
-
-  else
-    {
-      if (!mode_supports_vsx_dform_quad (mode))
-	return false;
-    }
+  if (VECTOR_MODE_P (mode) && !mode_supports_vsx_dform_quad (mode))
+    return false;
 
   if (GET_CODE (addr) != PLUS)
     return false;
 
   op0 = XEXP (addr, 0);
-  if (!base_reg_operand (op0, Pmode))
+  if (!REG_P (op0) || !INT_REG_OK_FOR_BASE_P (op0, strict))
     return false;
 
   op1 = XEXP (addr, 1);
@@ -7154,8 +7363,37 @@ mem_operand_gpr (rtx op, machine_mode mode)
   if (TARGET_POWERPC64 && (offset & 3) != 0)
     return false;
 
-  if (mode_supports_vsx_dform_quad (mode)
-      && !quad_address_offset_p (offset))
+  extra = GET_MODE_SIZE (mode) - UNITS_PER_WORD;
+  if (extra < 0)
+    extra = 0;
+
+  if (GET_CODE (addr) == LO_SUM)
+    /* For lo_sum addresses, we must allow any offset except one that
+       causes a wrap, so test only the low 16 bits.  */
+    offset = ((offset & 0xffff) ^ 0x8000) - 0x8000;
+
+  return offset + 0x8000 < 0x10000u - extra;
+}
+
+/* As above, but for DS-FORM VSX insns.  Unlike mem_operand_gpr,
+   enforce an offset divisible by 4 even for 32-bit.  */
+
+bool
+mem_operand_ds_form (rtx op, machine_mode mode)
+{
+  unsigned HOST_WIDE_INT offset;
+  int extra;
+  rtx addr = XEXP (op, 0);
+
+  if (!offsettable_address_p (false, mode, addr))
+    return false;
+
+  op = address_offset (addr);
+  if (op == NULL_RTX)
+    return true;
+
+  offset = INTVAL (op);
+  if ((offset & 3) != 0)
     return false;
 
   extra = GET_MODE_SIZE (mode) - UNITS_PER_WORD;
@@ -7421,8 +7659,7 @@ rs6000_legitimate_offset_address_p (machine_mode mode, rtx x,
   if (!INT_REG_OK_FOR_BASE_P (XEXP (x, 0), strict))
     return false;
   if (mode_supports_vsx_dform_quad (mode))
-    return (virtual_stack_registers_memory_p (x)
-	    || quad_address_p (x, mode, false));
+    return quad_address_p (x, mode, strict);
   if (!reg_offset_addressing_ok_p (mode))
     return virtual_stack_registers_memory_p (x);
   if (legitimate_constant_pool_address_p (x, mode, strict || lra_in_progress))
@@ -7644,7 +7881,7 @@ rs6000_legitimize_address (rtx x, rtx oldx ATTRIBUTE_UNUSED,
 	 pointer, so it works with both GPRs and VSX registers.  */
       /* Make sure both operands are registers.  */
       else if (GET_CODE (x) == PLUS
-	       && (mode != TImode || !TARGET_QUAD_MEMORY))
+	       && (mode != TImode || !TARGET_VSX_TIMODE))
 	return gen_rtx_PLUS (Pmode,
 			     force_reg (Pmode, XEXP (x, 0)),
 			     force_reg (Pmode, XEXP (x, 1)));
@@ -8325,13 +8562,18 @@ rs6000_legitimize_reload_address (rtx x, machine_mode mode,
 				  int ind_levels ATTRIBUTE_UNUSED, int *win)
 {
   bool reg_offset_p = reg_offset_addressing_ok_p (mode);
+  bool quad_offset_p = mode_supports_vsx_dform_quad (mode);
 
-  /* Nasty hack for vsx_splat_V2DF/V2DI load from mem, which takes a
-     DFmode/DImode MEM.  */
+  /* Nasty hack for vsx_splat_v2df/v2di load from mem, which takes a
+     DFmode/DImode MEM.  Ditto for ISA 3.0 vsx_splat_v4sf/v4si.  */
   if (reg_offset_p
       && opnum == 1
       && ((mode == DFmode && recog_data.operand_mode[0] == V2DFmode)
-	  || (mode == DImode && recog_data.operand_mode[0] == V2DImode)))
+	  || (mode == DImode && recog_data.operand_mode[0] == V2DImode)
+	  || (mode == SFmode && recog_data.operand_mode[0] == V4SFmode
+	      && TARGET_P9_VECTOR)
+	  || (mode == SImode && recog_data.operand_mode[0] == V4SImode
+	      && TARGET_P9_VECTOR)))
     reg_offset_p = false;
 
   /* We must recognize output that we have already generated ourselves.  */
@@ -8390,6 +8632,7 @@ rs6000_legitimize_reload_address (rtx x, machine_mode mode,
 
   if (TARGET_CMODEL != CMODEL_SMALL
       && reg_offset_p
+      && !quad_offset_p
       && small_toc_ref (x, VOIDmode))
     {
       rtx hi = gen_rtx_HIGH (Pmode, copy_rtx (x));
@@ -8407,22 +8650,24 @@ rs6000_legitimize_reload_address (rtx x, machine_mode mode,
     }
 
   if (GET_CODE (x) == PLUS
-      && GET_CODE (XEXP (x, 0)) == REG
+      && REG_P (XEXP (x, 0))
       && REGNO (XEXP (x, 0)) < FIRST_PSEUDO_REGISTER
       && INT_REG_OK_FOR_BASE_P (XEXP (x, 0), 1)
-      && GET_CODE (XEXP (x, 1)) == CONST_INT
+      && CONST_INT_P (XEXP (x, 1))
       && reg_offset_p
       && !SPE_VECTOR_MODE (mode)
       && !(TARGET_E500_DOUBLE && GET_MODE_SIZE (mode) > UNITS_PER_WORD)
-      && (!VECTOR_MODE_P (mode) || VECTOR_MEM_NONE_P (mode)))
+      && (quad_offset_p || !VECTOR_MODE_P (mode) || VECTOR_MEM_NONE_P (mode)))
     {
       HOST_WIDE_INT val = INTVAL (XEXP (x, 1));
       HOST_WIDE_INT low = ((val & 0xffff) ^ 0x8000) - 0x8000;
       HOST_WIDE_INT high
 	= (((val - low) & 0xffffffff) ^ 0x80000000) - 0x80000000;
 
-      /* Check for 32-bit overflow.  */
-      if (high + low != val)
+      /* Check for 32-bit overflow or quad addresses with one of the
+	 four least significant bits set.  */
+      if (high + low != val
+	  || (quad_offset_p && (low & 0xf)))
 	{
 	  *win = 0;
 	  return x;
@@ -8450,6 +8695,7 @@ rs6000_legitimize_reload_address (rtx x, machine_mode mode,
 
   if (GET_CODE (x) == SYMBOL_REF
       && reg_offset_p
+      && !quad_offset_p
       && (!VECTOR_MODE_P (mode) || VECTOR_MEM_NONE_P (mode))
       && !SPE_VECTOR_MODE (mode)
 #if TARGET_MACHO
@@ -8534,6 +8780,7 @@ rs6000_legitimize_reload_address (rtx x, machine_mode mode,
 
   if (TARGET_TOC
       && reg_offset_p
+      && !quad_offset_p
       && GET_CODE (x) == SYMBOL_REF
       && use_toc_relative_ref (x, mode))
     {
@@ -8622,15 +8869,14 @@ rs6000_legitimate_address_p (machine_mode mode, rtx x, bool reg_ok_strict)
       && mode_supports_pre_incdec_p (mode)
       && legitimate_indirect_address_p (XEXP (x, 0), reg_ok_strict))
     return 1;
-  if (virtual_stack_registers_memory_p (x))
-    return 1;
-
   /* Handle restricted vector d-form offsets in ISA 3.0.  */
   if (quad_offset_p)
     {
-      if (quad_address_p (x, mode, false))
+      if (quad_address_p (x, mode, reg_ok_strict))
 	return 1;
     }
+  else if (virtual_stack_registers_memory_p (x))
+    return 1;
 
   else if (reg_offset_p)
     {
@@ -8644,12 +8890,16 @@ rs6000_legitimate_address_p (machine_mode mode, rtx x, bool reg_ok_strict)
 	return 1;
     }
 
-  /* For TImode, if we have load/store quad and TImode in VSX registers, only
-     allow register indirect addresses.  This will allow the values to go in
-     either GPRs or VSX registers without reloading.  The vector types would
-     tend to go into VSX registers, so we allow REG+REG, while TImode seems
+  /* For TImode, if we have TImode in VSX registers, only allow register
+     indirect addresses.  This will allow the values to go in either GPRs
+     or VSX registers without reloading.  The vector types would tend to
+     go into VSX registers, so we allow REG+REG, while TImode seems
      somewhat split, in that some uses are GPR based, and some VSX based.  */
-  if (mode == TImode && TARGET_QUAD_MEMORY && TARGET_VSX_TIMODE)
+  /* FIXME: We could loosen this by changing the following to
+       if (mode == TImode && TARGET_QUAD_MEMORY && TARGET_VSX_TIMODE)
+     but currently we cannot allow REG+REG addressing for TImode.  See
+     PR72827 for complete details on how this ends up hoodwinking DSE.  */
+  if (mode == TImode && TARGET_VSX_TIMODE)
     return 0;
   /* If not REG_OK_STRICT (before reload) let pass any stack offset.  */
   if (! reg_ok_strict
@@ -10266,6 +10516,35 @@ rs6000_must_pass_in_stack (machine_mode mode, const_tree type)
     return must_pass_in_stack_var_size_or_pad (mode, type);
 }
 
+static inline bool
+is_complex_IBM_long_double (machine_mode mode)
+{
+  return mode == ICmode || (!TARGET_IEEEQUAD && mode == TCmode);
+}
+
+/* Whether ABI_V4 passes MODE args to a function in floating point
+   registers.  */
+
+static bool
+abi_v4_pass_in_fpr (machine_mode mode)
+{
+  if (!TARGET_FPRS || !TARGET_HARD_FLOAT)
+    return false;
+  if (TARGET_SINGLE_FLOAT && mode == SFmode)
+    return true;
+  if (TARGET_DOUBLE_FLOAT && mode == DFmode)
+    return true;
+  /* ABI_V4 passes complex IBM long double in 8 gprs.
+     Stupid, but we can't change the ABI now.  */
+  if (is_complex_IBM_long_double (mode))
+    return false;
+  if (FLOAT128_2REG_P (mode))
+    return true;
+  if (DECIMAL_FLOAT_MODE_P (mode))
+    return true;
+  return false;
+}
+
 /* If defined, a C expression which determines whether, and in which
    direction, to pad out an argument with extra space.  The value
    should be of type `enum direction': either `upward' to pad above
@@ -10350,6 +10629,7 @@ rs6000_function_arg_boundary (machine_mode mode, const_tree type)
       && (GET_MODE_SIZE (mode) == 8
 	  || (TARGET_HARD_FLOAT
 	      && TARGET_FPRS
+	      && !is_complex_IBM_long_double (mode)
 	      && FLOAT128_2REG_P (mode))))
     return 64;
   else if (FLOAT128_VECTOR_P (mode))
@@ -10729,11 +11009,7 @@ rs6000_function_arg_advance_1 (CUMULATIVE_ARGS *cum, machine_mode mode,
     }
   else if (DEFAULT_ABI == ABI_V4)
     {
-      if (TARGET_HARD_FLOAT && TARGET_FPRS
-	  && ((TARGET_SINGLE_FLOAT && mode == SFmode)
-	      || (TARGET_DOUBLE_FLOAT && mode == DFmode)
-	      || FLOAT128_2REG_P (mode)
-	      || DECIMAL_FLOAT_MODE_P (mode)))
+      if (abi_v4_pass_in_fpr (mode))
 	{
 	  /* _Decimal128 must use an even/odd register pair.  This assumes
 	     that the register number is odd when fregno is odd.  */
@@ -11390,11 +11666,7 @@ rs6000_function_arg (cumulative_args_t cum_v, machine_mode mode,
 
   else if (abi == ABI_V4)
     {
-      if (TARGET_HARD_FLOAT && TARGET_FPRS
-	  && ((TARGET_SINGLE_FLOAT && mode == SFmode)
-	      || (TARGET_DOUBLE_FLOAT && mode == DFmode)
-	      || FLOAT128_2REG_P (mode)
-	      || DECIMAL_FLOAT_MODE_P (mode)))
+      if (abi_v4_pass_in_fpr (mode))
 	{
 	  /* _Decimal128 must use an even/odd register pair.  This assumes
 	     that the register number is odd when fregno is odd.  */
@@ -12315,19 +12587,15 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   rsize = (size + 3) / 4;
   align = 1;
 
-  if (TARGET_HARD_FLOAT && TARGET_FPRS
-      && ((TARGET_SINGLE_FLOAT && TYPE_MODE (type) == SFmode)
-          || (TARGET_DOUBLE_FLOAT 
-              && (TYPE_MODE (type) == DFmode 
-		  || FLOAT128_2REG_P (TYPE_MODE (type))
-		  || DECIMAL_FLOAT_MODE_P (TYPE_MODE (type))))))
+  machine_mode mode = TYPE_MODE (type);
+  if (abi_v4_pass_in_fpr (mode))
     {
       /* FP args go in FP registers, if present.  */
       reg = fpr;
       n_reg = (size + 7) / 8;
       sav_ofs = ((TARGET_HARD_FLOAT && TARGET_DOUBLE_FLOAT) ? 8 : 4) * 4;
       sav_scale = ((TARGET_HARD_FLOAT && TARGET_DOUBLE_FLOAT) ? 8 : 4);
-      if (TYPE_MODE (type) != SFmode && TYPE_MODE (type) != SDmode)
+      if (mode != SFmode && mode != SDmode)
 	align = 8;
     }
   else
@@ -12347,7 +12615,7 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   addr = create_tmp_var (ptr_type_node, "addr");
 
   /*  AltiVec vectors never go in registers when -mabi=altivec.  */
-  if (TARGET_ALTIVEC_ABI && ALTIVEC_VECTOR_MODE (TYPE_MODE (type)))
+  if (TARGET_ALTIVEC_ABI && ALTIVEC_VECTOR_MODE (mode))
     align = 16;
   else
     {
@@ -12368,7 +12636,7 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
 	}
       /* _Decimal128 is passed in even/odd fpr pairs; the stored
 	 reg number is 0 for f1, so we want to make it odd.  */
-      else if (reg == fpr && TYPE_MODE (type) == TDmode)
+      else if (reg == fpr && mode == TDmode)
 	{
 	  t = build2 (BIT_IOR_EXPR, TREE_TYPE (reg), unshare_expr (reg),
 		      build_int_cst (TREE_TYPE (reg), 1));
@@ -12395,7 +12663,7 @@ rs6000_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
 	 FP register for 32-bit binaries.  */
       if (TARGET_32BIT
 	  && TARGET_HARD_FLOAT && TARGET_FPRS
-	  && TYPE_MODE (type) == SDmode)
+	  && mode == SDmode)
 	t = fold_build_pointer_plus_hwi (t, size);
 
       gimplify_assign (addr, t, pre_p);
@@ -13121,6 +13389,24 @@ rs6000_expand_binop_builtin (enum insn_code icode, tree exp, rtx target)
 	{
 	  error ("argument 2 must be a 5-bit unsigned literal");
 	  return const0_rtx;
+	}
+    }
+  else if (icode == CODE_FOR_dfptstsfi_eq_dd
+      || icode == CODE_FOR_dfptstsfi_lt_dd
+      || icode == CODE_FOR_dfptstsfi_gt_dd
+      || icode == CODE_FOR_dfptstsfi_unordered_dd
+      || icode == CODE_FOR_dfptstsfi_eq_td
+      || icode == CODE_FOR_dfptstsfi_lt_td
+      || icode == CODE_FOR_dfptstsfi_gt_td
+      || icode == CODE_FOR_dfptstsfi_unordered_td)
+    {
+      /* Only allow 6-bit unsigned literals.  */
+      STRIP_NOPS (arg0);
+      if (TREE_CODE (arg0) != INTEGER_CST
+	  || !IN_RANGE (TREE_INT_CST_LOW (arg0), 0, 63))
+	{
+	  error ("argument 1 must be a 6-bit unsigned literal");
+	  return CONST0_RTX (tmode);
 	}
     }
 
@@ -13899,6 +14185,8 @@ rs6000_expand_ternop_builtin (enum insn_code icode, tree exp, rtx target)
     }
   else if (icode == CODE_FOR_vsx_xxpermdi_v2df
            || icode == CODE_FOR_vsx_xxpermdi_v2di
+           || icode == CODE_FOR_vsx_xxpermdi_v2df_be
+           || icode == CODE_FOR_vsx_xxpermdi_v2di_be
            || icode == CODE_FOR_vsx_xxsldwi_v16qi
            || icode == CODE_FOR_vsx_xxsldwi_v8hi
            || icode == CODE_FOR_vsx_xxsldwi_v4si
@@ -14046,6 +14334,7 @@ altivec_expand_ld_builtin (tree exp, rtx target, bool *expandedp)
       break;
     case ALTIVEC_BUILTIN_LD_INTERNAL_2di:
       icode = CODE_FOR_vector_altivec_load_v2di;
+      break;
     case ALTIVEC_BUILTIN_LD_INTERNAL_1ti:
       icode = CODE_FOR_vector_altivec_load_v1ti;
       break;
@@ -14107,6 +14396,7 @@ altivec_expand_st_builtin (tree exp, rtx target ATTRIBUTE_UNUSED,
       break;
     case ALTIVEC_BUILTIN_ST_INTERNAL_2di:
       icode = CODE_FOR_vector_altivec_store_v2di;
+      break;
     case ALTIVEC_BUILTIN_ST_INTERNAL_1ti:
       icode = CODE_FOR_vector_altivec_store_v1ti;
       break;
@@ -15152,16 +15442,68 @@ rs6000_invalid_builtin (enum rs6000_builtins fncode)
   else if ((fnmask & RS6000_BTM_P8_VECTOR) != 0)
     error ("Builtin function %s requires the -mpower8-vector option", name);
   else if ((fnmask & RS6000_BTM_P9_VECTOR) != 0)
-    error ("Builtin function %s requires the -mpower9-vector option", name);
+    error ("Builtin function %s requires the -mcpu=power9 option", name);
+  else if ((fnmask & (RS6000_BTM_P9_MISC | RS6000_BTM_64BIT))
+	   == (RS6000_BTM_P9_MISC | RS6000_BTM_64BIT))
+    error ("Builtin function %s requires the -mcpu=power9 and"
+	   " -m64 options", name);
+  else if ((fnmask & RS6000_BTM_P9_MISC) == RS6000_BTM_P9_MISC)
+    error ("Builtin function %s requires the -mcpu=power9 option", name);
   else if ((fnmask & (RS6000_BTM_HARD_FLOAT | RS6000_BTM_LDBL128))
 	   == (RS6000_BTM_HARD_FLOAT | RS6000_BTM_LDBL128))
     error ("Builtin function %s requires the -mhard-float and"
 	   " -mlong-double-128 options", name);
   else if ((fnmask & RS6000_BTM_HARD_FLOAT) != 0)
     error ("Builtin function %s requires the -mhard-float option", name);
+  else if ((fnmask & RS6000_BTM_FLOAT128) != 0)
+    error ("Builtin function %s requires the -mfloat128 option", name);
   else
     error ("Builtin function %s is not supported with the current options",
 	   name);
+}
+
+/* Target hook for early folding of built-ins, shamelessly stolen
+   from ia64.c.  */
+
+static tree
+rs6000_fold_builtin (tree fndecl, int n_args ATTRIBUTE_UNUSED,
+		     tree *args, bool ignore ATTRIBUTE_UNUSED)
+{
+  if (DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_MD)
+    {
+      enum rs6000_builtins fn_code
+	= (enum rs6000_builtins) DECL_FUNCTION_CODE (fndecl);
+      switch (fn_code)
+	{
+	case RS6000_BUILTIN_NANQ:
+	case RS6000_BUILTIN_NANSQ:
+	  {
+	    tree type = TREE_TYPE (TREE_TYPE (fndecl));
+	    const char *str = c_getstr (*args);
+	    int quiet = fn_code == RS6000_BUILTIN_NANQ;
+	    REAL_VALUE_TYPE real;
+
+	    if (str && real_nan (&real, str, quiet, TYPE_MODE (type)))
+	      return build_real (type, real);
+	    return NULL_TREE;
+	  }
+	case RS6000_BUILTIN_INFQ:
+	case RS6000_BUILTIN_HUGE_VALQ:
+	  {
+	    tree type = TREE_TYPE (TREE_TYPE (fndecl));
+	    REAL_VALUE_TYPE inf;
+	    real_inf (&inf);
+	    return build_real (type, inf);
+	  }
+	default:
+	  break;
+	}
+    }
+#ifdef SUBTARGET_FOLD_BUILTIN
+  return SUBTARGET_FOLD_BUILTIN (fndecl, n_args, args, ignore);
+#else
+  return NULL_TREE;
+#endif
 }
 
 /* Expand an expression EXP that calls a built-in function,
@@ -15418,6 +15760,10 @@ rs6000_init_builtins (void)
   opaque_p_V2SI_type_node = build_pointer_type (opaque_V2SI_type_node);
   opaque_V4SI_type_node = build_opaque_vector_type (intSI_type_node, 4);
 
+  const_str_type_node
+    = build_pointer_type (build_qualified_type (char_type_node,
+						TYPE_QUAL_CONST));
+
   /* We use V1TI mode as a special container to hold __int128_t items that
      must live in VSX registers.  */
   if (intTI_type_node)
@@ -15479,6 +15825,12 @@ rs6000_init_builtins (void)
 
       lang_hooks.types.register_builtin_type (ibm128_float_type_node,
 					      "__ibm128");
+    }
+  else
+    {
+      /* All types must be nonzero, or self-test barfs during bootstrap.  */
+      ieee128_float_type_node = long_double_type_node;
+      ibm128_float_type_node = long_double_type_node;
     }
 
   /* Initialize the modes for builtin_function_type, mapping a machine mode to
@@ -15620,6 +15972,15 @@ rs6000_init_builtins (void)
 
   if (TARGET_EXTRA_BUILTINS || TARGET_SPE || TARGET_PAIRED_FLOAT)
     rs6000_common_init_builtins ();
+
+  ftype = build_function_type_list (ieee128_float_type_node,
+				    const_str_type_node, NULL_TREE);
+  def_builtin ("__builtin_nanq", ftype, RS6000_BUILTIN_NANQ);
+  def_builtin ("__builtin_nansq", ftype, RS6000_BUILTIN_NANSQ);
+
+  ftype = build_function_type_list (ieee128_float_type_node, NULL_TREE);
+  def_builtin ("__builtin_infq", ftype, RS6000_BUILTIN_INFQ);
+  def_builtin ("__builtin_huge_valq", ftype, RS6000_BUILTIN_HUGE_VALQ);
 
   ftype = builtin_function_type (DFmode, DFmode, DFmode, VOIDmode,
 				 RS6000_BUILTIN_RECIP, "__builtin_recipdiv");
@@ -16726,6 +17087,7 @@ builtin_function_type (machine_mode mode_ret, machine_mode mode_arg0,
       break;
 
       /* unsigned args, signed return.  */
+    case VSX_BUILTIN_XVCVUXDSP:
     case VSX_BUILTIN_XVCVUXDDP_UNS:
     case ALTIVEC_BUILTIN_UNSFLOAT_V4SI_V4SF:
       h.uns_p[1] = 1;
@@ -18464,25 +18826,33 @@ rs6000_secondary_reload_memory (rtx addr,
     addr_mask = (reg_addr[mode].addr_mask[RELOAD_REG_VMX]
 		 & ~RELOAD_REG_AND_M16);
 
-  else
+  /* If the register allocator hasn't made up its mind yet on the register
+     class to use, settle on defaults to use.  */
+  else if (rclass == NO_REGS)
     {
-      if (TARGET_DEBUG_ADDR)
-	fprintf (stderr,
-		 "rs6000_secondary_reload_memory: mode = %s, class = %s, "
-		 "class is not GPR, FPR, VMX\n",
-		 GET_MODE_NAME (mode), reg_class_names[rclass]);
+      addr_mask = (reg_addr[mode].addr_mask[RELOAD_REG_ANY]
+		   & ~RELOAD_REG_AND_M16);
 
-      return -1;
+      if ((addr_mask & RELOAD_REG_MULTIPLE) != 0)
+	addr_mask &= ~(RELOAD_REG_INDEXED
+		       | RELOAD_REG_PRE_INCDEC
+		       | RELOAD_REG_PRE_MODIFY);
     }
+
+  else
+    addr_mask = 0;
 
   /* If the register isn't valid in this register class, just return now.  */
   if ((addr_mask & RELOAD_REG_VALID) == 0)
     {
       if (TARGET_DEBUG_ADDR)
-	fprintf (stderr,
-		 "rs6000_secondary_reload_memory: mode = %s, class = %s, "
-		 "not valid in class\n",
-		 GET_MODE_NAME (mode), reg_class_names[rclass]);
+	{
+	  fprintf (stderr,
+		   "rs6000_secondary_reload_memory: mode = %s, class = %s, "
+		   "not valid in class\n",
+		   GET_MODE_NAME (mode), reg_class_names[rclass]);
+	  debug_rtx (addr);
+	}
 
       return -1;
     }
@@ -18746,7 +19116,8 @@ rs6000_secondary_reload_simple_move (enum rs6000_reg_type to_type,
      simple move insns are issued.  At present, 32-bit integers are not allowed
      in FPR/VSX registers.  Single precision binary floating is not a simple
      move because we need to convert to the single precision memory layout.
-     The 4-byte SDmode can be moved.  */
+     The 4-byte SDmode can be moved.  TDmode values are disallowed since they
+     need special direct move handling, which we do not support yet.  */
   size = GET_MODE_SIZE (mode);
   if (TARGET_DIRECT_MOVE
       && ((mode == SDmode) || (TARGET_POWERPC64 && size == 8))
@@ -18754,7 +19125,7 @@ rs6000_secondary_reload_simple_move (enum rs6000_reg_type to_type,
 	  || (to_type == VSX_REG_TYPE && from_type == GPR_REG_TYPE)))
     return true;
 
-  else if (TARGET_DIRECT_MOVE_128 && size == 16
+  else if (TARGET_DIRECT_MOVE_128 && size == 16 && mode != TDmode
 	   && ((to_type == VSX_REG_TYPE && from_type == GPR_REG_TYPE)
 	       || (to_type == GPR_REG_TYPE && from_type == VSX_REG_TYPE)))
     return true;
@@ -18950,6 +19321,7 @@ rs6000_secondary_reload (bool in_p,
 		       && MEM_P (SUBREG_REG (x))));
 
   sri->icode = CODE_FOR_nothing;
+  sri->t_icode = CODE_FOR_nothing;
   sri->extra_cost = 0;
   icode = ((in_p)
 	   ? reg_addr[mode].reload_load
@@ -19142,6 +19514,9 @@ rs6000_secondary_reload (bool in_p,
       if (sri->icode != CODE_FOR_nothing)
 	fprintf (stderr, ", reload func = %s, extra cost = %d",
 		 insn_data[sri->icode].name, sri->extra_cost);
+
+      else if (sri->extra_cost > 0)
+	fprintf (stderr, ", extra cost = %d", sri->extra_cost);
 
       fputs ("\n", stderr);
       debug_rtx (x);
@@ -19553,6 +19928,16 @@ rs6000_preferred_reload_class (rtx x, enum reg_class rclass)
   machine_mode mode = GET_MODE (x);
   bool is_constant = CONSTANT_P (x);
 
+  /* If a mode can't go in FPR/ALTIVEC/VSX registers, don't return a preferred
+     reload class for it.  */
+  if ((rclass == ALTIVEC_REGS || rclass == VSX_REGS)
+      && (reg_addr[mode].addr_mask[RELOAD_REG_VMX] & RELOAD_REG_VALID) == 0)
+    return NO_REGS;
+
+  if ((rclass == FLOAT_REGS || rclass == VSX_REGS)
+      && (reg_addr[mode].addr_mask[RELOAD_REG_FPR] & RELOAD_REG_VALID) == 0)
+    return NO_REGS;
+
   /* For VSX, see if we should prefer FLOAT_REGS or ALTIVEC_REGS.  Do not allow
      the reloading of address expressions using PLUS into floating point
      registers.  */
@@ -19601,6 +19986,25 @@ rs6000_preferred_reload_class (rtx x, enum reg_class rclass)
       if (reg_class_subset_p (BASE_REGS, rclass))
 	return BASE_REGS;
       return NO_REGS;
+    }
+
+  /* If we haven't picked a register class, and the type is a vector or
+     floating point type, prefer to use the VSX, FPR, or Altivec register
+     classes.  */
+  if (rclass == NO_REGS)
+    {
+      if (TARGET_VSX && VECTOR_MEM_VSX_OR_P8_VECTOR_P (mode))
+	return VSX_REGS;
+
+      if (TARGET_ALTIVEC && VECTOR_MEM_ALTIVEC_P (mode))
+	return ALTIVEC_REGS;
+
+      if (DECIMAL_FLOAT_MODE_P (mode))
+	return TARGET_DFP ? FLOAT_REGS : NO_REGS;
+
+      if (TARGET_FPRS && TARGET_HARD_FLOAT && FLOAT_MODE_P (mode)
+	  && (reg_addr[mode].addr_mask[RELOAD_REG_FPR] & RELOAD_REG_VALID) == 0)
+	return FLOAT_REGS;
     }
 
   if (GET_MODE_CLASS (mode) == MODE_INT && rclass == NON_SPECIAL_REGS)
@@ -19992,7 +20396,7 @@ rs6000_output_move_128bit (rtx operands[])
       else if (TARGET_VSX && dest_vsx_p)
 	{
 	  if (mode_supports_vsx_dform_quad (mode)
-	      && quad_address_p (XEXP (src, 0), mode, false))
+	      && quad_address_p (XEXP (src, 0), mode, true))
 	    return "lxv %x0,%1";
 
 	  else if (TARGET_P9_VECTOR)
@@ -20030,7 +20434,7 @@ rs6000_output_move_128bit (rtx operands[])
       else if (TARGET_VSX && src_vsx_p)
 	{
 	  if (mode_supports_vsx_dform_quad (mode)
-	      && quad_address_p (XEXP (dest, 0), mode, false))
+	      && quad_address_p (XEXP (dest, 0), mode, true))
 	    return "stxv %x1,%0";
 
 	  else if (TARGET_P9_VECTOR)
@@ -20060,10 +20464,8 @@ rs6000_output_move_128bit (rtx operands[])
       if (dest_gpr_p)
 	return "#";
 
-      else if (TARGET_VSX && dest_vsx_p && zero_constant (src, mode))
-	return "xxlxor %x0,%x0,%x0";
-
-      else if (TARGET_ALTIVEC && dest_vmx_p)
+      else if ((dest_vmx_p && TARGET_ALTIVEC)
+	       || (dest_vsx_p && TARGET_VSX))
 	return output_vec_const_move (operands);
     }
 
@@ -21256,8 +21658,8 @@ rs6000_generate_compare (rtx cmp, machine_mode mode)
   else if (!TARGET_FLOAT128_HW && FLOAT128_VECTOR_P (mode))
     {
       rtx libfunc = NULL_RTX;
-      bool uneq_or_ltgt = false;
-      rtx dest = gen_reg_rtx (SImode);
+      bool check_nan = false;
+      rtx dest;
 
       switch (code)
 	{
@@ -21284,21 +21686,23 @@ rs6000_generate_compare (rtx cmp, machine_mode mode)
 
 	case UNGE:
 	case UNGT:
-	  libfunc = optab_libfunc (le_optab, mode);
+	  check_nan = true;
+	  libfunc = optab_libfunc (ge_optab, mode);
 	  code = (code == UNGE) ? GE : GT;
 	  break;
 
 	case UNLE:
 	case UNLT:
-	  libfunc = optab_libfunc (ge_optab, mode);
+	  check_nan = true;
+	  libfunc = optab_libfunc (le_optab, mode);
 	  code = (code == UNLE) ? LE : LT;
 	  break;
 
 	case UNEQ:
 	case LTGT:
-	  libfunc = optab_libfunc (le_optab, mode);
-	  uneq_or_ltgt = true;
-	  code = (code = UNEQ) ? NE : EQ;
+	  check_nan = true;
+	  libfunc = optab_libfunc (eq_optab, mode);
+	  code = (code = UNEQ) ? EQ : NE;
 	  break;
 
 	default:
@@ -21306,21 +21710,56 @@ rs6000_generate_compare (rtx cmp, machine_mode mode)
 	}
 
       gcc_assert (libfunc);
-      dest = emit_library_call_value (libfunc, NULL_RTX, LCT_CONST,
-				      SImode, 2, op0, mode, op1, mode);
 
-      /* If this is UNEQ or LTGT, we call __lekf2, which returns -1 for less
-	 than, 0 for equal, +1 for greater, and +2 for nan.  We add 1, to give
-	 a value of 0..3, and then do and AND immediate of 1 to isolate whether
-	 it is 0/Nan (i.e. bottom bit is 0), or less than/greater than
-	 (i.e. bottom bit is 1).  */
-      if (uneq_or_ltgt)
+      if (!check_nan)
+	dest = emit_library_call_value (libfunc, NULL_RTX, LCT_CONST,
+					SImode, 2, op0, mode, op1, mode);
+
+      /* The library signals an exception for signalling NaNs, so we need to
+	 handle isgreater, etc. by first checking isordered.  */
+      else
 	{
-	  rtx add_result = gen_reg_rtx (SImode);
-	  rtx and_result = gen_reg_rtx (SImode);
-	  emit_insn (gen_addsi3 (add_result, dest, GEN_INT (1)));
-	  emit_insn (gen_andsi3 (and_result, add_result, GEN_INT (1)));
-	  dest = and_result;
+	  rtx ne_rtx, normal_dest, unord_dest;
+	  rtx unord_func = optab_libfunc (unord_optab, mode);
+	  rtx join_label = gen_label_rtx ();
+	  rtx join_ref = gen_rtx_LABEL_REF (VOIDmode, join_label);
+	  rtx unord_cmp = gen_reg_rtx (comp_mode);
+
+
+	  /* Test for either value being a NaN.  */
+	  gcc_assert (unord_func);
+	  unord_dest = emit_library_call_value (unord_func, NULL_RTX, LCT_CONST,
+						SImode, 2, op0, mode, op1,
+						mode);
+
+	  /* Set value (0) if either value is a NaN, and jump to the join
+	     label.  */
+	  dest = gen_reg_rtx (SImode);
+	  emit_move_insn (dest, const1_rtx);
+	  emit_insn (gen_rtx_SET (unord_cmp,
+				  gen_rtx_COMPARE (comp_mode, unord_dest,
+						   const0_rtx)));
+
+	  ne_rtx = gen_rtx_NE (comp_mode, unord_cmp, const0_rtx);
+	  emit_jump_insn (gen_rtx_SET (pc_rtx,
+				       gen_rtx_IF_THEN_ELSE (VOIDmode, ne_rtx,
+							     join_ref,
+							     pc_rtx)));
+
+	  /* Do the normal comparison, knowing that the values are not
+	     NaNs.  */
+	  normal_dest = emit_library_call_value (libfunc, NULL_RTX, LCT_CONST,
+						 SImode, 2, op0, mode, op1,
+						 mode);
+
+	  emit_insn (gen_cstoresi4 (dest,
+				    gen_rtx_fmt_ee (code, SImode, normal_dest,
+						    const0_rtx),
+				    normal_dest, const0_rtx));
+
+	  /* Join NaN and non-Nan paths.  Compare dest against 0.  */
+	  emit_label (join_label);
+	  code = NE;
 	}
 
       emit_insn (gen_rtx_SET (compare_result,
@@ -22663,6 +23102,49 @@ rs6000_emit_minmax (rtx dest, enum rtx_code code, rtx op0, rtx op1)
   gcc_assert (target);
   if (target != dest)
     emit_move_insn (dest, target);
+}
+
+/* Split a signbit operation on 64-bit machines with direct move.  Also allow
+   for the value to come from memory or if it is already loaded into a GPR.  */
+
+void
+rs6000_split_signbit (rtx dest, rtx src)
+{
+  machine_mode d_mode = GET_MODE (dest);
+  machine_mode s_mode = GET_MODE (src);
+  rtx dest_di = (d_mode == DImode) ? dest : gen_lowpart (DImode, dest);
+  rtx shift_reg = dest_di;
+
+  gcc_assert (FLOAT128_IEEE_P (s_mode) && TARGET_POWERPC64);
+
+  if (MEM_P (src))
+    {
+      rtx mem = (WORDS_BIG_ENDIAN
+		 ? adjust_address (src, DImode, 0)
+		 : adjust_address (src, DImode, 8));
+      emit_insn (gen_rtx_SET (dest_di, mem));
+    }
+
+  else
+    {
+      unsigned int r = reg_or_subregno (src);
+
+      if (INT_REGNO_P (r))
+	shift_reg = gen_rtx_REG (DImode, r + (BYTES_BIG_ENDIAN == 0));
+
+      else
+	{
+	  /* Generate the special mfvsrd instruction to get it in a GPR.  */
+	  gcc_assert (VSX_REGNO_P (r));
+	  if (s_mode == KFmode)
+	    emit_insn (gen_signbitkf2_dm2 (dest_di, src));
+	  else
+	    emit_insn (gen_signbittf2_dm2 (dest_di, src));
+	}
+    }
+
+  emit_insn (gen_lshrdi3 (dest_di, shift_reg, GEN_INT (63)));
+  return;
 }
 
 /* A subroutine of the atomic operation splitters.  Jump to LABEL if
@@ -28014,11 +28496,15 @@ rs6000_output_function_epilogue (FILE *file,
 {
 #if TARGET_MACHO
   macho_branch_islands ();
-  /* Mach-O doesn't support labels at the end of objects, so if
-     it looks like we might want one, insert a NOP.  */
+
   {
     rtx_insn *insn = get_last_insn ();
     rtx_insn *deleted_debug_label = NULL;
+
+    /* Mach-O doesn't support labels at the end of objects, so if
+       it looks like we might want one, take special action.
+
+       First, collect any sequence of deleted debug labels.  */
     while (insn
 	   && NOTE_P (insn)
 	   && NOTE_KIND (insn) != NOTE_INSN_DELETED_LABEL)
@@ -28031,11 +28517,40 @@ rs6000_output_function_epilogue (FILE *file,
 	  deleted_debug_label = insn;
 	insn = PREV_INSN (insn);
       }
-    if (insn
-	&& (LABEL_P (insn)
+
+    /* Second, if we have:
+       label:
+	 barrier
+       then this needs to be detected, so skip past the barrier.  */
+
+    if (insn && BARRIER_P (insn))
+      insn = PREV_INSN (insn);
+
+    /* Up to now we've only seen notes or barriers.  */
+    if (insn)
+      {
+	if (LABEL_P (insn)
 	    || (NOTE_P (insn)
-		&& NOTE_KIND (insn) == NOTE_INSN_DELETED_LABEL)))
-      fputs ("\tnop\n", file);
+		&& NOTE_KIND (insn) == NOTE_INSN_DELETED_LABEL))
+	  /* Trailing label: <barrier>.  */
+	  fputs ("\tnop\n", file);
+	else
+	  {
+	    /* Lastly, see if we have a completely empty function body.  */
+	    while (insn && ! INSN_P (insn))
+	      insn = PREV_INSN (insn);
+	    /* If we don't find any insns, we've got an empty function body;
+	       I.e. completely empty - without a return or branch.  This is
+	       taken as the case where a function body has been removed
+	       because it contains an inline __builtin_unreachable().  GCC
+	       states that reaching __builtin_unreachable() means UB so we're
+	       not obliged to do anything special; however, we want
+	       non-zero-sized function bodies.  To meet this, and help the
+	       user out, let's trap the case.  */
+	    if (insn == NULL)
+	      fputs ("\ttrap\n", file);
+	  }
+      }
     else if (deleted_debug_label)
       for (insn = deleted_debug_label; insn; insn = NEXT_INSN (insn))
 	if (NOTE_KIND (insn) == NOTE_INSN_DELETED_DEBUG_LABEL)
@@ -28233,53 +28748,54 @@ rs6000_output_function_epilogue (FILE *file,
 	 seems to set the bit when not optimizing.  */
       fprintf (file, "%d\n", ((float_parms << 1) | (! optimize)));
 
-      if (! optional_tbtab)
-	return;
+      if (optional_tbtab)
+	{
+	  /* Optional fields follow.  Some are variable length.  */
 
-      /* Optional fields follow.  Some are variable length.  */
+	  /* Parameter types, left adjusted bit fields: 0 fixed, 10 single
+	     float, 11 double float.  */
+	  /* There is an entry for each parameter in a register, in the order
+	     that they occur in the parameter list.  Any intervening arguments
+	     on the stack are ignored.  If the list overflows a long (max
+	     possible length 34 bits) then completely leave off all elements
+	     that don't fit.  */
+	  /* Only emit this long if there was at least one parameter.  */
+	  if (fixed_parms || float_parms)
+	    fprintf (file, "\t.long %d\n", parm_info);
 
-      /* Parameter types, left adjusted bit fields: 0 fixed, 10 single float,
-	 11 double float.  */
-      /* There is an entry for each parameter in a register, in the order that
-	 they occur in the parameter list.  Any intervening arguments on the
-	 stack are ignored.  If the list overflows a long (max possible length
-	 34 bits) then completely leave off all elements that don't fit.  */
-      /* Only emit this long if there was at least one parameter.  */
-      if (fixed_parms || float_parms)
-	fprintf (file, "\t.long %d\n", parm_info);
+	  /* Offset from start of code to tb table.  */
+	  fputs ("\t.long ", file);
+	  ASM_OUTPUT_INTERNAL_LABEL_PREFIX (file, "LT");
+	  RS6000_OUTPUT_BASENAME (file, fname);
+	  putc ('-', file);
+	  rs6000_output_function_entry (file, fname);
+	  putc ('\n', file);
 
-      /* Offset from start of code to tb table.  */
-      fputs ("\t.long ", file);
-      ASM_OUTPUT_INTERNAL_LABEL_PREFIX (file, "LT");
-      RS6000_OUTPUT_BASENAME (file, fname);
-      putc ('-', file);
-      rs6000_output_function_entry (file, fname);
-      putc ('\n', file);
+	  /* Interrupt handler mask.  */
+	  /* Omit this long, since we never set the interrupt handler bit
+	     above.  */
 
-      /* Interrupt handler mask.  */
-      /* Omit this long, since we never set the interrupt handler bit
-	 above.  */
+	  /* Number of CTL (controlled storage) anchors.  */
+	  /* Omit this long, since the has_ctl bit is never set above.  */
 
-      /* Number of CTL (controlled storage) anchors.  */
-      /* Omit this long, since the has_ctl bit is never set above.  */
+	  /* Displacement into stack of each CTL anchor.  */
+	  /* Omit this list of longs, because there are no CTL anchors.  */
 
-      /* Displacement into stack of each CTL anchor.  */
-      /* Omit this list of longs, because there are no CTL anchors.  */
+	  /* Length of function name.  */
+	  if (*fname == '*')
+	    ++fname;
+	  fprintf (file, "\t.short %d\n", (int) strlen (fname));
 
-      /* Length of function name.  */
-      if (*fname == '*')
-	++fname;
-      fprintf (file, "\t.short %d\n", (int) strlen (fname));
+	  /* Function name.  */
+	  assemble_string (fname, strlen (fname));
 
-      /* Function name.  */
-      assemble_string (fname, strlen (fname));
+	  /* Register for alloca automatic storage; this is always reg 31.
+	     Only emit this if the alloca bit was set above.  */
+	  if (frame_pointer_needed)
+	    fputs ("\t.byte 31\n", file);
 
-      /* Register for alloca automatic storage; this is always reg 31.
-	 Only emit this if the alloca bit was set above.  */
-      if (frame_pointer_needed)
-	fputs ("\t.byte 31\n", file);
-
-      fputs ("\t.align 2\n", file);
+	  fputs ("\t.align 2\n", file);
+	}
     }
 
   /* Arrange to define .LCTOC1 label, if not already done.  */
@@ -28797,7 +29313,10 @@ rs6000_output_symbol_ref (FILE *file, rtx x)
 		     (TREE_CODE (decl) == FUNCTION_DECL
 		      ? "[DS]" : "[UA]"),
 		     NULL);
-      XSTR (x, 0) = name;
+
+      /* Don't modify name in extern VAR_DECL to include mapping class.  */
+      if (TREE_CODE (decl) == FUNCTION_DECL)
+	XSTR (x, 0) = name;
     }
 
   if (VTABLE_NAME_P (name))
@@ -29435,12 +29954,19 @@ output_function_profiler (FILE *file, int labelno)
 
 /* The following variable value is the last issued insn.  */
 
-static rtx last_scheduled_insn;
+static rtx_insn *last_scheduled_insn;
 
 /* The following variable helps to balance issuing of load and
    store instructions */
 
 static int load_store_pendulum;
+
+/* The following variable helps pair divide insns during scheduling.  */
+static int divide_cnt;
+/* The following variable helps pair and alternate vector and vector load
+   insns during scheduling.  */
+static int vec_load_pendulum;
+
 
 /* Power4 load update and store update instructions are cracked into a
    load or store and an integer insn which are executed in the same cycle.
@@ -29516,7 +30042,7 @@ rs6000_adjust_cost (rtx_insn *insn, rtx link, rtx_insn *dep_insn, int cost)
 	   some cycles later.  */
 
 	/* Separate a load from a narrower, dependent store.  */
-	if (rs6000_sched_groups
+	if ((rs6000_sched_groups || rs6000_cpu_attr == CPU_POWER9)
 	    && GET_CODE (PATTERN (insn)) == SET
 	    && GET_CODE (PATTERN (dep_insn)) == SET
 	    && GET_CODE (XEXP (PATTERN (insn), 1)) == MEM
@@ -29742,7 +30268,9 @@ rs6000_adjust_cost (rtx_insn *insn, rtx link, rtx_insn *dep_insn, int cost)
           switch (attr_type)
             {
             case TYPE_FP:
-              if (get_attr_type (dep_insn) == TYPE_FP)
+            case TYPE_FPSIMPLE:
+              if (get_attr_type (dep_insn) == TYPE_FP
+		  || get_attr_type (dep_insn) == TYPE_FPSIMPLE)
                 return 1;
               break;
             case TYPE_FPLOAD:
@@ -29754,6 +30282,8 @@ rs6000_adjust_cost (rtx_insn *insn, rtx link, rtx_insn *dep_insn, int cost)
               break;
             }
         }
+      /* Fall through, no cost for output dependency.  */
+
     case REG_DEP_ANTI:
       /* Anti dependency; DEP_INSN reads a register that INSN writes some
 	 cycles later.  */
@@ -30126,8 +30656,9 @@ rs6000_issue_rate (void)
   case CPU_POWER7:
     return 5;
   case CPU_POWER8:
-  case CPU_POWER9:
     return 7;
+  case CPU_POWER9:
+    return 6;
   default:
     return 1;
   }
@@ -30285,6 +30816,28 @@ is_store_insn (rtx insn, rtx *str_mem)
   return is_store_insn1 (PATTERN (insn), str_mem);
 }
 
+/* Return whether TYPE is a Power9 pairable vector instruction type.  */
+
+static bool
+is_power9_pairable_vec_type (enum attr_type type)
+{
+  switch (type)
+    {
+      case TYPE_VECSIMPLE:
+      case TYPE_VECCOMPLEX:
+      case TYPE_VECDIV:
+      case TYPE_VECCMP:
+      case TYPE_VECPERM:
+      case TYPE_VECFLOAT:
+      case TYPE_VECFDIV:
+      case TYPE_VECDOUBLE:
+	return true;
+      default:
+	break;
+    }
+  return false;
+}
+
 /* Returns whether the dependence between INSN and NEXT is considered
    costly by the given target.  */
 
@@ -30359,6 +30912,229 @@ get_next_active_insn (rtx_insn *insn, rtx_insn *tail)
 	break;
     }
   return insn;
+}
+
+/* Do Power9 specific sched_reorder2 reordering of ready list.  */
+
+static int
+power9_sched_reorder2 (rtx_insn **ready, int lastpos)
+{
+  int pos;
+  int i;
+  rtx_insn *tmp;
+  enum attr_type type;
+
+  type = get_attr_type (last_scheduled_insn);
+
+  /* Try to issue fixed point divides back-to-back in pairs so they will be
+     routed to separate execution units and execute in parallel.  */
+  if (type == TYPE_DIV && divide_cnt == 0)
+    {
+      /* First divide has been scheduled.  */
+      divide_cnt = 1;
+
+      /* Scan the ready list looking for another divide, if found move it
+	 to the end of the list so it is chosen next.  */
+      pos = lastpos;
+      while (pos >= 0)
+	{
+	  if (recog_memoized (ready[pos]) >= 0
+	      && get_attr_type (ready[pos]) == TYPE_DIV)
+	    {
+	      tmp = ready[pos];
+	      for (i = pos; i < lastpos; i++)
+		ready[i] = ready[i + 1];
+	      ready[lastpos] = tmp;
+	      break;
+	    }
+	  pos--;
+	}
+    }
+  else
+    {
+      /* Last insn was the 2nd divide or not a divide, reset the counter.  */
+      divide_cnt = 0;
+
+      /* Power9 can execute 2 vector operations and 2 vector loads in a single
+	 cycle.  So try to pair up and alternate groups of vector and vector
+	 load instructions.
+
+	 To aid this formation, a counter is maintained to keep track of
+	 vec/vecload insns issued.  The value of vec_load_pendulum maintains
+	 the current state with the following values:
+
+	     0  : Initial state, no vec/vecload group has been started.
+
+	     -1 : 1 vector load has been issued and another has been found on
+		  the ready list and moved to the end.
+
+	     -2 : 2 vector loads have been issued and a vector operation has
+		  been found and moved to the end of the ready list.
+
+	     -3 : 2 vector loads and a vector insn have been issued and a
+		  vector operation has been found and moved to the end of the
+		  ready list.
+
+	     1  : 1 vector insn has been issued and another has been found and
+		  moved to the end of the ready list.
+
+	     2  : 2 vector insns have been issued and a vector load has been
+		  found and moved to the end of the ready list.
+
+	     3  : 2 vector insns and a vector load have been issued and another
+		  vector load has been found and moved to the end of the ready
+		  list.	 */
+      if (type == TYPE_VECLOAD)
+	{
+	  /* Issued a vecload.  */
+	  if (vec_load_pendulum == 0)
+	    {
+	      /* We issued a single vecload, look for another and move it to
+		 the end of the ready list so it will be scheduled next.
+		 Set pendulum if found.  */
+	      pos = lastpos;
+	      while (pos >= 0)
+		{
+		  if (recog_memoized (ready[pos]) >= 0
+		      && get_attr_type (ready[pos]) == TYPE_VECLOAD)
+		    {
+		      tmp = ready[pos];
+		      for (i = pos; i < lastpos; i++)
+			ready[i] = ready[i + 1];
+		      ready[lastpos] = tmp;
+		      vec_load_pendulum = -1;
+		      return cached_can_issue_more;
+		    }
+		  pos--;
+		}
+	    }
+	  else if (vec_load_pendulum == -1)
+	    {
+	      /* This is the second vecload we've issued, search the ready
+	         list for a vector operation so we can try to schedule a
+	         pair of those next.  If found move to the end of the ready
+	         list so it is scheduled next and set the pendulum.  */
+	      pos = lastpos;
+	      while (pos >= 0)
+		{
+		  if (recog_memoized (ready[pos]) >= 0
+		      && is_power9_pairable_vec_type (
+			   get_attr_type (ready[pos])))
+		    {
+		      tmp = ready[pos];
+		      for (i = pos; i < lastpos; i++)
+			ready[i] = ready[i + 1];
+		      ready[lastpos] = tmp;
+		      vec_load_pendulum = -2;
+		      return cached_can_issue_more;
+		    }
+		  pos--;
+		}
+	    }
+	  else if (vec_load_pendulum == 2)
+	    {
+	      /* Two vector ops have been issued and we've just issued a
+		 vecload, look for another vecload and move to end of ready
+		 list if found.  */
+	      pos = lastpos;
+	      while (pos >= 0)
+	        {
+		  if (recog_memoized (ready[pos]) >= 0
+		      && get_attr_type (ready[pos]) == TYPE_VECLOAD)
+		    {
+		      tmp = ready[pos];
+		      for (i = pos; i < lastpos; i++)
+			ready[i] = ready[i + 1];
+		      ready[lastpos] = tmp;
+		      /* Set pendulum so that next vecload will be seen as
+			 finishing a group, not start of one.  */
+		      vec_load_pendulum = 3;
+		      return cached_can_issue_more;
+		    }
+		  pos--;
+		}
+	    }
+	}
+      else if (is_power9_pairable_vec_type (type))
+	{
+	  /* Issued a vector operation.  */
+	  if (vec_load_pendulum == 0)
+	    /* We issued a single vec op, look for another and move it
+	       to the end of the ready list so it will be scheduled next.
+	       Set pendulum if found.  */
+	    {
+	      pos = lastpos;
+	      while (pos >= 0)
+		{
+		  if (recog_memoized (ready[pos]) >= 0
+		      && is_power9_pairable_vec_type (
+			   get_attr_type (ready[pos])))
+		    {
+		      tmp = ready[pos];
+		      for (i = pos; i < lastpos; i++)
+			ready[i] = ready[i + 1];
+		      ready[lastpos] = tmp;
+		      vec_load_pendulum = 1;
+		      return cached_can_issue_more;
+		    }
+		  pos--;
+		}
+	    }
+	  else if (vec_load_pendulum == 1)
+	    {
+	      /* This is the second vec op we've issued, search the ready
+		 list for a vecload operation so we can try to schedule a
+		 pair of those next.  If found move to the end of the ready
+		 list so it is scheduled next and set the pendulum.  */
+	      pos = lastpos;
+	      while (pos >= 0)
+		{
+		  if (recog_memoized (ready[pos]) >= 0
+		      && get_attr_type (ready[pos]) == TYPE_VECLOAD)
+		    {
+		      tmp = ready[pos];
+		      for (i = pos; i < lastpos; i++)
+			ready[i] = ready[i + 1];
+		      ready[lastpos] = tmp;
+		      vec_load_pendulum = 2;
+		      return cached_can_issue_more;
+		    }
+		  pos--;
+		}
+	    }
+	  else if (vec_load_pendulum == -2)
+	    {
+	      /* Two vecload ops have been issued and we've just issued a
+		 vec op, look for another vec op and move to end of ready
+	  	 list if found.  */
+	      pos = lastpos;
+	      while (pos >= 0)
+		{
+		  if (recog_memoized (ready[pos]) >= 0
+		      && is_power9_pairable_vec_type (
+			   get_attr_type (ready[pos])))
+		    {
+		      tmp = ready[pos];
+		      for (i = pos; i < lastpos; i++)
+			ready[i] = ready[i + 1];
+		      ready[lastpos] = tmp;
+		      /* Set pendulum so that next vec op will be seen as
+			 finishing a group, not start of one.  */
+		      vec_load_pendulum = -3;
+		      return cached_can_issue_more;
+		    }
+		  pos--;
+		}
+	    }
+	}
+
+      /* We've either finished a vec/vecload group, couldn't find an insn to
+	 continue the current group, or the last insn had nothing to do with
+	 with a group.  In any case, reset the pendulum.  */
+      vec_load_pendulum = 0;
+    }
+
+  return cached_can_issue_more;
 }
 
 /* We are about to begin issuing insns for this clock cycle. */
@@ -30592,6 +31368,11 @@ rs6000_sched_reorder2 (FILE *dump, int sched_verbose, rtx_insn **ready,
         }
     }
 
+  /* Do Power9 dependent reordering if necessary.  */
+  if (rs6000_cpu == PROCESSOR_POWER9 && last_scheduled_insn
+      && recog_memoized (last_scheduled_insn) >= 0)
+    return power9_sched_reorder2 (ready, *pn_ready - 1);
+
   return cached_can_issue_more;
 }
 
@@ -30760,7 +31541,6 @@ insn_must_be_first_in_group (rtx_insn *insn)
         }
       break;
     case PROCESSOR_POWER8:
-    case PROCESSOR_POWER9:
       type = get_attr_type (insn);
 
       switch (type)
@@ -30891,7 +31671,6 @@ insn_must_be_last_in_group (rtx_insn *insn)
     }
     break;
   case PROCESSOR_POWER8:
-  case PROCESSOR_POWER9:
     type = get_attr_type (insn);
 
     switch (type)
@@ -31010,7 +31789,7 @@ force_new_group (int sched_verbose, FILE *dump, rtx *group_insns,
 
       /* Do we have a special group ending nop? */
       if (rs6000_cpu_attr == CPU_POWER6 || rs6000_cpu_attr == CPU_POWER7
-	  || rs6000_cpu_attr == CPU_POWER8 || rs6000_cpu_attr == CPU_POWER9)
+	  || rs6000_cpu_attr == CPU_POWER8)
 	{
 	  nop = gen_group_ending_nop ();
 	  emit_insn_before (nop, next_insn);
@@ -31264,8 +32043,10 @@ rs6000_sched_init (FILE *dump ATTRIBUTE_UNUSED,
 		     int sched_verbose ATTRIBUTE_UNUSED,
 		     int max_ready ATTRIBUTE_UNUSED)
 {
-  last_scheduled_insn = NULL_RTX;
+  last_scheduled_insn = NULL;
   load_store_pendulum = 0;
+  divide_cnt = 0;
+  vec_load_pendulum = 0;
 }
 
 /* The following function is called at the end of scheduling BB.
@@ -31306,14 +32087,16 @@ rs6000_sched_finish (FILE *dump, int sched_verbose)
     }
 }
 
-struct _rs6000_sched_context
+struct rs6000_sched_context
 {
   short cached_can_issue_more;
-  rtx last_scheduled_insn;
+  rtx_insn *last_scheduled_insn;
   int load_store_pendulum;
+  int divide_cnt;
+  int vec_load_pendulum;
 };
 
-typedef struct _rs6000_sched_context rs6000_sched_context_def;
+typedef struct rs6000_sched_context rs6000_sched_context_def;
 typedef rs6000_sched_context_def *rs6000_sched_context_t;
 
 /* Allocate store for new scheduling context.  */
@@ -31333,14 +32116,18 @@ rs6000_init_sched_context (void *_sc, bool clean_p)
   if (clean_p)
     {
       sc->cached_can_issue_more = 0;
-      sc->last_scheduled_insn = NULL_RTX;
+      sc->last_scheduled_insn = NULL;
       sc->load_store_pendulum = 0;
+      sc->divide_cnt = 0;
+      sc->vec_load_pendulum = 0;
     }
   else
     {
       sc->cached_can_issue_more = cached_can_issue_more;
       sc->last_scheduled_insn = last_scheduled_insn;
       sc->load_store_pendulum = load_store_pendulum;
+      sc->divide_cnt = divide_cnt;
+      sc->vec_load_pendulum = vec_load_pendulum;
     }
 }
 
@@ -31355,6 +32142,8 @@ rs6000_set_sched_context (void *_sc)
   cached_can_issue_more = sc->cached_can_issue_more;
   last_scheduled_insn = sc->last_scheduled_insn;
   load_store_pendulum = sc->load_store_pendulum;
+  divide_cnt = sc->divide_cnt;
+  vec_load_pendulum = sc->vec_load_pendulum;
 }
 
 /* Free _SC.  */
@@ -34549,8 +35338,14 @@ rs6000_complex_function_value (machine_mode mode)
   machine_mode inner = GET_MODE_INNER (mode);
   unsigned int inner_bytes = GET_MODE_UNIT_SIZE (mode);
 
-  if (FLOAT_MODE_P (mode) && TARGET_HARD_FLOAT && TARGET_FPRS)
+  if (TARGET_FLOAT128
+      && (mode == KCmode
+	  || (mode == TCmode && TARGET_IEEEQUAD)))
+    regno = ALTIVEC_ARG_RETURN;
+
+  else if (FLOAT_MODE_P (mode) && TARGET_HARD_FLOAT && TARGET_FPRS)
     regno = FP_ARG_RETURN;
+
   else
     {
       regno = GP_ARG_RETURN;
@@ -34672,7 +35467,8 @@ rs6000_function_value (const_tree valtype,
   if (DECIMAL_FLOAT_MODE_P (mode) && TARGET_HARD_FLOAT && TARGET_FPRS)
     /* _Decimal128 must use an even/odd register pair.  */
     regno = (mode == TDmode) ? FP_ARG_RETURN + 1 : FP_ARG_RETURN;
-  else if (SCALAR_FLOAT_MODE_NOT_VECTOR_P (mode) && TARGET_HARD_FLOAT && TARGET_FPRS
+  else if (SCALAR_FLOAT_TYPE_P (valtype) && TARGET_HARD_FLOAT && TARGET_FPRS
+	   && !FLOAT128_VECTOR_P (mode)
 	   && ((TARGET_SINGLE_FLOAT && (mode == SFmode)) || TARGET_DOUBLE_FLOAT))
     regno = FP_ARG_RETURN;
   else if (TREE_CODE (valtype) == COMPLEX_TYPE
@@ -35101,6 +35897,7 @@ static struct rs6000_opt_mask const rs6000_opt_masks[] =
   { "power9-dform-vector",	OPTION_MASK_P9_DFORM_VECTOR,	false, true  },
   { "power9-fusion",		OPTION_MASK_P9_FUSION,		false, true  },
   { "power9-minmax",		OPTION_MASK_P9_MINMAX,		false, true  },
+  { "power9-misc",		OPTION_MASK_P9_MISC,		false, true  },
   { "power9-vector",		OPTION_MASK_P9_VECTOR,		false, true  },
   { "powerpc-gfxopt",		OPTION_MASK_PPC_GFXOPT,		false, true  },
   { "powerpc-gpopt",		OPTION_MASK_PPC_GPOPT,		false, true  },
@@ -35156,11 +35953,13 @@ static struct rs6000_opt_mask const rs6000_builtin_mask_names[] =
   { "cell",		 RS6000_BTM_CELL,	false, false },
   { "power8-vector",	 RS6000_BTM_P8_VECTOR,	false, false },
   { "power9-vector",	 RS6000_BTM_P9_VECTOR,	false, false },
+  { "power9-misc",	 RS6000_BTM_P9_MISC,	false, false },
   { "crypto",		 RS6000_BTM_CRYPTO,	false, false },
   { "htm",		 RS6000_BTM_HTM,	false, false },
   { "hard-dfp",		 RS6000_BTM_DFP,	false, false },
   { "hard-float",	 RS6000_BTM_HARD_FLOAT,	false, false },
   { "long-double-128",	 RS6000_BTM_LDBL128,	false, false },
+  { "float128",		 RS6000_BTM_FLOAT128,   false, false },
 };
 
 /* Option variables that we want to support inside attribute((target)) and
@@ -35374,7 +36173,10 @@ rs6000_inner_target_options (tree args, bool attr_p)
     }
 
   else
-    gcc_unreachable ();
+    {
+      error ("attribute %<target%> argument not a string");
+      return false;
+    }
 
   return ret;
 }
@@ -37132,6 +37934,15 @@ emit_fusion_p9_load (rtx reg, rtx mem, rtx tmp_reg)
       else
 	gcc_unreachable ();
     }
+  else if (ALTIVEC_REGNO_P (r) && TARGET_P9_DFORM_SCALAR)
+    {
+      if (mode == SFmode)
+	load_string = "lxssp";
+      else if (mode == DFmode || mode == DImode)
+	load_string = "lxsd";
+      else
+	gcc_unreachable ();
+    }
   else if (INT_REGNO_P (r))
     {
       switch (mode)
@@ -37207,6 +38018,15 @@ emit_fusion_p9_store (rtx mem, rtx reg, rtx tmp_reg)
 	store_string = "stfs";
       else if (mode == DFmode)
 	store_string = "stfd";
+      else
+	gcc_unreachable ();
+    }
+  else if (ALTIVEC_REGNO_P (r) && TARGET_P9_DFORM_SCALAR)
+    {
+      if (mode == SFmode)
+	store_string = "stxssp";
+      else if (mode == DFmode || mode == DImode)
+	store_string = "stxsd";
       else
 	gcc_unreachable ();
     }
@@ -37779,6 +38599,7 @@ rtx_is_swappable_p (rtx op, unsigned int *special)
 	  case UNSPEC_VSX_CVSPDPN:
 	    return 0;
 	  case UNSPEC_VSPLT_DIRECT:
+	  case UNSPEC_VSX_XXSPLTD:
 	    *special = SH_SPLAT;
 	    return 1;
 	  case UNSPEC_REDUC_PLUS:
@@ -37849,6 +38670,12 @@ insn_is_swappable_p (swap_web_entry *insn_entry, rtx insn,
     {
       if (GET_CODE (body) == SET)
 	{
+	  rtx rhs = SET_SRC (body);
+	  /* Even without a swap, the RHS might be a vec_select for, say,
+	     a byte-reversing load.  */
+	  if (GET_CODE (rhs) != MEM)
+	    return 0;
+
 	  *special = SH_NOSWAP_LD;
 	  return 1;
 	}
@@ -37860,6 +38687,12 @@ insn_is_swappable_p (swap_web_entry *insn_entry, rtx insn,
     {
       if (GET_CODE (body) == SET && GET_CODE (SET_SRC (body)) != UNSPEC)
 	{
+	  rtx lhs = SET_DEST (body);
+	  /* Even without a swap, the LHS might be a vec_select for, say,
+	     a byte-reversing store.  */
+	  if (GET_CODE (lhs) != MEM)
+	    return 0;
+
 	  *special = SH_NOSWAP_ST;
 	  return 1;
 	}
@@ -37889,7 +38722,7 @@ insn_is_swappable_p (swap_web_entry *insn_entry, rtx insn,
 	    if (GET_CODE (use_body) != SET
 		|| GET_CODE (SET_SRC (use_body)) != UNSPEC
 		|| XINT (SET_SRC (use_body), 1) != UNSPEC_VSX_XXSPLTW
-		|| XEXP (XEXP (SET_SRC (use_body), 0), 1) != const0_rtx)
+		|| XVECEXP (SET_SRC (use_body), 0, 1) != const0_rtx)
 	      return 0;
 	  }
 	}

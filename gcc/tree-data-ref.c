@@ -2112,8 +2112,6 @@ initialize_matrix_A (lambda_matrix A, tree chrec, unsigned index, int mult)
   switch (TREE_CODE (chrec))
     {
     case POLYNOMIAL_CHREC:
-      gcc_assert (TREE_CODE (CHREC_RIGHT (chrec)) == INTEGER_CST);
-
       A[index][0] = mult * int_cst_value (CHREC_RIGHT (chrec));
       return initialize_matrix_A (A, CHREC_LEFT (chrec), index + 1, mult);
 
@@ -2680,13 +2678,13 @@ analyze_subscript_affine_affine (tree chrec_a,
 
 	      if (niter > 0)
 		{
-		  HOST_WIDE_INT tau2 = MIN (FLOOR_DIV (niter - i0, i1),
-					    FLOOR_DIV (niter - j0, j1));
+		  HOST_WIDE_INT tau2 = MIN (FLOOR_DIV (niter_a - i0, i1),
+					    FLOOR_DIV (niter_b - j0, j1));
 		  HOST_WIDE_INT last_conflict = tau2 - (x1 - i0)/i1;
 
 		  /* If the overlap occurs outside of the bounds of the
 		     loop, there is no dependence.  */
-		  if (x1 >= niter || y1 >= niter)
+		  if (x1 >= niter_a || y1 >= niter_b)
 		    {
 		      *overlaps_a = conflict_fn_no_dependence ();
 		      *overlaps_b = conflict_fn_no_dependence ();

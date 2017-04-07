@@ -3767,7 +3767,7 @@ ipa_modify_formal_parameters (tree fndecl, ipa_parm_adjustment_vec adjustments)
 	      if (is_gimple_reg_type (ptype))
 		{
 		  unsigned malign = GET_MODE_ALIGNMENT (TYPE_MODE (ptype));
-		  if (TYPE_ALIGN (ptype) < malign)
+		  if (TYPE_ALIGN (ptype) != malign)
 		    ptype = build_aligned_type (ptype, malign);
 		}
 	    }
@@ -4745,7 +4745,7 @@ ipa_prop_write_jump_functions (void)
   lto_symtab_encoder_iterator lsei;
   lto_symtab_encoder_t encoder;
 
-  if (!ipa_node_params_sum)
+  if (!ipa_node_params_sum || !ipa_edge_args_vector)
     return;
 
   ob = create_output_block (LTO_section_jump_functions);

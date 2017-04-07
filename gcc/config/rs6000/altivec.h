@@ -327,8 +327,8 @@
 #define vec_sqrt __builtin_vec_sqrt
 #define vec_vsx_ld __builtin_vec_vsx_ld
 #define vec_vsx_st __builtin_vec_vsx_st
-#define vec_xl __builtin_vec_xl
-#define vec_xst __builtin_vec_xst
+#define vec_xl __builtin_vec_vsx_ld
+#define vec_xst __builtin_vec_vsx_st
 
 /* Note, xxsldi and xxpermdi were added as __builtin_vsx_<xxx> functions
    instead of __builtin_vec_<xxx>  */
@@ -399,6 +399,14 @@
 #ifdef _ARCH_PPC64
 #define vec_vprtybq __builtin_vec_vprtybq
 #endif
+
+#define vec_slv __builtin_vec_vslv
+#define vec_srv __builtin_vec_vsrv
+
+#define vec_absd __builtin_vec_vadu
+#define vec_absdb __builtin_vec_vadub
+#define vec_absdh __builtin_vec_vaduh
+#define vec_absdw __builtin_vec_vaduw
 #endif
 
 /* Predicates.

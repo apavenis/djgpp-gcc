@@ -314,6 +314,10 @@ get_ubsan_type_info_for_type (tree type)
     return 0;
 }
 
+/* Counters for internal labels.  ubsan_ids[0] for Lubsan_type,
+   ubsan_ids[1] for Lubsan_data labels.  */
+static GTY(()) unsigned int ubsan_ids[2];
+
 /* Helper routine that returns ADDR_EXPR of a VAR_DECL of a type
    descriptor.  It first looks into the hash table; if not found,
    create the VAR_DECL, put it into the hash table and return the
@@ -404,7 +408,9 @@ ubsan_type_descriptor (tree type, enum ubsan_print_style pstyle)
 	{
 	  pp_left_bracket (&pretty_name);
 	  tree dom = TYPE_DOMAIN (t);
-	  if (dom && TREE_CODE (TYPE_MAX_VALUE (dom)) == INTEGER_CST)
+	  if (dom != NULL_TREE
+	      && TYPE_MAX_VALUE (dom) != NULL_TREE
+	      && TREE_CODE (TYPE_MAX_VALUE (dom)) == INTEGER_CST)
 	    {
 	      if (tree_fits_uhwi_p (TYPE_MAX_VALUE (dom))
 		  && tree_to_uhwi (TYPE_MAX_VALUE (dom)) + 1 != 0)
@@ -461,10 +467,9 @@ ubsan_type_descriptor (tree type, enum ubsan_print_style pstyle)
   TREE_STATIC (str) = 1;
 
   char tmp_name[32];
-  static unsigned int type_var_id_num;
-  ASM_GENERATE_INTERNAL_LABEL (tmp_name, "Lubsan_type", type_var_id_num++);
+  ASM_GENERATE_INTERNAL_LABEL (tmp_name, "Lubsan_type", ubsan_ids[0]++);
   decl = build_decl (UNKNOWN_LOCATION, VAR_DECL, get_identifier (tmp_name),
-			  dtype);
+		     dtype);
   TREE_STATIC (decl) = 1;
   TREE_PUBLIC (decl) = 0;
   DECL_ARTIFICIAL (decl) = 1;
@@ -564,8 +569,7 @@ ubsan_create_data (const char *name, int loccnt, const location_t *ploc, ...)
 
   /* Now, fill in the type.  */
   char tmp_name[32];
-  static unsigned int ubsan_var_id_num;
-  ASM_GENERATE_INTERNAL_LABEL (tmp_name, "Lubsan_data", ubsan_var_id_num++);
+  ASM_GENERATE_INTERNAL_LABEL (tmp_name, "Lubsan_data", ubsan_ids[1]++);
   tree var = build_decl (UNKNOWN_LOCATION, VAR_DECL, get_identifier (tmp_name),
 			 ret);
   TREE_STATIC (var) = 1;
@@ -1292,7 +1296,7 @@ instrument_si_overflow (gimple_stmt_iterator gsi)
 				      ? IFN_UBSAN_CHECK_SUB
 				      : IFN_UBSAN_CHECK_MUL, 2, a, b);
       gimple_call_set_lhs (g, lhs);
-      gsi_replace (&gsi, g, false);
+      gsi_replace (&gsi, g, true);
       break;
     case NEGATE_EXPR:
       /* Represent i = -u;
@@ -1302,7 +1306,7 @@ instrument_si_overflow (gimple_stmt_iterator gsi)
       b = gimple_assign_rhs1 (stmt);
       g = gimple_build_call_internal (IFN_UBSAN_CHECK_SUB, 2, a, b);
       gimple_call_set_lhs (g, lhs);
-      gsi_replace (&gsi, g, false);
+      gsi_replace (&gsi, g, true);
       break;
     case ABS_EXPR:
       /* Transform i = ABS_EXPR<u>;
@@ -1469,7 +1473,7 @@ ubsan_use_new_style_p (location_t loc)
 
   expanded_location xloc = expand_location (loc);
   if (xloc.file == NULL || strncmp (xloc.file, "\1", 2) == 0
-      || xloc.file == '\0' || xloc.file[0] == '\xff'
+      || xloc.file[0] == '\0' || xloc.file[0] == '\xff'
       || xloc.file[1] == '\xff')
     return false;
 
@@ -1955,6 +1959,7 @@ pass_ubsan::execute (function *fun)
 {
   basic_block bb;
   gimple_stmt_iterator gsi;
+  unsigned int ret = 0;
 
   initialize_sanitizer_builtins ();
 
@@ -2013,8 +2018,10 @@ pass_ubsan::execute (function *fun)
 
 	  gsi_next (&gsi);
 	}
+      if (gimple_purge_dead_eh_edges (bb))
+	ret = TODO_cleanup_cfg;
     }
-  return 0;
+  return ret;
 }
 
 } // anon namespace
