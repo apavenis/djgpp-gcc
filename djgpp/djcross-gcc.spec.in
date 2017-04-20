@@ -367,6 +367,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/cpuid.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/cross-stdarg.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/float.h
+%{_libdir}/gcc/%{target}/%{gcc_version}/include/gcov.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/iso646.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/mm3dnow.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/mm_malloc.h
