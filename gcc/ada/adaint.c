@@ -627,6 +627,17 @@ __gnat_get_current_dir (char *dir, int *length)
        dir [*length] = DIR_SEPARATOR;
        ++(*length);
      }
+#ifdef __DJGPP__
+   do {
+     char *w;
+     for (w = dir; *w; ++w)
+       {
+	 if (*w == '/') {
+	   *w = '\\';
+	 }
+       }
+   } while (0);
+#endif /* __DJGPP__ */
    dir[*length] = '\0';
 }
 
