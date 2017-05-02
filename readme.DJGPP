@@ -194,11 +194,13 @@ used.
 -  Working DJGPP installation of course:
    - DJGPP v2.05 is required (earlier versions are not supported)
    - one needs to rebuild stubify.exe to increase stack size to 1.5MB
-     (edit src/stub/stub.asm from djlsr205.zip and rebuild stubify.exe)
+     (edit src/stub/stub.asm from djlsr205.zip and rebuild stubify.exe).
+     More recent CVS version of DJGPP v2.06 is required for building Ada
+     compiler
 
 If You modify some source files You may also need
 	autoconf-2.64
-	automake-1.11
+	automake-1.11.6
 	(No ports available for DJGPP yet. I did all patching GCC sources
 	and updating autoconf and automake related stuff in Linux)
 
