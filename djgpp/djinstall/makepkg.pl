@@ -742,6 +742,7 @@ sub mk_manifest
         '/include/(?:avx2|bmi2|f16c|fma|lzcnt)intrin.\h$',
         '/include/std(?:align|noreturn)\.h$',
         '/include/quadmath(?:|_weak).h',
+        '/include/gcov.h',
         '/include/(?:stdarg|stdatomic|stdbool|stddef|stdfix|tgmath|unwind|varargs)\.h$',
         '/include/header.gcc$',
         '/include-fixed/(?:limits|syslimits|wchar)\.h$',

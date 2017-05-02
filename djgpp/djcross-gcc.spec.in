@@ -1,5 +1,5 @@
 # Specs file to building RPM of Linux to DJGPP cross-compiler
-# Tested on CentOS-6.8, Fedora 23. One may need
+# Tested on CentOS-6.8, Fedora 25. One may need
 # to modify this file for other RPM based Linux distribution
 
 %define gcc_version @__GCCVER__@
@@ -175,7 +175,7 @@ rm -rf $RPM_BUILD_DIR/%{name}-%{version}
 ln -s $RPM_SOURCE_DIR/gcc-%{gcc_source_name}.tar.%{gcc_src_ext} $RPM_BUILD_DIR/%{name}-%{version}/
 cd $RPM_BUILD_DIR/%{name}-%{version} || exit 1
 
-tar xjf $RPM_SOURCE_DIR/autoconf-%{autoconf_version}.tar.bz2 || exit 1
+tar xzf $RPM_SOURCE_DIR/autoconf-%{autoconf_version}.tar.gz || exit 1
 cd $RPM_BUILD_DIR/%{name}-%{version}/autoconf-%{autoconf_version}
 ./configure --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst
 make all install
@@ -458,6 +458,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Tue May  2 2017 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-7.1.0
+- Use GMP-6.1.2, MPFR-3.1.5
+
 * Wed Jun 22 2016 Andris Pavenis <andris.pavenis@iki.fi>
 - Use GMP-6.1.1
 
