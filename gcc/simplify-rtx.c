@@ -932,8 +932,10 @@ simplify_unary_operation_1 (enum rtx_code code, machine_mode mode, rtx op)
 	  && XEXP (op, 1) == constm1_rtx)
 	return simplify_gen_unary (NEG, mode, XEXP (op, 0), mode);
 
-      /* Similarly, (not (neg X)) is (plus X -1).  */
-      if (GET_CODE (op) == NEG)
+      /* Similarly, (not (neg X)) is (plus X -1).  Only do this for
+	 modes that have CONSTM1_RTX, i.e. MODE_INT, MODE_PARTIAL_INT
+	 and MODE_VECTOR_INT.  */
+      if (GET_CODE (op) == NEG && CONSTM1_RTX (mode))
 	return simplify_gen_binary (PLUS, mode, XEXP (op, 0),
 				    CONSTM1_RTX (mode));
 
@@ -2739,8 +2741,8 @@ simplify_binary_operation_1 (enum rtx_code code, machine_mode mode,
           && CONST_INT_P (XEXP (op0, 1))
           && INTVAL (XEXP (op0, 1)) < HOST_BITS_PER_WIDE_INT)
         {
-          int count = INTVAL (XEXP (op0, 1));
-          HOST_WIDE_INT mask = INTVAL (trueop1) << count;
+	  int count = INTVAL (XEXP (op0, 1));
+	  HOST_WIDE_INT mask = UINTVAL (trueop1) << count;
 
           if (mask >> count == INTVAL (trueop1)
 	      && trunc_int_for_mode (mask, mode) == mask
@@ -5314,7 +5316,7 @@ simplify_const_relational_operation (enum rtx_code code,
 	  /* Optimize abs(x) < 0.0.  */
 	  if (!HONOR_SNANS (mode)
 	      && (!INTEGRAL_MODE_P (mode)
-		  || (!flag_wrapv && !flag_trapv && flag_strict_overflow)))
+		  || (!flag_wrapv && !flag_trapv)))
 	    {
 	      if (INTEGRAL_MODE_P (mode)
 		  && (issue_strict_overflow_warning
@@ -5330,7 +5332,7 @@ simplify_const_relational_operation (enum rtx_code code,
 	  /* Optimize abs(x) >= 0.0.  */
 	  if (!HONOR_NANS (mode)
 	      && (!INTEGRAL_MODE_P (mode)
-		  || (!flag_wrapv && !flag_trapv && flag_strict_overflow)))
+		  || (!flag_wrapv && !flag_trapv)))
 	    {
 	      if (INTEGRAL_MODE_P (mode)
 	          && (issue_strict_overflow_warning

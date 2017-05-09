@@ -64,8 +64,8 @@ static const char *redeclaration_error_message (tree, tree);
 
 static int decl_jump_unsafe (tree);
 static void require_complete_types_for_parms (tree);
-static int ambi_op_p (enum tree_code);
-static int unary_op_p (enum tree_code);
+static bool ambi_op_p (enum tree_code);
+static bool unary_op_p (enum tree_code);
 static void push_local_name (tree);
 static tree grok_reference_init (tree, tree, tree, int);
 static tree grokvardecl (tree, tree, tree, const cp_decl_specifier_seq *,
@@ -7473,6 +7473,8 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 	{
 	  TREE_TYPE (v[i]) = eltype;
 	  layout_decl (v[i], 0);
+	  if (processing_template_decl)
+	    continue;
 	  tree t = unshare_expr (dexp);
 	  t = build4_loc (DECL_SOURCE_LOCATION (v[i]), ARRAY_REF,
 			  eltype, t, size_int (i), NULL_TREE,
@@ -7492,6 +7494,8 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 	{
 	  TREE_TYPE (v[i]) = eltype;
 	  layout_decl (v[i], 0);
+	  if (processing_template_decl)
+	    continue;
 	  tree t = unshare_expr (dexp);
 	  t = build1_loc (DECL_SOURCE_LOCATION (v[i]),
 			  i ? IMAGPART_EXPR : REALPART_EXPR, eltype,
@@ -7510,6 +7514,8 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 	{
 	  TREE_TYPE (v[i]) = eltype;
 	  layout_decl (v[i], 0);
+	  if (processing_template_decl)
+	    continue;
 	  tree t = unshare_expr (dexp);
 	  convert_vector_to_array_for_subscript (DECL_SOURCE_LOCATION (v[i]),
 						 &t, size_int (i));
@@ -7559,8 +7565,9 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 	      SET_DECL_VALUE_EXPR (v[i], NULL_TREE);
 	      DECL_HAS_VALUE_EXPR_P (v[i]) = 0;
 	    }
-	  cp_finish_decl (v[i], init, /*constexpr*/false,
-			  /*asm*/NULL_TREE, LOOKUP_NORMAL);
+	  if (!processing_template_decl)
+	    cp_finish_decl (v[i], init, /*constexpr*/false,
+			    /*asm*/NULL_TREE, LOOKUP_NORMAL);
 	}
     }
   else if (TREE_CODE (type) == UNION_TYPE)
@@ -7615,12 +7622,26 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 	      tt = TREE_OPERAND (tt, 0);
 	    TREE_TYPE (v[i]) = TREE_TYPE (tt);
 	    layout_decl (v[i], 0);
-	    SET_DECL_VALUE_EXPR (v[i], tt);
-	    DECL_HAS_VALUE_EXPR_P (v[i]) = 1;
+	    if (!processing_template_decl)
+	      {
+		SET_DECL_VALUE_EXPR (v[i], tt);
+		DECL_HAS_VALUE_EXPR_P (v[i]) = 1;
+	      }
 	    i++;
 	  }
     }
-  if (DECL_NAMESPACE_SCOPE_P (decl))
+  if (processing_template_decl)
+    {
+      for (unsigned int i = 0; i < count; i++)
+	if (!DECL_HAS_VALUE_EXPR_P (v[i]))
+	  {
+	    tree a = build_nt (ARRAY_REF, decl, size_int (i),
+			       NULL_TREE, NULL_TREE);
+	    SET_DECL_VALUE_EXPR (v[i], a);
+	    DECL_HAS_VALUE_EXPR_P (v[i]) = 1;
+	  }
+    }
+  else if (DECL_NAMESPACE_SCOPE_P (decl))
     SET_DECL_ASSEMBLER_NAME (decl, mangle_decomp (decl, v));
 }
 
@@ -9831,6 +9852,49 @@ mark_inline_variable (tree decl)
     }
 }
 
+
+/* Assign a typedef-given name to a class or enumeration type declared
+   as anonymous at first.  This was split out of grokdeclarator
+   because it is also used in libcc1.  */
+
+void
+name_unnamed_type (tree type, tree decl)
+{
+  gcc_assert (TYPE_UNNAMED_P (type));
+
+  /* Replace the anonymous name with the real name everywhere.  */
+  for (tree t = TYPE_MAIN_VARIANT (type); t; t = TYPE_NEXT_VARIANT (t))
+    {
+      if (anon_aggrname_p (TYPE_IDENTIFIER (t)))
+	/* We do not rename the debug info representing the
+	   unnamed tagged type because the standard says in
+	   [dcl.typedef] that the naming applies only for
+	   linkage purposes.  */
+	/*debug_hooks->set_name (t, decl);*/
+	TYPE_NAME (t) = decl;
+    }
+
+  if (TYPE_LANG_SPECIFIC (type))
+    TYPE_WAS_UNNAMED (type) = 1;
+
+  /* If this is a typedef within a template class, the nested
+     type is a (non-primary) template.  The name for the
+     template needs updating as well.  */
+  if (TYPE_LANG_SPECIFIC (type) && CLASSTYPE_TEMPLATE_INFO (type))
+    DECL_NAME (CLASSTYPE_TI_TEMPLATE (type))
+      = TYPE_IDENTIFIER (type);
+
+  /* Adjust linkage now that we aren't unnamed anymore.  */
+  reset_type_linkage (type);
+
+  /* FIXME remangle member functions; member functions of a
+     type with external linkage have external linkage.  */
+
+  /* Check that our job is done, and that it would fail if we
+     attempted to do it again.  */
+  gcc_assert (!TYPE_UNNAMED_P (type));
+}
+
 /* Given declspecs and a declarator (abstract or otherwise), determine
    the name and type of the object declared and construct a DECL node
    for it.
@@ -11369,9 +11433,9 @@ grokdeclarator (const cp_declarator *declarator,
 	    {
 	      error (funcdef_flag || initialized
 		     ? G_("cannot define member function %<%T::%s%> "
-			  "within %<%T%>")
+			  "within %qT")
 		     : G_("cannot declare member function %<%T::%s%> "
-			  "within %<%T%>"),
+			  "within %qT"),
 		     ctype, name, current_class_type);
 	      return error_mark_node;
 	    }
@@ -11555,37 +11619,7 @@ grokdeclarator (const cp_declarator *declarator,
 	  && declspecs->type_definition_p
 	  && attributes_naming_typedef_ok (*attrlist)
 	  && cp_type_quals (type) == TYPE_UNQUALIFIED)
-	{
-	  tree t;
-
-	  /* Replace the anonymous name with the real name everywhere.  */
-	  for (t = TYPE_MAIN_VARIANT (type); t; t = TYPE_NEXT_VARIANT (t))
-	    {
-	      if (anon_aggrname_p (TYPE_IDENTIFIER (t)))
-		/* We do not rename the debug info representing the
-		   unnamed tagged type because the standard says in
-		   [dcl.typedef] that the naming applies only for
-		   linkage purposes.  */
-		/*debug_hooks->set_name (t, decl);*/
-		TYPE_NAME (t) = decl;
-  	    }
-
-	  if (TYPE_LANG_SPECIFIC (type))
-	    TYPE_WAS_UNNAMED (type) = 1;
-
-	  /* If this is a typedef within a template class, the nested
-	     type is a (non-primary) template.  The name for the
-	     template needs updating as well.  */
-	  if (TYPE_LANG_SPECIFIC (type) && CLASSTYPE_TEMPLATE_INFO (type))
-	    DECL_NAME (CLASSTYPE_TI_TEMPLATE (type))
-	      = TYPE_IDENTIFIER (type);
-
-	  /* Adjust linkage now that we aren't unnamed anymore.  */
-	  reset_type_linkage (type);
-
-	  /* FIXME remangle member functions; member functions of a
-	     type with external linkage have external linkage.  */
-	}
+	name_unnamed_type (type, decl);
 
       if (signed_p
 	  || (typedef_decl && C_TYPEDEF_EXPLICITLY_SIGNED (typedef_decl)))
@@ -12873,7 +12907,7 @@ grok_special_member_properties (tree decl)
 /* Check a constructor DECL has the correct form.  Complains
    if the class has a constructor of the form X(X).  */
 
-int
+bool
 grok_ctor_properties (const_tree ctype, const_tree decl)
 {
   int ctor_parm = copy_fn_p (decl);
@@ -12897,15 +12931,15 @@ grok_ctor_properties (const_tree ctype, const_tree decl)
 	 instantiated, but that's hard to forestall.  */
       error ("invalid constructor; you probably meant %<%T (const %T&)%>",
 		ctype, ctype);
-      return 0;
+      return false;
     }
 
-  return 1;
+  return true;
 }
 
 /* An operator with this code is unary, but can also be binary.  */
 
-static int
+static bool
 ambi_op_p (enum tree_code code)
 {
   return (code == INDIRECT_REF
@@ -12918,7 +12952,7 @@ ambi_op_p (enum tree_code code)
 
 /* An operator with this name can only be unary.  */
 
-static int
+static bool
 unary_op_p (enum tree_code code)
 {
   return (code == TRUTH_NOT_EXPR
@@ -14116,7 +14150,7 @@ start_enum (tree name, tree enumtype, tree underlying_type,
       else if (dependent_type_p (underlying_type))
 	ENUM_UNDERLYING_TYPE (enumtype) = underlying_type;
       else
-        error ("underlying type %<%T%> of %<%T%> must be an integral type", 
+        error ("underlying type %qT of %qT must be an integral type", 
                underlying_type, enumtype);
     }
 
@@ -14526,8 +14560,8 @@ incremented enumerator value is too large for %<long%>"));
           && TREE_CODE (value) == INTEGER_CST)
         {
 	  if (!int_fits_type_p (value, ENUM_UNDERLYING_TYPE (enumtype)))
-	    error ("enumerator value %E is outside the range of underlying "
-		   "type %<%T%>", value, ENUM_UNDERLYING_TYPE (enumtype));
+	    error ("enumerator value %qE is outside the range of underlying "
+		   "type %qT", value, ENUM_UNDERLYING_TYPE (enumtype));
 
           /* Convert the value to the appropriate type.  */
           value = fold_convert (ENUM_UNDERLYING_TYPE (enumtype), value);

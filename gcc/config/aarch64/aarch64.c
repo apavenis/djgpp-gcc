@@ -2266,6 +2266,7 @@ aarch64_function_arg_alignment (machine_mode mode, const_tree type)
 {
   if (!type)
     return GET_MODE_ALIGNMENT (mode);
+
   if (integer_zerop (TYPE_SIZE (type)))
     return 0;
 
@@ -2278,9 +2279,9 @@ aarch64_function_arg_alignment (machine_mode mode, const_tree type)
     return TYPE_ALIGN (TREE_TYPE (type));
 
   unsigned int alignment = 0;
-
   for (tree field = TYPE_FIELDS (type); field; field = DECL_CHAIN (field))
-    alignment = std::max (alignment, DECL_ALIGN (field));
+    if (TREE_CODE (field) == FIELD_DECL)
+      alignment = std::max (alignment, DECL_ALIGN (field));
 
   return alignment;
 }
@@ -2369,24 +2370,28 @@ aarch64_layout_arg (cumulative_args_t pcum_v, machine_mode mode,
      entirely general registers.  */
   if (allocate_ncrn && (ncrn + nregs <= NUM_ARG_REGS))
     {
-      unsigned int alignment = aarch64_function_arg_alignment (mode, type);
 
       gcc_assert (nregs == 0 || nregs == 1 || nregs == 2);
 
       /* C.8 if the argument has an alignment of 16 then the NGRN is
          rounded up to the next even number.  */
-      if (nregs == 2 && alignment == 16 * BITS_PER_UNIT && ncrn % 2)
+      if (nregs == 2
+	  && ncrn % 2
+	  /* The == 16 * BITS_PER_UNIT instead of >= 16 * BITS_PER_UNIT
+	     comparison is there because for > 16 * BITS_PER_UNIT
+	     alignment nregs should be > 2 and therefore it should be
+	     passed by reference rather than value.  */
+	  && aarch64_function_arg_alignment (mode, type) == 16 * BITS_PER_UNIT)
 	{
 	  ++ncrn;
 	  gcc_assert (ncrn + nregs <= NUM_ARG_REGS);
 	}
+
       /* NREGS can be 0 when e.g. an empty structure is to be passed.
          A reg is still generated for it, but the caller should be smart
 	 enough not to use it.  */
       if (nregs == 0 || nregs == 1 || GET_MODE_CLASS (mode) == MODE_INT)
-	{
-	  pcum->aapcs_reg = gen_rtx_REG (mode, R0_REGNUM + ncrn);
-	}
+	pcum->aapcs_reg = gen_rtx_REG (mode, R0_REGNUM + ncrn);
       else
 	{
 	  rtx par;
@@ -2414,6 +2419,7 @@ aarch64_layout_arg (cumulative_args_t pcum_v, machine_mode mode,
      this argument and align the total size if necessary.  */
 on_stack:
   pcum->aapcs_stack_words = size / UNITS_PER_WORD;
+
   if (aarch64_function_arg_alignment (mode, type) == 16 * BITS_PER_UNIT)
     pcum->aapcs_stack_size = ROUND_UP (pcum->aapcs_stack_size,
 				       16 / UNITS_PER_WORD);
@@ -2506,12 +2512,7 @@ static unsigned int
 aarch64_function_arg_boundary (machine_mode mode, const_tree type)
 {
   unsigned int alignment = aarch64_function_arg_alignment (mode, type);
-
-  if (alignment < PARM_BOUNDARY)
-    alignment = PARM_BOUNDARY;
-  if (alignment > STACK_BOUNDARY)
-    alignment = STACK_BOUNDARY;
-  return alignment;
+  return MIN (MAX (alignment, PARM_BOUNDARY), STACK_BOUNDARY);
 }
 
 /* For use by FUNCTION_ARG_PADDING (MODE, TYPE).
@@ -2610,7 +2611,7 @@ aarch64_libgcc_cmp_return_mode (void)
 static void
 aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
 {
-  rtx reg1 = gen_rtx_REG (ptr_mode, PROBE_STACK_FIRST_REG);
+  rtx reg1 = gen_rtx_REG (Pmode, PROBE_STACK_FIRST_REG);
 
   /* See the same assertion on PROBE_INTERVAL above.  */
   gcc_assert ((first % ARITH_FACTOR) == 0);
@@ -2622,9 +2623,9 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
       const HOST_WIDE_INT base = ROUND_UP (size, ARITH_FACTOR);
 
       emit_set_insn (reg1,
-		     plus_constant (ptr_mode,
+		     plus_constant (Pmode,
 				    stack_pointer_rtx, -(first + base)));
-      emit_stack_probe (plus_constant (ptr_mode, reg1, base - size));
+      emit_stack_probe (plus_constant (Pmode, reg1, base - size));
     }
 
   /* The run-time loop is made up of 8 insns in the generic case while the
@@ -2634,7 +2635,7 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
       HOST_WIDE_INT i, rem;
 
       emit_set_insn (reg1,
-		     plus_constant (ptr_mode,
+		     plus_constant (Pmode,
 				    stack_pointer_rtx,
 				    -(first + PROBE_INTERVAL)));
       emit_stack_probe (reg1);
@@ -2645,7 +2646,7 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
       for (i = 2 * PROBE_INTERVAL; i < size; i += PROBE_INTERVAL)
 	{
 	  emit_set_insn (reg1,
-			 plus_constant (ptr_mode, reg1, -PROBE_INTERVAL));
+			 plus_constant (Pmode, reg1, -PROBE_INTERVAL));
 	  emit_stack_probe (reg1);
 	}
 
@@ -2654,11 +2655,11 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
 	{
 	  const HOST_WIDE_INT base = ROUND_UP (rem, ARITH_FACTOR);
 
-	  emit_set_insn (reg1, plus_constant (ptr_mode, reg1, -base));
-	  emit_stack_probe (plus_constant (ptr_mode, reg1, base - rem));
+	  emit_set_insn (reg1, plus_constant (Pmode, reg1, -base));
+	  emit_stack_probe (plus_constant (Pmode, reg1, base - rem));
 	}
       else
-	emit_stack_probe (plus_constant (ptr_mode, reg1, -rem));
+	emit_stack_probe (plus_constant (Pmode, reg1, -rem));
     }
 
   /* Otherwise, do the same as above, but in a loop.  Note that we must be
@@ -2668,7 +2669,7 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
      equality test for the loop condition.  */
   else
     {
-      rtx reg2 = gen_rtx_REG (ptr_mode, PROBE_STACK_SECOND_REG);
+      rtx reg2 = gen_rtx_REG (Pmode, PROBE_STACK_SECOND_REG);
 
       /* Step 1: round SIZE to the previous multiple of the interval.  */
 
@@ -2679,11 +2680,11 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
 
       /* TEST_ADDR = SP + FIRST.  */
       emit_set_insn (reg1,
-		     plus_constant (ptr_mode, stack_pointer_rtx, -first));
+		     plus_constant (Pmode, stack_pointer_rtx, -first));
 
       /* LAST_ADDR = SP + FIRST + ROUNDED_SIZE.  */
       emit_set_insn (reg2,
-		     plus_constant (ptr_mode, stack_pointer_rtx,
+		     plus_constant (Pmode, stack_pointer_rtx,
 				    -(first + rounded_size)));
 
 
@@ -2699,10 +2700,7 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
 	 probes at FIRST + N * PROBE_INTERVAL for values of N from 1
 	 until it is equal to ROUNDED_SIZE.  */
 
-      if (ptr_mode == DImode)
-	emit_insn (gen_probe_stack_range_di (reg1, reg1, reg2));
-      else
-	emit_insn (gen_probe_stack_range_si (reg1, reg1, reg2));
+      emit_insn (gen_probe_stack_range (reg1, reg1, reg2));
 
 
       /* Step 4: probe at FIRST + SIZE if we cannot assert at compile-time
@@ -2716,11 +2714,11 @@ aarch64_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size)
 	    {
 	      const HOST_WIDE_INT base = ROUND_UP (rem, ARITH_FACTOR);
 
-	      emit_set_insn (reg2, plus_constant (ptr_mode, reg2, -base));
-	      emit_stack_probe (plus_constant (ptr_mode, reg2, base - rem));
+	      emit_set_insn (reg2, plus_constant (Pmode, reg2, -base));
+	      emit_stack_probe (plus_constant (Pmode, reg2, base - rem));
 	    }
 	  else
-	    emit_stack_probe (plus_constant (ptr_mode, reg2, -rem));
+	    emit_stack_probe (plus_constant (Pmode, reg2, -rem));
 	}
     }
 
@@ -7927,33 +7925,40 @@ aarch64_emit_approx_sqrt (rtx dst, rtx src, bool recp)
   machine_mode mode = GET_MODE (dst);
 
   if (GET_MODE_INNER (mode) == HFmode)
-    return false;
+    {
+      gcc_assert (!recp);
+      return false;
+    }
 
-  machine_mode mmsk = mode_for_vector
-		        (int_mode_for_mode (GET_MODE_INNER (mode)),
-			 GET_MODE_NUNITS (mode));
-  bool use_approx_sqrt_p = (!recp
-			    && (flag_mlow_precision_sqrt
-			        || (aarch64_tune_params.approx_modes->sqrt
-				    & AARCH64_APPROX_MODE (mode))));
-  bool use_approx_rsqrt_p = (recp
-			     && (flag_mrecip_low_precision_sqrt
-				 || (aarch64_tune_params.approx_modes->recip_sqrt
-				     & AARCH64_APPROX_MODE (mode))));
+  machine_mode mmsk
+    = mode_for_vector (int_mode_for_mode (GET_MODE_INNER (mode)),
+		       GET_MODE_NUNITS (mode));
+  if (!recp)
+    {
+      if (!(flag_mlow_precision_sqrt
+	    || (aarch64_tune_params.approx_modes->sqrt
+		& AARCH64_APPROX_MODE (mode))))
+	return false;
 
-  if (!flag_finite_math_only
-      || flag_trapping_math
-      || !flag_unsafe_math_optimizations
-      || !(use_approx_sqrt_p || use_approx_rsqrt_p)
-      || optimize_function_for_size_p (cfun))
-    return false;
+      if (flag_finite_math_only
+	  || flag_trapping_math
+	  || !flag_unsafe_math_optimizations
+	  || optimize_function_for_size_p (cfun))
+	return false;
+    }
+  else
+    /* Caller assumes we cannot fail.  */
+    gcc_assert (use_rsqrt_p (mode));
+
 
   rtx xmsk = gen_reg_rtx (mmsk);
   if (!recp)
-    /* When calculating the approximate square root, compare the argument with
-       0.0 and create a mask.  */
-    emit_insn (gen_rtx_SET (xmsk, gen_rtx_NEG (mmsk, gen_rtx_EQ (mmsk, src,
-							  CONST0_RTX (mode)))));
+    /* When calculating the approximate square root, compare the
+       argument with 0.0 and create a mask.  */
+    emit_insn (gen_rtx_SET (xmsk,
+			    gen_rtx_NEG (mmsk,
+					 gen_rtx_EQ (mmsk, src,
+						     CONST0_RTX (mode)))));
 
   /* Estimate the approximate reciprocal square root.  */
   rtx xdst = gen_reg_rtx (mode);
@@ -9533,8 +9538,12 @@ aarch64_process_target_attr (tree args, const char* pragma_or_attr)
 
       return true;
     }
-  /* We expect to find a string to parse.  */
-  gcc_assert (TREE_CODE (args) == STRING_CST);
+
+  if (TREE_CODE (args) != STRING_CST)
+    {
+      error ("attribute %<target%> argument not a string");
+      return false;
+    }
 
   size_t len = strlen (TREE_STRING_POINTER (args));
   char *str_to_check = (char *) alloca (len + 1);
