@@ -133,9 +133,9 @@ Requirements
 ------------
 
 -  Long filename support. I built it in DOS session under Windows 10 Home
-   32 bit or Windows Vista Business 32 bit. Other 32 bit Windows versions
+   32 bit or Windows 10 Home 32 bit. Other 32 bit Windows versions
    beginning with Win95 should be hopefully OK. I have not however tested
-   myself whether it can be build under Win98, Win2k or Win2K, WinXP
+   myself whether it can be build under Win95, Win98, Win2k or Win2K, WinXP
    or Win 7.
 
 -  plenty of physical RAM available. I guess that 1 GB should
@@ -167,7 +167,7 @@ Requirements
 	GNU Texinfo 4.8 or above
 	GNU tar 1.1.2 or above
 	GNU binutils 2.22 (required, older versions cannot be used!!!)
-	recent GNU GMP version (versions 6.1.0 is OK)
+	recent GNU GMP version (versions 6.1.0 and newer are OK)
         recent MPFR versions (versions 3.0.0 or newer are OK)
 	recent MPC versions (versions 1.0.0 or newer are OK)
 	Zlib-1.2.5 or above (Warning configure does not check for presence
@@ -194,11 +194,13 @@ used.
 -  Working DJGPP installation of course:
    - DJGPP v2.05 is required (earlier versions are not supported)
    - one needs to rebuild stubify.exe to increase stack size to 1.5MB
-     (edit src/stub/stub.asm from djlsr205.zip and rebuild stubify.exe)
+     (edit src/stub/stub.asm from djlsr205.zip and rebuild stubify.exe).
+     More recent CVS version of DJGPP v2.06 is required for building Ada
+     compiler
 
 If You modify some source files You may also need
 	autoconf-2.64
-	automake-1.11
+	automake-1.11.6
 	(No ports available for DJGPP yet. I did all patching GCC sources
 	and updating autoconf and automake related stuff in Linux)
 

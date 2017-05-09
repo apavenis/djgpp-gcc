@@ -1,5 +1,5 @@
 # Specs file to building RPM of Linux to DJGPP cross-compiler
-# Tested on CentOS-6.8, Fedora 23. One may need
+# Tested on CentOS-6.8, Fedora 25. One may need
 # to modify this file for other RPM based Linux distribution
 
 %define gcc_version @__GCCVER__@
@@ -457,6 +457,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Tue May  2 2017 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-7.1.0
+- Use GMP-6.1.2, MPFR-3.1.5
+
 * Wed Jun 22 2016 Andris Pavenis <andris.pavenis@iki.fi>
 - Use GMP-6.1.1
 
