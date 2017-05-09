@@ -25,8 +25,9 @@ $fver_find =~ s/\./\\./g;
 print "fver_find=$fver_find\n";
 
 my @cpp_rename = (
-"bits/c++0x_warning.h:cxx0x_warning.hxx",
-"bits/c++14_warning.h:cxx14_warning.hxx",
+"bits/c++0x_warning.h:cxx0x_warning.h",
+"bits/c++14_warning.h:cxx14_warning.h",
+"bits/c++17_warning.h:cxx17_warning.h",
 "bits/exception_defines.h:_excptdef.h",
 "bits/exception_ptr.h:_excptptr.h",
 "bits/hashtable.h:_hashtbl.h",
