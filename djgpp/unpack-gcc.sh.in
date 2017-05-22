@@ -73,7 +73,18 @@ short_ver=$(echo $version | sed -e 's:\.::2g')
 #  X.Y.Z ==> XYZ
 short_ver_2=$(echo $version | sed -e 's:\.::g')
 
-if ! test -z "$devphase"; then
+if test -z "$devphase"; then
+    case "$base_ver" in
+        [5-9].[1-9].0)
+            ;;
+        *)
+            version=${base_ver}-${datestamp}
+            version_desc="$base_ver $datestamp"
+            short_ver=${short_ver}-$datestamp
+            short_ver_2=${short_ver_2}-$datestamp
+            ;;
+    esac
+else
     version=${base_ver}-${datestamp}
     version_desc="$base_ver $datestamp ($devphase)"
     short_ver=${short_ver}-$datestamp
