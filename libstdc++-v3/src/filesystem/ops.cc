@@ -269,8 +269,10 @@ namespace
       return file_type::fifo;
     else if (S_ISLNK(st.st_mode))
       return file_type::symlink;
+#ifdef S_ISSOCK
     else if (S_ISSOCK(st.st_mode))
       return file_type::socket;
+#endif // s_ISSOCK
 #endif
     return file_type::unknown;
 
