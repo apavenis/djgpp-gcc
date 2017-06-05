@@ -1,3 +1,30 @@
+2017-06-02  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/80904
+	* frontend-passes.c (matmul_lhs_realloc):  Correct
+	allocation size for case A1B2.
+
+2017-06-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/80918
+	* openmp.c (resolve_omp_clauses): Fix a typo.
+
+2017-05-23  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/80741
+	* trans-io.c (transfer_namelist_element): Change check from
+	NULL_TREE to null_pointer_node.
+
+2017-05-23  Paul Thomas  <pault@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/80333
+	* trans-io.c (nml_get_addr_expr): If we are dealing with class
+	type data set tmp tree to get that address.
+	(transfer_namelist_element): Set the array spec to point to the
+	the class data.
+
 2017-05-17  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
 
 	Backport from trunk
