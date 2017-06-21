@@ -23,6 +23,7 @@ conf_options="$conf_options --with-gcc-major-version-only"
 conf_options="$conf_options --enable-libquadmath-support"
 conf_options="$conf_options --enable-lto"
 conf_options="$conf_options --disable-libstdcxx-pch"
+conf_options="$conf_options --enable-libstdcxx-filesystem-ts"
 #conf_options="$target --disable-nls"
 #
 srcdir=`(cd $src && pwd) | sed -e 's,^[a-zA-Z]:/,/,' -e 's,^/dev/[a-zA-Z]/,/,'`

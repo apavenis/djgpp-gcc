@@ -370,8 +370,13 @@ path::_M_split_cmpts()
 	_M_add_root_dir(0);
       ++pos;
     }
-#ifdef _GLIBCXX_FILESYSTEM_IS_WINDOWS
+#if defined(_GLIBCXX_FILESYSTEM_IS_WINDOWS) \
+  || defined(_GLIBCXX_FILESYSTEM_IS_DJGPP)
+#ifdef __DJGPP__
+  else if (len > 1 && _M_pathname[1] == ':')
+#else
   else if (len > 1 && _M_pathname[1] == L':')
+#endif
     {
       // got disk designator
       _M_add_root_name(2);
