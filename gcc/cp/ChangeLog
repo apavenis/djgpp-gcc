@@ -1,3 +1,87 @@
+2017-06-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/80972 - C++17 ICE with attribute packed.
+	* call.c (build_over_call): Allow a TARGET_EXPR from reference
+	binding.
+
+2017-06-19  Jason Merrill  <jason@redhat.com>
+
+	PR c++/80562 - ICE with constexpr if.
+	* semantics.c (finish_if_stmt_cond): Call
+	instantiate_non_dependent_expr.
+
+	PR c++/80829 - ICE with constexpr copy of base subobject.
+	* constexpr.c (clear_no_implicit_zero): New.
+	(cxx_eval_call_expression): Call it.
+
+        PR c++/81073 - constexpr and static var in statement-expression.
+	* constexpr.c (cxx_eval_constant_expression) [DECL_EXPR]: Check
+	potential_constant_expression.
+
+2017-06-17  Jason Merrill  <jason@redhat.com>
+
+	PR c++/60063 - -Wunused-local-typedefs and templates.
+	* decl2.c (is_late_template_attribute): Return false for "used".
+
+	PR c++/70844 - -Wuseless-cast and inheriting constructor.
+	* method.c (forward_parm): Suppress warn_useless_cast.
+
+2017-06-16  Jason Merrill  <jason@redhat.com>
+
+	PR c++/81045 - Wrong type-dependence with auto return type.
+	* pt.c (type_dependent_expression_p): An undeduced auto outside the
+	template isn't dependent.
+	* call.c (build_over_call): Instantiate undeduced auto even in a
+	template.
+
+	PR c++/81102 - Wrong error with partial specialization.
+	* pt.c (unify) [TEMPLATE_PARM_INDEX]: Strip reference when comparing
+	types.  Do type deduction later.
+
+	PR c++/81074 - ICE with partial specialization of member template.
+	PR c++/71747
+	* pt.c (get_partial_spec_bindings): Only coerce innermost args.
+
+	PR c++/80831 - ICE with -fsyntax-only.
+	* decl2.c (c_parse_final_cleanups): Use cgraph_node::get_create.
+
+	PR c++/80639 - ICE with invalid PMF initialization.
+	PR c++/80043 - ICE with -fpermissive
+	* typeck.c (convert_for_assignment): Recurse when instantiate_type
+	returns without an error.
+
+	PR c++/80465 - ICE with generic lambda with noexcept-specifier.
+	* lambda.c (maybe_add_lambda_conv_op): Keep processing_template_decl
+	set longer for a generic lambda.
+
+	PR c++/80614 - Wrong mangling for C++17 noexcept type
+	* mangle.c (write_type): Put the eh spec back on the function type.
+
+	PR c++/80384 - ICE with dependent noexcept-specifier
+	* pt.c (dependent_type_p_r) [FUNCTION_TYPE]: Check for dependent
+	noexcept-specifier.
+
+	* parser.c (cp_parser_constant_expression): Check
+	potential_rvalue_constant_expression after decay_conversion.
+	* pt.c (convert_nontype_argument): Don't require linkage in C++17.
+
+	* constexpr.c (potential_constant_expression_1): Allow 'this' capture.
+
+2017-06-08  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/81006
+	* semantics.c (handle_omp_array_sections_1): Convert TYPE_MAX_VALUE
+	to sizetype before size_binop.
+
+	PR c++/81011
+	* cp-gimplify.c (cxx_omp_finish_clause): When changing clause
+	to OMP_CLAUSE_SHARED, also clear OMP_CLAUSE_SHARED_FIRSTPRIVATE
+	and OMP_CLAUSE_SHARED_READONLY flags.
+
+2017-06-05  Volker Reichelt  <v.reichelt@netcologne.de>
+
+	* parser.c (cp_parser_base_specifier): Fix typos in error messages.
+
 2017-05-31  Jason Merrill  <jason@redhat.com>
 
 	PR c++/80840 - ICE with constexpr and reference
