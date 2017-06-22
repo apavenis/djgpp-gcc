@@ -55,6 +55,7 @@
 
 #if defined(__DJGPP__)
 # define _GLIBCXX_FILESYSTEM_IS_DJGPP 1
+# include <algorithm>
 #endif
 
 namespace std _GLIBCXX_VISIBILITY(default)
