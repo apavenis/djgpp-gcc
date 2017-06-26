@@ -21,9 +21,11 @@ conf_options="$target"
 conf_options="$conf_options --prefix=/dev/env/DJDIR"
 conf_options="$conf_options --disable-werror"
 conf_options="$conf_options --enable-languages=c,c++,fortran,objc,obj-c++,ada"
-#conf_options="$conf_options --enable-languages=c,c++,fortran,objc,obj-c++"
 conf_options="$conf_options --enable-libquadmath-support"
 conf_options="$conf_options --enable-lto"
+conf_options="$conf_options --disable-libstdcxx-pch"
+conf_options="$conf_options --enable-libstdcxx-filesystem-ts"
+#conf_options="$target --disable-nls"
 #
 srcdir=`(cd $src && pwd) | sed -e 's,^[a-zA-Z]:/,/,' -e 's,^/dev/[a-zA-Z]/,/,'`
 builddir=`pwd | sed -e 's,^[a-zA-Z]:/,/,' -e 's,^/dev/[a-zA-Z]/,/,'`
