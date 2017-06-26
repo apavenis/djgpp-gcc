@@ -136,6 +136,7 @@ my @rename_list = (
 "lib/libsupc++.la:##/libsupcxx.la",
 "lib/libsupc++.a:##/libsupcxx.a",
 "lib/libstdcxx.a-gdb.py:##/libstdcxx_a-gdb-py",
+"lib/libstdc++fs.a:##/libstdcfs.a",
 "bin/g++.exe:##/gpp.exe",
 "bin/c++.exe:",
 "bin/djgpp-g++.exe:",
