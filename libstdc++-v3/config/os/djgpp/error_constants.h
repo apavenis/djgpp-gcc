@@ -33,6 +33,15 @@
 #include <bits/c++config.h>
 #include <cerrno>
 
+#ifndef EOPNOTSUPP
+// Use same value as in wat3222br6.zip file net/watt/sys/djgpp.err
+#define EOPNOTSUPP 52
+#endif
+
+#ifndef ENOTSUP
+#define ENOTSUP 101
+#endif
+
 namespace std _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
@@ -118,9 +127,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 //    not_connected = 				ENOTCONN,
       not_enough_memory = 			ENOMEM,
 
-#ifdef _GLIBCXX_HAVE_ENOTSUP
       not_supported = 				ENOTSUP,
-#endif
 
 #ifdef _GLIBCXX_HAVE_ECANCELED
       operation_canceled = 			ECANCELED,
@@ -128,7 +135,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
 //    operation_in_progress = 			EINPROGRESS,
       operation_not_permitted = 		EPERM,
-//    operation_not_supported = 		EOPNOTSUPP,
+      operation_not_supported = 		EOPNOTSUPP,
 //    operation_would_block = 			EWOULDBLOCK,
 
 #ifdef _GLIBCXX_HAVE_EOWNERDEAD
