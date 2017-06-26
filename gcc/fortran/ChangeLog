@@ -1,3 +1,54 @@
+2017-06-22  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2017-06-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/80918
+	* openmp.c (resolve_omp_clauses): Fix a typo.
+
+2017-06-09  Janus Weil  <janus@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/70601
+	* trans-expr.c (gfc_conv_procedure_call): Fix detection of allocatable
+	function results.
+
+2017-05-03  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/65542
+	Backport from trunk
+	* intrinsic.c (gfc_intrinsic_func_interface):  Return an error
+	for -std=f95 for disallowed transformational functions in
+	initialization expressions.
+
+2017-06-02  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/80904
+	Backport from trunk
+	* frontend-passes.c (matmul_lhs_realloc):  Correct
+	allocation size for case A1B2.
+
+2017-05-15  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/80752
+	* expr.c (gfc_generate_initializer):  If type conversion fails,
+	check for error and return NULL.
+
+2017-05-01  Janus Weil  <janus@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/80392
+	* trans-types.c (gfc_get_derived_type): Prevent an infinite loop when
+	building a derived type that includes a procedure pointer component
+	with a polymorphic result.
+
+2017-04-21  Janus Weil  <janus@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/80361
+	* class.c (generate_finalization_wrapper): Give the finalization wrapper
+	the recursive attribute.
+
 2017-04-01  Paul Thomas  <pault@gcc.gnu.org>
 
 	Backport from trunk
