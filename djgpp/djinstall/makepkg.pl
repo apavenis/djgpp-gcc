@@ -709,6 +709,7 @@ sub mk_manifest
     my @cxxfiles = (
         'bin/gpp\.exe', '^include/cxx/', '/cc1plus\.exe',
         '/libstdcxx', '/libsupcxx', 'manifest/gpp',
+        '/libstdcfs.a',
         '/cat1/gpp', '/cp/news'
     );
 
