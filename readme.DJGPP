@@ -10,7 +10,10 @@ Requirements to use this binary release:
     -  DJGPP-@DJVER@.
     -  binutils-2.22 or above (Earlier versions will NOT work)
 
-Requirements to build gcc-@GCCVER@ from sources:
+Changes since release of DJGPP port of gcc-6.3.0:
+    - support for std::experimental::filesystem added (note that library
+      is renamed from libstdc++fs.a to libstdcfs.a to avoid filename conflict
+      when LFN support is not available)
 
 Source archives
 ===============

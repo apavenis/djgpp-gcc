@@ -615,6 +615,11 @@
 	    (match_test "TARGET_ARC700 || TARGET_EA_SET")))
 )
 
+(define_predicate "_1_2_3_operand"
+  (and (match_code "const_int")
+       (match_test "INTVAL (op) == 1 || INTVAL (op) == 2 || INTVAL (op) == 3"))
+)
+
 (define_predicate "_2_4_8_operand"
   (and (match_code "const_int")
        (match_test "INTVAL (op) == 2 || INTVAL (op) == 4 || INTVAL (op) == 8"))
@@ -696,6 +701,11 @@
 (define_predicate "mhi_operand"
   (and (match_code "reg")
        (match_test "REGNO (op) == (TARGET_BIG_ENDIAN ? 58 : 59)")))
+
+(define_predicate "accl_operand"
+  (and (match_code "reg")
+       (match_test "REGNO (op) == (TARGET_BIG_ENDIAN ? 59 : 58)")
+       (match_test "TARGET_V2")))
 
 ; Unfortunately, we can not allow a const_int_operand before reload, because
 ; reload needs a non-void mode to guide it how to reload the inside of a

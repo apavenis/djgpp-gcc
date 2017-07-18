@@ -74,6 +74,8 @@
 /* This file should be included last.  */
 #include "target-def.h"
 
+#define WORKAROUND_PTXJIT_BUG 1
+
 /* The various PTX memory areas an object might reside in.  */
 enum nvptx_data_area
 {
@@ -326,6 +328,14 @@ maybe_split_mode (machine_mode mode)
     return DImode;
 
   return VOIDmode;
+}
+
+/* Return true if mode should be treated as two registers.  */
+
+static bool
+split_mode_p (machine_mode mode)
+{
+  return maybe_split_mode (mode) != VOIDmode;
 }
 
 /* Output a register, subreg, or register pair (with optional
@@ -1277,7 +1287,7 @@ nvptx_declare_function_name (FILE *file, const char *name, const_tree decl)
 	  machine_mode mode = PSEUDO_REGNO_MODE (i);
 	  machine_mode split = maybe_split_mode (mode);
 
-	  if (split != VOIDmode)
+	  if (split_mode_p (mode))
 	    mode = split;
 	  fprintf (file, "\t.reg%s ", nvptx_ptx_type_from_mode (mode, true));
 	  output_reg (file, i, split, -2);
@@ -2396,10 +2406,8 @@ nvptx_print_operand (FILE *file, rtx x, int code)
       if (x_code == SUBREG)
 	{
 	  mode = GET_MODE (SUBREG_REG (x));
-	  if (mode == TImode)
-	    mode = DImode;
-	  else if (COMPLEX_MODE_P (mode))
-	    mode = GET_MODE_INNER (mode);
+	  if (split_mode_p (mode))
+	    mode = maybe_split_mode (mode);
 	}
       fprintf (file, "%s", nvptx_ptx_type_from_mode (mode, code == 't'));
       break;
@@ -2500,7 +2508,7 @@ nvptx_print_operand (FILE *file, rtx x, int code)
 	    machine_mode inner_mode = GET_MODE (inner_x);
 	    machine_mode split = maybe_split_mode (inner_mode);
 
-	    if (split != VOIDmode
+	    if (split_mode_p (inner_mode)
 		&& (GET_MODE_SIZE (inner_mode) == GET_MODE_SIZE (mode)))
 	      output_reg (file, REGNO (inner_x), split);
 	    else
@@ -3838,6 +3846,24 @@ nvptx_wsync (bool after)
   return gen_nvptx_barsync (GEN_INT (after));
 }
 
+#if WORKAROUND_PTXJIT_BUG
+/* Return first real insn in BB, or return NULL_RTX if BB does not contain
+   real insns.  */
+
+static rtx_insn *
+bb_first_real_insn (basic_block bb)
+{
+  rtx_insn *insn;
+
+  /* Find first insn of from block.  */
+  FOR_BB_INSNS (bb, insn)
+    if (INSN_P (insn))
+      return insn;
+
+  return 0;
+}
+#endif
+
 /* Single neutering according to MASK.  FROM is the incoming block and
    TO is the outgoing block.  These may be the same block. Insert at
    start of FROM:
@@ -3860,9 +3886,25 @@ nvptx_single (unsigned mask, basic_block from, basic_block to)
   rtx_insn *tail = BB_END (to);
   unsigned skip_mask = mask;
 
-  /* Find first insn of from block */
-  while (head != BB_END (from) && !INSN_P (head))
-    head = NEXT_INSN (head);
+  while (true)
+    {
+      /* Find first insn of from block.  */
+      while (head != BB_END (from) && !INSN_P (head))
+	head = NEXT_INSN (head);
+
+      if (from == to)
+	break;
+
+      if (!(JUMP_P (head) && single_succ_p (from)))
+	break;
+
+      basic_block jump_target = single_succ (from);
+      if (!single_pred_p (jump_target))
+	break;
+
+      from = jump_target;
+      head = BB_HEAD (from);
+    }
 
   /* Find last insn of to block */
   rtx_insn *limit = from == to ? head : BB_HEAD (to);
@@ -3952,6 +3994,39 @@ nvptx_single (unsigned mask, basic_block from, basic_block to)
       if (GOMP_DIM_MASK (GOMP_DIM_VECTOR) == mask)
 	{
 	  /* Vector mode only, do a shuffle.  */
+#if WORKAROUND_PTXJIT_BUG
+	  /* The branch condition %rcond is propagated like this:
+
+		{
+		    .reg .u32 %x;
+		    mov.u32 %x,%tid.x;
+		    setp.ne.u32 %rnotvzero,%x,0;
+		 }
+
+		 @%rnotvzero bra Lskip;
+		 setp.<op>.<type> %rcond,op1,op2;
+		 Lskip:
+		 selp.u32 %rcondu32,1,0,%rcond;
+		 shfl.idx.b32 %rcondu32,%rcondu32,0,31;
+		 setp.ne.u32 %rcond,%rcondu32,0;
+
+	     There seems to be a bug in the ptx JIT compiler (observed at driver
+	     version 381.22, at -O1 and higher for sm_61), that drops the shfl
+	     unless %rcond is initialized to something before 'bra Lskip'.  The
+	     bug is not observed with ptxas from cuda 8.0.61.
+
+	     It is true that the code is non-trivial: at Lskip, %rcond is
+	     uninitialized in threads 1-31, and after the selp the same holds
+	     for %rcondu32.  But shfl propagates the defined value in thread 0
+	     to threads 1-31, so after the shfl %rcondu32 is defined in threads
+	     0-31, and after the setp.ne %rcond is defined in threads 0-31.
+
+	     There is nothing in the PTX spec to suggest that this is wrong, or
+	     to explain why the extra initialization is needed.  So, we classify
+	     it as a JIT bug, and the extra initialization as workaround.  */
+	  emit_insn_before (gen_movbi (pvar, const0_rtx),
+			    bb_first_real_insn (from));
+#endif
 	  emit_insn_before (nvptx_gen_vcast (pvar), tail);
 	}
       else
@@ -5322,6 +5397,13 @@ nvptx_goacc_reduction (gcall *call)
     }
 }
 
+static bool
+nvptx_cannot_force_const_mem (machine_mode mode ATTRIBUTE_UNUSED,
+			      rtx x ATTRIBUTE_UNUSED)
+{
+  return true;
+}
+
 #undef TARGET_OPTION_OVERRIDE
 #define TARGET_OPTION_OVERRIDE nvptx_option_override
 
@@ -5435,6 +5517,9 @@ nvptx_goacc_reduction (gcall *call)
 
 #undef TARGET_GOACC_REDUCTION
 #define TARGET_GOACC_REDUCTION nvptx_goacc_reduction
+
+#undef TARGET_CANNOT_FORCE_CONST_MEM
+#define TARGET_CANNOT_FORCE_CONST_MEM nvptx_cannot_force_const_mem
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

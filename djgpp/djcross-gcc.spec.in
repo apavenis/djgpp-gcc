@@ -303,6 +303,7 @@ PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
 %if %enable_lto
                                  --enable-lto \
 %endif
+                                 --enable-libstdcxx-filesystem-ts \
                                  --with-gmp=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
                                  --with-mpfr=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
                                  --with-mpc=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst \
@@ -403,6 +404,8 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libsupc++.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libsupc++.la
+%{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++fs.a
+%{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++fs.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++.a-gdb.py
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1plus
 %{_mandir}/man1/%{target}-g++.1.gz

@@ -132,6 +132,9 @@ struct block_location_info
 
 typedef struct block_info
 {
+  /* Constructor.  */
+  block_info ();
+
   /* Chain of exit and entry arcs.  */
   arc_t *succ;
   arc_t *pred;
@@ -172,6 +175,14 @@ typedef struct block_info
   struct block_info *chain;
 
 } block_t;
+
+block_info::block_info (): succ (NULL), pred (NULL), num_succ (0), num_pred (0),
+  id (0), count (0), count_valid (0), valid_chain (0), invalid_chain (0),
+  exceptional (0), is_call_site (0), is_call_return (0), is_nonlocal_return (0),
+  locations (), chain (NULL)
+{
+  cycle.arc = NULL;
+}
 
 /* Describes a single function. Contains an array of basic blocks.  */
 
@@ -435,10 +446,11 @@ static char *mangle_name (const char *, char *);
 static void release_structures (void);
 extern int main (int, char **);
 
-function_info::function_info ()
+function_info::function_info (): name (NULL), demangled_name (NULL),
+  ident (0), lineno_checksum (0), cfg_checksum (0), has_catch (0),
+  blocks (), blocks_executed (0), counts (NULL), num_counts (0),
+  line (0), src (0), next_file_fn (NULL), next (NULL)
 {
-  /* The type is POD, so that we can use memset.  */
-  memset (this, 0, sizeof (*this));
 }
 
 function_info::~function_info ()

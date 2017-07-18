@@ -358,45 +358,45 @@ as_internal_fn (combined_fn code)
 extern void tree_contains_struct_check_failed (const_tree,
 					       const enum tree_node_structure_enum,
 					       const char *, int, const char *)
-  ATTRIBUTE_NORETURN;
+  ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 
 extern void tree_check_failed (const_tree, const char *, int, const char *,
-			       ...) ATTRIBUTE_NORETURN;
+			       ...) ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void tree_not_check_failed (const_tree, const char *, int, const char *,
-				   ...) ATTRIBUTE_NORETURN;
+				   ...) ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void tree_class_check_failed (const_tree, const enum tree_code_class,
 				     const char *, int, const char *)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void tree_range_check_failed (const_tree, const char *, int,
 				     const char *, enum tree_code,
 				     enum tree_code)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void tree_not_class_check_failed (const_tree,
 					 const enum tree_code_class,
 					 const char *, int, const char *)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void tree_int_cst_elt_check_failed (int, int, const char *,
 					   int, const char *)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void tree_vec_elt_check_failed (int, int, const char *,
 				       int, const char *)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void phi_node_elt_check_failed (int, int, const char *,
 				       int, const char *)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void tree_operand_check_failed (int, const_tree,
 				       const char *, int, const char *)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void omp_clause_check_failed (const_tree, const char *, int,
 				     const char *, enum omp_clause_code)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void omp_clause_operand_check_failed (int, const_tree, const char *,
 				             int, const char *)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 extern void omp_clause_range_check_failed (const_tree, const char *, int,
 			       const char *, enum omp_clause_code,
 			       enum omp_clause_code)
-    ATTRIBUTE_NORETURN;
+    ATTRIBUTE_NORETURN ATTRIBUTE_COLD;
 
 #else /* not ENABLE_TREE_CHECKING, or not gcc */
 
@@ -897,8 +897,8 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 /* If this is true, we should insert a __cilk_detach call just before
    this function call.  */
 #define EXPR_CILK_SPAWN(NODE) \
-  (tree_check2 (NODE, __FILE__, __LINE__, __FUNCTION__, \
-                CALL_EXPR, AGGR_INIT_EXPR)->base.u.bits.unsigned_flag)
+  (TREE_CHECK2 (NODE, CALL_EXPR, \
+                AGGR_INIT_EXPR)->base.u.bits.unsigned_flag)
 
 /* In a RESULT_DECL, PARM_DECL and VAR_DECL, means that it is
    passed by invisible reference (and the TREE_TYPE is a pointer to the true
@@ -3618,6 +3618,20 @@ tree_operand_check_code (const_tree __t, enum tree_code __code, int __i,
 
 #endif
 
+/* True iff an identifier matches a C string.  */
+
+inline bool
+id_equal (const_tree id, const char *str)
+{
+  return !strcmp (IDENTIFIER_POINTER (id), str);
+}
+
+inline bool
+id_equal (const char *str, const_tree id)
+{
+  return !strcmp (str, IDENTIFIER_POINTER (id));
+}
+
 #define error_mark_node			global_trees[TI_ERROR_MARK]
 
 #define intQI_type_node			global_trees[TI_INTQI_TYPE]
@@ -3711,6 +3725,12 @@ tree_operand_check_code (const_tree __t, enum tree_code __code, int __i,
 #define fileptr_type_node		global_trees[TI_FILEPTR_TYPE]
 /* The C type `const struct tm *'.  */
 #define const_tm_ptr_type_node		global_trees[TI_CONST_TM_PTR_TYPE]
+/* The C type `fenv_t *'.  */
+#define fenv_t_ptr_type_node		global_trees[TI_FENV_T_PTR_TYPE]
+#define const_fenv_t_ptr_type_node	global_trees[TI_CONST_FENV_T_PTR_TYPE]
+/* The C type `fexcept_t *'.  */
+#define fexcept_t_ptr_type_node		global_trees[TI_FEXCEPT_T_PTR_TYPE]
+#define const_fexcept_t_ptr_type_node	global_trees[TI_CONST_FEXCEPT_T_PTR_TYPE]
 #define pointer_sized_int_node		global_trees[TI_POINTER_SIZED_TYPE]
 
 #define boolean_type_node		global_trees[TI_BOOLEAN_TYPE]
@@ -4109,15 +4129,9 @@ extern int attribute_list_contained (const_tree, const_tree);
 extern int tree_int_cst_equal (const_tree, const_tree);
 
 extern bool tree_fits_shwi_p (const_tree)
-#ifndef ENABLE_TREE_CHECKING
-  ATTRIBUTE_PURE /* tree_fits_shwi_p is pure only when checking is disabled.  */
-#endif
-  ;
+  ATTRIBUTE_PURE;
 extern bool tree_fits_uhwi_p (const_tree)
-#ifndef ENABLE_TREE_CHECKING
-  ATTRIBUTE_PURE /* tree_fits_uhwi_p is pure only when checking is disabled.  */
-#endif
-  ;
+  ATTRIBUTE_PURE;
 extern HOST_WIDE_INT tree_to_shwi (const_tree);
 extern unsigned HOST_WIDE_INT tree_to_uhwi (const_tree);
 #if !defined ENABLE_TREE_CHECKING && (GCC_VERSION >= 4003)
@@ -4303,6 +4317,7 @@ extern tree build_variant_type_copy (tree CXX_MEM_STAT_INFO);
    How the hash code is computed is up to the caller, as long as any two
    callers that could hash identical-looking type nodes agree.  */
 
+extern hashval_t type_hash_canon_hash (tree);
 extern tree type_hash_canon (unsigned int, tree);
 
 extern tree convert (tree, tree);
@@ -4885,12 +4900,10 @@ extern tree array_ref_up_bound (tree);
    EXP, an ARRAY_REF or an ARRAY_RANGE_REF.  */
 extern tree array_ref_low_bound (tree);
 
-/* Returns true if REF is an array reference to an array at the end of
-   a structure.  If this is the case, the array may be allocated larger
-   than its upper bound implies.  When second argument is true considers
-   REF when it's a COMPONENT_REF in addition ARRAY_REF and
-   ARRAY_RANGE_REF.  */
-extern bool array_at_struct_end_p (tree, bool = false);
+/* Returns true if REF is an array reference or a component reference
+   to an array at the end of a structure.  If this is the case, the array
+   may be allocated larger than its upper bound implies.  */
+extern bool array_at_struct_end_p (tree);
 
 /* Return a tree representing the offset, in bytes, of the field referenced
    by EXP.  This does not include any offset in DECL_FIELD_BIT_OFFSET.  */
@@ -5516,4 +5529,13 @@ desired_pro_or_demotion_p (const_tree to_type, const_tree from_type)
   return to_type_precision <= TYPE_PRECISION (from_type);
 }
 
+/* Pointer type used to declare builtins before we have seen its real
+   declaration.  */
+struct builtin_structptr_type
+{
+  tree& node;
+  tree& base;
+  const char *str;
+};
+extern const builtin_structptr_type builtin_structptr_types[6];
 #endif  /* GCC_TREE_H  */

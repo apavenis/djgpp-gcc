@@ -1213,8 +1213,10 @@ combine_instructions (rtx_insn *f, unsigned int nregs)
 	      INSN_COST (insn) = insn_rtx_cost (PATTERN (insn),
 	      					optimize_this_for_speed_p);
 	    if (dump_file)
-	      fprintf (dump_file, "insn_cost %d: %d\n",
-		       INSN_UID (insn), INSN_COST (insn));
+	      {
+		fprintf (dump_file, "insn_cost %d for ", INSN_COST (insn));
+		dump_insn_slim (dump_file, insn);
+	      }
 	  }
     }
 
@@ -6582,7 +6584,7 @@ simplify_if_then_else (rtx x)
       && (i = exact_log2 (UINTVAL (true_rtx) & GET_MODE_MASK (mode))) >= 0)
     {
       rtx val = XEXP (cond, 0);
-      enum machine_mode val_mode = GET_MODE (val);
+      machine_mode val_mode = GET_MODE (val);
       if (val_mode == mode)
         return val;
       else if (GET_MODE_PRECISION (val_mode) < GET_MODE_PRECISION (mode))
@@ -9634,7 +9636,7 @@ make_field_assignment (rtx x)
 						     other, pos),
 			       dest);
   src = force_to_mode (src, mode,
-		       GET_MODE_PRECISION (mode) >= HOST_BITS_PER_WIDE_INT
+		       len >= HOST_BITS_PER_WIDE_INT
 		       ? HOST_WIDE_INT_M1U
 		       : (HOST_WIDE_INT_1U << len) - 1,
 		       0);

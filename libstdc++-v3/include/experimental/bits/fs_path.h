@@ -53,6 +53,11 @@
 # include <algorithm>
 #endif
 
+#if defined(__DJGPP__)
+# define _GLIBCXX_FILESYSTEM_IS_DJGPP 1
+# include <algorithm>
+#endif
+
 namespace std _GLIBCXX_VISIBILITY(default)
 {
 namespace experimental
@@ -460,6 +465,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
     {
 #ifdef _GLIBCXX_FILESYSTEM_IS_WINDOWS
       return __ch == L'/' || __ch == preferred_separator;
+#elif defined(_GLIBCXX_FILESYSTEM_IS_DJGPP)
+      return __ch == '/' || __ch == '\\';
 #else
       return __ch == '/';
 #endif
@@ -826,6 +833,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 #ifdef _GLIBCXX_FILESYSTEM_IS_WINDOWS
     std::replace(_M_pathname.begin(), _M_pathname.end(), L'/',
 		 preferred_separator);
+#elif defined(_GLIBCXX_FILESYSTEM_IS_DJGPP)
+    std::replace(_M_pathname.begin(), _M_pathname.end(), '\\',
+		 preferred_separator);
 #endif
     return *this;
   }
@@ -997,7 +1007,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
   inline bool
   path::is_absolute() const
   {
-#ifdef _GLIBCXX_FILESYSTEM_IS_WINDOWS
+#if defined(_GLIBCXX_FILESYSTEM_IS_WINDOWS) \
+  || defined(_GLIBCXX_FILESYSTEM_IS_DJGPP)
     return has_root_name();
 #else
     return has_root_directory();
