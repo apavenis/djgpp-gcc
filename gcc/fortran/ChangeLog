@@ -1,3 +1,17 @@
+2017-06-09  Janus Weil  <janus@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/70601
+	* trans-expr.c (gfc_conv_procedure_call): Fix detection of allocatable
+	function results.
+
+2017-06-05  Janus Weil  <janus@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/80766
+	* resolve.c (resolve_fl_derived): Make sure that vtype symbols are
+	properly resolved.
+
 2017-06-02  Thomas Koenig  <tkoenig@gcc.gnu.org>
 
 	PR fortran/80904
