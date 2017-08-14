@@ -1,3 +1,17 @@
+2017-08-14  Release Manager
+
+	* GCC 7.2.0 released.
+
+2017-08-08  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/81766
+	* gcc.target/i386/pr81766.c: New testcase.
+
+2017-08-02  Uros Bizjak  <ubizjak@gmail.com>
+
+	* gcc.target/i386/funcspec-56.inc (no_3dnowa): Properly
+	test "no-3dnowa" target attribute.
+
 2017-08-02  Jakub Jelinek  <jakub@redhat.com>
 
 	PR tree-optimization/81655

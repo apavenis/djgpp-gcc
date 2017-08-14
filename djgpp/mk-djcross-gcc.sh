@@ -15,9 +15,9 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=tags/7.2.0-RC
-dj_branch=R_GCC_7_2_0_DJGPP
-djn_branch=R_GCC_7_2_0_DJGPP_NATIVE
+upstream=tags/7.2.0
+dj_branch=tags/7.2.0-djgpp
+djn_branch=tags/7.2.0-djgpp-native
 
 sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 
