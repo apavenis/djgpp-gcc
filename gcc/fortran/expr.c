@@ -3782,7 +3782,8 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue)
   if (warn_target_lifetime
       && rvalue->expr_type == EXPR_VARIABLE
       && !rvalue->symtree->n.sym->attr.save
-      && !attr.pointer && !rvalue->symtree->n.sym->attr.host_assoc
+      && !rvalue->symtree->n.sym->attr.pointer && !attr.pointer
+      && !rvalue->symtree->n.sym->attr.host_assoc
       && !rvalue->symtree->n.sym->attr.in_common
       && !rvalue->symtree->n.sym->attr.use_assoc
       && !rvalue->symtree->n.sym->attr.dummy)
@@ -4883,7 +4884,8 @@ gfc_check_vardef_context (gfc_expr* e, bool pointer, bool alloc_obj,
      component.  Note that (normal) assignment to procedure pointers is not
      possible.  */
   check_intentin = !own_scope;
-  ptr_component = (sym->ts.type == BT_CLASS && CLASS_DATA (sym))
+  ptr_component = (sym->ts.type == BT_CLASS && sym->ts.u.derived
+		   && CLASS_DATA (sym))
 		  ? CLASS_DATA (sym)->attr.class_pointer : sym->attr.pointer;
   for (ref = e->ref; ref && check_intentin; ref = ref->next)
     {
