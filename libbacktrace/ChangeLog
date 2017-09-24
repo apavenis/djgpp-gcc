@@ -1,3 +1,90 @@
+2017-09-22  Ian Lance Taylor  <iant@golang.org>
+
+	PR sanitizer/77631
+	* configure.ac: Check for lstat and readlink.
+	* elf.c (lstat, readlink): Provide dummy versions if real versions
+	are not available.
+	* configure, config.h.in: Rebuild.
+
+2017-09-21  Ian Lance Taylor  <iant@google.com>
+
+	PR go/82284
+	* elf.c (backtrace_initialize): Set pd.exe_filename.
+
+2017-09-20  Ian Lance Taylor  <iant@golang.org>
+	    Denis Khalikov  <d.khalikov@partner.samsung.com>
+
+	PR sanitizer/77631
+	Support for external debug info.
+	* elf.c: Include <errno.h>, <sys/stat.h>, <unistd.h>.
+	(S_ISLNK): Define if not defined.
+	(xstrnlen): Define if strnlen is not available.
+	(b_elf_note): Define type.
+	(NT_GNU_BUILD_ID): Define macro.
+	(elf_crc32, elf_crc32_file): New static functions.
+	(elf_is_symlink, elf_readlink): New static functions.
+	(elf_open_debugfile_by_buildid): New static function.
+	(elf_try_debugfile): New static function.
+	(elf_find_debugfile_by_debuglink): New static function.
+	(elf_open_debugfile_by_debuglink): New static function.
+	(elf_add): Add filename and debuginfo parameters.  Adjust all
+	callers.  Look for external debug info notes, and try to fetch
+	debug info from external file.
+	(struct phdr_data): Add exe_filename field.
+	(phdr_callback): Pass filename to elf_add.
+	(backtrace_initialize): Add filename parameter.
+	* internal.h (backtrace_initialize): Add filename parameter.
+	* fileline.c (fileline_initialize): Pass filename to
+	backtrace_initialize.
+	* pecoff.c (fileline_initialize): Add unused filename parameter.
+	* unknown.c (fileline_initialize): Likewise.
+	* xcoff.c (fileline_initialize): Likewise.
+	* configure.ac: Check for objcopy --add-gnu-debuglink.
+	* Makefile.am (dtest): New test target.
+	* configure, Makefile.in: Rebuild.
+
+2017-09-12  Steve Ellcey  <sellcey@cavium.com>
+
+	PR other/81096
+	* Makefile.am (ttest_CFLAGS): Add $(AM_CFLAGS)
+	* Makefile.in: Regenerate.
+
+2017-09-12  Steve Ellcey  <sellcey@cavium.com>
+
+	PR other/81096
+	* libbacktrace/Makefile.in
+	(HAVE_PTHREAD_TRUE@@NATIVE_TRUE@ttest_CFLAGS): Add $(AM_CFLAGS)
+
+2017-08-02  David Edelsohn  <dje.gcc@gmail.com>
+
+	PR bootstrap/81638
+	* xcoff.c (xcoff_process_linenos): Initialize incl to NULL.
+
+2017-07-28  Tony Reix  <tony.reix@atos.net>
+
+	* xcoff.c: Don't leak a file descriptor if an archive is malformed.
+
+2017-07-28  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* fileline.c (fileline_initialize): Print pid_t as long.
+
+2017-07-26  Tony Reix  <tony.reix@atos.net>
+
+	* configure.ac: Check for XCOFF32/XCOFF64.  Check for loadquery.
+	* filetype.awk: Separate AIX XCOFF32 and XCOFF64.
+	* xcoff.c: Add support for AIX XCOFF32 and XCOFF64 formats.
+	* configure, config.h.in: Regenerate.
+
+2017-07-21  Tony Reix  <tony.reix@atos.net>
+
+	* filetype.awk: Add AIX XCOFF type detection.
+	* configure.ac: Recognize xcoff format.
+	* Makefile.am (FORMAT_FILES): Add xcoff.c.
+	* fileline.c: Include <unistd.h>.
+	(fileline_initialize): Add case for AIX procfs.
+	* xcoff.c: New file.
+	* configure, Makefile.in: Rebuild.
+
 2017-06-21  Richard Biener  <rguenther@suse.de>
 
 	* configure.ac: Add AC_SYS_LARGEFILE.

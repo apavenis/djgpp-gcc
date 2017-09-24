@@ -233,6 +233,9 @@ elf*) FORMAT_FILE="elf.lo" ;;
 pecoff) FORMAT_FILE="pecoff.lo"
         backtrace_supports_data=no
 	;;
+xcoff*) FORMAT_FILE="xcoff.lo"
+        backtrace_supports_data=no
+        ;;
 *) AC_MSG_WARN([could not determine output file type])
    FORMAT_FILE="unknown.lo"
    backtrace_supported=no
@@ -248,6 +251,15 @@ elf64) elfsize=64 ;;
 *)     elfsize=unused
 esac
 AC_DEFINE_UNQUOTED([BACKTRACE_ELF_SIZE], [$elfsize], [ELF size: 32 or 64])
+
+# XCOFF defines.
+xcoffsize=
+case "$libbacktrace_cv_sys_filetype" in
+xcoff32) xcoffsize=32 ;;
+xcoff64) xcoffsize=64 ;;
+*)       xcoffsize=unused
+esac
+AC_DEFINE_UNQUOTED([BACKTRACE_XCOFF_SIZE], [$xcoffsize], [XCOFF size: 32 or 64])
 
 BACKTRACE_SUPPORTED=0
 if test "$backtrace_supported" = "yes"; then
@@ -327,6 +339,24 @@ if test "$have_dl_iterate_phdr" = "yes"; then
   AC_DEFINE(HAVE_DL_ITERATE_PHDR, 1, [Define if dl_iterate_phdr is available.])
 fi
 
+# Check for loadquery.
+AC_CHECK_HEADERS(sys/ldr.h)
+if test "$ac_cv_header_sys_ldr_h" = "no"; then
+  have_loadquery=no
+else
+  if test -n "${with_target_subdir}"; then
+    # When built as a GCC target library, we can't do a link test.
+    AC_EGREP_HEADER([loadquery], [sys/ldr.h], [have_loadquery=yes],
+		    [have_loadquery=no])
+  else
+    AC_CHECK_FUNC([loadquery], [have_loadquery=yes],
+		  [have_loadquery=no])
+  fi
+fi
+if test "$have_loadquery" = "yes"; then
+  AC_DEFINE(HAVE_LOADQUERY, 1, [Define if AIX loadquery is available.])
+fi
+
 # Check for the fcntl function.
 if test -n "${with_target_subdir}"; then
    case "${host}" in
@@ -343,6 +373,7 @@ if test "$have_fcntl" = "yes"; then
 fi
 
 AC_CHECK_DECLS(strnlen)
+AC_CHECK_FUNCS(lstat readlink)
 
 # Check for getexecname function.
 if test -n "${with_target_subdir}"; then
@@ -373,6 +404,20 @@ fi
 AC_SUBST(PTHREAD_CFLAGS)
 
 AM_CONDITIONAL(HAVE_PTHREAD, test "$libgo_cv_lib_pthread" = yes)
+
+AC_ARG_VAR(OBJCOPY, [location of objcopy])
+AC_CHECK_PROG(OBJCOPY, objcopy, objcopy,)
+AC_CACHE_CHECK([whether objcopy supports debuglink],
+[libbacktrace_cv_objcopy_debuglink],
+[if test -n "${with_target_subdir}"; then
+  libbacktrace_cv_objcopy_debuglink=no
+elif ${OBJCOPY} --add-gnu-debuglink=x /bin/ls /tmp/ls$$; then
+  rm -f /tmp/ls$$
+  libbacktrace_cv_objcopy_debuglink=yes
+else
+  libbacktrace_cv_objcopy_debuglink=no
+fi])
+AM_CONDITIONAL(HAVE_OBJCOPY_DEBUGLINK, test "$libbacktrace_cv_objcopy_debuglink" = yes)
 
 AC_CACHE_CHECK([whether tests can run],
   [libbacktrace_cv_sys_native],

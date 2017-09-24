@@ -1509,6 +1509,7 @@ analyze_iv_to_split_insn (rtx_insn *insn)
   rtx set, dest;
   struct rtx_iv iv;
   struct iv_to_split *ivts;
+  scalar_int_mode mode;
   bool ok;
 
   /* For now we just split the basic induction variables.  Later this may be
@@ -1518,10 +1519,10 @@ analyze_iv_to_split_insn (rtx_insn *insn)
     return NULL;
 
   dest = SET_DEST (set);
-  if (!REG_P (dest))
+  if (!REG_P (dest) || !is_a <scalar_int_mode> (GET_MODE (dest), &mode))
     return NULL;
 
-  if (!biv_p (insn, dest))
+  if (!biv_p (insn, mode, dest))
     return NULL;
 
   ok = iv_analyze_result (insn, dest, &iv);
@@ -1730,7 +1731,8 @@ split_iv (struct iv_to_split *ivts, rtx_insn *insn, unsigned delta)
   else
     {
       incr = simplify_gen_binary (MULT, mode,
-				  ivts->step, gen_int_mode (delta, mode));
+				  copy_rtx (ivts->step),
+				  gen_int_mode (delta, mode));
       expr = simplify_gen_binary (PLUS, GET_MODE (ivts->base_var),
 				  ivts->base_var, incr);
     }

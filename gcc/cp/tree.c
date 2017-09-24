@@ -32,6 +32,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "debug.h"
 #include "convert.h"
 #include "gimplify.h"
+#include "stringpool.h"
 #include "attribs.h"
 #include "flags.h"
 
@@ -2027,6 +2028,7 @@ build_qualified_name (tree type, tree scope, tree name, bool template_p)
       || scope == error_mark_node
       || name == error_mark_node)
     return error_mark_node;
+  gcc_assert (TREE_CODE (name) != SCOPE_REF);
   t = build2 (SCOPE_REF, type, scope, name);
   QUALIFIED_NAME_IS_TEMPLATE (t) = template_p;
   PTRMEM_OK_P (t) = true;
@@ -2817,7 +2819,6 @@ extern int depth_reached;
 void
 cxx_print_statistics (void)
 {
-  print_search_statistics ();
   print_class_statistics ();
   print_template_statistics ();
   if (GATHER_STATISTICS)
@@ -3062,6 +3063,7 @@ struct replace_placeholders_t
 {
   tree obj;	    /* The object to be substituted for a PLACEHOLDER_EXPR.  */
   bool seen;	    /* Whether we've encountered a PLACEHOLDER_EXPR.  */
+  hash_set<tree> *pset;	/* To avoid walking same trees multiple times.  */
 };
 
 /* Like substitute_placeholder_in_expr, but handle C++ tree codes and
@@ -3084,8 +3086,8 @@ replace_placeholders_r (tree* t, int* walk_subtrees, void* data_)
     case PLACEHOLDER_EXPR:
       {
 	tree x = obj;
-	for (; !(same_type_ignoring_top_level_qualifiers_p
-		 (TREE_TYPE (*t), TREE_TYPE (x)));
+	for (; !same_type_ignoring_top_level_qualifiers_p (TREE_TYPE (*t),
+							   TREE_TYPE (x));
 	     x = TREE_OPERAND (x, 0))
 	  gcc_assert (TREE_CODE (x) == COMPONENT_REF);
 	*t = x;
@@ -3117,8 +3119,7 @@ replace_placeholders_r (tree* t, int* walk_subtrees, void* data_)
 		  valp = &TARGET_EXPR_INITIAL (*valp);
 	      }
 	    d->obj = subob;
-	    cp_walk_tree (valp, replace_placeholders_r,
-			  data_, NULL);
+	    cp_walk_tree (valp, replace_placeholders_r, data_, d->pset);
 	    d->obj = obj;
 	  }
 	*walk_subtrees = false;
@@ -3150,10 +3151,11 @@ replace_placeholders (tree exp, tree obj, bool *seen_p)
     return exp;
 
   tree *tp = &exp;
-  replace_placeholders_t data = { obj, false };
+  hash_set<tree> pset;
+  replace_placeholders_t data = { obj, false, &pset };
   if (TREE_CODE (exp) == TARGET_EXPR)
     tp = &TARGET_EXPR_INITIAL (exp);
-  cp_walk_tree (tp, replace_placeholders_r, &data, NULL);
+  cp_walk_tree (tp, replace_placeholders_r, &data, &pset);
   if (seen_p)
     *seen_p = data.seen;
   return exp;
@@ -3976,7 +3978,7 @@ type_has_nontrivial_copy_init (const_tree type)
       else if (CLASSTYPE_LAZY_COPY_CTOR (t))
 	{
 	  saw_copy = true;
-	  if (classtype_has_user_move_assign_or_move_ctor_p (t))
+	  if (classtype_has_move_assign_or_move_ctor_p (t, true))
 	    /* [class.copy]/8 If the class definition declares a move
 	       constructor or move assignment operator, the implicitly declared
 	       copy constructor is defined as deleted.... */;
@@ -3987,7 +3989,7 @@ type_has_nontrivial_copy_init (const_tree type)
 	    saw_non_deleted = true;
 	}
 
-      if (!saw_non_deleted && CLASSTYPE_METHOD_VEC (t))
+      if (!saw_non_deleted)
 	for (ovl_iterator iter (CLASSTYPE_CONSTRUCTORS (t)); iter; ++iter)
 	  {
 	    tree fn = *iter;
@@ -4625,6 +4627,21 @@ cxx_type_hash_eq (const_tree typea, const_tree typeb)
 			    TYPE_RAISES_EXCEPTIONS (typeb), ce_exact);
 }
 
+/* Copy the language-specific type variant modifiers from TYPEB to TYPEA.  For
+   C++, these are the exception-specifier and ref-qualifier.  */
+
+tree
+cxx_copy_lang_qualifiers (const_tree typea, const_tree typeb)
+{
+  tree type = CONST_CAST_TREE (typea);
+  if (TREE_CODE (type) == FUNCTION_TYPE || TREE_CODE (type) == METHOD_TYPE)
+    {
+      type = build_exception_variant (type, TYPE_RAISES_EXCEPTIONS (typeb));
+      type = build_ref_qualified_type (type, type_memfn_rqual (typeb));
+    }
+  return type;
+}
+
 /* Apply FUNC to all language-specific sub-trees of TP in a pre-order
    traversal.  Called from walk_tree.  */
 
@@ -4663,6 +4680,8 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
       break;
 
     case BASELINK:
+      if (BASELINK_QUALIFIED_P (*tp))
+	WALK_SUBTREE (BINFO_TYPE (BASELINK_ACCESS_BINFO (*tp)));
       WALK_SUBTREE (BASELINK_FUNCTIONS (*tp));
       *walk_subtrees_p = 0;
       break;

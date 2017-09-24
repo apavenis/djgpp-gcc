@@ -61,6 +61,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-chkp.h"
 #include "context.h"
 #include "gimplify.h"
+#include "stringpool.h"
+#include "attribs.h"
 
 /* FIXME: Only for PROP_loops, but cgraph shouldn't have to know about this.  */
 #include "tree-pass.h"
@@ -188,30 +190,34 @@ cgraph_node::insert_new_function_version (void)
   return version_info_node;
 }
 
-/* Remove the cgraph_function_version_info and cgraph_node for DECL.  This
-   DECL is a duplicate declaration.  */
-void
-cgraph_node::delete_function_version (tree decl)
+/* Remove the cgraph_function_version_info node given by DECL_V.  */
+static void
+delete_function_version (cgraph_function_version_info *decl_v)
 {
-  cgraph_node *decl_node = cgraph_node::get (decl);
-  cgraph_function_version_info *decl_v = NULL;
-
-  if (decl_node == NULL)
-    return;
-
-  decl_v = decl_node->function_version ();
-
   if (decl_v == NULL)
     return;
 
   if (decl_v->prev != NULL)
-   decl_v->prev->next = decl_v->next;
+    decl_v->prev->next = decl_v->next;
 
   if (decl_v->next != NULL)
     decl_v->next->prev = decl_v->prev;
 
   if (cgraph_fnver_htab != NULL)
     cgraph_fnver_htab->remove_elt (decl_v);
+}
+
+/* Remove the cgraph_function_version_info and cgraph_node for DECL.  This
+   DECL is a duplicate declaration.  */
+void
+cgraph_node::delete_function_version_by_decl (tree decl)
+{
+  cgraph_node *decl_node = cgraph_node::get (decl);
+
+  if (decl_node == NULL)
+    return;
+
+  delete_function_version (decl_node->function_version ());
 
   decl_node->remove ();
 }
@@ -582,10 +588,11 @@ cgraph_node *
 cgraph_node::create_same_body_alias (tree alias, tree decl)
 {
   cgraph_node *n;
-#ifndef ASM_OUTPUT_DEF
+
   /* If aliases aren't supported by the assembler, fail.  */
-  return NULL;
-#endif
+  if (!TARGET_SUPPORTS_ALIASES)
+    return NULL;
+
   /* Langhooks can create same body aliases of symbols not defined.
      Those are useless. Drop them on the floor.  */
   if (symtab->global_info_ready)
@@ -600,7 +607,7 @@ cgraph_node::create_same_body_alias (tree alias, tree decl)
 
 /* Add thunk alias into callgraph.  The alias declaration is ALIAS and it
    aliases DECL with an adjustments made into the first parameter.
-   See comments in thunk_adjust for detail on the parameters.  */
+   See comments in struct cgraph_thunk_info for detail on the parameters.  */
 
 cgraph_node *
 cgraph_node::create_thunk (tree alias, tree, bool this_adjusting,
@@ -616,13 +623,17 @@ cgraph_node::create_thunk (tree alias, tree, bool this_adjusting,
     node->reset ();
   else
     node = cgraph_node::create (alias);
-  gcc_checking_assert (!virtual_offset
-		       || wi::eq_p (virtual_offset, virtual_value));
+
+  /* Make sure that if VIRTUAL_OFFSET is in sync with VIRTUAL_VALUE.  */
+  gcc_checking_assert (virtual_offset
+		       ? wi::eq_p (virtual_offset, virtual_value)
+		       : virtual_value == 0);
+
   node->thunk.fixed_offset = fixed_offset;
-  node->thunk.this_adjusting = this_adjusting;
   node->thunk.virtual_value = virtual_value;
-  node->thunk.virtual_offset_p = virtual_offset != NULL;
   node->thunk.alias = real_alias;
+  node->thunk.this_adjusting = this_adjusting;
+  node->thunk.virtual_offset_p = virtual_offset != NULL;
   node->thunk.thunk_p = true;
   node->definition = true;
 
@@ -1837,6 +1848,7 @@ cgraph_node::remove (void)
   remove_callers ();
   remove_callees ();
   ipa_transforms_to_apply.release ();
+  delete_function_version (function_version ());
 
   /* Incremental inlining access removed nodes stored in the postorder list.
      */
@@ -2319,7 +2331,8 @@ cgraph_node::get_availability (symtab_node *ref)
     avail = AVAIL_AVAILABLE;
   else if (transparent_alias)
     ultimate_alias_target (&avail, ref);
-  else if (lookup_attribute ("ifunc", DECL_ATTRIBUTES (decl)))
+  else if (lookup_attribute ("ifunc", DECL_ATTRIBUTES (decl))
+	   || lookup_attribute ("noipa", DECL_ATTRIBUTES (decl)))
     avail = AVAIL_INTERPOSABLE;
   else if (!externally_visible)
     avail = AVAIL_AVAILABLE;

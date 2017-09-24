@@ -1,3 +1,21 @@
+2017-09-17  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* Make-lang.in (GO_TEXI_FILES): Rename to...
+	(BRIG_TEXI_FILES): ... this.
+	(doc/gccbrig.info, doc/gccbrig.dvi, doc/gccbrig.pdf, brig.info)
+	(brig.srcinfo, brig.man, brig.srcman, brig.install-man)
+	($(DESTDIR)$(man1dir)/$(GCCBRIG_INSTALL_NAME)$(man1ext)):
+	Uncomment/enable targets.
+	(gccbrig.pod): New target.
+	* gccbrig.texi: New file.
+
+2017-08-04  Henry Linjamäki  <henry.linjamaki@parmance.com>
+
+	Fix PR 81713
+	* brigfrontend/brig-basic-inst-handler.cc: replace build_int_cst with
+	bitsize_int in building BIT_FIELD_REF.
+	* brigfrontend/brig-code-entry-handler.cc: likewise.
+
 2017-07-05  Richard Sandiford  <richard.sandiford@linaro.org>
 	    Alan Hayward  <alan.hayward@arm.com>
 	    David Sherwood  <david.sherwood@arm.com>

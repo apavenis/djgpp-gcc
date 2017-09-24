@@ -956,8 +956,7 @@ vect_gen_prolog_loop_niters (loop_vec_info loop_vinfo,
   gimple *dr_stmt = DR_STMT (dr);
   stmt_vec_info stmt_info = vinfo_for_stmt (dr_stmt);
   tree vectype = STMT_VINFO_VECTYPE (stmt_info);
-  int vectype_align = TYPE_ALIGN (vectype) / BITS_PER_UNIT;
-  int nelements = TYPE_VECTOR_SUBPARTS (vectype);
+  unsigned int target_align = DR_TARGET_ALIGNMENT (dr);
 
   if (LOOP_VINFO_PEELING_FOR_ALIGNMENT (loop_vinfo) > 0)
     {
@@ -978,32 +977,36 @@ vect_gen_prolog_loop_niters (loop_vec_info loop_vinfo,
       tree start_addr = vect_create_addr_base_for_vector_ref (dr_stmt,
 							      &stmts, offset);
       tree type = unsigned_type_for (TREE_TYPE (start_addr));
-      tree vectype_align_minus_1 = build_int_cst (type, vectype_align - 1);
-      HOST_WIDE_INT elem_size =
-                int_cst_value (TYPE_SIZE_UNIT (TREE_TYPE (vectype)));
+      tree target_align_minus_1 = build_int_cst (type, target_align - 1);
+      HOST_WIDE_INT elem_size
+	= int_cst_value (TYPE_SIZE_UNIT (TREE_TYPE (vectype)));
       tree elem_size_log = build_int_cst (type, exact_log2 (elem_size));
-      tree nelements_minus_1 = build_int_cst (type, nelements - 1);
-      tree nelements_tree = build_int_cst (type, nelements);
-      tree byte_misalign;
-      tree elem_misalign;
+      HOST_WIDE_INT align_in_elems = target_align / elem_size;
+      tree align_in_elems_minus_1 = build_int_cst (type, align_in_elems - 1);
+      tree align_in_elems_tree = build_int_cst (type, align_in_elems);
+      tree misalign_in_bytes;
+      tree misalign_in_elems;
 
-      /* Create:  byte_misalign = addr & (vectype_align - 1)  */
-      byte_misalign =
-	fold_build2 (BIT_AND_EXPR, type, fold_convert (type, start_addr),
-		     vectype_align_minus_1);
+      /* Create:  misalign_in_bytes = addr & (target_align - 1).  */
+      misalign_in_bytes
+	= fold_build2 (BIT_AND_EXPR, type, fold_convert (type, start_addr),
+		       target_align_minus_1);
 
-      /* Create:  elem_misalign = byte_misalign / element_size  */
-      elem_misalign =
-	fold_build2 (RSHIFT_EXPR, type, byte_misalign, elem_size_log);
+      /* Create:  misalign_in_elems = misalign_in_bytes / element_size.  */
+      misalign_in_elems
+	= fold_build2 (RSHIFT_EXPR, type, misalign_in_bytes, elem_size_log);
 
-      /* Create:  (niters_type) (nelements - elem_misalign)&(nelements - 1)  */
+      /* Create:  (niters_type) ((align_in_elems - misalign_in_elems)
+				 & (align_in_elems - 1)).  */
       if (negative)
-	iters = fold_build2 (MINUS_EXPR, type, elem_misalign, nelements_tree);
+	iters = fold_build2 (MINUS_EXPR, type, misalign_in_elems,
+			     align_in_elems_tree);
       else
-	iters = fold_build2 (MINUS_EXPR, type, nelements_tree, elem_misalign);
-      iters = fold_build2 (BIT_AND_EXPR, type, iters, nelements_minus_1);
+	iters = fold_build2 (MINUS_EXPR, type, align_in_elems_tree,
+			     misalign_in_elems);
+      iters = fold_build2 (BIT_AND_EXPR, type, iters, align_in_elems_minus_1);
       iters = fold_convert (niters_type, iters);
-      *bound = nelements - 1;
+      *bound = align_in_elems - 1;
     }
 
   if (dump_enabled_p ())
@@ -1944,6 +1947,19 @@ vect_create_cond_for_niters_checks (loop_vec_info loop_vinfo, tree *cond_expr)
     *cond_expr = part_cond_expr;
 }
 
+/* Set *COND_EXPR to a tree that is true when both the original *COND_EXPR
+   and PART_COND_EXPR are true.  Treat a null *COND_EXPR as "true".  */
+
+static void
+chain_cond_expr (tree *cond_expr, tree part_cond_expr)
+{
+  if (*cond_expr)
+    *cond_expr = fold_build2 (TRUTH_AND_EXPR, boolean_type_node,
+			      *cond_expr, part_cond_expr);
+  else
+    *cond_expr = part_cond_expr;
+}
+
 /* Function vect_create_cond_for_align_checks.
 
    Create a conditional expression that represents the alignment checks for
@@ -2054,11 +2070,28 @@ vect_create_cond_for_align_checks (loop_vec_info loop_vinfo,
   ptrsize_zero = build_int_cst (int_ptrsize_type, 0);
   part_cond_expr = fold_build2 (EQ_EXPR, boolean_type_node,
 				and_tmp_name, ptrsize_zero);
-  if (*cond_expr)
-    *cond_expr = fold_build2 (TRUTH_AND_EXPR, boolean_type_node,
-			      *cond_expr, part_cond_expr);
-  else
-    *cond_expr = part_cond_expr;
+  chain_cond_expr (cond_expr, part_cond_expr);
+}
+
+/* If LOOP_VINFO_CHECK_UNEQUAL_ADDRS contains <A1, B1>, ..., <An, Bn>,
+   create a tree representation of: (&A1 != &B1) && ... && (&An != &Bn).
+   Set *COND_EXPR to a tree that is true when both the original *COND_EXPR
+   and this new condition are true.  Treat a null *COND_EXPR as "true".  */
+
+static void
+vect_create_cond_for_unequal_addrs (loop_vec_info loop_vinfo, tree *cond_expr)
+{
+  vec<vec_object_pair> pairs = LOOP_VINFO_CHECK_UNEQUAL_ADDRS (loop_vinfo);
+  unsigned int i;
+  vec_object_pair *pair;
+  FOR_EACH_VEC_ELT (pairs, i, pair)
+    {
+      tree addr1 = build_fold_addr_expr (pair->first);
+      tree addr2 = build_fold_addr_expr (pair->second);
+      tree part_cond_expr = fold_build2 (NE_EXPR, boolean_type_node,
+					 addr1, addr2);
+      chain_cond_expr (cond_expr, part_cond_expr);
+    }
 }
 
 /* Function vect_create_cond_for_alias_checks.
@@ -2136,7 +2169,7 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
   tree arg;
   profile_probability prob = profile_probability::likely ();
   gimple_seq gimplify_stmt_list = NULL;
-  tree scalar_loop_iters = LOOP_VINFO_NITERS (loop_vinfo);
+  tree scalar_loop_iters = LOOP_VINFO_NITERSM1 (loop_vinfo);
   bool version_align = LOOP_REQUIRES_VERSIONING_FOR_ALIGNMENT (loop_vinfo);
   bool version_alias = LOOP_REQUIRES_VERSIONING_FOR_ALIAS (loop_vinfo);
   bool version_niter = LOOP_REQUIRES_VERSIONING_FOR_NITERS (loop_vinfo);
@@ -2144,7 +2177,7 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
   if (check_profitability)
     cond_expr = fold_build2 (GE_EXPR, boolean_type_node, scalar_loop_iters,
 			     build_int_cst (TREE_TYPE (scalar_loop_iters),
-						       th));
+					    th - 1));
 
   if (version_niter)
     vect_create_cond_for_niters_checks (loop_vinfo, &cond_expr);
@@ -2158,7 +2191,10 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
 				       &cond_expr_stmt_list);
 
   if (version_alias)
-    vect_create_cond_for_alias_checks (loop_vinfo, &cond_expr);
+    {
+      vect_create_cond_for_unequal_addrs (loop_vinfo, &cond_expr);
+      vect_create_cond_for_alias_checks (loop_vinfo, &cond_expr);
+    }
 
   cond_expr = force_gimple_operand_1 (cond_expr, &gimplify_stmt_list,
 				      is_gimple_condexpr, NULL_TREE);
