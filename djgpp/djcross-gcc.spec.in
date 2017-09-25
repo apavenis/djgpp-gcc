@@ -461,6 +461,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sun Sep 24 2017 Andris Pavenis <andris.pavenis@iki.fi>
+* Use MPFR-3.1.6
+
 * Tue May  2 2017 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-7.1.0
 - Use GMP-6.1.2, MPFR-3.1.5

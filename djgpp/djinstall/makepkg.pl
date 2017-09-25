@@ -756,6 +756,7 @@ sub mk_manifest
         '/include/stdint(?:|-gcc).h$',
         '/include/avx512[^\.]*.(?:h|h2|h3)$',
         '/include/shaintrin\.h$',
+        '/include/gcov\.h$',
         '/install-tools/', '/libgcc\.a', '/libgcov\.a', '/libssp*',
         '/libquadmath.(?:la|a)',
         '/cc1\.exe',
