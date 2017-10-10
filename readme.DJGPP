@@ -130,10 +130,9 @@ Requirements
 ------------
 
 -  Long filename support. I built it in DOS session under Windows 10 Home
-   32 bit or Windows Vista Business 32 bit. Other 32 bit Windows versions
-   beginning with Win95 should be hopefully OK. I have not however tested
-   myself whether it can be build under Win98, Win2k or Win2K, WinXP
-   or Win 7.
+   32 bit. Other 32 bit Windows versions beginning with Win95 should be
+   hopefully OK. I have not however tested myself whether it can be build
+   under Win98, Win2k or Win2K, WinXP or Win 7.
 
 -  plenty of physical RAM available. I guess that 1 GB should
    be enough (I had more on build machine)
