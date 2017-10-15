@@ -2276,7 +2276,8 @@ gimplify_switch_expr (tree *expr_p, gimple_seq *pre_p)
 
       /* Do not create live_switch_vars if SWITCH_BODY is not a BIND_EXPR.  */
       saved_live_switch_vars = gimplify_ctxp->live_switch_vars;
-      if (TREE_CODE (SWITCH_BODY (switch_expr)) == BIND_EXPR)
+      tree_code body_type = TREE_CODE (SWITCH_BODY (switch_expr));
+      if (body_type == BIND_EXPR || body_type == STATEMENT_LIST)
 	gimplify_ctxp->live_switch_vars = new hash_set<tree> (4);
       else
 	gimplify_ctxp->live_switch_vars = NULL;
@@ -5433,7 +5434,12 @@ gimplify_modify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
      side as statements and throw away the assignment.  Do this after
      gimplify_modify_expr_rhs so we handle TARGET_EXPRs of addressable
      types properly.  */
-  if (zero_sized_type (TREE_TYPE (*from_p)) && !want_value)
+  if (zero_sized_type (TREE_TYPE (*from_p))
+      && !want_value
+      /* Don't do this for calls that return addressable types, expand_call
+	 relies on those having a lhs.  */
+      && !(TREE_ADDRESSABLE (TREE_TYPE (*from_p))
+	   && TREE_CODE (*from_p) == CALL_EXPR))
     {
       gimplify_stmt (from_p, pre_p);
       gimplify_stmt (to_p, pre_p);
@@ -6608,9 +6614,11 @@ omp_add_variable (struct gimplify_omp_ctx *ctx, tree decl, unsigned int flags)
     return;
 
   /* Never elide decls whose type has TREE_ADDRESSABLE set.  This means
-     there are constructors involved somewhere.  */
-  if (TREE_ADDRESSABLE (TREE_TYPE (decl))
-      || TYPE_NEEDS_CONSTRUCTING (TREE_TYPE (decl)))
+     there are constructors involved somewhere.  Exception is a shared clause,
+     there is nothing privatized in that case.  */
+  if ((flags & GOVD_SHARED) == 0
+      && (TREE_ADDRESSABLE (TREE_TYPE (decl))
+	  || TYPE_NEEDS_CONSTRUCTING (TREE_TYPE (decl))))
     flags |= GOVD_SEEN;
 
   n = splay_tree_lookup (ctx->variables, (splay_tree_key)decl);

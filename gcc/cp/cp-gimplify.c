@@ -924,6 +924,8 @@ omp_var_to_track (tree decl)
   tree type = TREE_TYPE (decl);
   if (is_invisiref_parm (decl))
     type = TREE_TYPE (type);
+  else if (TREE_CODE (type) == REFERENCE_TYPE)
+    type = TREE_TYPE (type);
   while (TREE_CODE (type) == ARRAY_TYPE)
     type = TREE_TYPE (type);
   if (type == error_mark_node || !CLASS_TYPE_P (type))
@@ -975,6 +977,8 @@ omp_cxx_notice_variable (struct cp_genericize_omp_taskreg *omp_ctx, tree decl)
 		 it will be already too late.  */
 	      tree type = TREE_TYPE (decl);
 	      if (is_invisiref_parm (decl))
+		type = TREE_TYPE (type);
+	      else if (TREE_CODE (type) == REFERENCE_TYPE)
 		type = TREE_TYPE (type);
 	      while (TREE_CODE (type) == ARRAY_TYPE)
 		type = TREE_TYPE (type);
@@ -1482,6 +1486,16 @@ cp_genericize_r (tree *stmt_p, int *walk_subtrees, void *data)
       *stmt_p = cplus_expand_constant (stmt);
       *walk_subtrees = 0;
     }
+  else if (TREE_CODE (stmt) == MEM_REF)
+    {
+      /* For MEM_REF, make sure not to sanitize the second operand even
+         if it has reference type.  It is just an offset with a type
+	 holding other information.  There is no other processing we
+	 need to do for INTEGER_CSTs, so just ignore the second argument
+	 unconditionally.  */
+      cp_walk_tree (&TREE_OPERAND (stmt, 0), cp_genericize_r, data, NULL);
+      *walk_subtrees = 0;
+    }
   else if ((flag_sanitize
 	    & (SANITIZE_NULL | SANITIZE_ALIGNMENT | SANITIZE_VPTR))
 	   && !wtd->no_sanitize_p)
@@ -1622,7 +1636,8 @@ cp_genericize (tree fndecl)
 
 	  if (outer)
 	    for (var = BLOCK_VARS (outer); var; var = DECL_CHAIN (var))
-	      if (DECL_NAME (t) == DECL_NAME (var)
+	      if (VAR_P (var)
+		  && DECL_NAME (t) == DECL_NAME (var)
 		  && DECL_HAS_VALUE_EXPR_P (var)
 		  && DECL_VALUE_EXPR (var) == t)
 		{
@@ -1869,7 +1884,8 @@ cxx_omp_const_qual_no_mutable (tree decl)
 
 	  if (outer)
 	    for (var = BLOCK_VARS (outer); var; var = DECL_CHAIN (var))
-	      if (DECL_NAME (decl) == DECL_NAME (var)
+	      if (VAR_P (var)
+		  && DECL_NAME (decl) == DECL_NAME (var)
 		  && (TYPE_MAIN_VARIANT (type)
 		      == TYPE_MAIN_VARIANT (TREE_TYPE (var))))
 		{
@@ -2299,9 +2315,9 @@ cp_fold (tree x)
 
       /* A COND_EXPR might have incompatible types in branches if one or both
 	 arms are bitfields.  If folding exposed such a branch, fix it up.  */
-      if (TREE_CODE (x) != code)
-	if (tree type = is_bitfield_expr_with_lowered_type (x))
-	  x = fold_convert (type, x);
+      if (TREE_CODE (x) != code
+	  && !useless_type_conversion_p (TREE_TYPE (org_x), TREE_TYPE (x)))
+	x = fold_convert (TREE_TYPE (org_x), x);
 
       break;
 
