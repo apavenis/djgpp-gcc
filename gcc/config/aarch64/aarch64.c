@@ -9935,7 +9935,7 @@ aarch64_classify_symbol (rtx x, rtx offset)
 	  /* This is alright even in PIC code as the constant
 	     pool reference is always PC relative and within
 	     the same translation unit.  */
-	  if (CONSTANT_POOL_ADDRESS_P (x))
+	  if (!aarch64_pcrelative_literal_loads && CONSTANT_POOL_ADDRESS_P (x))
 	    return SYMBOL_SMALL_ABSOLUTE;
 	  else
 	    return SYMBOL_FORCE_TO_MEM;
@@ -11509,19 +11509,9 @@ aarch64_builtin_support_vector_misalignment (machine_mode mode,
       if (optab_handler (movmisalign_optab, mode) == CODE_FOR_nothing)
         return false;
 
+      /* Misalignment factor is unknown at compile time.  */
       if (misalignment == -1)
-	{
-	  /* Misalignment factor is unknown at compile time but we know
-	     it's word aligned.  */
-	  if (aarch64_simd_vector_alignment_reachable (type, is_packed))
-            {
-              int element_size = TREE_INT_CST_LOW (TYPE_SIZE (type));
-
-              if (element_size != 64)
-                return true;
-            }
-	  return false;
-	}
+	return false;
     }
   return default_builtin_support_vector_misalignment (mode, type, misalignment,
 						      is_packed);

@@ -775,7 +775,9 @@ case ${target} in
   target_has_targetcm=yes
   ;;
 *-*-netbsd*)
-  tmake_file="t-slibgcc"
+  tm_p_file="${tm_p_file} netbsd-protos.h"
+  tmake_file="t-netbsd t-slibgcc"
+  extra_objs="${extra_objs} netbsd.o"
   gas=yes
   gnu_ld=yes
   use_gcc_stdint=wrap
@@ -1075,10 +1077,13 @@ arm*-*-freebsd*)                # ARM FreeBSD EABI
 	case $target in
 	armv6*-*-freebsd*)
 	    target_cpu_cname="arm1176jzfs"
-	    tm_defines="${tm_defines} TARGET_FREEBSD_ARMv6=1"
             if test $fbsd_major -ge 11; then
                tm_defines="${tm_defines} TARGET_FREEBSD_ARM_HARD_FLOAT=1"
             fi
+	    ;;
+	armv7*-*-freebsd*)
+	    target_cpu_cname="genericv7a"
+	    tm_defines="${tm_defines} TARGET_FREEBSD_ARM_HARD_FLOAT=1"
 	    ;;
 	*)
 	    target_cpu_cname="arm9"
@@ -2031,7 +2036,7 @@ riscv*-*-linux*)
 	# automatically detect that GAS supports it, yet we require it.
 	gcc_cv_initfini_array=yes
 	;;
-riscv*-*-elf*)
+riscv*-*-elf* | riscv*-*-rtems*)
 	tm_file="elfos.h newlib-stdint.h ${tm_file} riscv/elf.h"
 	case "x${enable_multilib}" in
 	xno) ;;
@@ -2044,6 +2049,11 @@ riscv*-*-elf*)
 	# Force .init_array support.  The configure script cannot always
 	# automatically detect that GAS supports it, yet we require it.
 	gcc_cv_initfini_array=yes
+	case ${target} in
+	riscv*-*-rtems*)
+	  tm_file="${tm_file} rtems.h riscv/rtems.h"
+	  ;;
+	esac
 	;;
 mips*-*-netbsd*)			# NetBSD/mips, either endian.
 	target_cpu_default="MASK_ABICALLS"
@@ -2410,8 +2420,8 @@ powerpc-*-eabi*)
 	use_gcc_stdint=wrap
 	;;
 powerpc-*-rtems*)
-	tm_file="${tm_file} dbxelf.h elfos.h freebsd-spec.h newlib-stdint.h rs6000/sysv4.h rs6000/eabi.h rs6000/e500.h rs6000/rtems.h rtems.h"
-	extra_options="${extra_options} rs6000/sysv4.opt"
+	tm_file="rs6000/biarch64.h ${tm_file} dbxelf.h elfos.h freebsd-spec.h newlib-stdint.h rs6000/sysv4.h rs6000/e500.h rs6000/rtems.h rtems.h"
+	extra_options="${extra_options} rs6000/sysv4.opt rs6000/linux64.opt"
 	tmake_file="${tmake_file} rs6000/t-fprules rs6000/t-rtems rs6000/t-ppccomm"
 	;;
 powerpc*-*-linux*)
@@ -4331,7 +4341,7 @@ case "${target}" in
 		for which in arch tune; do
 			eval "val=\$with_$which"
 			case ${val} in
-			"" | native | g5 | g6 | z900 | z990 | z9-109 | z9-ec | z10 | z196 | zEC12 | z13 | arch3 | arch5 | arch6 | arch7 | arch8 | arch9 | arch10 | arch11 | arch12)
+			"" | native | g5 | g6 | z900 | z990 | z9-109 | z9-ec | z10 | z196 | zEC12 | z13 | z14 | arch3 | arch5 | arch6 | arch7 | arch8 | arch9 | arch10 | arch11 | arch12)
 				# OK
 				;;
 			*)
@@ -4383,7 +4393,7 @@ case "${target}" in
 			| sparclite | f930 | f934 | sparclite86x \
 			| sparclet | tsc701 \
 			| v9 | ultrasparc | ultrasparc3 | niagara | niagara2 \
-			| niagara3 | niagara4 | niagara7)
+			| niagara3 | niagara4 | niagara7 | m8)
 				# OK
 				;;
 			*)

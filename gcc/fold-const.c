@@ -877,6 +877,13 @@ split_tree (location_t loc, tree in, tree type, enum tree_code code,
 	}
     }
 
+  if (*litp
+      && TREE_OVERFLOW_P (*litp))
+    *litp = drop_tree_overflow (*litp);
+  if (*minus_litp
+      && TREE_OVERFLOW_P (*minus_litp))
+    *minus_litp = drop_tree_overflow (*minus_litp);
+
   return var;
 }
 
@@ -6175,6 +6182,7 @@ extract_muldiv_1 (tree t, tree c, enum tree_code code, tree wide_type,
       t1 = extract_muldiv (op0, c, code, wide_type, &sub_strict_overflow_p);
       t2 = extract_muldiv (op1, c, code, wide_type, &sub_strict_overflow_p);
       if (t1 != 0 && t2 != 0
+	  && TYPE_OVERFLOW_WRAPS (ctype)
 	  && (code == MULT_EXPR
 	      /* If not multiplication, we can only do this if both operands
 		 are divisible by c.  */
@@ -6236,11 +6244,6 @@ extract_muldiv_1 (tree t, tree c, enum tree_code code, tree wide_type,
 	 will change the result if the original computation overflowed.  */
       if (TYPE_UNSIGNED (ctype) && ctype != type)
 	break;
-
-      /* If we were able to eliminate our operation from the first side,
-	 apply our operation to the second side and reform the PLUS.  */
-      if (t1 != 0 && (TREE_CODE (t1) != code || code == MULT_EXPR))
-	return fold_build2 (tcode, ctype, fold_convert (ctype, t1), op1);
 
       /* The last case is if we are a multiply.  In that case, we can
 	 apply the distributive law to commute the multiply and addition
@@ -7200,15 +7203,10 @@ native_encode_vector (const_tree expr, unsigned char *ptr, int len, int off)
 static int
 native_encode_string (const_tree expr, unsigned char *ptr, int len, int off)
 {
-  tree type = TREE_TYPE (expr);
-  HOST_WIDE_INT total_bytes;
-
-  if (TREE_CODE (type) != ARRAY_TYPE
-      || TREE_CODE (TREE_TYPE (type)) != INTEGER_TYPE
-      || GET_MODE_BITSIZE (TYPE_MODE (TREE_TYPE (type))) != BITS_PER_UNIT
-      || !tree_fits_shwi_p (TYPE_SIZE_UNIT (type)))
+  if (! can_native_encode_string_p (expr))
     return 0;
-  total_bytes = tree_to_shwi (TYPE_SIZE_UNIT (type));
+
+  HOST_WIDE_INT total_bytes = tree_to_shwi (TYPE_SIZE_UNIT (TREE_TYPE (expr)));
   if ((off == -1 && total_bytes > len)
       || off >= total_bytes)
     return 0;
@@ -7500,6 +7498,22 @@ can_native_encode_type_p (tree type)
     default:
       return false;
     }
+}
+
+/* Return true iff a STRING_CST S is accepted by
+   native_encode_expr.  */
+
+bool
+can_native_encode_string_p (const_tree expr)
+{
+  tree type = TREE_TYPE (expr);
+
+  if (TREE_CODE (type) != ARRAY_TYPE
+      || TREE_CODE (TREE_TYPE (type)) != INTEGER_TYPE
+      || (GET_MODE_BITSIZE (TYPE_MODE (TREE_TYPE (type))) != BITS_PER_UNIT)
+      || !tree_fits_shwi_p (TYPE_SIZE_UNIT (type)))
+    return false;
+  return true;
 }
 
 /* Fold a VIEW_CONVERT_EXPR of a constant expression EXPR to type
@@ -8879,7 +8893,7 @@ fold_addr_of_array_ref_difference (location_t loc, tree type,
       tree op0 = fold_convert_loc (loc, type, TREE_OPERAND (aref0, 1));
       tree op1 = fold_convert_loc (loc, type, TREE_OPERAND (aref1, 1));
       tree esz = fold_convert_loc (loc, type, array_ref_element_size (aref0));
-      tree diff = build2 (MINUS_EXPR, type, op0, op1);
+      tree diff = fold_build2_loc (loc, MINUS_EXPR, type, op0, op1);
       return fold_build2_loc (loc, PLUS_EXPR, type,
 			      base_offset,
 			      fold_build2_loc (loc, MULT_EXPR, type,
@@ -9638,11 +9652,6 @@ fold_binary_loc (location_t loc,
 		       + (lit0 != 0) + (lit1 != 0)
 		       + (minus_lit0 != 0) + (minus_lit1 != 0))))
 	    {
-	      bool any_overflows = false;
-	      if (lit0) any_overflows |= TREE_OVERFLOW (lit0);
-	      if (lit1) any_overflows |= TREE_OVERFLOW (lit1);
-	      if (minus_lit0) any_overflows |= TREE_OVERFLOW (minus_lit0);
-	      if (minus_lit1) any_overflows |= TREE_OVERFLOW (minus_lit1);
 	      var0 = associate_trees (loc, var0, var1, code, atype);
 	      con0 = associate_trees (loc, con0, con1, code, atype);
 	      lit0 = associate_trees (loc, lit0, lit1, code, atype);
@@ -9673,9 +9682,8 @@ fold_binary_loc (location_t loc,
 		}
 
 	      /* Don't introduce overflows through reassociation.  */
-	      if (!any_overflows
-		  && ((lit0 && TREE_OVERFLOW_P (lit0))
-		      || (minus_lit0 && TREE_OVERFLOW_P (minus_lit0))))
+	      if ((lit0 && TREE_OVERFLOW_P (lit0))
+		  || (minus_lit0 && TREE_OVERFLOW_P (minus_lit0)))
 		return NULL_TREE;
 
 	      if (minus_lit0)
@@ -13727,8 +13735,8 @@ fold_negate_const (tree arg0, tree type)
 	bool overflow;
 	wide_int val = wi::neg (arg0, &overflow);
 	t = force_fit_type (type, val, 1,
-			    (overflow | TREE_OVERFLOW (arg0))
-			    && !TYPE_UNSIGNED (type));
+			    (overflow && ! TYPE_UNSIGNED (type))
+			    || TREE_OVERFLOW (arg0));
 	break;
       }
 

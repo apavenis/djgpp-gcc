@@ -2008,7 +2008,9 @@ finish_qualified_id_expr (tree qualifying_class,
 					    qualifying_class);
       pop_deferring_access_checks ();
     }
-  else if (BASELINK_P (expr) && !processing_template_decl)
+  else if (BASELINK_P (expr)
+	   && (!processing_template_decl
+	       || parsing_default_capturing_generic_lambda ()))
     {
       /* See if any of the functions are non-static members.  */
       /* If so, the expression may be relative to 'this'.  */
@@ -3584,12 +3586,12 @@ finish_id_expression (tree id_expression,
 		    : CP_ID_KIND_UNQUALIFIED)));
 
       /* If the name was dependent on a template parameter and we're not in a
-	 default capturing generic lambda within a template, we will resolve the
+	 default capturing generic lambda, we will resolve the
 	 name at instantiation time.  FIXME: For lambdas, we should defer
 	 building the closure type until instantiation time then we won't need
 	 the extra test here.  */
       if (dependent_p
-	  && !parsing_default_capturing_generic_lambda_in_template ())
+	  && !parsing_default_capturing_generic_lambda ())
 	{
 	  if (DECL_P (decl)
 	      && any_dependent_type_attributes_p (DECL_ATTRIBUTES (decl)))
@@ -4565,7 +4567,7 @@ handle_omp_array_sections_1 (tree c, tree t, vec<tree> &types,
 	}
       if (!VAR_P (t) && TREE_CODE (t) != PARM_DECL)
 	{
-	  if (processing_template_decl)
+	  if (processing_template_decl && TREE_CODE (t) != OVERLOAD)
 	    return NULL_TREE;
 	  if (DECL_P (t))
 	    error_at (OMP_CLAUSE_LOCATION (c),
@@ -6079,7 +6081,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	  if (!VAR_P (t) && TREE_CODE (t) != PARM_DECL
 	      && (!field_ok || TREE_CODE (t) != FIELD_DECL))
 	    {
-	      if (processing_template_decl)
+	      if (processing_template_decl && TREE_CODE (t) != OVERLOAD)
 		break;
 	      if (DECL_P (t))
 		error ("%qD is not a variable in clause %qs", t,
@@ -6151,7 +6153,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	      && ((ort & C_ORT_OMP_DECLARE_SIMD) != C_ORT_OMP
 		  || TREE_CODE (t) != FIELD_DECL))
 	    {
-	      if (processing_template_decl)
+	      if (processing_template_decl && TREE_CODE (t) != OVERLOAD)
 		break;
 	      if (DECL_P (t))
 		error ("%qD is not a variable in clause %<firstprivate%>", t);
@@ -6194,7 +6196,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	      && ((ort & C_ORT_OMP_DECLARE_SIMD) != C_ORT_OMP
 		  || TREE_CODE (t) != FIELD_DECL))
 	    {
-	      if (processing_template_decl)
+	      if (processing_template_decl && TREE_CODE (t) != OVERLOAD)
 		break;
 	      if (DECL_P (t))
 		error ("%qD is not a variable in clause %<lastprivate%>", t);
@@ -6557,7 +6559,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	    }
 	  if (!VAR_P (t) && TREE_CODE (t) != PARM_DECL)
 	    {
-	      if (processing_template_decl)
+	      if (processing_template_decl && TREE_CODE (t) != OVERLOAD)
 		break;
 	      if (DECL_P (t))
 		error ("%qD is not a variable in %<aligned%> clause", t);
@@ -6639,7 +6641,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	    remove = true;
 	  else if (!VAR_P (t) && TREE_CODE (t) != PARM_DECL)
 	    {
-	      if (processing_template_decl)
+	      if (processing_template_decl && TREE_CODE (t) != OVERLOAD)
 		break;
 	      if (DECL_P (t))
 		error ("%qD is not a variable in %<depend%> clause", t);
@@ -6770,7 +6772,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	    }
 	  if (!VAR_P (t) && TREE_CODE (t) != PARM_DECL)
 	    {
-	      if (processing_template_decl)
+	      if (processing_template_decl && TREE_CODE (t) != OVERLOAD)
 		break;
 	      if (OMP_CLAUSE_CODE (c) == OMP_CLAUSE_MAP
 		  && (OMP_CLAUSE_MAP_KIND (c) == GOMP_MAP_POINTER
