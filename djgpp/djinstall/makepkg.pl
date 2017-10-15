@@ -17,6 +17,13 @@ my $gcc_ver_s2a = $gcc_ver_s2; $gcc_ver_s2a =~ s/-.*$//;
 my $gcc_ver_s1a = $gcc_ver_s1; $gcc_ver_s1a =~ s/-.*$//;
 my $docdir = "gnu/gcc-$gcc_ver_s1";
 
+if ( ! -f "include/cxx/$base_ver_s1/iostream" ) {
+  $base_ver_s1 =~ s/\..*//;
+  if ( ! -f "include/cxx/$base_ver_s1/iostream" ) {
+     exit 1;
+  }
+}
+
 my $djver = getdjver();
 my ($djver_desc, $djreq);
 
@@ -58,6 +65,7 @@ my @cpp_rename = (
 "debug/unordered_set:unordset",
 "debug/safe_unordered_base.h:safe_unordered_base.h01",
 "debug/safe_unordered_container.h:safe_unordered_container.h02",
+"debug/forward_list:forward.lis",
 
 "djgpp/bits/c++allocator.h:cxxallocator.h",
 "djgpp/bits/c++config.h:cxxconfig.h",
@@ -110,6 +118,7 @@ my @cpp_rename = (
 "profile/impl/profiler_vector_to_list.h:_profvtl.h1",
 "profile/unordered_map:_unordmap",
 "profile/unordered_set:_unordset",
+"profile/forward_list:forward.lis",
 
 "tr1/unordered_map.h:_unordmap.h1",
 "tr1/unordered_set.h:_unordset.h1",
@@ -117,13 +126,27 @@ my @cpp_rename = (
 "tr1/unordered_set:unordset",
 "tr1/hashtable_policy.h:hashtable_policy.h1",
 
+"tr2/dynamic_bitset.tcc:dynmbset.tcc",
+"tr2/dynamic_bitset:dynamic.bst",
+
 "unordered_map:unordmap",
 "unordered_set:unordset",
 "unordered_map:unordmap",
 "unordered_set:unordset",
+"initializer_list:initiali.lst",
+"system_error:system.err",
+"condition_variable:conditio.var",
+"forward_list:forward.lis",
+"scoped_allocator:scoped.all",
+"shared_mutex:shared.mutr",
 
 "experimental/unordered_map:unordmap",
 "experimental/unordered_set:unordset",
+"experimental/forward_list:forward.list",
+"experimental/memory_resource:memory.res",
+"experimental/propagate_const:propagat.con",
+"experimental/string_view:string.vie",
+"experimental/system_error:system.err"
 );
 
 my @c_inc_rename = (
@@ -718,7 +741,7 @@ sub mk_manifest
         'include/ssp/', 'info/(?:cpp|gcc|libquadmath)', '/djgpp\.ver$',
         '/include/(?:am|bm|em|m|nm|pm|sm|tm|xm)mintrin',
         '/include/(?:cpuid|float|iso646|mm_malloc|mm3dnow|mmintcommon)\.h$',
-        '/include/(?:avx|imm|wmm|x86|bmi|tbm|pku|clzero)intrin\.h$',
+        '/include/(?:avx|imm|wmm|x86|bmi|tbm|pku|clzero|sgx)intrin\.h$',
         '/include/(?:avx2|bmi2|f16c|fma|lzcnt)intrin.\h$',
         '/include/std(?:align|noreturn)\.h$',
         '/include/quadmath(?:|_weak).h',
