@@ -1,3 +1,47 @@
+2017-10-13  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/81048
+	* resolve.c (resolve_symbol): Ensure that derived type array
+	results get default initialization.
+
+2017-10-11  Nathan Sidwell  <nathan@acm.org>
+
+	* cpp.c (gfc_cpp_add_include_path): Update incpath_e names.
+	(gfc_cpp_add_include_path_after): Likewise.
+
+2017-10-10  Richard Sandiford  <richard.sandiford@linaro.org>
+
+	* target-memory.c (gfc_interpret_logical): Use wi::to_wide when
+	operating on trees as wide_ints.
+	* trans-const.c (gfc_conv_tree_to_mpz): Likewise.
+	* trans-expr.c (gfc_conv_cst_int_power): Likewise.
+	* trans-intrinsic.c (trans_this_image): Likewise.
+	(gfc_conv_intrinsic_bound): Likewise.
+	(conv_intrinsic_cobound): Likewise.
+
+2017-10-08  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	* check.c (gfc_check_x): Remove function.
+	* intrinsic.c (add_functions): Use gfc_check_fn_r.
+
+2017-10-08  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/82375
+	* module.c : Bump up MOD_VERSION to 15.
+	(mio_component): Edit comment about PDT specification list.
+	(mio_expr, mio_symbol): Include the expression and symbol PDT
+	specification lists in the same way as in mio_component.
+
+2017-10-08  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	* dump_prase_tree (show_symbol): Output list of variables in
+	NAMELIST.
+	(show_code_node): Add new line for ELSE and END DO for DO
+	CONCURRENT.
+	* invoke.texi: Document that the output of
+	-fdump-fortran-original, -fdump-fortran-optimized and
+	-fdump-parse-tree is unsable and may lead to ICEs.
+
 2017-10-07  Paul Thomas  <pault@gcc.gnu.org>
 
 	PR fortran/82375

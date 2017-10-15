@@ -41,7 +41,7 @@ pragma Polling (Off);
 package body System.Task_Primitives.Operations is
 
    use System.Tasking;
-   use System.Parameters;
+--   use System.Parameters;
 
    pragma Warnings (Off);
    --  Turn off warnings since so many unreferenced parameters
