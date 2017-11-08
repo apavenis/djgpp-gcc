@@ -26,6 +26,7 @@
 with Atree;    use Atree;
 with Debug;    use Debug;
 with Einfo;    use Einfo;
+with Elists;   use Elists;
 with Errout;   use Errout;
 with Exp_Ch11; use Exp_Ch11;
 with Exp_Tss;  use Exp_Tss;
@@ -293,7 +294,7 @@ package body Sem_Elab is
    --  |       |                                                            |
    --  |       +--> Process_Variable_Assignment                             |
    --  |       |                                                            |
-   --  |       +--> Process_Variable_Read                                   |
+   --  |       +--> Process_Variable_Reference                              |
    --  |                                                                    |
    --  +------------------------- Processing phase -------------------------+
 
@@ -683,10 +684,6 @@ package body Sem_Elab is
    --  variable.
 
    type Variable_Attributes is record
-      SPARK_Mode_On : Boolean;
-      --  This flag is set when the variable appears in a region subject to
-      --  pragma SPARK_Mode with value On, or starts one such region.
-
       Unit_Id : Entity_Id;
       --  This attribute denotes the entity of the compilation unit where the
       --  variable resides.
@@ -785,12 +782,15 @@ package body Sem_Elab is
    --  string " in SPARK" is added to the end of the message.
 
    procedure Ensure_Prior_Elaboration
-     (N            : Node_Id;
-      Unit_Id      : Entity_Id;
-      In_Task_Body : Boolean);
+     (N              : Node_Id;
+      Unit_Id        : Entity_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Guarantee the elaboration of unit Unit_Id with respect to the main unit.
-   --  N denotes the related scenario. Flag In_Task_Body should be set when the
-   --  need for elaboration is initiated from a task body.
+   --  N denotes the related scenario. Flag In_Partial_Fin should be set when
+   --  the need for elaboration is initiated by a partial finalization routine.
+   --  Flag In_Task_Body should be set when the need for prior elaboration is
+   --  initiated from a task body.
 
    procedure Ensure_Prior_Elaboration_Dynamic
      (N        : Node_Id;
@@ -962,16 +962,16 @@ package body Sem_Elab is
    --  information message, otherwise it emits an error. If flag In_SPARK
    --  is set, then string " in SPARK" is added to the end of the message.
 
-   procedure Info_Variable_Read
+   procedure Info_Variable_Reference
      (Ref      : Node_Id;
       Var_Id   : Entity_Id;
       Info_Msg : Boolean;
       In_SPARK : Boolean);
-   pragma Inline (Info_Variable_Read);
-   --  Output information concerning reference Ref which reads variable Var_Id.
-   --  If flag Info_Msg is set, the routine emits an information message,
-   --  otherwise it emits an error. If flag In_SPARK is set, then string " in
-   --  SPARK" is added to the end of the message.
+   pragma Inline (Info_Variable_Reference);
+   --  Output information concerning reference Ref which mentions variable
+   --  Var_Id. If flag Info_Msg is set, the routine emits an information
+   --  message, otherwise it emits an error. If flag In_SPARK is set, then
+   --  string " in SPARK" is added to the end of the message.
 
    function Insertion_Node (N : Node_Id; Ins_Nod : Node_Id) return Node_Id;
    pragma Inline (Insertion_Node);
@@ -1163,10 +1163,10 @@ package body Sem_Elab is
    --  Determine whether arbitrary node N denotes a suitable assignment for ABE
    --  processing.
 
-   function Is_Suitable_Variable_Read (N : Node_Id) return Boolean;
-   pragma Inline (Is_Suitable_Variable_Read);
-   --  Determine whether arbitrary node N is a suitable variable read for ABE
-   --  processing.
+   function Is_Suitable_Variable_Reference (N : Node_Id) return Boolean;
+   pragma Inline (Is_Suitable_Variable_Reference);
+   --  Determine whether arbitrary node N is a suitable variable reference for
+   --  ABE processing.
 
    function Is_Task_Entry (Id : Entity_Id) return Boolean;
    pragma Inline (Is_Task_Entry);
@@ -1202,86 +1202,111 @@ package body Sem_Elab is
    --  Pop the top of the scenario stack. A check is made to ensure that the
    --  scenario being removed is the same as N.
 
-   procedure Process_Access (Attr : Node_Id; In_Task_Body : Boolean);
+   procedure Process_Access
+     (Attr           : Node_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Perform ABE checks and diagnostics for 'Access to entry, operator, or
-   --  subprogram denoted by Attr. Flag In_Task_Body should be set when the
-   --  processing is initiated from a task body.
+   --  subprogram denoted by Attr. Flag In_Partial_Fin shoud be set when the
+   --  processing is initiated by a partial finalization routine. Flag
+   --  In_Task_Body should be set when the processing is initiated from a task
+   --  body.
 
    generic
       with procedure Process_Single_Activation
-        (Call         : Node_Id;
-         Call_Attrs   : Call_Attributes;
-         Obj_Id       : Entity_Id;
-         Task_Attrs   : Task_Attributes;
-         In_Task_Body : Boolean);
+        (Call           : Node_Id;
+         Call_Attrs     : Call_Attributes;
+         Obj_Id         : Entity_Id;
+         Task_Attrs     : Task_Attributes;
+         In_Partial_Fin : Boolean;
+         In_Task_Body   : Boolean);
       --  Perform ABE checks and diagnostics for task activation call Call
       --  which activates task Obj_Id. Call_Attrs are the attributes of the
       --  activation call. Task_Attrs are the attributes of the task type.
-      --  Flag In_Task_Body should be set when the processing is initiated
-      --  from a task body.
+      --  Flag In_Partial_Fin shoud be set when the processing is initiated
+      --  by a partial finalization routine. Flag In_Task_Body should be set
+      --  when the processing is initiated from a task body.
 
    procedure Process_Activation_Call
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      In_Task_Body : Boolean);
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Perform ABE checks and diagnostics for activation call Call by invoking
    --  routine Process_Single_Activation on each task object being activated.
-   --  Call_Attrs are the attributes of the activation call. Flag In_Task_Body
-   --  should be set when the processing is initiated from a task body.
+   --  Call_Attrs are the attributes of the activation call. In_Partial_Fin
+   --  shoud be set when the processing is initiated by a partial finalization
+   --  routine. Flag In_Task_Body should be set when the processing is started
+   --  from a task body.
 
    procedure Process_Activation_Conditional_ABE_Impl
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Obj_Id       : Entity_Id;
-      Task_Attrs   : Task_Attributes;
-      In_Task_Body : Boolean);
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Obj_Id         : Entity_Id;
+      Task_Attrs     : Task_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Perform common conditional ABE checks and diagnostics for call Call
    --  which activates task Obj_Id ignoring the Ada or SPARK rules. CAll_Attrs
    --  are the attributes of the activation call. Task_Attrs are the attributes
-   --  of the task type. Flag In_Task_Body should be set when the processing is
-   --  initiated from a task body.
+   --  of the task type. Flag In_Partial_Fin shoud be set when the processing
+   --  is initiated by a partial finalization routine. Flag In_Task_Body should
+   --  be set when the processing is initiated from a task body.
 
    procedure Process_Activation_Guaranteed_ABE_Impl
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Obj_Id       : Entity_Id;
-      Task_Attrs   : Task_Attributes;
-      In_Task_Body : Boolean);
-   --  Perform common guaranteed ABE checks and diagnostics for call Call
-   --  which activates task Obj_Id ignoring the Ada or SPARK rules. CAll_Attrs
-   --  are the attributes of the activation call. Task_Attrs are the attributes
-   --  of the task type. Flag In_Task_Body should be set when the processing is
-   --  initiated from a task body.
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Obj_Id         : Entity_Id;
+      Task_Attrs     : Task_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
+   --  Perform common guaranteed ABE checks and diagnostics for call Call which
+   --  activates task Obj_Id ignoring the Ada or SPARK rules. Task_Attrs are
+   --  the attributes of the task type. The following parameters are provided
+   --  for compatibility and are unused.
+   --
+   --    Call_Attrs
+   --    In_Partial_Fin
+   --    In_Task_Body
 
    procedure Process_Call
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      In_Task_Body : Boolean);
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Top-level dispatcher for processing of calls. Perform ABE checks and
    --  diagnostics for call Call which invokes target Target_Id. Call_Attrs
-   --  are the attributes of the call. Flag In_Task_Body should be set when
-   --  the processing is initiated from a task body.
+   --  are the attributes of the call. Flag In_Partial_Fin shoud be set when
+   --  the processing is initiated by a partial finalization routine. Flag
+   --  In_Task_Body should be set when the processing is started from a task
+   --  body.
 
    procedure Process_Call_Ada
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      Target_Attrs : Target_Attributes;
-      In_Task_Body : Boolean);
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      Target_Attrs   : Target_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Perform ABE checks and diagnostics for call Call which invokes target
    --  Target_Id using the Ada rules. Call_Attrs are the attributes of the
-   --  call. Target_Attrs are attributes of the target. Flag In_Task_Body
-   --  should be set when the processing is initiated from a task body.
+   --  call. Target_Attrs are attributes of the target. Flag In_Partial_Fin
+   --  shoud be set when the processing is initiated by a partial finalization
+   --  routine. Flag In_Task_Body should be set when the processing is started
+   --  from a task body.
 
    procedure Process_Call_Conditional_ABE
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      Target_Attrs : Target_Attributes);
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      Target_Attrs   : Target_Attributes;
+      In_Partial_Fin : Boolean);
    --  Perform common conditional ABE checks and diagnostics for call Call that
    --  invokes target Target_Id ignoring the Ada or SPARK rules. Call_Attrs are
    --  the attributes of the call. Target_Attrs are attributes of the target.
+   --  Flag In_Partial_Fin shoud be set when the processing is initiated by a
+   --  partial finalization routine.
 
    procedure Process_Call_Guaranteed_ABE
      (Call       : Node_Id;
@@ -1292,49 +1317,59 @@ package body Sem_Elab is
    --  the attributes of the call.
 
    procedure Process_Call_SPARK
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      Target_Attrs : Target_Attributes);
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      Target_Attrs   : Target_Attributes;
+      In_Partial_Fin : Boolean);
    --  Perform ABE checks and diagnostics for call Call which invokes target
    --  Target_Id using the SPARK rules. Call_Attrs are the attributes of the
-   --  call. Target_Attrs are attributes of the target.
+   --  call. Target_Attrs are attributes of the target. Flag In_Partial_Fin
+   --  shoud be set when the processing is initiated by a partial finalization
+   --  routine.
 
    procedure Process_Guaranteed_ABE (N : Node_Id);
    --  Top level dispatcher for processing of scenarios which result in a
    --  guaranteed ABE.
 
    procedure Process_Instantiation
-     (Exp_Inst     : Node_Id;
-      In_Task_Body : Boolean);
+     (Exp_Inst       : Node_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Top level dispatcher for processing of instantiations. Perform ABE
    --  checks and diagnostics for expanded instantiation Exp_Inst. Flag
-   --  In_Task_Body should be set when the processing is initiated from a
-   --  task body.
+   --  In_Partial_Fin shoud be set when the processing is initiated by a
+   --  partial finalization routine. Flag In_Task_Body should be set when
+   --  the processing is initiated from a task body.
 
    procedure Process_Instantiation_Ada
-     (Exp_Inst     : Node_Id;
-      Inst         : Node_Id;
-      Inst_Attrs   : Instantiation_Attributes;
-      Gen_Id       : Entity_Id;
-      Gen_Attrs    : Target_Attributes;
-      In_Task_Body : Boolean);
+     (Exp_Inst       : Node_Id;
+      Inst           : Node_Id;
+      Inst_Attrs     : Instantiation_Attributes;
+      Gen_Id         : Entity_Id;
+      Gen_Attrs      : Target_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Perform ABE checks and diagnostics for expanded instantiation Exp_Inst
    --  of generic Gen_Id using the Ada rules. Inst is the instantiation node.
-   --  Inst_Attrs are the attributes of the instance. Gen_Attrs are the
-   --  attributes of the generic. Flag In_Task_Body should be set when the
-   --  processing is initiated from a task body.
+   --  Inst_Attrs are the attributes of the instance. Gen_Attrs denotes the
+   --  attributes of the generic. Flag In_Partial_Fin shoud be set when the
+   --  processing is initiated by a partial finalization routine. In_Task_Body
+   --  should be set when the processing is initiated from a task body.
 
    procedure Process_Instantiation_Conditional_ABE
-     (Exp_Inst   : Node_Id;
-      Inst       : Node_Id;
-      Inst_Attrs : Instantiation_Attributes;
-      Gen_Id     : Entity_Id;
-      Gen_Attrs  : Target_Attributes);
+     (Exp_Inst       : Node_Id;
+      Inst           : Node_Id;
+      Inst_Attrs     : Instantiation_Attributes;
+      Gen_Id         : Entity_Id;
+      Gen_Attrs      : Target_Attributes;
+      In_Partial_Fin : Boolean);
    --  Perform common conditional ABE checks and diagnostics for expanded
    --  instantiation Exp_Inst of generic Gen_Id ignoring the Ada or SPARK
    --  rules. Inst is the instantiation node. Inst_Attrs are the attributes
-   --  of the instance. Gen_Attrs are the attributes of the generic.
+   --  of the instance. Gen_Attrs are the attributes of the generic. Flag
+   --  In_Partial_Fin shoud be set when the processing is initiated by a
+   --  partial finalization routine.
 
    procedure Process_Instantiation_Guaranteed_ABE (Exp_Inst : Node_Id);
    --  Perform common guaranteed ABE checks and diagnostics for expanded
@@ -1342,20 +1377,27 @@ package body Sem_Elab is
    --  rules.
 
    procedure Process_Instantiation_SPARK
-     (Exp_Inst   : Node_Id;
-      Inst       : Node_Id;
-      Inst_Attrs : Instantiation_Attributes;
-      Gen_Id     : Entity_Id;
-      Gen_Attrs  : Target_Attributes);
+     (Exp_Inst       : Node_Id;
+      Inst           : Node_Id;
+      Inst_Attrs     : Instantiation_Attributes;
+      Gen_Id         : Entity_Id;
+      Gen_Attrs      : Target_Attributes;
+      In_Partial_Fin : Boolean);
    --  Perform ABE checks and diagnostics for expanded instantiation Exp_Inst
    --  of generic Gen_Id using the SPARK rules. Inst is the instantiation node.
-   --  Inst_Attrs are the attributes of the instance. Gen_Attrs are the
-   --  attributes of the generic.
+   --  Inst_Attrs are the attributes of the instance. Gen_Attrs denotes the
+   --  attributes of the generic. Flag In_Partial_Fin shoud be set when the
+   --  processing is initiated by a partial finalization routine.
 
-   procedure Process_Scenario (N : Node_Id; In_Task_Body : Boolean := False);
+   procedure Process_Scenario
+     (N              : Node_Id;
+      In_Partial_Fin : Boolean := False;
+      In_Task_Body   : Boolean := False);
    --  Top level dispatcher for processing of various elaboration scenarios.
-   --  Perform ABE checks and diagnostics for scenario N. Flag In_Task_Body
-   --  should be set when the processing is initiated from a task body.
+   --  Perform ABE checks and diagnostics for scenario N. Flag In_Partial_Fin
+   --  shoud be set when the processing is initiated by a partial finalization
+   --  routine. Flag In_Task_Body should be set when the processing is started
+   --  from a task body.
 
    procedure Process_Variable_Assignment (Asmt : Node_Id);
    --  Top level dispatcher for processing of variable assignments. Perform ABE
@@ -1373,9 +1415,16 @@ package body Sem_Elab is
    --  Perform ABE checks and diagnostics for assignment statement Asmt that
    --  updates the value of variable Var_Id using the SPARK rules.
 
-   procedure Process_Variable_Read (Ref : Node_Id);
-   --  Perform ABE checks and diagnostics for reference Ref that reads a
-   --  variable.
+   procedure Process_Variable_Reference (Ref : Node_Id);
+   --  Top level dispatcher for processing of variable references. Perform ABE
+   --  checks and diagnostics for variable reference Ref.
+
+   procedure Process_Variable_Reference_Read
+     (Ref    : Node_Id;
+      Var_Id : Entity_Id;
+      Attrs  : Variable_Attributes);
+   --  Perform ABE checks and diagnostics for reference Ref described by its
+   --  attributes Attrs, that reads variable Var_Id.
 
    procedure Push_Active_Scenario (N : Node_Id);
    pragma Inline (Push_Active_Scenario);
@@ -1391,10 +1440,15 @@ package body Sem_Elab is
    pragma Inline (Static_Elaboration_Checks);
    --  Determine whether the static model is in effect
 
-   procedure Traverse_Body (N : Node_Id; In_Task_Body : Boolean);
+   procedure Traverse_Body
+     (N              : Node_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean);
    --  Inspect the declarations and statements of subprogram body N for
-   --  suitable elaboration scenarios and process them. Flag In_Task_Body
-   --  should be set when the traversal is initiated from a task body.
+   --  suitable elaboration scenarios and process them. Flag In_Partial_Fin
+   --  shoud be set when the processing is initiated by a partial finalization
+   --  routine. Flag In_Task_Body should be set when the traversal is initiated
+   --  from a task body.
 
    procedure Update_Elaboration_Scenario (New_N : Node_Id; Old_N : Node_Id);
    pragma Inline (Update_Elaboration_Scenario);
@@ -1597,6 +1651,12 @@ package body Sem_Elab is
       if ASIS_Mode then
          return;
 
+      --  Nothing to do when the call is being preanalyzed as the marker will
+      --  be inserted in the wrong place.
+
+      elsif Preanalysis_Active then
+         return;
+
       --  Nothing to do when the input does not denote a call or a requeue
 
       elsif not Nkind_In (N, N_Entry_Call_Statement,
@@ -1604,12 +1664,6 @@ package body Sem_Elab is
                              N_Procedure_Call_Statement,
                              N_Requeue_Statement)
       then
-         return;
-
-      --  Nothing to do when the call is being preanalyzed as the marker will
-      --  be inserted in the wrong place.
-
-      elsif Preanalysis_Active then
          return;
 
       --  Nothing to do when the call is analyzed/resolved too early within an
@@ -1757,6 +1811,146 @@ package body Sem_Elab is
 
       Record_Elaboration_Scenario (Marker);
    end Build_Call_Marker;
+
+   -------------------------------------
+   -- Build_Variable_Reference_Marker --
+   -------------------------------------
+
+   procedure Build_Variable_Reference_Marker
+     (N     : Node_Id;
+      Read  : Boolean;
+      Write : Boolean)
+   is
+      function In_Pragma (Nod : Node_Id) return Boolean;
+      --  Determine whether arbitrary node Nod appears within a pragma
+
+      ---------------
+      -- In_Pragma --
+      ---------------
+
+      function In_Pragma (Nod : Node_Id) return Boolean is
+         Par : Node_Id;
+
+      begin
+         Par := Nod;
+         while Present (Par) loop
+            if Nkind (Par) = N_Pragma then
+               return True;
+
+            --  Prevent the search from going too far
+
+            elsif Is_Body_Or_Package_Declaration (Par) then
+               exit;
+            end if;
+
+            Par := Parent (Par);
+         end loop;
+
+         return False;
+      end In_Pragma;
+
+      --  Local variables
+
+      Marker    : Node_Id;
+      Prag      : Node_Id;
+      Var_Attrs : Variable_Attributes;
+      Var_Id    : Entity_Id;
+
+   --  Start of processing for Build_Variable_Reference_Marker
+
+   begin
+      --  Nothing to do for ASIS. As a result, ABE checks and diagnostics are
+      --  not performed in this mode.
+
+      if ASIS_Mode then
+         return;
+
+      --  Nothing to do when the reference is being preanalyzed as the marker
+      --  will be inserted in the wrong place.
+
+      elsif Preanalysis_Active then
+         return;
+
+      --  Nothing to do when the input does not denote a reference
+
+      elsif not Nkind_In (N, N_Expanded_Name, N_Identifier) then
+         return;
+
+      --  Nothing to do for internally-generated references
+
+      elsif not Comes_From_Source (N) then
+         return;
+
+      --  Nothing to do when the reference is erroneous, left in a bad state,
+      --  or does not denote a variable.
+
+      elsif not (Present (Entity (N))
+                  and then Ekind (Entity (N)) = E_Variable
+                  and then Entity (N) /= Any_Id)
+      then
+         return;
+      end if;
+
+      Extract_Variable_Reference_Attributes
+        (Ref    => N,
+         Var_Id => Var_Id,
+         Attrs  => Var_Attrs);
+
+      Prag := SPARK_Pragma (Var_Id);
+
+      if Comes_From_Source (Var_Id)
+
+         --  Both the variable and the reference must appear in SPARK_Mode On
+         --  regions because this scenario falls under the SPARK rules.
+
+         and then Present (Prag)
+         and then Get_SPARK_Mode_From_Annotation (Prag) = On
+         and then Is_SPARK_Mode_On_Node (N)
+
+         --  The reference must not be considered when it appears in a pragma.
+         --  If the pragma has run-time semantics, then the reference will be
+         --  reconsidered once the pragma is expanded.
+
+         --  Performance note: parent traversal
+
+         and then not In_Pragma (N)
+      then
+         null;
+
+      --  Otherwise the reference is not suitable for ABE processing. This
+      --  prevents the generation of variable markers which will never play
+      --  a role in ABE diagnostics.
+
+      else
+         return;
+      end if;
+
+      --  At this point it is known that the variable reference will play some
+      --  role in ABE checks and diagnostics. Create a corresponding variable
+      --  marker in case the original variable reference is folded or optimized
+      --  away.
+
+      Marker := Make_Variable_Reference_Marker (Sloc (N));
+
+      --  Inherit the attributes of the original variable reference
+
+      Set_Target   (Marker, Var_Id);
+      Set_Is_Read  (Marker, Read);
+      Set_Is_Write (Marker, Write);
+
+      --  The marker is inserted prior to the original variable reference. The
+      --  insertion must take place even when the reference does not occur in
+      --  the main unit to keep the tree symmetric. This ensures that internal
+      --  name serialization is consistent in case the variable marker causes
+      --  the tree to transform in some way.
+
+      Insert_Action (N, Marker);
+
+      --  The marker becomes the "corresponding" scenario for the reference.
+      --  Save the marker for later processing for the ABE phase.
+
+      Record_Elaboration_Scenario (Marker);
+   end Build_Variable_Reference_Marker;
 
    ---------------------------------
    -- Check_Elaboration_Scenarios --
@@ -1996,9 +2190,10 @@ package body Sem_Elab is
    ------------------------------
 
    procedure Ensure_Prior_Elaboration
-     (N            : Node_Id;
-      Unit_Id      : Entity_Id;
-      In_Task_Body : Boolean)
+     (N              : Node_Id;
+      Unit_Id        : Entity_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
       Prag_Nam : Name_Id;
 
@@ -2035,11 +2230,18 @@ package body Sem_Elab is
          Prag_Nam := Name_Elaborate_All;
       end if;
 
+      --  Nothing to do when the need for prior elaboration came from a partial
+      --  finalization routine which occurs in an initialization context. This
+      --  behaviour parallels that of the old ABE mechanism.
+
+      if In_Partial_Fin then
+         return;
+
       --  Nothing to do when the need for prior elaboration came from a task
       --  body and switch -gnatd.y (disable implicit pragma Elaborate_All on
       --  task bodies) is in effect.
 
-      if Debug_Flag_Dot_Y and then In_Task_Body then
+      elsif Debug_Flag_Dot_Y and then In_Task_Body then
          return;
 
       --  Nothing to do when the unit is elaborated prior to the main unit.
@@ -2932,14 +3134,45 @@ package body Sem_Elab is
       Var_Id : out Entity_Id;
       Attrs  : out Variable_Attributes)
    is
+      function Get_Renamed_Variable (Id : Entity_Id) return Entity_Id;
+      --  Obtain the ultimate renamed variable of variable Id
+
+      --------------------------
+      -- Get_Renamed_Variable --
+      --------------------------
+
+      function Get_Renamed_Variable (Id : Entity_Id) return Entity_Id is
+         Ren_Id : Entity_Id;
+
+      begin
+         Ren_Id := Id;
+         while Present (Renamed_Entity (Ren_Id))
+           and then Nkind (Renamed_Entity (Ren_Id)) in N_Entity
+         loop
+            Ren_Id := Renamed_Entity (Ren_Id);
+         end loop;
+
+         return Ren_Id;
+      end Get_Renamed_Variable;
+
+   --  Start of processing for Extract_Variable_Reference_Attributes
+
    begin
-      --  Traverse a possible chain of renamings to obtain the original
-      --  variable being referenced.
+      --  Extraction for variable reference markers
 
-      Var_Id := Get_Renamed_Entity (Entity (Ref));
+      if Nkind (Ref) = N_Variable_Reference_Marker then
+         Var_Id := Target (Ref);
 
-      Attrs.SPARK_Mode_On := Is_SPARK_Mode_On_Node (Ref);
-      Attrs.Unit_Id       := Find_Top_Unit (Var_Id);
+      --  Extraction for expanded names and identifiers
+
+      else
+         Var_Id := Entity (Ref);
+      end if;
+
+      --  Obtain the original variable which the reference mentions
+
+      Var_Id        := Get_Renamed_Variable (Var_Id);
+      Attrs.Unit_Id := Find_Top_Unit (Var_Id);
 
       --  At this point certain attributes should always be available
 
@@ -4226,24 +4459,26 @@ package body Sem_Elab is
          In_SPARK => In_SPARK);
    end Info_Instantiation;
 
-   ------------------------
-   -- Info_Variable_Read --
-   ------------------------
+   -----------------------------
+   -- Info_Variable_Reference --
+   -----------------------------
 
-   procedure Info_Variable_Read
+   procedure Info_Variable_Reference
      (Ref      : Node_Id;
       Var_Id   : Entity_Id;
       Info_Msg : Boolean;
       In_SPARK : Boolean)
    is
    begin
-      Elab_Msg_NE
-        (Msg      => "read of variable & during elaboration",
-         N        => Ref,
-         Id       => Var_Id,
-         Info_Msg => Info_Msg,
-         In_SPARK => In_SPARK);
-   end Info_Variable_Read;
+      if Is_Read (Ref) then
+         Elab_Msg_NE
+           (Msg      => "read of variable & during elaboration",
+            N        => Ref,
+            Id       => Var_Id,
+            Info_Msg => Info_Msg,
+            In_SPARK => In_SPARK);
+      end if;
+   end Info_Variable_Reference;
 
    --------------------
    -- Insertion_Node --
@@ -5200,7 +5435,7 @@ package body Sem_Elab is
           or else Is_Suitable_Call (N)
           or else Is_Suitable_Instantiation (N)
           or else Is_Suitable_Variable_Assignment (N)
-          or else Is_Suitable_Variable_Read (N);
+          or else Is_Suitable_Variable_Reference (N);
    end Is_Suitable_Scenario;
 
    -------------------------------------
@@ -5297,187 +5532,19 @@ package body Sem_Elab is
           and then Corresponding_Body (Var_Unit) = N_Unit_Id;
    end Is_Suitable_Variable_Assignment;
 
-   -------------------------------
-   -- Is_Suitable_Variable_Read --
-   -------------------------------
+   ------------------------------------
+   -- Is_Suitable_Variable_Reference --
+   ------------------------------------
 
-   function Is_Suitable_Variable_Read (N : Node_Id) return Boolean is
-      function In_Pragma (Nod : Node_Id) return Boolean;
-      --  Determine whether arbitrary node Nod appears within a pragma
-
-      function Is_Variable_Read (Ref : Node_Id) return Boolean;
-      --  Determine whether variable reference Ref constitutes a read
-
-      ---------------
-      -- In_Pragma --
-      ---------------
-
-      function In_Pragma (Nod : Node_Id) return Boolean is
-         Par : Node_Id;
-
-      begin
-         Par := Nod;
-         while Present (Par) loop
-            if Nkind (Par) = N_Pragma then
-               return True;
-
-            --  Prevent the search from going too far
-
-            elsif Is_Body_Or_Package_Declaration (Par) then
-               exit;
-            end if;
-
-            Par := Parent (Par);
-         end loop;
-
-         return False;
-      end In_Pragma;
-
-      ----------------------
-      -- Is_Variable_Read --
-      ----------------------
-
-      function Is_Variable_Read (Ref : Node_Id) return Boolean is
-         function Is_Out_Actual (Call : Node_Id) return Boolean;
-         --  Determine whether the corresponding formal of actual Ref which
-         --  appears in call Call has mode OUT.
-
-         -------------------
-         -- Is_Out_Actual --
-         -------------------
-
-         function Is_Out_Actual (Call : Node_Id) return Boolean is
-            Actual     : Node_Id;
-            Call_Attrs : Call_Attributes;
-            Formal     : Entity_Id;
-            Target_Id  : Entity_Id;
-
-         begin
-            Extract_Call_Attributes
-              (Call      => Call,
-               Target_Id => Target_Id,
-               Attrs     => Call_Attrs);
-
-            --  Inspect the actual and formal parameters, trying to find the
-            --  corresponding formal for Ref.
-
-            Actual := First_Actual (Call);
-            Formal := First_Formal (Target_Id);
-            while Present (Actual) and then Present (Formal) loop
-               if Actual = Ref then
-                  return Ekind (Formal) = E_Out_Parameter;
-               end if;
-
-               Next_Actual (Actual);
-               Next_Formal (Formal);
-            end loop;
-
-            return False;
-         end Is_Out_Actual;
-
-         --  Local variables
-
-         Context : constant Node_Id := Parent (Ref);
-
-      --  Start of processing for Is_Variable_Read
-
-      begin
-         --  The majority of variable references are reads, and they can appear
-         --  in a great number of contexts. To determine whether a reference is
-         --  a read, it is more practical to find out whether it is a write.
-
-         --  A reference is a write when it appears immediately on the left-
-         --  hand side of an assignment.
-
-         if Nkind (Context) = N_Assignment_Statement
-           and then Name (Context) = Ref
-         then
-            return False;
-
-         --  A reference is a write when it acts as an actual in a subprogram
-         --  call and the corresponding formal has mode OUT.
-
-         elsif Nkind_In (Context, N_Function_Call,
-                                  N_Procedure_Call_Statement)
-           and then Is_Out_Actual (Context)
-         then
-            return False;
-         end if;
-
-         --  Any other reference is a read
-
-         return True;
-      end Is_Variable_Read;
-
-      --  Local variables
-
-      Prag   : Node_Id;
-      Var_Id : Entity_Id;
-
-   --  Start of processing for Is_Suitable_Variable_Read
-
+   function Is_Suitable_Variable_Reference (N : Node_Id) return Boolean is
    begin
-      --  This scenario is relevant only when the static model is in effect
-      --  because it is graph-dependent and does not involve any run-time
-      --  checks. Allowing it in the dynamic model would create confusing
-      --  noise.
+      --  Expanded names and identifiers are intentionally ignored because they
+      --  be folded, optimized away, etc. Variable references markers play the
+      --  role of variable references and provide a uniform foundation for ABE
+      --  processing.
 
-      if not Static_Elaboration_Checks then
-         return False;
-
-      --  Attributes and operator sumbols are not considered to be suitable
-      --  references even though they are part of predicate Is_Entity_Name.
-
-      elsif not Nkind_In (N, N_Expanded_Name, N_Identifier) then
-         return False;
-
-      --  Nothing to do for internally-generated references because they are
-      --  assumed to be ABE safe.
-
-      elsif not Comes_From_Source (N) then
-         return False;
-      end if;
-
-      --  Sanitize the reference
-
-      Var_Id := Entity (N);
-
-      if No (Var_Id) then
-         return False;
-
-      elsif Var_Id = Any_Id then
-         return False;
-
-      elsif Ekind (Var_Id) /= E_Variable then
-         return False;
-      end if;
-
-      Prag := SPARK_Pragma (Var_Id);
-
-      --  To qualify, the reference must meet the following prerequisites:
-
-      return
-        Comes_From_Source (Var_Id)
-
-          --  Both the variable and the reference must appear in SPARK_Mode On
-          --  regions because this scenario falls under the SPARK rules.
-
-          and then Present (Prag)
-          and then Get_SPARK_Mode_From_Annotation (Prag) = On
-          and then Is_SPARK_Mode_On_Node (N)
-
-          --  The reference must denote a variable read
-
-          and then Is_Variable_Read (N)
-
-          --  The reference must not be considered when it appears in a pragma.
-          --  If the pragma has run-time semantics, then the reference will be
-          --  reconsidered once the pragma is expanded.
-
-          --  Performance note: parent traversal
-
-          and then not In_Pragma (N);
-   end Is_Suitable_Variable_Read;
+      return Nkind (N) = N_Variable_Reference_Marker;
+   end Is_Suitable_Variable_Reference;
 
    -------------------
    -- Is_Task_Entry --
@@ -5652,8 +5719,8 @@ package body Sem_Elab is
                Info_Msg => False,
                In_SPARK => True);
 
-         elsif Is_Suitable_Variable_Read (N) then
-            Info_Variable_Read
+         elsif Is_Suitable_Variable_Reference (N) then
+            Info_Variable_Reference
               (Ref      => N,
                Var_Id   => Target_Id,
                Info_Msg => False,
@@ -5817,8 +5884,8 @@ package body Sem_Elab is
       procedure Output_Variable_Assignment (N : Node_Id);
       --  Emit a specific diagnostic message for assignment statement N
 
-      procedure Output_Variable_Read (N : Node_Id);
-      --  Emit a specific diagnostic message for reference N which reads a
+      procedure Output_Variable_Reference (N : Node_Id);
+      --  Emit a specific diagnostic message for reference N which mentions a
       --  variable.
 
       -------------------
@@ -6148,11 +6215,11 @@ package body Sem_Elab is
          Error_Msg_NE ("\\  variable & assigned #", Error_Nod, Var_Id);
       end Output_Variable_Assignment;
 
-      --------------------------
-      -- Output_Variable_Read --
-      --------------------------
+      -------------------------------
+      -- Output_Variable_Reference --
+      -------------------------------
 
-      procedure Output_Variable_Read (N : Node_Id) is
+      procedure Output_Variable_Reference (N : Node_Id) is
          Dummy  : Variable_Attributes;
          Var_Id : Entity_Id;
 
@@ -6163,8 +6230,11 @@ package body Sem_Elab is
             Attrs  => Dummy);
 
          Error_Msg_Sloc := Sloc (N);
-         Error_Msg_NE ("\\  variable & read #", Error_Nod, Var_Id);
-      end Output_Variable_Read;
+
+         if Is_Read (N) then
+            Error_Msg_NE ("\\  variable & read #", Error_Nod, Var_Id);
+         end if;
+      end Output_Variable_Reference;
 
       --  Local variables
 
@@ -6225,10 +6295,10 @@ package body Sem_Elab is
          elsif Nkind (N) = N_Assignment_Statement then
             Output_Variable_Assignment (N);
 
-         --  Variable read
+         --  Variable references
 
-         elsif Is_Suitable_Variable_Read (N) then
-            Output_Variable_Read (N);
+         elsif Is_Suitable_Variable_Reference (N) then
+            Output_Variable_Reference (N);
 
          else
             pragma Assert (False);
@@ -6253,7 +6323,11 @@ package body Sem_Elab is
    -- Process_Access --
    --------------------
 
-   procedure Process_Access (Attr : Node_Id; In_Task_Body : Boolean) is
+   procedure Process_Access
+     (Attr           : Node_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
+   is
       function Build_Access_Marker (Target_Id : Entity_Id) return Node_Id;
       pragma Inline (Build_Access_Marker);
       --  Create a suitable call marker which invokes target Target_Id
@@ -6340,17 +6414,19 @@ package body Sem_Elab is
 
       if Debug_Flag_Dot_O then
          Process_Scenario
-           (N            => Build_Access_Marker (Target_Id),
-            In_Task_Body => In_Task_Body);
+           (N              => Build_Access_Marker (Target_Id),
+            In_Partial_Fin => In_Partial_Fin,
+            In_Task_Body   => In_Task_Body);
 
       --  Otherwise ensure that the unit with the corresponding body is
       --  elaborated prior to the main unit.
 
       else
          Ensure_Prior_Elaboration
-           (N            => Attr,
-            Unit_Id      => Target_Attrs.Unit_Id,
-            In_Task_Body => In_Task_Body);
+           (N              => Attr,
+            Unit_Id        => Target_Attrs.Unit_Id,
+            In_Partial_Fin => In_Partial_Fin,
+            In_Task_Body   => In_Task_Body);
       end if;
    end Process_Access;
 
@@ -6359,9 +6435,10 @@ package body Sem_Elab is
    -----------------------------
 
    procedure Process_Activation_Call
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      In_Task_Body : Boolean)
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
       procedure Process_Task_Object (Obj_Id : Entity_Id; Typ : Entity_Id);
       --  Perform ABE checks and diagnostics for object Obj_Id with type Typ.
@@ -6389,11 +6466,12 @@ package body Sem_Elab is
                Attrs => Task_Attrs);
 
             Process_Single_Activation
-              (Call         => Call,
-               Call_Attrs   => Call_Attrs,
-               Obj_Id       => Obj_Id,
-               Task_Attrs   => Task_Attrs,
-               In_Task_Body => In_Task_Body);
+              (Call           => Call,
+               Call_Attrs     => Call_Attrs,
+               Obj_Id         => Obj_Id,
+               Task_Attrs     => Task_Attrs,
+               In_Partial_Fin => In_Partial_Fin,
+               In_Task_Body   => In_Task_Body);
 
          --  Examine the component type when the object is an array
 
@@ -6507,11 +6585,12 @@ package body Sem_Elab is
    ---------------------------------------------
 
    procedure Process_Activation_Conditional_ABE_Impl
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Obj_Id       : Entity_Id;
-      Task_Attrs   : Task_Attributes;
-      In_Task_Body : Boolean)
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Obj_Id         : Entity_Id;
+      Task_Attrs     : Task_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
       Check_OK : constant Boolean :=
                    not Is_Ignored_Ghost_Entity (Obj_Id)
@@ -6650,12 +6729,19 @@ package body Sem_Elab is
 
          if Earlier_In_Extended_Unit (Root, Task_Attrs.Body_Decl) then
 
+            --  Do not emit any ABE diagnostics when the activation occurs in
+            --  a partial finalization context because this leads to confusing
+            --  noise.
+
+            if In_Partial_Fin then
+               null;
+
             --  ABE diagnostics are emitted only in the static model because
             --  there is a well-defined order to visiting scenarios. Without
             --  this order diagnostics appear jumbled and result in unwanted
             --  noise.
 
-            if Static_Elaboration_Checks then
+            elsif Static_Elaboration_Checks then
                Error_Msg_Sloc := Sloc (Call);
                Error_Msg_N
                  ("??task & will be activated # before elaboration of its "
@@ -6707,12 +6793,16 @@ package body Sem_Elab is
 
       else
          Ensure_Prior_Elaboration
-           (N            => Call,
-            Unit_Id      => Task_Attrs.Unit_Id,
-            In_Task_Body => In_Task_Body);
+           (N              => Call,
+            Unit_Id        => Task_Attrs.Unit_Id,
+            In_Partial_Fin => In_Partial_Fin,
+            In_Task_Body   => In_Task_Body);
       end if;
 
-      Traverse_Body (Task_Attrs.Body_Decl, In_Task_Body => True);
+      Traverse_Body
+        (N              => Task_Attrs.Body_Decl,
+         In_Partial_Fin => In_Partial_Fin,
+         In_Task_Body   => True);
    end Process_Activation_Conditional_ABE_Impl;
 
    procedure Process_Activation_Conditional_ABE is
@@ -6723,13 +6813,15 @@ package body Sem_Elab is
    --------------------------------------------
 
    procedure Process_Activation_Guaranteed_ABE_Impl
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Obj_Id       : Entity_Id;
-      Task_Attrs   : Task_Attributes;
-      In_Task_Body : Boolean)
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Obj_Id         : Entity_Id;
+      Task_Attrs     : Task_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
       pragma Unreferenced (Call_Attrs);
+      pragma Unreferenced (In_Partial_Fin);
       pragma Unreferenced (In_Task_Body);
 
       Check_OK : constant Boolean :=
@@ -6868,18 +6960,107 @@ package body Sem_Elab is
    ------------------
 
    procedure Process_Call
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      In_Task_Body : Boolean)
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
+      function In_Initialization_Context (N : Node_Id) return Boolean;
+      --  Determine whether arbitrary node N appears within a type init proc,
+      --  primitive [Deep_]Initialize, or a block created for initialization
+      --  purposes.
+
+      function Is_Partial_Finalization_Proc return Boolean;
+      pragma Inline (Is_Partial_Finalization_Proc);
+      --  Determine whether call Call with target Target_Id invokes a partial
+      --  finalization procedure.
+
+      -------------------------------
+      -- In_Initialization_Context --
+      -------------------------------
+
+      function In_Initialization_Context (N : Node_Id) return Boolean is
+         Par     : Node_Id;
+         Spec_Id : Entity_Id;
+
+      begin
+         --  Climb the parent chain looking for initialization actions
+
+         Par := Parent (N);
+         while Present (Par) loop
+
+            --  A block may be part of the initialization actions of a default
+            --  initialized object.
+
+            if Nkind (Par) = N_Block_Statement
+              and then Is_Initialization_Block (Par)
+            then
+               return True;
+
+            --  A subprogram body may denote an initialization routine
+
+            elsif Nkind (Par) = N_Subprogram_Body then
+               Spec_Id := Unique_Defining_Entity (Par);
+
+               --  The current subprogram body denotes a type init proc or
+               --  primitive [Deep_]Initialize.
+
+               if Is_Init_Proc (Spec_Id)
+                 or else Is_Controlled_Proc (Spec_Id, Name_Initialize)
+                 or else Is_TSS (Spec_Id, TSS_Deep_Initialize)
+               then
+                  return True;
+               end if;
+
+            --  Prevent the search from going too far
+
+            elsif Is_Body_Or_Package_Declaration (Par) then
+               exit;
+            end if;
+
+            Par := Parent (Par);
+         end loop;
+
+         return False;
+      end In_Initialization_Context;
+
+      ----------------------------------
+      -- Is_Partial_Finalization_Proc --
+      ----------------------------------
+
+      function Is_Partial_Finalization_Proc return Boolean is
+      begin
+         --  To qualify, the target must denote primitive [Deep_]Finalize or a
+         --  finalizer procedure, and the call must appear in an initialization
+         --  context.
+
+         return
+           (Is_Controlled_Proc (Target_Id, Name_Finalize)
+              or else Is_Finalizer_Proc (Target_Id)
+              or else Is_TSS (Target_Id, TSS_Deep_Finalize))
+            and then In_Initialization_Context (Call);
+      end Is_Partial_Finalization_Proc;
+
+      --  Local variables
+
+      Partial_Fin_On : Boolean;
       SPARK_Rules_On : Boolean;
       Target_Attrs   : Target_Attributes;
+
+   --  Start of processing for Process_Call
 
    begin
       Extract_Target_Attributes
         (Target_Id => Target_Id,
          Attrs     => Target_Attrs);
+
+      --  The call occurs in a partial finalization context when a prior
+      --  scenario is already in that mode, or when the target denotes a
+      --  [Deep_]Finalize primitive or a finalizer within an initialization
+      --  context.
+
+      Partial_Fin_On := In_Partial_Fin or else Is_Partial_Finalization_Proc;
 
       --  The SPARK rules are in effect when both the call and target are
       --  subject to SPARK_Mode On.
@@ -6954,28 +7135,30 @@ package body Sem_Elab is
 
       elsif SPARK_Rules_On and Debug_Flag_Dot_V then
          Process_Call_SPARK
-           (Call         => Call,
-            Call_Attrs   => Call_Attrs,
-            Target_Id    => Target_Id,
-            Target_Attrs => Target_Attrs);
+           (Call           => Call,
+            Call_Attrs     => Call_Attrs,
+            Target_Id      => Target_Id,
+            Target_Attrs   => Target_Attrs,
+            In_Partial_Fin => In_Partial_Fin);
 
       --  Otherwise the Ada rules are in effect, or SPARK code is allowed to
       --  violate the SPARK rules.
 
       else
          Process_Call_Ada
-           (Call         => Call,
-            Call_Attrs   => Call_Attrs,
-            Target_Id    => Target_Id,
-            Target_Attrs => Target_Attrs,
-            In_Task_Body => In_Task_Body);
+           (Call           => Call,
+            Call_Attrs     => Call_Attrs,
+            Target_Id      => Target_Id,
+            Target_Attrs   => Target_Attrs,
+            In_Partial_Fin => Partial_Fin_On,
+            In_Task_Body   => In_Task_Body);
       end if;
 
       --  Inspect the target body (and barried function) for other suitable
       --  elaboration scenarios.
 
-      Traverse_Body (Target_Attrs.Body_Barf, In_Task_Body);
-      Traverse_Body (Target_Attrs.Body_Decl, In_Task_Body);
+      Traverse_Body (Target_Attrs.Body_Barf, Partial_Fin_On, In_Task_Body);
+      Traverse_Body (Target_Attrs.Body_Decl, Partial_Fin_On, In_Task_Body);
    end Process_Call;
 
    ----------------------
@@ -6983,67 +7166,13 @@ package body Sem_Elab is
    ----------------------
 
    procedure Process_Call_Ada
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      Target_Attrs : Target_Attributes;
-      In_Task_Body : Boolean)
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      Target_Attrs   : Target_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
-      function In_Initialization_Context (N : Node_Id) return Boolean;
-      --  Determine whether arbitrary node N appears within a type init proc or
-      --  primitive [Deep_]Initialize.
-
-      -------------------------------
-      -- In_Initialization_Context --
-      -------------------------------
-
-      function In_Initialization_Context (N : Node_Id) return Boolean is
-         Par     : Node_Id;
-         Spec_Id : Entity_Id;
-
-      begin
-         --  Climb the parent chain looking for initialization actions
-
-         Par := Parent (N);
-         while Present (Par) loop
-
-            --  A block may be part of the initialization actions of a default
-            --  initialized object.
-
-            if Nkind (Par) = N_Block_Statement
-              and then Is_Initialization_Block (Par)
-            then
-               return True;
-
-            --  A subprogram body may denote an initialization routine
-
-            elsif Nkind (Par) = N_Subprogram_Body then
-               Spec_Id := Unique_Defining_Entity (Par);
-
-               --  The current subprogram body denotes a type init proc or
-               --  primitive [Deep_]Initialize.
-
-               if Is_Init_Proc (Spec_Id)
-                 or else Is_Controlled_Proc (Spec_Id, Name_Initialize)
-                 or else Is_TSS (Spec_Id, TSS_Deep_Initialize)
-               then
-                  return True;
-               end if;
-
-            --  Prevent the search from going too far
-
-            elsif Is_Body_Or_Package_Declaration (Par) then
-               exit;
-            end if;
-
-            Par := Parent (Par);
-         end loop;
-
-         return False;
-      end In_Initialization_Context;
-
-      --  Local variables
-
       Check_OK : constant Boolean :=
                    not Call_Attrs.Ghost_Mode_Ignore
                      and then not Target_Attrs.Ghost_Mode_Ignore
@@ -7052,8 +7181,6 @@ package body Sem_Elab is
       --  A run-time ABE check may be installed only when both the call and the
       --  target have active elaboration checks, and both are not ignored Ghost
       --  constructs.
-
-   --  Start of processing for Process_Call_Ada
 
    begin
       --  Nothing to do for an Ada dispatching call because there are no ABE
@@ -7088,10 +7215,11 @@ package body Sem_Elab is
         and then In_Extended_Main_Code_Unit (Target_Attrs.Body_Decl)
       then
          Process_Call_Conditional_ABE
-           (Call         => Call,
-            Call_Attrs   => Call_Attrs,
-            Target_Id    => Target_Id,
-            Target_Attrs => Target_Attrs);
+           (Call           => Call,
+            Call_Attrs     => Call_Attrs,
+            Target_Id      => Target_Id,
+            Target_Attrs   => Target_Attrs,
+            In_Partial_Fin => In_Partial_Fin);
 
       --  Otherwise the target body is not available in this compilation or it
       --  resides in an external unit. Install a run-time ABE check to verify
@@ -7105,35 +7233,17 @@ package body Sem_Elab is
             Id      => Target_Attrs.Unit_Id);
       end if;
 
-      --  No implicit pragma Elaborate[_All] is generated when the call has
-      --  elaboration checks suppressed. This behaviour parallels that of the
-      --  old ABE mechanism.
+      --  Ensure that the unit with the target body is elaborated prior to the
+      --  main unit. The implicit Elaborate[_All] is generated only when the
+      --  call has elaboration checks enabled. This behaviour parallels that of
+      --  the old ABE mechanism.
 
-      if not Call_Attrs.Elab_Checks_OK then
-         null;
-
-      --  No implicit pragma Elaborate[_All] is generated for finalization
-      --  actions when primitive [Deep_]Finalize is not defined in the main
-      --  unit and the call appears within some initialization actions. This
-      --  behaviour parallels that of the old ABE mechanism.
-
-      --  Performance note: parent traversal
-
-      elsif (Is_Controlled_Proc (Target_Id, Name_Finalize)
-              or else Is_TSS (Target_Id, TSS_Deep_Finalize))
-        and then not In_Extended_Main_Code_Unit (Target_Attrs.Spec_Decl)
-        and then In_Initialization_Context (Call)
-      then
-         null;
-
-      --  Otherwise ensure that the unit with the target body is elaborated
-      --  prior to the main unit.
-
-      else
+      if Call_Attrs.Elab_Checks_OK then
          Ensure_Prior_Elaboration
-           (N            => Call,
-            Unit_Id      => Target_Attrs.Unit_Id,
-            In_Task_Body => In_Task_Body);
+           (N              => Call,
+            Unit_Id        => Target_Attrs.Unit_Id,
+            In_Partial_Fin => In_Partial_Fin,
+            In_Task_Body   => In_Task_Body);
       end if;
    end Process_Call_Ada;
 
@@ -7142,10 +7252,11 @@ package body Sem_Elab is
    ----------------------------------
 
    procedure Process_Call_Conditional_ABE
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      Target_Attrs : Target_Attributes)
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      Target_Attrs   : Target_Attributes;
+      In_Partial_Fin : Boolean)
    is
       Check_OK : constant Boolean :=
                    not Call_Attrs.Ghost_Mode_Ignore
@@ -7186,11 +7297,17 @@ package body Sem_Elab is
 
       if Earlier_In_Extended_Unit (Root, Target_Attrs.Body_Decl) then
 
+         --  Do not emit any ABE diagnostics when the call occurs in a partial
+         --  finalization context because this leads to confusing noise.
+
+         if In_Partial_Fin then
+            null;
+
          --  ABE diagnostics are emitted only in the static model because there
          --  is a well-defined order to visiting scenarios. Without this order
          --  diagnostics appear jumbled and result in unwanted noise.
 
-         if Static_Elaboration_Checks then
+         elsif Static_Elaboration_Checks then
             Error_Msg_NE ("??cannot call & before body seen", Call, Target_Id);
             Error_Msg_N ("\Program_Error may be raised at run time", Call);
 
@@ -7329,10 +7446,11 @@ package body Sem_Elab is
    ------------------------
 
    procedure Process_Call_SPARK
-     (Call         : Node_Id;
-      Call_Attrs   : Call_Attributes;
-      Target_Id    : Entity_Id;
-      Target_Attrs : Target_Attributes)
+     (Call           : Node_Id;
+      Call_Attrs     : Call_Attributes;
+      Target_Id      : Entity_Id;
+      Target_Attrs   : Target_Attributes;
+      In_Partial_Fin : Boolean)
    is
    begin
       --  A call to a source target or to a target which emulates Ada or SPARK
@@ -7376,10 +7494,11 @@ package body Sem_Elab is
         and then In_Extended_Main_Code_Unit (Target_Attrs.Body_Decl)
       then
          Process_Call_Conditional_ABE
-           (Call         => Call,
-            Call_Attrs   => Call_Attrs,
-            Target_Id    => Target_Id,
-            Target_Attrs => Target_Attrs);
+           (Call           => Call,
+            Call_Attrs     => Call_Attrs,
+            Target_Id      => Target_Id,
+            Target_Attrs   => Target_Attrs,
+            In_Partial_Fin => In_Partial_Fin);
 
       --  Otherwise the target body is not available in this compilation or it
       --  resides in an external unit. There is no need to guarantee the prior
@@ -7416,9 +7535,10 @@ package body Sem_Elab is
 
          if Is_Activation_Proc (Target_Id) then
             Process_Activation_Guaranteed_ABE
-              (Call         => N,
-               Call_Attrs   => Call_Attrs,
-               In_Task_Body => False);
+              (Call           => N,
+               Call_Attrs     => Call_Attrs,
+               In_Partial_Fin => False,
+               In_Task_Body   => False);
 
          else
             Process_Call_Guaranteed_ABE
@@ -7442,8 +7562,9 @@ package body Sem_Elab is
    ---------------------------
 
    procedure Process_Instantiation
-     (Exp_Inst     : Node_Id;
-      In_Task_Body : Boolean)
+     (Exp_Inst       : Node_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
       Gen_Attrs  : Target_Attributes;
       Gen_Id     : Entity_Id;
@@ -7524,23 +7645,25 @@ package body Sem_Elab is
 
       elsif SPARK_Rules_On and Debug_Flag_Dot_V then
          Process_Instantiation_SPARK
-           (Exp_Inst   => Exp_Inst,
-            Inst       => Inst,
-            Inst_Attrs => Inst_Attrs,
-            Gen_Id     => Gen_Id,
-            Gen_Attrs  => Gen_Attrs);
+           (Exp_Inst       => Exp_Inst,
+            Inst           => Inst,
+            Inst_Attrs     => Inst_Attrs,
+            Gen_Id         => Gen_Id,
+            Gen_Attrs      => Gen_Attrs,
+            In_Partial_Fin => In_Partial_Fin);
 
       --  Otherwise the Ada rules are in effect, or SPARK code is allowed to
       --  violate the SPARK rules.
 
       else
          Process_Instantiation_Ada
-           (Exp_Inst     => Exp_Inst,
-            Inst         => Inst,
-            Inst_Attrs   => Inst_Attrs,
-            Gen_Id       => Gen_Id,
-            Gen_Attrs    => Gen_Attrs,
-            In_Task_Body => In_Task_Body);
+           (Exp_Inst       => Exp_Inst,
+            Inst           => Inst,
+            Inst_Attrs     => Inst_Attrs,
+            Gen_Id         => Gen_Id,
+            Gen_Attrs      => Gen_Attrs,
+            In_Partial_Fin => In_Partial_Fin,
+            In_Task_Body   => In_Task_Body);
       end if;
    end Process_Instantiation;
 
@@ -7549,12 +7672,13 @@ package body Sem_Elab is
    -------------------------------
 
    procedure Process_Instantiation_Ada
-     (Exp_Inst     : Node_Id;
-      Inst         : Node_Id;
-      Inst_Attrs   : Instantiation_Attributes;
-      Gen_Id       : Entity_Id;
-      Gen_Attrs    : Target_Attributes;
-      In_Task_Body : Boolean)
+     (Exp_Inst       : Node_Id;
+      Inst           : Node_Id;
+      Inst_Attrs     : Instantiation_Attributes;
+      Gen_Id         : Entity_Id;
+      Gen_Attrs      : Target_Attributes;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
    is
       Check_OK : constant Boolean :=
                    not Inst_Attrs.Ghost_Mode_Ignore
@@ -7591,11 +7715,12 @@ package body Sem_Elab is
         and then In_Extended_Main_Code_Unit (Gen_Attrs.Body_Decl)
       then
          Process_Instantiation_Conditional_ABE
-           (Exp_Inst   => Exp_Inst,
-            Inst       => Inst,
-            Inst_Attrs => Inst_Attrs,
-            Gen_Id     => Gen_Id,
-            Gen_Attrs  => Gen_Attrs);
+           (Exp_Inst       => Exp_Inst,
+            Inst           => Inst,
+            Inst_Attrs     => Inst_Attrs,
+            Gen_Id         => Gen_Id,
+            Gen_Attrs      => Gen_Attrs,
+            In_Partial_Fin => In_Partial_Fin);
 
       --  Otherwise the generic body is not available in this compilation or it
       --  resides in an external unit. Install a run-time ABE check to verify
@@ -7616,9 +7741,10 @@ package body Sem_Elab is
 
       if Inst_Attrs.Elab_Checks_OK then
          Ensure_Prior_Elaboration
-           (N            => Inst,
-            Unit_Id      => Gen_Attrs.Unit_Id,
-            In_Task_Body => In_Task_Body);
+           (N              => Inst,
+            Unit_Id        => Gen_Attrs.Unit_Id,
+            In_Partial_Fin => In_Partial_Fin,
+            In_Task_Body   => In_Task_Body);
       end if;
    end Process_Instantiation_Ada;
 
@@ -7627,11 +7753,12 @@ package body Sem_Elab is
    -------------------------------------------
 
    procedure Process_Instantiation_Conditional_ABE
-     (Exp_Inst   : Node_Id;
-      Inst       : Node_Id;
-      Inst_Attrs : Instantiation_Attributes;
-      Gen_Id     : Entity_Id;
-      Gen_Attrs  : Target_Attributes)
+     (Exp_Inst       : Node_Id;
+      Inst           : Node_Id;
+      Inst_Attrs     : Instantiation_Attributes;
+      Gen_Id         : Entity_Id;
+      Gen_Attrs      : Target_Attributes;
+      In_Partial_Fin : Boolean)
    is
       Check_OK : constant Boolean :=
                    not Inst_Attrs.Ghost_Mode_Ignore
@@ -7676,11 +7803,17 @@ package body Sem_Elab is
 
       if Earlier_In_Extended_Unit (Root, Gen_Attrs.Body_Decl) then
 
+         --  Do not emit any ABE diagnostics when the instantiation occurs in a
+         --  partial finalization context because this leads to unwanted noise.
+
+         if In_Partial_Fin then
+            null;
+
          --  ABE diagnostics are emitted only in the static model because there
          --  is a well-defined order to visiting scenarios. Without this order
          --  diagnostics appear jumbled and result in unwanted noise.
 
-         if Static_Elaboration_Checks then
+         elsif Static_Elaboration_Checks then
             Error_Msg_NE
               ("??cannot instantiate & before body seen", Inst, Gen_Id);
             Error_Msg_N ("\Program_Error may be raised at run time", Inst);
@@ -7832,11 +7965,12 @@ package body Sem_Elab is
    ---------------------------------
 
    procedure Process_Instantiation_SPARK
-     (Exp_Inst   : Node_Id;
-      Inst       : Node_Id;
-      Inst_Attrs : Instantiation_Attributes;
-      Gen_Id     : Entity_Id;
-      Gen_Attrs  : Target_Attributes)
+     (Exp_Inst       : Node_Id;
+      Inst           : Node_Id;
+      Inst_Attrs     : Instantiation_Attributes;
+      Gen_Id         : Entity_Id;
+      Gen_Attrs      : Target_Attributes;
+      In_Partial_Fin : Boolean)
    is
       Req_Nam : Name_Id;
 
@@ -7882,11 +8016,12 @@ package body Sem_Elab is
         and then In_Extended_Main_Code_Unit (Gen_Attrs.Body_Decl)
       then
          Process_Instantiation_Conditional_ABE
-           (Exp_Inst   => Exp_Inst,
-            Inst       => Inst,
-            Inst_Attrs => Inst_Attrs,
-            Gen_Id     => Gen_Id,
-            Gen_Attrs  => Gen_Attrs);
+           (Exp_Inst       => Exp_Inst,
+            Inst           => Inst,
+            Inst_Attrs     => Inst_Attrs,
+            Gen_Id         => Gen_Id,
+            Gen_Attrs      => Gen_Attrs,
+            In_Partial_Fin => In_Partial_Fin);
 
       --  Otherwise the generic body is not available in this compilation or
       --  it resides in an external unit. There is no need to guarantee the
@@ -8017,11 +8152,11 @@ package body Sem_Elab is
       end if;
    end Process_Variable_Assignment_SPARK;
 
-   ---------------------------
-   -- Process_Variable_Read --
-   ---------------------------
+   --------------------------------
+   -- Process_Variable_Reference --
+   --------------------------------
 
-   procedure Process_Variable_Read (Ref : Node_Id) is
+   procedure Process_Variable_Reference (Ref : Node_Id) is
       Var_Attrs : Variable_Attributes;
       Var_Id    : Entity_Id;
 
@@ -8031,6 +8166,24 @@ package body Sem_Elab is
          Var_Id => Var_Id,
          Attrs  => Var_Attrs);
 
+      if Is_Read (Ref) then
+         Process_Variable_Reference_Read
+           (Ref    => Ref,
+            Var_Id => Var_Id,
+            Attrs  => Var_Attrs);
+      end if;
+   end Process_Variable_Reference;
+
+   -------------------------------------
+   -- Process_Variable_Reference_Read --
+   -------------------------------------
+
+   procedure Process_Variable_Reference_Read
+     (Ref    : Node_Id;
+      Var_Id : Entity_Id;
+      Attrs  : Variable_Attributes)
+   is
+   begin
       --  Output relevant information when switch -gnatel (info messages on
       --  implicit Elaborate[_All] pragmas) is in effect.
 
@@ -8046,7 +8199,7 @@ package body Sem_Elab is
       --  Nothing to do when the variable appears within the main unit because
       --  diagnostics on reads are relevant only for external variables.
 
-      if Is_Same_Unit (Var_Attrs.Unit_Id, Cunit_Entity (Main_Unit)) then
+      if Is_Same_Unit (Attrs.Unit_Id, Cunit_Entity (Main_Unit)) then
          null;
 
       --  Nothing to do when the variable is already initialized. Note that the
@@ -8058,7 +8211,7 @@ package body Sem_Elab is
       --  Nothing to do when the external unit guarantees the initialization of
       --  the variable by means of pragma Elaborate_Body.
 
-      elsif Has_Pragma_Elaborate_Body (Var_Attrs.Unit_Id) then
+      elsif Has_Pragma_Elaborate_Body (Attrs.Unit_Id) then
          null;
 
       --  A variable read imposes an Elaborate requirement on the context of
@@ -8071,7 +8224,7 @@ package body Sem_Elab is
             Target_Id => Var_Id,
             Req_Nam   => Name_Elaborate);
       end if;
-   end Process_Variable_Read;
+   end Process_Variable_Reference_Read;
 
    --------------------------
    -- Push_Active_Scenario --
@@ -8086,7 +8239,11 @@ package body Sem_Elab is
    -- Process_Scenario --
    ----------------------
 
-   procedure Process_Scenario (N : Node_Id; In_Task_Body : Boolean := False) is
+   procedure Process_Scenario
+     (N              : Node_Id;
+      In_Partial_Fin : Boolean := False;
+      In_Task_Body   : Boolean := False)
+   is
       Call_Attrs : Call_Attributes;
       Target_Id  : Entity_Id;
 
@@ -8098,7 +8255,7 @@ package body Sem_Elab is
       --  'Access
 
       if Is_Suitable_Access (N) then
-         Process_Access (N, In_Task_Body);
+         Process_Access (N, In_Partial_Fin, In_Task_Body);
 
       --  Calls
 
@@ -8119,33 +8276,46 @@ package body Sem_Elab is
 
             if Is_Activation_Proc (Target_Id) then
                Process_Activation_Conditional_ABE
-                 (Call         => N,
-                  Call_Attrs   => Call_Attrs,
-                  In_Task_Body => In_Task_Body);
+                 (Call           => N,
+                  Call_Attrs     => Call_Attrs,
+                  In_Partial_Fin => In_Partial_Fin,
+                  In_Task_Body   => In_Task_Body);
 
             else
                Process_Call
-                 (Call         => N,
-                  Call_Attrs   => Call_Attrs,
-                  Target_Id    => Target_Id,
-                  In_Task_Body => In_Task_Body);
+                 (Call           => N,
+                  Call_Attrs     => Call_Attrs,
+                  Target_Id      => Target_Id,
+                  In_Partial_Fin => In_Partial_Fin,
+                  In_Task_Body   => In_Task_Body);
             end if;
          end if;
 
       --  Instantiations
 
       elsif Is_Suitable_Instantiation (N) then
-         Process_Instantiation (N, In_Task_Body);
+         Process_Instantiation (N, In_Partial_Fin, In_Task_Body);
 
       --  Variable assignments
 
       elsif Is_Suitable_Variable_Assignment (N) then
          Process_Variable_Assignment (N);
 
-      --  Variable read
+      --  Variable references
 
-      elsif Is_Suitable_Variable_Read (N) then
-         Process_Variable_Read (N);
+      elsif Is_Suitable_Variable_Reference (N) then
+
+         --  In general, only variable references found within the main unit
+         --  are processed because the ALI information supplied to binde is for
+         --  the main unit only. However, to preserve the consistency of the
+         --  tree and ensure proper serialization of internal names, external
+         --  variable references also receive corresponding variable reference
+         --  markers (see Build_Varaible_Reference_Marker). Regardless of the
+         --  reason, external variable references must not be processed.
+
+         if In_Main_Context (N) then
+            Process_Variable_Reference (N);
+         end if;
       end if;
 
       --  Remove the current scenario from the stack of active scenarios once
@@ -8236,7 +8406,7 @@ package body Sem_Elab is
          Possible_Local_Raise (N, Standard_Program_Error);
 
       elsif Is_Suitable_Variable_Assignment (N)
-        or else Is_Suitable_Variable_Read (N)
+        or else Is_Suitable_Variable_Reference (N)
       then
          null;
 
@@ -8328,85 +8498,177 @@ package body Sem_Elab is
    -- Traverse_Body --
    -------------------
 
-   procedure Traverse_Body (N : Node_Id; In_Task_Body : Boolean) is
-      function Is_Potential_Scenario (Nod : Node_Id) return Traverse_Result;
-      --  Determine whether arbitrary node Nod denotes a suitable scenario and
-      --  if so, process it.
+   procedure Traverse_Body
+     (N              : Node_Id;
+      In_Partial_Fin : Boolean;
+      In_Task_Body   : Boolean)
+   is
+      procedure Find_And_Process_Nested_Scenarios;
+      pragma Inline (Find_And_Process_Nested_Scenarios);
+      --  Examine the declarations and statements of subprogram body N for
+      --  suitable scenarios. Save each discovered scenario and process it
+      --  accordingly.
 
-      procedure Traverse_Potential_Scenarios is
-        new Traverse_Proc (Is_Potential_Scenario);
+      procedure Process_Nested_Scenarios (Nested : Elist_Id);
+      pragma Inline (Process_Nested_Scenarios);
+      --  Invoke Process_Scenario on each individual scenario whith appears in
+      --  list Nested.
 
-      procedure Traverse_List (List : List_Id);
-      --  Inspect list List for suitable elaboration scenarios and process them
+      ---------------------------------------
+      -- Find_And_Process_Nested_Scenarios --
+      ---------------------------------------
 
-      ---------------------------
-      -- Is_Potential_Scenario --
-      ---------------------------
+      procedure Find_And_Process_Nested_Scenarios is
+         Body_Id : constant Entity_Id := Defining_Entity (N);
 
-      function Is_Potential_Scenario (Nod : Node_Id) return Traverse_Result is
+         function Is_Potential_Scenario
+           (Nod : Node_Id) return Traverse_Result;
+         --  Determine whether arbitrary node Nod denotes a suitable scenario.
+         --  If it does, save it in the Nested_Scenarios list of the subprogram
+         --  body, and process it.
+
+         procedure Save_Scenario (Nod : Node_Id);
+         pragma Inline (Save_Scenario);
+         --  Save scenario Nod in the Nested_Scenarios list of the subprogram
+         --  body.
+
+         procedure Traverse_List (List : List_Id);
+         pragma Inline (Traverse_List);
+         --  Invoke Traverse_Potential_Scenarios on each node in list List
+
+         procedure Traverse_Potential_Scenarios is
+           new Traverse_Proc (Is_Potential_Scenario);
+
+         ---------------------------
+         -- Is_Potential_Scenario --
+         ---------------------------
+
+         function Is_Potential_Scenario
+           (Nod : Node_Id) return Traverse_Result
+         is
+         begin
+            --  Special cases
+
+            --  Skip constructs which do not have elaboration of their own and
+            --  need to be elaborated by other means such as invocation, task
+            --  activation, etc.
+
+            if Is_Non_Library_Level_Encapsulator (Nod) then
+               return Skip;
+
+            --  Terminate the traversal of a task body with an accept statement
+            --  when no entry calls in elaboration are allowed because the task
+            --  will block at run-time and the remaining statements will not be
+            --  executed.
+
+            elsif Nkind_In (Original_Node (Nod), N_Accept_Statement,
+                                                 N_Selective_Accept)
+              and then Restriction_Active (No_Entry_Calls_In_Elaboration_Code)
+            then
+               return Abandon;
+
+            --  Certain nodes carry semantic lists which act as repositories
+            --  until expansion transforms the node and relocates the contents.
+            --  Examine these lists in case expansion is disabled.
+
+            elsif Nkind_In (Nod, N_And_Then, N_Or_Else) then
+               Traverse_List (Actions (Nod));
+
+            elsif Nkind_In (Nod, N_Elsif_Part, N_Iteration_Scheme) then
+               Traverse_List (Condition_Actions (Nod));
+
+            elsif Nkind (Nod) = N_If_Expression then
+               Traverse_List (Then_Actions (Nod));
+               Traverse_List (Else_Actions (Nod));
+
+            elsif Nkind_In (Nod, N_Component_Association,
+                                 N_Iterated_Component_Association)
+            then
+               Traverse_List (Loop_Actions (Nod));
+
+            --  General case
+
+            --  Save a suitable scenario in the Nested_Scenarios list of the
+            --  subprogram body. As a result any subsequent traversals of the
+            --  subprogram body started from a different top level scenario no
+            --  longer need to reexamine the tree.
+
+            elsif Is_Suitable_Scenario (Nod) then
+               Save_Scenario (Nod);
+               Process_Scenario (Nod, In_Partial_Fin, In_Task_Body);
+            end if;
+
+            return OK;
+         end Is_Potential_Scenario;
+
+         -------------------
+         -- Save_Scenario --
+         -------------------
+
+         procedure Save_Scenario (Nod : Node_Id) is
+            Nested : Elist_Id;
+
+         begin
+            Nested := Nested_Scenarios (Body_Id);
+
+            if No (Nested) then
+               Nested := New_Elmt_List;
+               Set_Nested_Scenarios (Body_Id, Nested);
+            end if;
+
+            Append_Elmt (Nod, Nested);
+         end Save_Scenario;
+
+         -------------------
+         -- Traverse_List --
+         -------------------
+
+         procedure Traverse_List (List : List_Id) is
+            Item : Node_Id;
+
+         begin
+            Item := First (List);
+            while Present (Item) loop
+               Traverse_Potential_Scenarios (Item);
+               Next (Item);
+            end loop;
+         end Traverse_List;
+
+      --  Start of processing for Find_And_Process_Nested_Scenarios
+
       begin
-         --  Special cases
+         --  Examine the declarations for suitable scenarios
 
-         --  Skip constructs which do not have elaboration of their own and
-         --  need to be elaborated by other means such as invocation, task
-         --  activation, etc.
+         Traverse_List (Declarations (N));
 
-         if Is_Non_Library_Level_Encapsulator (Nod) then
-            return Skip;
+         --  Examine the handled sequence of statements. This also includes any
+         --  exceptions handlers.
 
-         --  Terminate the traversal of a task body with an accept statement
-         --  when no entry calls in elaboration are allowed because the task
-         --  will block at run-time and none of the remaining statements will
-         --  be executed.
+         Traverse_Potential_Scenarios (Handled_Statement_Sequence (N));
+      end Find_And_Process_Nested_Scenarios;
 
-         elsif Nkind_In (Original_Node (Nod), N_Accept_Statement,
-                                              N_Selective_Accept)
-           and then Restriction_Active (No_Entry_Calls_In_Elaboration_Code)
-         then
-            return Abandon;
+      ------------------------------
+      -- Process_Nested_Scenarios --
+      ------------------------------
 
-         --  Certain nodes carry semantic lists which act as repositories until
-         --  expansion transforms the node and relocates the contents. Examine
-         --  these lists in case expansion is disabled.
-
-         elsif Nkind_In (Nod, N_And_Then, N_Or_Else) then
-            Traverse_List (Actions (Nod));
-
-         elsif Nkind_In (Nod, N_Elsif_Part, N_Iteration_Scheme) then
-            Traverse_List (Condition_Actions (Nod));
-
-         elsif Nkind (Nod) = N_If_Expression then
-            Traverse_List (Then_Actions (Nod));
-            Traverse_List (Else_Actions (Nod));
-
-         elsif Nkind_In (Nod, N_Component_Association,
-                              N_Iterated_Component_Association)
-         then
-            Traverse_List (Loop_Actions (Nod));
-
-         --  General case
-
-         elsif Is_Suitable_Scenario (Nod) then
-            Process_Scenario (Nod, In_Task_Body);
-         end if;
-
-         return OK;
-      end Is_Potential_Scenario;
-
-      -------------------
-      -- Traverse_List --
-      -------------------
-
-      procedure Traverse_List (List : List_Id) is
-         Item : Node_Id;
+      procedure Process_Nested_Scenarios (Nested : Elist_Id) is
+         Nested_Elmt : Elmt_Id;
 
       begin
-         Item := First (List);
-         while Present (Item) loop
-            Traverse_Potential_Scenarios (Item);
-            Next (Item);
+         Nested_Elmt := First_Elmt (Nested);
+         while Present (Nested_Elmt) loop
+            Process_Scenario
+              (N              => Node (Nested_Elmt),
+               In_Partial_Fin => In_Partial_Fin,
+               In_Task_Body   => In_Task_Body);
+
+            Next_Elmt (Nested_Elmt);
          end loop;
-      end Traverse_List;
+      end Process_Nested_Scenarios;
+
+      --  Local variables
+
+      Nested : Elist_Id;
 
    --  Start of processing for Traverse_Body
 
@@ -8432,14 +8694,23 @@ package body Sem_Elab is
          Visited_Bodies.Set (N, True);
       end if;
 
-      --  Examine the declarations for suitable scenarios
+      Nested := Nested_Scenarios (Defining_Entity (N));
 
-      Traverse_List (Declarations (N));
+      --  The subprogram body was already examined as part of the elaboration
+      --  graph starting from a different top level scenario. There is no need
+      --  to traverse the declarations and statements again because this will
+      --  yield the exact same scenarios. Use the nested scenarios collected
+      --  during the first inspection of the body.
 
-      --  Examine the handled sequence of statements. This also includes any
-      --  exceptions handlers.
+      if Present (Nested) then
+         Process_Nested_Scenarios (Nested);
 
-      Traverse_Potential_Scenarios (Handled_Statement_Sequence (N));
+      --  Otherwise examine the declarations and statements of the subprogram
+      --  body for suitable scenarios, save and process them accordingly.
+
+      else
+         Find_And_Process_Nested_Scenarios;
+      end if;
    end Traverse_Body;
 
    ---------------------------------

@@ -66,9 +66,6 @@ package body SPARK_Specific is
    -- Local Variables --
    ---------------------
 
-   Heap : Entity_Id := Empty;
-   --  A special entity which denotes the heap object
-
    package Drefs is new Table.Table (
      Table_Component_Type => Xref_Entry,
      Table_Index_Type     => Xref_Entry_Number,
@@ -120,14 +117,7 @@ package body SPARK_Specific is
       ---------------------
 
       procedure Add_SPARK_Scope (N : Node_Id) is
-         E   : constant Entity_Id  := Defining_Entity (N);
-         Loc : constant Source_Ptr := Sloc (E);
-
-         --  The character describing the kind of scope is chosen to be the
-         --  same as the one describing the corresponding entity in cross
-         --  references, see Xref_Entity_Letters in lib-xrefs.ads
-
-         Typ : Character;
+         E : constant Entity_Id := Defining_Entity (N);
 
       begin
          --  Ignore scopes without a proper location
@@ -139,36 +129,20 @@ package body SPARK_Specific is
          case Ekind (E) is
             when E_Entry
                | E_Entry_Family
+               | E_Function
                | E_Generic_Function
                | E_Generic_Package
                | E_Generic_Procedure
                | E_Package
-               | E_Protected_Type
-               | E_Task_Type
-            =>
-               Typ := Xref_Entity_Letters (Ekind (E));
-
-            when E_Function
+               | E_Package_Body
                | E_Procedure
-            =>
-               --  In SPARK we need to distinguish protected functions and
-               --  procedures from ordinary subprograms, but there are no
-               --  special Xref letters for them. Since this distiction is
-               --  only needed to detect protected calls, we pretend that
-               --  such calls are entry calls.
-
-               if Ekind (Scope (E)) = E_Protected_Type then
-                  Typ := Xref_Entity_Letters (E_Entry);
-               else
-                  Typ := Xref_Entity_Letters (Ekind (E));
-               end if;
-
-            when E_Package_Body
                | E_Protected_Body
-               | E_Subprogram_Body
+               | E_Protected_Type
                | E_Task_Body
+               | E_Task_Type
+               | E_Subprogram_Body
             =>
-               Typ := Xref_Entity_Letters (Ekind (Unique_Entity (E)));
+               null;
 
             when E_Void =>
 
@@ -187,17 +161,13 @@ package body SPARK_Specific is
          --  range.
 
          SPARK_Scope_Table.Append
-           ((Scope_Name     => new String'(Unique_Name (E)),
+           ((Entity         => E,
              File_Num       => Dspec,
              Scope_Num      => Scope_Id,
              Spec_File_Num  => 0,
              Spec_Scope_Num => 0,
-             Line           => Nat (Get_Logical_Line_Number (Loc)),
-             Stype          => Typ,
-             Col            => Nat (Get_Column_Number (Loc)),
              From_Xref      => 1,
-             To_Xref        => 0,
-             Scope_Entity   => E));
+             To_Xref        => 0));
 
          Scope_Id := Scope_Id + 1;
       end Add_SPARK_Scope;
@@ -238,11 +208,6 @@ package body SPARK_Specific is
       procedure Traverse_Scopes is new
         Traverse_Compilation_Unit (Detect_And_Add_SPARK_Scope);
 
-      --  Local variables
-
-      File_Name      : String_Ptr;
-      Unit_File_Name : String_Ptr;
-
    --  Start of processing for Add_SPARK_File
 
    begin
@@ -260,39 +225,20 @@ package body SPARK_Specific is
          return;
       end if;
 
-      Traverse_Scopes (CU => Cunit (Uspec), Inside_Stubs => True);
+      Traverse_Scopes (CU => Cunit (Uspec));
 
       --  When two units are present for the same compilation unit, as it
       --  happens for library-level instantiations of generics, then add all
       --  scopes to the same SPARK file.
 
       if Ubody /= No_Unit then
-         Traverse_Scopes (CU => Cunit (Ubody), Inside_Stubs => True);
-      end if;
-
-      --  Make entry for new file in file table
-
-      Get_Name_String (Reference_Name (File));
-      File_Name := new String'(Name_Buffer (1 .. Name_Len));
-
-      --  For subunits, also retrieve the file name of the unit. Only do so if
-      --  unit has an associated compilation unit.
-
-      if Present (Cunit (Unit (File)))
-        and then Nkind (Unit (Cunit (Unit (File)))) = N_Subunit
-      then
-         Get_Name_String (Reference_Name (Main_Source_File));
-         Unit_File_Name := new String'(Name_Buffer (1 .. Name_Len));
-      else
-         Unit_File_Name := null;
+         Traverse_Scopes (CU => Cunit (Ubody));
       end if;
 
       SPARK_File_Table.Append (
-        (File_Name      => File_Name,
-         Unit_File_Name => Unit_File_Name,
-         File_Num       => Dspec,
-         From_Scope     => From,
-         To_Scope       => SPARK_Scope_Table.Last));
+        (File_Num   => Dspec,
+         From_Scope => From,
+         To_Scope   => SPARK_Scope_Table.Last));
    end Add_SPARK_File;
 
    ---------------------
@@ -302,9 +248,6 @@ package body SPARK_Specific is
    procedure Add_SPARK_Xrefs is
       function Entity_Of_Scope (S : Scope_Index) return Entity_Id;
       --  Return the entity which maps to the input scope index
-
-      function Get_Entity_Type (E : Entity_Id) return Character;
-      --  Return a character representing the type of entity
 
       function Get_Scope_Num (E : Entity_Id) return Nat;
       --  Return the scope number associated with the entity E
@@ -380,22 +323,8 @@ package body SPARK_Specific is
 
       function Entity_Of_Scope (S : Scope_Index) return Entity_Id is
       begin
-         return SPARK_Scope_Table.Table (S).Scope_Entity;
+         return SPARK_Scope_Table.Table (S).Entity;
       end Entity_Of_Scope;
-
-      ---------------------
-      -- Get_Entity_Type --
-      ---------------------
-
-      function Get_Entity_Type (E : Entity_Id) return Character is
-      begin
-         case Ekind (E) is
-            when E_Out_Parameter    => return '<';
-            when E_In_Out_Parameter => return '=';
-            when E_In_Parameter     => return '>';
-            when others             => return '*';
-         end case;
-      end Get_Entity_Type;
 
       -------------------
       -- Get_Scope_Num --
@@ -466,7 +395,7 @@ package body SPARK_Specific is
          function Is_Past_Scope_Entity return Boolean is
          begin
             for Index in SPARK_Scope_Table.First .. S - 1 loop
-               if SPARK_Scope_Table.Table (Index).Scope_Entity = E then
+               if SPARK_Scope_Table.Table (Index).Entity = E then
                   return True;
                end if;
             end loop;
@@ -478,7 +407,7 @@ package body SPARK_Specific is
 
       begin
          for Index in S .. SPARK_Scope_Table.Last loop
-            if SPARK_Scope_Table.Table (Index).Scope_Entity = E then
+            if SPARK_Scope_Table.Table (Index).Entity = E then
                return True;
             end if;
          end loop;
@@ -664,14 +593,10 @@ package body SPARK_Specific is
 
       --  Local variables
 
-      Col        : Nat;
       From_Index : Xref_Index;
-      Line       : Nat;
       Prev_Loc   : Source_Ptr;
       Prev_Typ   : Character;
       Ref_Count  : Nat;
-      Ref_Id     : Entity_Id;
-      Ref_Name   : String_Ptr;
       Scope_Id   : Scope_Index;
 
    --  Start of processing for Add_SPARK_Xrefs
@@ -681,7 +606,7 @@ package body SPARK_Specific is
          declare
             S : SPARK_Scope_Record renames SPARK_Scope_Table.Table (Index);
          begin
-            Set_Scope_Num (S.Scope_Entity, S.Scope_Num);
+            Set_Scope_Num (S.Entity, S.Scope_Num);
          end;
       end loop;
 
@@ -795,7 +720,6 @@ package body SPARK_Specific is
          return;
       end if;
 
-      Ref_Id     := Empty;
       Scope_Id   := 1;
       From_Index := 1;
 
@@ -833,18 +757,6 @@ package body SPARK_Specific is
                pragma Assert (Scope_Id <= SPARK_Scope_Table.Last);
             end loop;
 
-            if Ref.Ent /= Ref_Id then
-               Ref_Name := new String'(Unique_Name (Ref.Ent));
-            end if;
-
-            if Ref.Ent = Heap then
-               Line := 0;
-               Col  := 0;
-            else
-               Line := Nat (Get_Logical_Line_Number (Ref_Entry.Def));
-               Col  := Nat (Get_Column_Number (Ref_Entry.Def));
-            end if;
-
             --  References to constant objects without variable inputs (see
             --  SPARK RM 3.3.1) are considered specially in SPARK section,
             --  because these will be translated as constants in the
@@ -860,15 +772,9 @@ package body SPARK_Specific is
             end if;
 
             SPARK_Xref_Table.Append (
-              (Entity_Name => Ref_Name,
-               Entity_Line => Line,
-               Etype       => Get_Entity_Type (Ref.Ent),
-               Entity_Col  => Col,
-               File_Num    => Dependency_Num (Ref.Lun),
-               Scope_Num   => Get_Scope_Num (Ref.Ref_Scope),
-               Line        => Nat (Get_Logical_Line_Number (Ref.Loc)),
-               Rtype       => Typ,
-               Col         => Nat (Get_Column_Number (Ref.Loc))));
+              (Entity    => Unique_Entity (Ref.Ent),
+               Ref_Scope => Ref.Ref_Scope,
+               Rtype     => Typ));
          end;
       end loop;
 
@@ -1013,7 +919,7 @@ package body SPARK_Specific is
             declare
                Srec : SPARK_Scope_Record renames SPARK_Scope_Table.Table (S);
             begin
-               Entity_Hash_Table.Set (Srec.Scope_Entity, S);
+               Entity_Hash_Table.Set (Srec.Entity, S);
             end;
          end loop;
 
@@ -1024,14 +930,14 @@ package body SPARK_Specific is
                Srec : SPARK_Scope_Record renames SPARK_Scope_Table.Table (S);
 
                Spec_Entity : constant Entity_Id :=
-                               Unique_Entity (Srec.Scope_Entity);
+                               Unique_Entity (Srec.Entity);
                Spec_Scope  : constant Scope_Index :=
                                Entity_Hash_Table.Get (Spec_Entity);
 
             begin
                --  Generic spec may be missing in which case Spec_Scope is zero
 
-               if Spec_Entity /= Srec.Scope_Entity
+               if Spec_Entity /= Srec.Entity
                  and then Spec_Scope /= 0
                then
                   Srec.Spec_File_Num :=
@@ -1225,10 +1131,7 @@ package body SPARK_Specific is
    -- Traverse_Compilation_Unit --
    -------------------------------
 
-   procedure Traverse_Compilation_Unit
-     (CU           : Node_Id;
-      Inside_Stubs : Boolean)
-   is
+   procedure Traverse_Compilation_Unit (CU : Node_Id) is
       procedure Traverse_Block                      (N : Node_Id);
       procedure Traverse_Declaration_Or_Statement   (N : Node_Id);
       procedure Traverse_Declarations_And_HSS       (N : Node_Id);
@@ -1264,7 +1167,7 @@ package body SPARK_Specific is
                                         N_Subprogram_Body_Stub,
                                         N_Task_Body_Stub));
 
-            return Inside_Stubs and then Present (Library_Unit (N));
+            return Present (Library_Unit (N));
          end Traverse_Stub;
 
       --  Start of processing for Traverse_Declaration_Or_Statement

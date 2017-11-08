@@ -75,6 +75,7 @@ extern tree default_mangle_assembler_name (const char *);
 extern bool default_scalar_mode_supported_p (scalar_mode);
 extern bool default_libgcc_floating_mode_supported_p (scalar_float_mode);
 extern opt_scalar_float_mode default_floatn_mode (int, bool);
+extern bool default_floatn_builtin_p (int);
 extern bool targhook_words_big_endian (void);
 extern bool targhook_float_words_big_endian (void);
 extern bool default_float_exceptions_rounding_supported_p (void);
@@ -235,7 +236,7 @@ extern int default_jump_align_max_skip (rtx_insn *);
 extern section * default_function_section(tree decl, enum node_frequency freq,
 					  bool startup, bool exit);
 extern machine_mode default_dwarf_frame_reg_mode (int);
-extern machine_mode default_get_reg_raw_mode (int);
+extern fixed_size_mode default_get_reg_raw_mode (int);
 extern bool default_keep_leaf_when_profiled ();
 
 extern void *default_get_pch_validity (size_t *);

@@ -12481,7 +12481,8 @@ modified_type_die (tree type, int cv_quals, bool reverse,
   dw_die_ref mod_scope;
   /* Only these cv-qualifiers are currently handled.  */
   const int cv_qual_mask = (TYPE_QUAL_CONST | TYPE_QUAL_VOLATILE
-			    | TYPE_QUAL_RESTRICT | TYPE_QUAL_ATOMIC);
+			    | TYPE_QUAL_RESTRICT | TYPE_QUAL_ATOMIC | 
+			    ENCODE_QUAL_ADDR_SPACE(~0U));
   const bool reverse_base_type
     = need_endianity_attribute_p (reverse) && is_base_type (type);
 
@@ -14547,8 +14548,7 @@ rotate_loc_descriptor (rtx rtl, scalar_int_mode mode,
   dw_loc_descr_ref op0, op1, ret, mask[2] = { NULL, NULL };
   int i;
 
-  if (GET_MODE (rtlop1) != VOIDmode
-      && GET_MODE_BITSIZE (GET_MODE (rtlop1)) < GET_MODE_BITSIZE (mode))
+  if (is_narrower_int_mode (GET_MODE (rtlop1), mode))
     rtlop1 = gen_rtx_ZERO_EXTEND (mode, rtlop1);
   op0 = mem_loc_descriptor (XEXP (rtl, 0), mode, mem_mode,
 			    VAR_INIT_STATUS_INITIALIZED);
@@ -20709,7 +20709,7 @@ add_type_attribute (dw_die_ref object_die, tree type, int cv_quals,
     return;
 
   type_die = modified_type_die (type,
-				cv_quals | TYPE_QUALS_NO_ADDR_SPACE (type),
+				cv_quals | TYPE_QUALS (type),
 				reverse,
 				context_die);
 
@@ -20939,10 +20939,10 @@ gen_array_type_die (tree type, dw_die_ref context_die)
     add_AT_unsigned (array_die, DW_AT_ordering, DW_ORD_col_major);
 
 #if 0
-  /* We default the array ordering.  SDB will probably do
-     the right things even if DW_AT_ordering is not present.  It's not even
-     an issue until we start to get into multidimensional arrays anyway.  If
-     SDB is ever caught doing the Wrong Thing for multi-dimensional arrays,
+  /* We default the array ordering.  Debuggers will probably do the right
+     things even if DW_AT_ordering is not present.  It's not even an issue
+     until we start to get into multidimensional arrays anyway.  If a debugger
+     is ever caught doing the Wrong Thing for multi-dimensional arrays,
      then we'll have to put the DW_AT_ordering attribute back in.  (But if
      and when we find out that we need to put these in, we will only do so
      for multidimensional arrays.  */
@@ -23434,6 +23434,8 @@ highest_c_language (const char *lang1, const char *lang2)
   if (strcmp ("GNU C++98", lang1) == 0 || strcmp ("GNU C++98", lang2) == 0)
     return "GNU C++98";
 
+  if (strcmp ("GNU C17", lang1) == 0 || strcmp ("GNU C17", lang2) == 0)
+    return "GNU C17";
   if (strcmp ("GNU C11", lang1) == 0 || strcmp ("GNU C11", lang2) == 0)
     return "GNU C11";
   if (strcmp ("GNU C99", lang1) == 0 || strcmp ("GNU C99", lang2) == 0)
@@ -23510,7 +23512,8 @@ gen_compile_unit_die (const char *filename)
 	    language = DW_LANG_C99;
 
 	  if (dwarf_version >= 5 /* || !dwarf_strict */)
-	    if (strcmp (language_string, "GNU C11") == 0)
+	    if (strcmp (language_string, "GNU C11") == 0
+		|| strcmp (language_string, "GNU C17") == 0)
 	      language = DW_LANG_C11;
 	}
     }

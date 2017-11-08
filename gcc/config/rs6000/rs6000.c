@@ -86,6 +86,20 @@
 #define TARGET_NO_PROTOTYPE 0
 #endif
 
+  /* Set -mabi=ieeelongdouble on some old targets.  In the future, power server
+     systems will also set long double to be IEEE 128-bit.  AIX and Darwin
+     explicitly redefine TARGET_IEEEQUAD and TARGET_IEEEQUAD_DEFAULT to 0, so
+     those systems will not pick up this default.  This needs to be after all
+     of the include files, so that POWERPC_LINUX and POWERPC_FREEBSD are
+     properly defined.  */
+#ifndef TARGET_IEEEQUAD_DEFAULT
+#if !defined (POWERPC_LINUX) && !defined (POWERPC_FREEBSD)
+#define TARGET_IEEEQUAD_DEFAULT 1
+#else
+#define TARGET_IEEEQUAD_DEFAULT 0
+#endif
+#endif
+
 #define min(A,B)	((A) < (B) ? (A) : (B))
 #define max(A,B)	((A) > (B) ? (A) : (B))
 
@@ -1343,7 +1357,6 @@ static void rs6000_common_init_builtins (void);
 static void paired_init_builtins (void);
 static rtx paired_expand_predicate_builtin (enum insn_code, tree, rtx);
 static void htm_init_builtins (void);
-static int rs6000_emit_int_cmove (rtx, rtx, rtx, rtx);
 static rs6000_stack_t *rs6000_stack_info (void);
 static void is_altivec_return_reg (rtx, void *);
 int easy_vector_constant (rtx, machine_mode);
@@ -2878,6 +2891,13 @@ rs6000_debug_reg_global (void)
   fprintf (stderr, DEBUG_FMT_D, "tls_size", rs6000_tls_size);
   fprintf (stderr, DEBUG_FMT_D, "long_double_size",
 	   rs6000_long_double_type_size);
+  if (rs6000_long_double_type_size == 128)
+    {
+      fprintf (stderr, DEBUG_FMT_S, "long double type",
+	       TARGET_IEEEQUAD ? "IEEE" : "IBM");
+      fprintf (stderr, DEBUG_FMT_S, "default long double type",
+	       TARGET_IEEEQUAD_DEFAULT ? "IEEE" : "IBM");
+    }
   fprintf (stderr, DEBUG_FMT_D, "sched_restricted_insns_priority",
 	   (int)rs6000_sched_restricted_insns_priority);
   fprintf (stderr, DEBUG_FMT_D, "Number of standard builtins",
@@ -4560,13 +4580,26 @@ rs6000_option_override_internal (bool global_init_p)
 	rs6000_long_double_type_size = RS6000_DEFAULT_LONG_DOUBLE_SIZE;
     }
 
-  /* Set -mabi=ieeelongdouble on some old targets.  Note, AIX and Darwin
-     explicitly redefine TARGET_IEEEQUAD to 0, so those systems will not
-     pick up this default.  */
-#if !defined (POWERPC_LINUX) && !defined (POWERPC_FREEBSD)
+  /* Set -mabi=ieeelongdouble on some old targets.  In the future, power server
+     systems will also set long double to be IEEE 128-bit.  AIX and Darwin
+     explicitly redefine TARGET_IEEEQUAD and TARGET_IEEEQUAD_DEFAULT to 0, so
+     those systems will not pick up this default.  Warn if the user changes the
+     default unless -Wno-psabi.  */
   if (!global_options_set.x_rs6000_ieeequad)
-    rs6000_ieeequad = 1;
-#endif
+    rs6000_ieeequad = TARGET_IEEEQUAD_DEFAULT;
+
+  else if (rs6000_ieeequad != TARGET_IEEEQUAD_DEFAULT && TARGET_LONG_DOUBLE_128)
+    {
+      static bool warned_change_long_double;
+      if (!warned_change_long_double)
+	{
+	  warned_change_long_double = true;
+	  if (TARGET_IEEEQUAD)
+	    warning (OPT_Wpsabi, "Using IEEE extended precision long double");
+	  else
+	    warning (OPT_Wpsabi, "Using IBM extended precision long double");
+	}
+    }
 
   /* Enable the default support for IEEE 128-bit floating point on Linux VSX
      sytems.  In GCC 7, we would enable the the IEEE 128-bit floating point
@@ -4765,10 +4798,7 @@ rs6000_option_override_internal (bool global_init_p)
   /* For the E500 family of cores, reset the single/double FP flags to let us
      check that they remain constant across attributes or pragmas.  Also,
      clear a possible request for string instructions, not supported and which
-     we might have silently queried above for -Os. 
-
-     For other families, clear ISEL in case it was set implicitly.
-  */
+     we might have silently queried above for -Os.  */
 
   switch (rs6000_cpu)
     {
@@ -4778,19 +4808,12 @@ rs6000_option_override_internal (bool global_init_p)
     case PROCESSOR_PPCE500MC64:
     case PROCESSOR_PPCE5500:
     case PROCESSOR_PPCE6500:
-
       rs6000_single_float = 0;
       rs6000_double_float = 0;
-
       rs6000_isa_flags &= ~OPTION_MASK_STRING;
-
       break;
 
     default:
-
-      if (cpu_index >= 0 && !(rs6000_isa_flags_explicit & OPTION_MASK_ISEL))
-	rs6000_isa_flags &= ~OPTION_MASK_ISEL;
-
       break;
     }
 
@@ -14270,6 +14293,77 @@ swap_selector_for_mode (machine_mode mode)
   return force_reg (V16QImode, gen_rtx_CONST_VECTOR (V16QImode, gen_rtvec_v (16, perm)));
 }
 
+rtx
+swap_endian_selector_for_mode (machine_mode mode)
+{
+  unsigned int le_swap1[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+  unsigned int le_swap2[16] = {7,6,5,4,3,2,1,0,15,14,13,12,11,10,9,8};
+  unsigned int le_swap4[16] = {3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12};
+  unsigned int le_swap8[16] = {1,0,3,2,5,4,7,6,9,8,11,10,13,12,15,14};
+  unsigned int le_swap16[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+
+  unsigned int be_swap1[16] = {15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0};
+  unsigned int be_swap2[16] = {7,6,5,4,3,2,1,0,15,14,13,12,11,10,9,8};
+  unsigned int be_swap4[16] = {3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12};
+  unsigned int be_swap8[16] = {1,0,3,2,5,4,7,6,9,8,11,10,13,12,15,14};
+  unsigned int be_swap16[16] = {15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0};
+  unsigned int *swaparray, i;
+  rtx perm[16];
+
+  if (VECTOR_ELT_ORDER_BIG)
+    switch (mode)
+      {
+      case E_V1TImode:
+	swaparray = le_swap1;
+	break;
+      case E_V2DFmode:
+      case E_V2DImode:
+	swaparray = le_swap2;
+	break;
+      case E_V4SFmode:
+      case E_V4SImode:
+	swaparray = le_swap4;
+	break;
+      case E_V8HImode:
+	swaparray = le_swap8;
+	break;
+      case E_V16QImode:
+	swaparray = le_swap16;
+	break;
+      default:
+	gcc_unreachable ();
+      }
+  else
+    switch (mode)
+      {
+      case E_V1TImode:
+	swaparray = be_swap1;
+	break;
+      case E_V2DFmode:
+      case E_V2DImode:
+	swaparray = be_swap2;
+	break;
+      case E_V4SFmode:
+      case E_V4SImode:
+	swaparray = be_swap4;
+	break;
+      case E_V8HImode:
+	swaparray = be_swap8;
+	break;
+      case E_V16QImode:
+	swaparray = be_swap16;
+	break;
+      default:
+	gcc_unreachable ();
+      }
+
+  for (i = 0; i < 16; ++i)
+    perm[i] = GEN_INT (swaparray[i]);
+
+  return force_reg (V16QImode, gen_rtx_CONST_VECTOR (V16QImode,
+						     gen_rtvec_v (16, perm)));
+}
+
 /* Generate code for an "lvxl", or "lve*x" built-in for a little endian target
    with -maltivec=be specified.  Issue the load followed by an element-
    reversing permute.  */
@@ -16075,39 +16169,11 @@ rs6000_invalid_builtin (enum rs6000_builtins fncode)
    from ia64.c.  */
 
 static tree
-rs6000_fold_builtin (tree fndecl, int n_args ATTRIBUTE_UNUSED,
-		     tree *args, bool ignore ATTRIBUTE_UNUSED)
+rs6000_fold_builtin (tree fndecl ATTRIBUTE_UNUSED,
+		     int n_args ATTRIBUTE_UNUSED,
+		     tree *args ATTRIBUTE_UNUSED,
+		     bool ignore ATTRIBUTE_UNUSED)
 {
-  if (DECL_BUILT_IN_CLASS (fndecl) == BUILT_IN_MD)
-    {
-      enum rs6000_builtins fn_code
-	= (enum rs6000_builtins) DECL_FUNCTION_CODE (fndecl);
-      switch (fn_code)
-	{
-	case RS6000_BUILTIN_NANQ:
-	case RS6000_BUILTIN_NANSQ:
-	  {
-	    tree type = TREE_TYPE (TREE_TYPE (fndecl));
-	    const char *str = c_getstr (*args);
-	    int quiet = fn_code == RS6000_BUILTIN_NANQ;
-	    REAL_VALUE_TYPE real;
-
-	    if (str && real_nan (&real, str, quiet, TYPE_MODE (type)))
-	      return build_real (type, real);
-	    return NULL_TREE;
-	  }
-	case RS6000_BUILTIN_INFQ:
-	case RS6000_BUILTIN_HUGE_VALQ:
-	  {
-	    tree type = TREE_TYPE (TREE_TYPE (fndecl));
-	    REAL_VALUE_TYPE inf;
-	    real_inf (&inf);
-	    return build_real (type, inf);
-	  }
-	default:
-	  break;
-	}
-    }
 #ifdef SUBTARGET_FOLD_BUILTIN
   return SUBTARGET_FOLD_BUILTIN (fndecl, n_args, args, ignore);
 #else
@@ -16613,6 +16679,22 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
 	 gsi_replace (gsi, g, true);
 	 return true;
       }
+
+    /* Vector Fused multiply-add (fma).  */
+    case ALTIVEC_BUILTIN_VMADDFP:
+    case VSX_BUILTIN_XVMADDDP:
+    case ALTIVEC_BUILTIN_VMLADDUHM:
+      {
+       arg0 = gimple_call_arg (stmt, 0);
+       arg1 = gimple_call_arg (stmt, 1);
+       tree arg2 = gimple_call_arg (stmt, 2);
+       lhs = gimple_call_lhs (stmt);
+       gimple *g = gimple_build_assign (lhs, FMA_EXPR , arg0, arg1, arg2);
+       gimple_set_location (g, gimple_location (stmt));
+       gsi_replace (gsi, g, true);
+       return true;
+      }
+
     default:
 	if (TARGET_DEBUG_BUILTIN)
 	   fprintf (stderr, "gimple builtin intrinsic not matched:%d %s %s\n",
@@ -16722,6 +16804,41 @@ rs6000_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
     case RS6000_BUILTIN_CPU_IS:
     case RS6000_BUILTIN_CPU_SUPPORTS:
       return cpu_expand_builtin (fcode, exp, target);
+
+    case FLOAT128_BUILTIN_SQRTF128_ODD:
+      return rs6000_expand_unop_builtin (TARGET_IEEEQUAD
+					 ? CODE_FOR_sqrttf2_odd
+					 : CODE_FOR_sqrtkf2_odd, exp, target);
+
+    case FLOAT128_BUILTIN_TRUNCF128_ODD:
+      return rs6000_expand_unop_builtin (TARGET_IEEEQUAD
+					 ? CODE_FOR_trunctfdf2_odd
+					 : CODE_FOR_trunckfdf2_odd, exp, target);
+
+    case FLOAT128_BUILTIN_ADDF128_ODD:
+      return rs6000_expand_binop_builtin (TARGET_IEEEQUAD
+					  ? CODE_FOR_addtf3_odd
+					  : CODE_FOR_addkf3_odd, exp, target);
+
+    case FLOAT128_BUILTIN_SUBF128_ODD:
+      return rs6000_expand_binop_builtin (TARGET_IEEEQUAD
+					  ? CODE_FOR_subtf3_odd
+					  : CODE_FOR_subkf3_odd, exp, target);
+
+    case FLOAT128_BUILTIN_MULF128_ODD:
+      return rs6000_expand_binop_builtin (TARGET_IEEEQUAD
+					  ? CODE_FOR_multf3_odd
+					  : CODE_FOR_mulkf3_odd, exp, target);
+
+    case FLOAT128_BUILTIN_DIVF128_ODD:
+      return rs6000_expand_binop_builtin (TARGET_IEEEQUAD
+					  ? CODE_FOR_divtf3_odd
+					  : CODE_FOR_divkf3_odd, exp, target);
+
+    case FLOAT128_BUILTIN_FMAF128_ODD:
+      return rs6000_expand_ternop_builtin (TARGET_IEEEQUAD
+					   ? CODE_FOR_fmatf4_odd
+					   : CODE_FOR_fmakf4_odd, exp, target);
 
     case ALTIVEC_BUILTIN_MASK_FOR_LOAD:
     case ALTIVEC_BUILTIN_MASK_FOR_STORE:
@@ -17052,15 +17169,6 @@ rs6000_init_builtins (void)
   if (TARGET_EXTRA_BUILTINS || TARGET_PAIRED_FLOAT)
     rs6000_common_init_builtins ();
 
-  ftype = build_function_type_list (ieee128_float_type_node,
-				    const_str_type_node, NULL_TREE);
-  def_builtin ("__builtin_nanq", ftype, RS6000_BUILTIN_NANQ);
-  def_builtin ("__builtin_nansq", ftype, RS6000_BUILTIN_NANSQ);
-
-  ftype = build_function_type_list (ieee128_float_type_node, NULL_TREE);
-  def_builtin ("__builtin_infq", ftype, RS6000_BUILTIN_INFQ);
-  def_builtin ("__builtin_huge_valq", ftype, RS6000_BUILTIN_HUGE_VALQ);
-
   ftype = builtin_function_type (DFmode, DFmode, DFmode, VOIDmode,
 				 RS6000_BUILTIN_RECIP, "__builtin_recipdiv");
   def_builtin ("__builtin_recipdiv", ftype, RS6000_BUILTIN_RECIP);
@@ -17109,6 +17217,32 @@ rs6000_init_builtins (void)
 				    NULL_TREE);
   def_builtin ("__builtin_cpu_is", ftype, RS6000_BUILTIN_CPU_IS);
   def_builtin ("__builtin_cpu_supports", ftype, RS6000_BUILTIN_CPU_SUPPORTS);
+
+  ftype = build_function_type_list (ieee128_float_type_node,
+				    ieee128_float_type_node, NULL_TREE);
+  def_builtin ("__builtin_sqrtf128_round_to_odd", ftype,
+	       FLOAT128_BUILTIN_SQRTF128_ODD);
+  def_builtin ("__builtin_truncf128_round_to_odd", ftype,
+	       FLOAT128_BUILTIN_TRUNCF128_ODD);
+
+  ftype = build_function_type_list (ieee128_float_type_node,
+				    ieee128_float_type_node,
+				    ieee128_float_type_node, NULL_TREE);
+  def_builtin ("__builtin_addf128_round_to_odd", ftype,
+	       FLOAT128_BUILTIN_ADDF128_ODD);
+  def_builtin ("__builtin_subf128_round_to_odd", ftype,
+	       FLOAT128_BUILTIN_SUBF128_ODD);
+  def_builtin ("__builtin_mulf128_round_to_odd", ftype,
+	       FLOAT128_BUILTIN_MULF128_ODD);
+  def_builtin ("__builtin_divf128_round_to_odd", ftype,
+	       FLOAT128_BUILTIN_DIVF128_ODD);
+
+  ftype = build_function_type_list (ieee128_float_type_node,
+				    ieee128_float_type_node,
+				    ieee128_float_type_node,
+				    ieee128_float_type_node, NULL_TREE);
+  def_builtin ("__builtin_fmaf128_round_to_odd", ftype,
+	       FLOAT128_BUILTIN_FMAF128_ODD);
 
   /* AIX libm provides clog as __clog.  */
   if (TARGET_XCOFF &&
@@ -22428,14 +22562,6 @@ rs6000_expand_float128_convert (rtx dest, rtx src, bool unsigned_p)
 }
 
 
-/* Emit the RTL for an sISEL pattern.  */
-
-void
-rs6000_emit_sISEL (machine_mode mode ATTRIBUTE_UNUSED, rtx operands[])
-{
-  rs6000_emit_int_cmove (operands[0], operands[1], const1_rtx, const0_rtx);
-}
-
 /* Emit RTL that sets a register to zero if OP1 and OP2 are equal.  SCRATCH
    can be used as that dest register.  Return the dest register.  */
 
@@ -23211,7 +23337,7 @@ rs6000_emit_cmove (rtx dest, rtx op, rtx true_cond, rtx false_cond)
 
 /* Same as above, but for ints (isel).  */
 
-static int
+int
 rs6000_emit_int_cmove (rtx dest, rtx op, rtx true_cond, rtx false_cond)
 {
   rtx condition_rtx, cr;
@@ -34997,6 +35123,8 @@ rs6000_insn_cost (rtx_insn *insn, bool speed)
 
     case TYPE_SYNC:
     case TYPE_LOAD_L:
+    case TYPE_MFCR:
+    case TYPE_MFCRF:
       cost = COSTS_N_INSNS (n + 2);
       break;
 

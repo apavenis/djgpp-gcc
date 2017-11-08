@@ -1208,7 +1208,7 @@ cp_build_qualified_type_real (tree type,
       tree t = PACK_EXPANSION_PATTERN (type);
 
       t = cp_build_qualified_type_real (t, type_quals, complain);
-      return make_pack_expansion (t);
+      return make_pack_expansion (t, complain);
     }
 
   /* A reference or method type shall not be cv-qualified.
@@ -4847,7 +4847,8 @@ special_function_p (const_tree decl)
     return sfk_move_constructor;
   if (DECL_CONSTRUCTOR_P (decl))
     return sfk_constructor;
-  if (DECL_OVERLOADED_OPERATOR_P (decl) == NOP_EXPR)
+  if (DECL_ASSIGNMENT_OPERATOR_P (decl)
+      && DECL_OVERLOADED_OPERATOR_IS (decl, NOP_EXPR))
     {
       if (copy_fn_p (decl))
 	return sfk_copy_assignment;

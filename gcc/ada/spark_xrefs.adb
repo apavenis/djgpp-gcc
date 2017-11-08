@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2011-2016, Free Software Foundation, Inc.         --
+--          Copyright (C) 2011-2017, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -23,8 +23,8 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Output;          use Output;
-with Put_SPARK_Xrefs;
+with Output;   use Output;
+with Sem_Util; use Sem_Util;
 
 package body SPARK_Xrefs is
 
@@ -48,13 +48,6 @@ package body SPARK_Xrefs is
             Write_Int (Int (Index));
             Write_Str (".  File_Num = ");
             Write_Int (Int (AFR.File_Num));
-            Write_Str ("  File_Name = """);
-
-            if AFR.File_Name /= null then
-               Write_Str (AFR.File_Name.all);
-            end if;
-
-            Write_Char ('"');
             Write_Str ("  From = ");
             Write_Int (Int (AFR.From_Scope));
             Write_Str ("  To = ");
@@ -82,23 +75,13 @@ package body SPARK_Xrefs is
             Write_Int (Int (ASR.Scope_Num));
             Write_Str ("  Scope_Name = """);
 
-            if ASR.Scope_Name /= null then
-               Write_Str (ASR.Scope_Name.all);
-            end if;
+            Write_Str (Unique_Name (ASR.Entity));
 
             Write_Char ('"');
-            Write_Str  ("  Line = ");
-            Write_Int  (Int (ASR.Line));
-            Write_Str  ("  Col = ");
-            Write_Int  (Int (ASR.Col));
-            Write_Str  ("  Type = ");
-            Write_Char (ASR.Stype);
             Write_Str  ("  From = ");
             Write_Int  (Int (ASR.From_Xref));
             Write_Str  ("  To = ");
             Write_Int  (Int (ASR.To_Xref));
-            Write_Str  ("  Scope_Entity = ");
-            Write_Int  (Int (ASR.Scope_Entity));
             Write_Eol;
          end;
       end loop;
@@ -118,23 +101,12 @@ package body SPARK_Xrefs is
             Write_Int  (Int (Index));
             Write_Str (".  Entity_Name = """);
 
-            if AXR.Entity_Name /= null then
-               Write_Str (AXR.Entity_Name.all);
-            end if;
+            Write_Str (Unique_Name (AXR.Entity));
 
             Write_Char ('"');
-            Write_Str ("  Entity_Line = ");
-            Write_Int (Int (AXR.Entity_Line));
-            Write_Str ("  Entity_Col = ");
-            Write_Int (Int (AXR.Entity_Col));
-            Write_Str ("  File_Num = ");
-            Write_Int (Int (AXR.File_Num));
-            Write_Str ("  Scope_Num = ");
-            Write_Int (Int (AXR.Scope_Num));
-            Write_Str ("  Line = ");
-            Write_Int (Int (AXR.Line));
-            Write_Str ("  Col = ");
-            Write_Int (Int (AXR.Col));
+            Write_Str ("  Reference_Scope = ");
+            Write_Str (Unique_Name (AXR.Ref_Scope));
+            Write_Char ('"');
             Write_Str ("  Type = ");
             Write_Char (AXR.Rtype);
             Write_Eol;
@@ -152,55 +124,5 @@ package body SPARK_Xrefs is
       SPARK_Scope_Table.Init;
       SPARK_Xref_Table.Init;
    end Initialize_SPARK_Tables;
-
-   ------------
-   -- pspark --
-   ------------
-
-   procedure pspark is
-
-      procedure Write_Info_Char (C : Character) renames Write_Char;
-      --  Write one character
-
-      procedure Write_Info_Str (Val : String) renames Write_Str;
-      --  Write string
-
-      function Write_Info_Col return Positive;
-      --  Return next column for writing
-
-      procedure Write_Info_Initiate (Key : Character) renames Write_Char;
-      --  Start new one and write one character;
-
-      procedure Write_Info_Nat (N : Nat);
-      --  Write value of N
-
-      procedure Write_Info_Terminate renames Write_Eol;
-      --  Terminate current line
-
-      --------------------
-      -- Write_Info_Col --
-      --------------------
-
-      function Write_Info_Col return Positive is
-      begin
-         return Positive (Column);
-      end Write_Info_Col;
-
-      --------------------
-      -- Write_Info_Nat --
-      --------------------
-
-      procedure Write_Info_Nat (N : Nat) is
-      begin
-         Write_Int (N);
-      end Write_Info_Nat;
-
-      procedure Debug_Put_SPARK_Xrefs is new Put_SPARK_Xrefs;
-
-   --  Start of processing for pspark
-
-   begin
-      Debug_Put_SPARK_Xrefs;
-   end pspark;
 
 end SPARK_Xrefs;

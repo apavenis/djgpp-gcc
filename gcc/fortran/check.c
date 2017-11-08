@@ -1731,7 +1731,7 @@ gfc_check_co_reduce (gfc_expr *a, gfc_expr *op, gfc_expr *result_image,
 
   if (!gfc_compare_types (&a->ts, &sym->result->ts))
     {
-      gfc_error ("A argument at %L has type %s but the function passed as "
+      gfc_error ("The A argument at %L has type %s but the function passed as "
 		 "OPERATOR at %L returns %s",
 		 &a->where, gfc_typename (&a->ts), &op->where,
 		 gfc_typename (&sym->result->ts));
@@ -3179,7 +3179,7 @@ gfc_check_matmul (gfc_expr *matrix_a, gfc_expr *matrix_b)
 bool
 gfc_check_minloc_maxloc (gfc_actual_arglist *ap)
 {
-  gfc_expr *a, *m, *d;
+  gfc_expr *a, *m, *d, *k;
 
   a = ap->expr;
   if (!int_or_real_check (a, 0) || !array_check (a, 0))
@@ -3187,6 +3187,7 @@ gfc_check_minloc_maxloc (gfc_actual_arglist *ap)
 
   d = ap->next->expr;
   m = ap->next->next->expr;
+  k = ap->next->next->next->expr;
 
   if (m == NULL && d != NULL && d->ts.type == BT_LOGICAL
       && ap->next->name == NULL)
@@ -3212,6 +3213,9 @@ gfc_check_minloc_maxloc (gfc_actual_arglist *ap)
 				 gfc_current_intrinsic_arg[0]->name,
 				 gfc_current_intrinsic_arg[2]->name,
 				 gfc_current_intrinsic))
+    return false;
+
+  if (!kind_check (k, 1, BT_INTEGER))
     return false;
 
   return true;

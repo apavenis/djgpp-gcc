@@ -83,12 +83,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "edit-context.h"
 #include "tree-pass.h"
 #include "dumpfile.h"
+#include "ipa-fnsummary.h"
 
 #if defined(DBX_DEBUGGING_INFO) || defined(XCOFF_DEBUGGING_INFO)
 #include "dbxout.h"
 #endif
-
-#include "sdbout.h"
 
 #ifdef XCOFF_DEBUGGING_INFO
 #include "xcoffout.h"		/* Needed for external data declarations. */
@@ -1467,8 +1466,6 @@ process_options (void)
   else if (write_symbols == XCOFF_DEBUG)
     debug_hooks = &xcoff_debug_hooks;
 #endif
-  else if (SDB_DEBUGGING_INFO && write_symbols == SDB_DEBUG)
-    debug_hooks = &sdb_debug_hooks;
 #ifdef DWARF2_DEBUGGING_INFO
   else if (write_symbols == DWARF2_DEBUG)
     debug_hooks = &dwarf2_debug_hooks;
@@ -2240,6 +2237,7 @@ toplev::finalize (void)
 
   /* Needs to be called before cgraph_c_finalize since it uses symtab.  */
   ipa_reference_c_finalize ();
+  ipa_fnsummary_c_finalize ();
 
   cgraph_c_finalize ();
   cgraphunit_c_finalize ();
