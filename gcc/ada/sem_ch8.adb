@@ -9440,7 +9440,10 @@ package body Sem_Ch8 is
 
          --  Warn about detected redundant clauses
 
-         elsif In_Open_Scopes (P) and not Force then
+         elsif not Force
+           and then In_Open_Scopes (P)
+           and then not Is_Hidden_Open_Scope (P)
+         then
             if Warn_On_Redundant_Constructs and then P = Current_Scope then
                Error_Msg_NE -- CODEFIX
                  ("& is already use-visible within itself?r?",

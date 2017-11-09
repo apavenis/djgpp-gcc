@@ -1,3 +1,262 @@
+2017-11-09  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/rs6000.c (machine_function): Add a bool,
+	"toc_is_wrapped_separately".
+	(rs6000_option_override_internal): Enable OPTION_MASK_SAVE_TOC_INDIRECT
+	if it wasn't explicitly set or unset, we are optimizing for speed, and
+	doing separate shrink-wrapping.
+	(rs6000_get_separate_components): Enable the TOC component if
+	saving the TOC register in the prologue.
+	(rs6000_components_for_bb): Handle the TOC component.
+	(rs6000_emit_prologue_components): Store the TOC register where needed.
+	(rs6000_set_handled_components): Mark TOC as handled, if handled.
+	(rs6000_emit_prologue): Don't save the TOC if that is already done.
+
+2017-11-09  Martin Jambor  <mjambor@suse.cz>
+
+	* ipa-param-manipulation.c: New file.
+	* ipa-param-manipulation.h: Likewise.
+	* Makefile.in (OBJS): Add ipa-param-manipulation.o.
+	(PLUGIN_HEADERS): Addded ipa-param-manipulation.h
+	* ipa-param.h (ipa_parm_op): Moved to ipa-param-manipulation.h.
+	(ipa_parm_adjustment): Likewise.
+	(ipa_parm_adjustment_vec): Likewise.
+	(ipa_get_vector_of_formal_parms): Moved declaration to
+	ipa-param-manipulation.h.
+	(ipa_get_vector_of_formal_parm_types): Likewise.
+	(ipa_modify_formal_parameters): Likewise.
+	(ipa_modify_call_arguments): Likewise.
+	(ipa_combine_adjustments): Likewise.
+	(ipa_dump_param_adjustments): Likewise.
+	(ipa_modify_expr): Likewise.
+	(ipa_get_adjustment_candidate): Likewise.
+	* ipa-prop.c (ipa_get_vector_of_formal_parms): Moved to
+	ipa-param-manipulation.c.
+	(ipa_get_vector_of_formal_parm_types): Likewise.
+	(ipa_modify_formal_parameters): Likewise.
+	(ipa_modify_call_arguments): Likewise.
+	(ipa_modify_expr): Likewise.
+	(get_ssa_base_param): Likewise.
+	(ipa_get_adjustment_candidate): Likewise.
+	(index_in_adjustments_multiple_times_p): Likewise.
+	(ipa_combine_adjustments): Likewise.
+	(ipa_dump_param_adjustments): Likewise.
+	* tree-sra.c: Also include ipa-param-manipulation.h
+	* omp-simd-clone.c: Include ipa-param-manipulation.h instead of
+	ipa-param.h.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* doc/sourcebuild.texi (vect_masked_store): Document.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* doc/sourcebuild.texi (vect_align_stack_vars): Document.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* doc/sourcebuild.texi (vect_variable_length): Document.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* doc/sourcebuild.texi (vect_unaligned_possible): Document.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* doc/sourcebuild.texi (vect_element_align_preferred): Document.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* doc/sourcebuild.texi (vect_perm_short, vect_perm_byte): Document
+	previously undocumented selectors.
+	(vect_perm3_byte, vect_perm3_short, vect_perm3_int): Document.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+
+	* doc/rtl.texi (const_vector): Say that elements can be
+	const_wide_ints too.
+	* emit-rtl.h (valid_for_const_vec_duplicate_p): Declare.
+	* emit-rtl.c (valid_for_const_vec_duplicate_p): New function.
+	(gen_vec_duplicate): Use it instead of CONSTANT_P.
+	* optabs.c (expand_vector_broadcast): Likewise.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* tree-ssa-loop-ivopts.c (get_address_cost): Try using a
+	scaled index even if the unscaled address was invalid.
+	Don't increase the complexity of using a scale in that case.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* doc/rtl.texi: Rewrite the subreg rules so that they partition
+	the inner register into REGMODE_NATURAL_SIZE bytes rather than
+	UNITS_PER_WORD bytes.
+	* emit-rtl.c (validate_subreg): Divide subregs into blocks
+	based on REGMODE_NATURAL_SIZE of the inner mode.
+	(gen_lowpart_common): Split the SCALAR_FLOAT_MODE_P and
+	!SCALAR_FLOAT_MODE_P cases.  Use REGMODE_NATURAL_SIZE for the latter.
+	* expmed.c (lowpart_bit_field_p): Divide the value up into
+	chunks of REGMODE_NATURAL_SIZE rather than UNITS_PER_WORD.
+	* expr.c (store_constructor): Use REGMODE_NATURAL_SIZE to test
+	whether something is likely to occupy more than one register.
+
+2017-11-09  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR ipa/82879
+	* ipa-inline-transform.c (update_noncloned_frequencies): Use
+	profile_count::adjust_for_ipa_scaling.
+	* tree-inline.c (copy_bb, copy_cfg_body): Likewise.
+	* profile-count.c (profile_count::adjust_for_ipa_scaling): New member
+	function.
+	* profile-count.h (profile_count::adjust_for_ipa_scaling): Declare.
+
+2017-11-09  Jakub Jelinek  <jakub@redhat.com>
+
+	* gimple-ssa-store-merging.c (count_multiple_uses): New function.
+	(split_group): Add total_orig and total_new arguments, estimate the
+	number of statements related to the store group without store merging
+	and with store merging.
+	(imm_store_chain_info::output_merged_store): Adjust split_group
+	callers, punt if estimated number of statements with store merging
+	is not smaller than estimated number of statements without it.
+	Formatting fix.
+	(handled_load): Remove has_single_use checks.
+	(pass_store_merging::process_store): Likewise.
+
+2017-11-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/82902
+	* tree-ssa-phiprop.c (propagate_with_phi): Test proper type.
+
+2017-11-09  Martin Liska  <mliska@suse.cz>
+
+	PR target/82863
+	* emit-rtl.c (init_emit_regs): Initialize split_branch_probability to
+	uninitialized.
+
+2017-11-09  Martin Liska  <mliska@suse.cz>
+
+	PR tree-optimization/82669
+	* sbitmap.h (bmp_iter_set_init): Remove non needed check.
+
+2017-11-09  Martin Liska  <mliska@suse.cz>
+
+	PR gcov-profile/48463
+	* coverage.c (coverage_begin_function): Output also end locus
+	of a function and information whether the function is
+	artificial.
+	* gcov-dump.c (tag_function): Parse and print the information.
+	* gcov.c (INCLUDE_MAP): Add include.
+	(INCLUDE_SET): Likewise.
+	(struct line_info): Move earlier in the source file because
+	of vector<line_info> in function_info structure.
+	(line_info::line_info): Likewise.
+	(line_info::has_block): Likewise.
+	(struct source_info): Add new member index.
+	(source_info::get_functions_at_location): New function.
+	(function_info::group_line_p): New function.
+	(output_intermediate_line): New function.
+	(output_intermediate_file): Use the mentioned function.
+	(struct function_start): New.
+	(struct function_start_pair_hash): Likewise.
+	(process_file): Add code that identifies group functions.
+	Assign lines either to global or function scope.
+	(generate_results): Skip artificial functions.
+	(find_source): Assign index for each source file.
+	(read_graph_file): Read new flag artificial and end_line.
+	(add_line_counts): Assign it either to global of function scope.
+	(accumulate_line_counts): Isolate core of the function to
+	accumulate_line_info and call it for both function and global
+	scope lines.
+	(accumulate_line_info): New function.
+	(output_line_beginning): Fix GNU coding style.
+	(print_source_line): New function.
+	(output_line_details): Likewise.
+	(output_function_details): Likewise.
+	(output_lines): Iterate both source (global) scope and function
+	scope.
+	(struct function_line_start_cmp): New class.
+	* doc/gcov.texi: Reflect changes in documentation.
+
+2017-11-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/82837
+	* dwarf2out.c (const_ok_for_output_1): Reject NEG in addition to NOT.
+	(mem_loc_descriptor): Handle (const (neg (...))) as (neg (const (...)))
+	and similarly for not instead of neg.
+
+2017-11-08  Andi Kleen  <ak@linux.intel.com>
+
+	* config/i386/i386.opt: Add -mforce-indirect-call.
+	* config/i386/predicates.md: Check for flag_force_indirect_call.
+	* doc/invoke.texi: Document -mforce-indirect-call
+
+2017-11-08  Kito Cheng  <kito.cheng@gmail.com>
+
+	* config/riscv/riscv-protos.h (riscv_slow_unaligned_access_p):
+	New extern.
+	(MOVE_RATIO): Use riscv_slow_unaligned_access_p.
+	config/riscv/riscv.c (predict.h): New include.
+	(riscv_slow_unaligned_access_p): No longer static.
+	(riscv_block_move_straight): Add require.
+	config/riscv/riscv-protos.h (riscv_hard_regno_nregs): Delete.
+
+2017-11-08  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/82855
+	* config/i386/sse.md (<avx512>_eq<mode>3<mask_scalar_merge_name>,
+	<avx512>_eq<mode>3<mask_scalar_merge_name>_1): Use
+	nonimmediate_operand predicate for operand 1 instead of
+	register_operand.
+
+2017-11-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64-simd.md (store_pair_lanes<mode>):
+	New pattern.
+	* config/aarch64/constraints.md (Uml): New constraint.
+	* config/aarch64/predicates.md (aarch64_mem_pair_lanes_operand): New
+	predicate.
+
+2017-11-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* simplify-rtx.c (simplify_ternary_operation): Simplify vec_merge
+	of two vec_duplicates into a vec_concat.
+
+2017-11-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* simplify-rtx.c (simplify_ternary_operation, VEC_MERGE):
+	Simplify vec_merge of vec_duplicate and vec_concat.
+	* config/aarch64/constraints.md (Utq): New constraint.
+	* config/aarch64/aarch64-simd.md (load_pair_lanes<mode>): New
+	define_insn.
+
+2017-11-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* simplify-rtx.c (simplify_ternary_operation, VEC_MERGE):
+	Simplify vec_merge of vec_duplicate and const_vector.
+	* config/aarch64/predicates.md (aarch64_simd_or_scalar_imm_zero):
+	New predicate.
+	* config/aarch64/aarch64-simd.md (*aarch64_combinez<mode>): Use VDC
+	mode iterator.  Update predicate on operand 1 to
+	handle non-const_vec constants.  Delete constraints.
+	(*aarch64_combinez_be<mode>): Likewise for operand 2.
+
 2017-11-08  Jakub Jelinek  <jakub@redhat.com>
 
 	PR tree-optimization/78821

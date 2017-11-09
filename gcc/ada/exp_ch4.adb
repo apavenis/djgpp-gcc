@@ -2766,7 +2766,7 @@ package body Exp_Ch4 is
       --  special case of setting the right high bound for a null result.
       --  This is of type Ityp.
 
-      High_Bound : Node_Id;
+      High_Bound : Node_Id := Empty;
       --  A tree node representing the high bound of the result (of type Ityp)
 
       Result : Node_Id;
@@ -4800,7 +4800,7 @@ package body Exp_Ch4 is
 
                declare
                   Dis : Boolean := False;
-                  Typ : Entity_Id;
+                  Typ : Entity_Id := Empty;
 
                begin
                   if Has_Discriminants (T) then
@@ -10749,6 +10749,8 @@ package body Exp_Ch4 is
 
                      if Present (Stored) then
                         Elmt := First_Elmt (Stored);
+                     else
+                        Elmt := No_Elmt; -- init to avoid warning
                      end if;
 
                      Cons := New_List;
@@ -11279,6 +11281,7 @@ package body Exp_Ch4 is
          elsif In_Instance_Body
            and then Ekind (Operand_Type) = E_Anonymous_Access_Type
            and then Nkind (Operand) = N_Selected_Component
+           and then Ekind (Entity (Selector_Name (Operand))) = E_Discriminant
            and then Object_Access_Level (Operand) >
                       Type_Access_Level (Target_Type)
          then
@@ -13111,10 +13114,10 @@ package body Exp_Ch4 is
       Comp : Node_Id;
       --  Comparison operand, set only if Is_Zero is false
 
-      Ent : Entity_Id;
+      Ent : Entity_Id := Empty;
       --  Entity whose length is being compared
 
-      Index : Node_Id;
+      Index : Node_Id := Empty;
       --  Integer_Literal node for length attribute expression, or Empty
       --  if there is no such expression present.
 

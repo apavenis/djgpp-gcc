@@ -597,6 +597,7 @@ package body Sem_Util is
 
       procedure Inner (E : Entity_Id) is
          Scop : Node_Id;
+
       begin
          --  If entity has an internal name, skip by it, and print its scope.
          --  Note that we strip a final R from the name before the test; this
@@ -4030,7 +4031,7 @@ package body Sem_Util is
          if SPARK_Mode_Is_Off (Pack) then
             null;
 
-         --  State refinement can only occur in a completing packge body. Do
+         --  State refinement can only occur in a completing package body. Do
          --  not verify proper state refinement when the body is subject to
          --  pragma SPARK_Mode Off because this disables the requirement for
          --  state refinement.
@@ -7839,6 +7840,66 @@ package body Sem_Util is
 
       raise Program_Error;
    end Find_Corresponding_Discriminant;
+
+   -------------------
+   -- Find_DIC_Type --
+   -------------------
+
+   function Find_DIC_Type (Typ : Entity_Id) return Entity_Id is
+      Curr_Typ : Entity_Id;
+      --  The current type being examined in the parent hierarchy traversal
+
+      DIC_Typ : Entity_Id;
+      --  The type which carries the DIC pragma. This variable denotes the
+      --  partial view when private types are involved.
+
+      Par_Typ : Entity_Id;
+      --  The parent type of the current type. This variable denotes the full
+      --  view when private types are involved.
+
+   begin
+      --  The input type defines its own DIC pragma, therefore it is the owner
+
+      if Has_Own_DIC (Typ) then
+         DIC_Typ := Typ;
+
+         --  Otherwise the DIC pragma is inherited from a parent type
+
+      else
+         pragma Assert (Has_Inherited_DIC (Typ));
+
+         --  Climb the parent chain
+
+         Curr_Typ := Typ;
+         loop
+            --  Inspect the parent type. Do not consider subtypes as they
+            --  inherit the DIC attributes from their base types.
+
+            DIC_Typ := Base_Type (Etype (Curr_Typ));
+
+            --  Look at the full view of a private type because the type may
+            --  have a hidden parent introduced in the full view.
+
+            Par_Typ := DIC_Typ;
+
+            if Is_Private_Type (Par_Typ)
+              and then Present (Full_View (Par_Typ))
+            then
+               Par_Typ := Full_View (Par_Typ);
+            end if;
+
+            --  Stop the climb once the nearest parent type which defines a DIC
+            --  pragma of its own is encountered or when the root of the parent
+            --  chain is reached.
+
+            exit when Has_Own_DIC (DIC_Typ) or else Curr_Typ = Par_Typ;
+
+            Curr_Typ := Par_Typ;
+         end loop;
+      end if;
+
+      return DIC_Typ;
+   end Find_DIC_Type;
 
    ----------------------------------
    -- Find_Enclosing_Iterator_Loop --
@@ -13198,14 +13259,14 @@ package body Sem_Util is
       if Ekind (Proc_Nam) = E_Procedure
         and then Present (Parameter_Specifications (Parent (Proc_Nam)))
       then
-         Param := Parameter_Type (First (
-                    Parameter_Specifications (Parent (Proc_Nam))));
+         Param :=
+           Parameter_Type
+             (First (Parameter_Specifications (Parent (Proc_Nam))));
 
-         --  The formal may be an anonymous access type.
+         --  The formal may be an anonymous access type
 
          if Nkind (Param) = N_Access_Definition then
             Param_Typ := Entity (Subtype_Mark (Param));
-
          else
             Param_Typ := Etype (Param);
          end if;
@@ -15387,7 +15448,7 @@ package body Sem_Util is
       Anc_Part : Node_Id;
       Assoc    : Node_Id;
       Choice   : Node_Id;
-      Comp_Typ : Entity_Id;
+      Comp_Typ : Entity_Id := Empty; -- init to avoid warning
       Expr     : Node_Id;
 
    begin
@@ -15463,6 +15524,7 @@ package body Sem_Util is
          --  The type of the choice must have preelaborable initialization if
          --  the association carries a <>.
 
+         pragma Assert (Present (Comp_Typ));
          if Box_Present (Assoc) then
             if not Has_Preelaborable_Initialization (Comp_Typ) then
                return False;
@@ -17497,8 +17559,8 @@ package body Sem_Util is
       L_Ndims : constant Nat := Number_Dimensions (L_Typ);
       R_Ndims : constant Nat := Number_Dimensions (R_Typ);
 
-      L_Index : Node_Id;
-      R_Index : Node_Id;
+      L_Index : Node_Id := Empty; -- init to ...
+      R_Index : Node_Id := Empty; -- ...avoid warnings
       L_Low   : Node_Id;
       L_High  : Node_Id;
       L_Len   : Uint;
@@ -19475,9 +19537,9 @@ package body Sem_Util is
       N : constant Entity_Id := Make_Temporary (Sloc_Value, Id_Char);
 
    begin
-      Set_Ekind          (N, Kind);
-      Set_Is_Internal    (N, True);
-      Append_Entity      (N, Scope_Id);
+      Set_Ekind       (N, Kind);
+      Set_Is_Internal (N, True);
+      Append_Entity   (N, Scope_Id);
 
       if Kind in Type_Kind then
          Init_Size_Align (N);
@@ -23329,6 +23391,7 @@ package body Sem_Util is
          declare
             H  : Entity_Id := Homonym (N);
             Nr : Nat := 1;
+
          begin
             while Present (H) loop
                if Scope (H) = Scope (N) then

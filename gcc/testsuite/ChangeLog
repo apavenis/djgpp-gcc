@@ -1,3 +1,441 @@
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* lib/target-supports.exp (check_effective_target_vect_masked_store):
+	New proc.
+	* gcc.dg/vect/vect-cselim-1.c (foo): Mention that the second loop
+	is vectorizable with masked stores.  Update scan-tree-dump-times
+	accordingly.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* lib/target-supports.exp
+	(check_effective_target_vect_align_stack_vars): New proc.
+	* gcc.dg/vect/vect-23.c: Only expect the array to be aligned if
+	vect_align_stack_vars.
+	* gcc.dg/vect/vect-24.c: Likewise.
+	* gcc.dg/vect/vect-25.c: Likewise.
+	* gcc.dg/vect/vect-26.c: Likewise.
+	* gcc.dg/vect/vect-32-big-array.c: Likewise.
+	* gcc.dg/vect/vect-32.c: Likewise.
+	* gcc.dg/vect/vect-40.c: Likewise.
+	* gcc.dg/vect/vect-42.c: Likewise.
+	* gcc.dg/vect/vect-46.c: Likewise.
+	* gcc.dg/vect/vect-48.c: Likewise.
+	* gcc.dg/vect/vect-52.c: Likewise.
+	* gcc.dg/vect/vect-54.c: Likewise.
+	* gcc.dg/vect/vect-62.c: Likewise.
+	* gcc.dg/vect/vect-67.c: Likewise.
+	* gcc.dg/vect/vect-75-big-array.c: Likewise.
+	* gcc.dg/vect/vect-75.c: Likewise.
+	* gcc.dg/vect/vect-77-alignchecks.c: Likewise.
+	* gcc.dg/vect/vect-78-alignchecks.c: Likewise.
+	* gcc.dg/vect/vect-89-big-array.c: Likewise.
+	* gcc.dg/vect/vect-89.c: Likewise.
+	* gcc.dg/vect/vect-96.c: Likewise.
+	* gcc.dg/vect/vect-multitypes-3.c: Likewise.
+	* gcc.dg/vect/vect-multitypes-6.c: Likewise.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* lib/target-supports.exp
+	(check_effective_target_vect_variable_length): New proc.
+	* gcc.dg/vect/pr60482.c: XFAIL test for no epilog loop if
+	vect_variable_length.
+	* gcc.dg/vect/slp-reduc-6.c: XFAIL two-operation SLP if
+	vect_variable_length.
+	* gcc.dg/vect/vect-alias-check-5.c: XFAIL alias optimization if
+	vect_variable_length.
+	* gfortran.dg/vect/fast-math-mgrid-resid.f: XFAIL predictive
+	commoning optimization if vect_variable_length.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* lib/target-supports.exp
+	(check_effective_target_vect_unaligned_possible): New proc.
+	* gcc.dg/vect/slp-25.c: Extend XFAIL of peeling for alignment from
+	vect_no_align && { ! vect_hw_misalign } to ! vect_unaligned_possible.
+	* gcc.dg/vect/vect-multitypes-1.c: Likewise.
+	* gcc.dg/vect/vect-109.c: XFAIL vectorisation of an unaligned
+	access to ! vect_unaligned_possible.
+	* gcc.dg/vect/vect-33.c: Likewise.
+	* gcc.dg/vect/vect-42.c: Likewise.
+	* gcc.dg/vect/vect-56.c: Likewise.
+	* gcc.dg/vect/vect-60.c: Likewise.
+	* gcc.dg/vect/vect-96.c: Likewise.
+	* gcc.dg/vect/vect-peel-1.c: Likewise.
+	* gcc.dg/vect/vect-27.c: Extend XFAIL of unaligned vectorization from
+	vect_no_align && { ! vect_hw_misalign } to ! vect_unaligned_possible.
+	* gcc.dg/vect/vect-29.c: Likewise.
+	* gcc.dg/vect/vect-44.c: Likewise.
+	* gcc.dg/vect/vect-48.c: Likewise.
+	* gcc.dg/vect/vect-50.c: Likewise.
+	* gcc.dg/vect/vect-52.c: Likewise.
+	* gcc.dg/vect/vect-72.c: Likewise.
+	* gcc.dg/vect/vect-75-big-array.c: Likewise.
+	* gcc.dg/vect/vect-75.c: Likewise.
+	* gcc.dg/vect/vect-77-alignchecks.c: Likewise.
+	* gcc.dg/vect/vect-77-global.c: Likewise.
+	* gcc.dg/vect/vect-78-alignchecks.c: Likewise.
+	* gcc.dg/vect/vect-78-global.c: Likewise.
+	* gcc.dg/vect/vect-multitypes-3.c: Likewise.
+	* gcc.dg/vect/vect-multitypes-4.c: Likewise.
+	* gcc.dg/vect/vect-multitypes-6.c: Likewise.
+	* gcc.dg/vect/vect-peel-4.c: Likewise.
+	* gcc.dg/vect/vect-peel-3.c: Likewise, and also for peeling
+	for alignment.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* lib/target-supports.exp
+	(check_effective_target_vect_element_align_preferred): New proc.
+	(check_effective_target_vect_peeling_profitable): Test it.
+	* gcc.dg/vect/no-section-anchors-vect-31.c: Don't expect peeling
+	if vect_element_align_preferred.
+	* gcc.dg/vect/no-section-anchors-vect-64.c: Likewise.
+	* gcc.dg/vect/pr65310.c: Likewise.
+	* gcc.dg/vect/vect-26.c: Likewise.
+	* gcc.dg/vect/vect-54.c: Likewise.
+	* gcc.dg/vect/vect-56.c: Likewise.
+	* gcc.dg/vect/vect-58.c: Likewise.
+	* gcc.dg/vect/vect-60.c: Likewise.
+	* gcc.dg/vect/vect-89-big-array.c: Likewise.
+	* gcc.dg/vect/vect-89.c: Likewise.
+	* gcc.dg/vect/vect-92.c: Likewise.
+	* gcc.dg/vect/vect-peel-1.c: Likewise.
+	* gcc.dg/vect/vect-outer-3a-big-array.c: Expect the step to
+	divide the alignment if vect_element_align_preferred.
+	* gcc.dg/vect/vect-outer-3a.c: Likewise.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* lib/target-supports.exp (vect_perm_supported): New proc.
+	(check_effective_target_vect_perm3_int): Likewise.
+	(check_effective_target_vect_perm3_short): Likewise.
+	(check_effective_target_vect_perm3_byte): Likewise.
+	* gcc.dg/vect/slp-perm-1.c: Expect SLP load permutation to
+	succeed if vect_perm3_int.
+	* gcc.dg/vect/slp-perm-5.c: Likewise.
+	* gcc.dg/vect/slp-perm-6.c: Likewise.
+	* gcc.dg/vect/slp-perm-7.c: Likewise.
+	* gcc.dg/vect/slp-perm-8.c: Likewise vect_perm3_byte.
+	* gcc.dg/vect/slp-perm-9.c: Likewise vect_perm3_short.
+	Use vect_perm_short instead of vect_perm.  Add a scan-tree-dump-not
+	test for vect_perm3_short targets.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* gcc.dg/vect/no-vfa-vect-101.c: Use scan-tree-dump rather than
+	scan-tree-dump-times for vect_multiple_sizes.
+	* gcc.dg/vect/no-vfa-vect-102.c: Likewise.
+	* gcc.dg/vect/no-vfa-vect-102a.c: Likewise.
+	* gcc.dg/vect/no-vfa-vect-37.c: Likewise.
+	* gcc.dg/vect/no-vfa-vect-79.c: Likewise.
+	* gcc.dg/vect/vect-104.c: Likewise.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* lib/target-supports.exp (available_vector_sizes): New proc.
+	(check_effective_target_vect_multiple_sizes): Use it.
+	(check_effective_target_vect64): Likewise.
+	(check_effective_target_vect_sizes_32B_16B): Likewise.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* gcc.dg/vect/tree-vect.h (VECTOR_BITS): Define.
+	* gcc.dg/vect/bb-slp-pr69907.c: Include tree-vect.h.
+	(N): New macro.
+	(foo): Use it instead of hard-coded 320.
+	* gcc.dg/vect/no-scevccp-outer-7.c (N): Redefine if the default
+	value is too small for VECTOR_BITS.
+	* gcc.dg/vect/no-scevccp-vect-iv-3.c (N): Likewise.
+	* gcc.dg/vect/no-section-anchors-vect-31.c (N): Likewise.
+	* gcc.dg/vect/no-section-anchors-vect-36.c (N): Likewise.
+	* gcc.dg/vect/slp-perm-9.c (N): Likewise.
+	* gcc.dg/vect/vect-32.c (N): Likewise.
+	* gcc.dg/vect/vect-75.c (N, OFF): Likewise.
+	* gcc.dg/vect/vect-77-alignchecks.c (N, OFF): Likewise.
+	* gcc.dg/vect/vect-78-alignchecks.c (N, OFF): Likewise.
+	* gcc.dg/vect/vect-89.c (N): Likewise.
+	* gcc.dg/vect/vect-96.c (N): Likewise.
+	* gcc.dg/vect/vect-multitypes-3.c (N): Likewise.
+	* gcc.dg/vect/vect-multitypes-6.c (N): Likewise.
+	* gcc.dg/vect/vect-over-widen-1.c (N): Likewise.
+	* gcc.dg/vect/vect-over-widen-4.c (N): Likewise.
+	* gcc.dg/vect/vect-reduc-pattern-1a.c (N): Likewise.
+	* gcc.dg/vect/vect-reduc-pattern-1b.c (N): Likewise.
+	* gcc.dg/vect/vect-reduc-pattern-2a.c (N): Likewise.
+	* gcc.dg/vect/no-section-anchors-vect-64.c (NINTS): New macro.
+	(N): Redefine in terms of NINTS.
+	(ia, ib, ic): Use NINTS instead of hard-coded constants in the
+	array bounds.
+	* gcc.dg/vect/no-section-anchors-vect-69.c (NINTS): New macro.
+	(N): Redefine in terms of NINTS.
+	(test1): Replace a and b fields with NINTS - 2 ints of padding.
+	(main1): Use NINTS instead of hard-coded constants.
+	* gcc.dg/vect/section-anchors-vect-69.c (NINTS): New macro.
+	(N): Redefine in terms of NINTS.
+	(test1): Replace a and b fields with NINTS - 2 ints of padding.
+	(test2): Remove incorrect comments about alignment.
+	(main1): Use NINTS instead of hard-coded constants.
+	* gcc.dg/vect/pr45752.c (N): Redefine if the default value is
+	too small for VECTOR_BITS.
+	(main): Continue to use canned results for the default value of N,
+	but compute the expected results from scratch for other values.
+	* gcc.dg/vect/slp-perm-1.c (N, main): As for pr45752.c.
+	* gcc.dg/vect/slp-perm-4.c (N, main): Likewise.
+	* gcc.dg/vect/slp-perm-5.c (N, main): Likewise.
+	* gcc.dg/vect/slp-perm-6.c (N, main): Likewise.
+	* gcc.dg/vect/slp-perm-7.c (N, main): Likewise.
+	* gcc.dg/vect/pr65518.c (NINTS, N, RESULT): New macros.
+	(giga): Use NINTS as the array bound.
+	(main): Use NINTS, N and RESULT.
+	* gcc.dg/vect/pr65947-5.c (N): Redefine if the default value is
+	too small for VECTOR_BITS.
+	(main): Fill in any remaining elements of A programmatically.
+	* gcc.dg/vect/pr81136.c: Include tree-vect.h.
+	(a): Use VECTOR_BITS to set the alignment of the target structure.
+	* gcc.dg/vect/slp-19c.c (N): Redefine if the default value is
+	too small for VECTOR_BITS.
+	(main1): Continue to use the canned input for the default value of N,
+	but compute the input from scratch for other values.
+	* gcc.dg/vect/slp-28.c (N): Redefine if the default value is
+	too small for VECTOR_BITS.
+	(in1, in2, in3): Remove initialization.
+	(check1, check2): Delete.
+	(main1): Initialize in1, in2 and in3 here.  Check every element
+	of the vectors and compute the expected values directly instead
+	of using an array.
+	* gcc.dg/vect/slp-perm-8.c (N): Redefine if the default value is
+	too small for VECTOR_BITS.
+	(foo, main): Change type of "i" to int.
+	* gcc.dg/vect/vect-103.c (NINTS): New macro.
+	(N): Redefine in terms of N.
+	(c): Delete.
+	(main1): Use NINTS.  Check the result from a and b directly.
+	* gcc.dg/vect/vect-67.c (NINTS): New macro.
+	(N): Redefine in terms of N.
+	(main1): Use NINTS for the inner array bounds.
+	* gcc.dg/vect/vect-70.c (NINTS, OUTERN): New macros.
+	(N): Redefine in terms of NINTS.
+	(s): Keep the outer dimensions as 4 even if N is larger than 24.
+	(tmp1): New variable.
+	(main1): Only define a local tmp1 if NINTS is relatively small.
+	Use OUTERN for the outer loops and NINTS for the inner loops.
+	* gcc.dg/vect/vect-91.c (OFF): New macro.
+	(a, main3): Use it.
+	* gcc.dg/vect/vect-92.c (NITER): New macro.
+	(main1, main2): Use it.
+	* gcc.dg/vect/vect-93.c (N): Rename to...
+	(N1): ...this.
+	(main): Update accordingly.
+	(N2): New macro.
+	(main1): Use N1 instead of 3001 and N2 insteaed of 10.
+	* gcc.dg/vect/vect-multitypes-1.c (NSHORTS, NINTS): New macros.
+	(N): Redefine in terms of NSHORTS.
+	(main1): Use NINTS - 1 instead of 3 and NSHORTS - 1 instead of 7.
+	(main): Likewise.
+	* gcc.dg/vect/vect-over-widen-3-big-array.c (N): Define to VECTOR_BITS.
+	(foo): Truncate the expected value to the type of *d.
+	* gcc.dg/vect/vect-peel-3.c (NINTS, EXTRA): New macros.
+	(ia, ib, ic, main): Use EXTRA.
+	(main): Use NINTS.
+	(RES_A, RES_B, REC_C): New macros.
+	(RES): Redefine as their sum.
+	* gcc.dg/vect/vect-reduc-or_1.c (N): New macro.
+	(in): Change number of elements to N.
+	(main): Update accordingly.  Calculate the expected result.
+	* gcc.dg/vect/vect-reduc-or_2.c (N, in, main): As for
+	vect-reduc-or-1.c.
+
+2017-11-09  Richard Sandiford  <richard.sandiford@linaro.org>
+	    Alan Hayward  <alan.hayward@arm.com>
+	    David Sherwood  <david.sherwood@arm.com>
+
+	* gcc.dg/vect/bb-slp-cond-1.c (main): Add an asm volatile
+	to the set-up loop.
+	* gcc.dg/vect/slp-perm-7.c (main): Prevent vectorisation with
+	asm volatile ("" ::: "memory") instead of a conditional abort.
+	Update the expected vector loop count accordingly.
+	* gcc.dg/vect/slp-perm-9.c (main): Likewise.
+	* gcc.dg/vect/bb-slp-1.c (main1): Prevent vectorisation with
+	asm volatile ("" ::: "memory") instead of a conditional abort.
+	* gcc.dg/vect/slp-23.c (main): Likewise,
+	* gcc.dg/vect/slp-35.c (main): Likewise,
+	* gcc.dg/vect/slp-37.c (main): Likewise,
+	* gcc.dg/vect/slp-perm-4.c (main): Likewise.
+	* gcc.dg/vect/bb-slp-24.c (foo): Likewise.  Remove dummy argument.
+	(main): Update call accordingly.
+	* gcc.dg/vect/bb-slp-25.c (foo, main): As for bb-slp-24.c.
+	* gcc.dg/vect/bb-slp-26.c (foo, main): Likewise.
+	* gcc.dg/vect/bb-slp-29.c (foo, main): Likewise.
+	* gcc.dg/vect/no-vfa-vect-102.c (foo): Delete.
+	(main): Don't initialize it.
+	(main1): Prevent vectorisation with asm volatile ("" ::: "memory")
+	instead of a conditional abort.
+	* gcc.dg/vect/no-vfa-vect-102a.c (foo, main1, main): As for
+	no-vfa-vect-102.c
+	* gcc.dg/vect/vect-103.c (foo, main1, main): Likewise.
+	* gcc.dg/vect/vect-104.c (foo, main1, main): Likewise.
+	* gcc.dg/vect/pr42709.c (main1): Remove dummy argument.
+	Prevent vectorisation with asm volatile ("" ::: "memory")
+	instead of a conditional abort.
+	* gcc.dg/vect/slp-13-big-array.c (y): Delete.
+	(main1): Prevent vectorisation with asm volatile ("" ::: "memory")
+	instead of a conditional abort.
+	* gcc.dg/vect/slp-3-big-array.c (y, main1): As for slp-13-big-array.c.
+	* gcc.dg/vect/slp-34-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/slp-4-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/slp-multitypes-11-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-105.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-105-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-112-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-15-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-2-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-34-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-6-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-73-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-74-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-75-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-76-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-80-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-97-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-all-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-reduc-1char-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-reduc-2char-big-array.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-strided-a-mult.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-strided-a-u16-i2.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-strided-a-u16-i4.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-strided-a-u16-mult.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-strided-a-u8-i2-gap.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-strided-a-u8-i8-gap2-big-array.c (y, main1):
+	Likewise.
+	* gcc.dg/vect/vect-strided-a-u8-i8-gap2.c (y, main1): Likewise.
+	* gcc.dg/vect/vect-strided-a-u8-i8-gap7-big-array.c (y, main1):
+	Likewise.
+	* gcc.dg/vect/vect-strided-a-u8-i8-gap7.c (y, main1): Likewise.
+	* gcc.dg/vect/slp-24.c (y): Delete.
+	(main): Prevent vectorisation with asm volatile ("" ::: "memory")
+	instead of a conditional abort.
+	* gcc.dg/vect/slp-24-big-array.c (y, main): As for slp-24.c.
+	* gcc.dg/vect/vect-98-big-array.c (y, main): Likewise.
+	* gcc.dg/vect/vect-bswap16.c (y, main): Likewise.
+	* gcc.dg/vect/vect-bswap32.c (y, main): Likewise.
+	* gcc.dg/vect/vect-bswap64.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-mult-char-ls.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-mult.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-same-dr.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u16-i2.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u16-i4.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u32-i4.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u32-i8.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i2-gap.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i2.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8-gap2-big-array.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8-gap2.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8-gap4-big-array.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8-gap4-unknown.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8-gap4.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8-gap7-big-array.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8-gap7.c (y, main): Likewise.
+	* gcc.dg/vect/vect-strided-u8-i8.c (y, main): Likewise.
+	* gcc.dg/vect/vect-10-big-array.c (y): Delete.
+	(foo): Prevent vectorisation with asm volatile ("" ::: "memory")
+	instead of a conditional abort.
+	* gcc.dg/vect/vect-double-reduc-6-big-array.c (y, foo): As for
+	vect-10-big-array.c.
+	* gcc.dg/vect/vect-reduc-pattern-1b-big-array.c (y, foo): Likewise.
+	* gcc.dg/vect/vect-reduc-pattern-1c-big-array.c (y, foo): Likewise.
+	* gcc.dg/vect/vect-reduc-pattern-2b-big-array.c (y, foo): Likewise.
+	* gcc.dg/vect/vect-117.c (foo): Delete.
+	(main): Don't initalize it.
+
+2017-11-09  Jan Hubicka  <hubicka@ucw.cz>
+
+	* gcc.c-torture/compile/pr82879.c: New testcase.
+
+2017-11-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/82902
+	* g++.dg/torture/pr82902.C: New testcase.
+
+2017-11-09  Martin Liska  <mliska@suse.cz>
+
+	PR target/82863
+	* gcc.dg/pr82863.c: New test.
+
+2017-11-09  Hristian Kirtchev  <kirtchev@adacore.com>
+
+	* gnat.dg/unreferenced.adb: New testcase.
+
+2017-11-09  Ed Schonberg  <schonberg@adacore.com>
+
+	* gnat.dg/out_param.adb: New testcase.
+
+2017-11-09  Hristian Kirtchev  <kirtchev@adacore.com>
+
+	* gnat.dg/elab3.adb, gnat.dg/elab3.ads, gnat.dg/elab3_pkg.adb,
+	gnat.dg/elab3_pkg.ads: New testcase.
+
+2017-11-09  Pierre-Marie de Rodat  <derodat@adacore.com>
+
+    * gnat.dg/controlled2.adb, gnat.dg/controlled4.adb, gnat.dg/finalized.adb:
+    Disable the new warning from GNAT.
+
+2017-11-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/82837
+	* gcc.dg/debug/dwarf2/pr82837.c: New test.
+
+2017-11-08  Andi Kleen  <ak@linux.intel.com>
+
+	* gcc.target/i386/force-indirect-call-1.c: New test.
+	* gcc.target/i386/force-indirect-call-2.c: New test.
+	* gcc.target/i386/force-indirect-call-3.c: New test.
+
+2017-11-08  Steven G. Kargl  <kargl@kgcc.gnu.org>
+
+	PR Fortran/82841
+	* gfortran.dg/transfer_simplify_11.f90: New test.
+
+2017-11-08  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/82884
+	* gfortran.dg/hollerith_character_array_constructor.f90: New test.
+
+2017-11-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/aarch64/store_v2vec_lanes.c: New test.
+
+2017-11-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/aarch64/load_v2vec_lanes_1.c: New test.
+
+2017-11-08  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/aarch64/construct_lane_zero_1.c: New test.
+
+2017-11-08  Ed Schonberg  <schonberg@adacore.com>
+
+	* gnat.dg/delta_aggr.adb: New testcase.
+
 2017-11-08  Jakub Jelinek  <jakub@redhat.com>
 
 	* g++.dg/pr57878.C (__sso_string_base::_M_get_allocator): Return

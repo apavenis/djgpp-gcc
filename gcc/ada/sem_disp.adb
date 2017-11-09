@@ -404,7 +404,7 @@ package body Sem_Disp is
       Func                   : Entity_Id;
       Subp_Entity            : Entity_Id;
       Indeterm_Ancestor_Call : Boolean := False;
-      Indeterm_Ctrl_Type     : Entity_Id;
+      Indeterm_Ctrl_Type     : Entity_Id := Empty; -- init to avoid warning
 
       Static_Tag : Node_Id := Empty;
       --  If a controlling formal has a statically tagged actual, the tag of
@@ -2371,9 +2371,9 @@ package body Sem_Disp is
    -----------------------------------
 
    function Is_Inherited_Public_Operation (Op : Entity_Id) return Boolean is
+      Pack_Decl : Node_Id;
       Prim      : Entity_Id := Op;
       Scop      : Entity_Id := Prim;
-      Pack_Decl : Node_Id;
 
    begin
       --  Locate the ultimate non-hidden alias entity
@@ -2386,9 +2386,11 @@ package body Sem_Disp is
 
       if Comes_From_Source (Prim) and then Ekind (Scop) = E_Package then
          Pack_Decl := Unit_Declaration_Node (Scop);
-         return Nkind (Pack_Decl) = N_Package_Declaration
-           and then List_Containing (Unit_Declaration_Node (Prim)) =
-                            Visible_Declarations (Specification (Pack_Decl));
+
+         return
+           Nkind (Pack_Decl) = N_Package_Declaration
+             and then List_Containing (Unit_Declaration_Node (Prim)) =
+                        Visible_Declarations (Specification (Pack_Decl));
 
       else
          return False;

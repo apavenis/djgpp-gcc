@@ -2935,14 +2935,40 @@
   [(set_attr "type" "neon_to_gp<q>, neon_dup<q>, neon_store1_one_lane<q>")]
 )
 
+(define_insn "load_pair_lanes<mode>"
+  [(set (match_operand:<VDBL> 0 "register_operand" "=w")
+	(vec_concat:<VDBL>
+	   (match_operand:VDC 1 "memory_operand" "Utq")
+	   (match_operand:VDC 2 "memory_operand" "m")))]
+  "TARGET_SIMD && !STRICT_ALIGNMENT
+   && rtx_equal_p (XEXP (operands[2], 0),
+		   plus_constant (Pmode,
+				  XEXP (operands[1], 0),
+				  GET_MODE_SIZE (<MODE>mode)))"
+  "ldr\\t%q0, %1"
+  [(set_attr "type" "neon_load1_1reg_q")]
+)
+
+(define_insn "store_pair_lanes<mode>"
+  [(set (match_operand:<VDBL> 0 "aarch64_mem_pair_lanes_operand" "=Uml, Uml")
+	(vec_concat:<VDBL>
+	   (match_operand:VDC 1 "register_operand" "w, r")
+	   (match_operand:VDC 2 "register_operand" "w, r")))]
+  "TARGET_SIMD"
+  "@
+   stp\\t%d1, %d2, %0
+   stp\\t%x1, %x2, %0"
+  [(set_attr "type" "neon_stp, store_16")]
+)
+
 ;; In this insn, operand 1 should be low, and operand 2 the high part of the
 ;; dest vector.
 
 (define_insn "*aarch64_combinez<mode>"
   [(set (match_operand:<VDBL> 0 "register_operand" "=w,w,w")
-        (vec_concat:<VDBL>
-	   (match_operand:VD_BHSI 1 "general_operand" "w,?r,m")
-	   (match_operand:VD_BHSI 2 "aarch64_simd_imm_zero" "Dz,Dz,Dz")))]
+	(vec_concat:<VDBL>
+	  (match_operand:VDC 1 "general_operand" "w,?r,m")
+	  (match_operand:VDC 2 "aarch64_simd_or_scalar_imm_zero")))]
   "TARGET_SIMD && !BYTES_BIG_ENDIAN"
   "@
    mov\\t%0.8b, %1.8b
@@ -2956,8 +2982,8 @@
 (define_insn "*aarch64_combinez_be<mode>"
   [(set (match_operand:<VDBL> 0 "register_operand" "=w,w,w")
         (vec_concat:<VDBL>
-	   (match_operand:VD_BHSI 2 "aarch64_simd_imm_zero" "Dz,Dz,Dz")
-	   (match_operand:VD_BHSI 1 "general_operand" "w,?r,m")))]
+	  (match_operand:VDC 2 "aarch64_simd_or_scalar_imm_zero")
+	  (match_operand:VDC 1 "general_operand" "w,?r,m")))]
   "TARGET_SIMD && BYTES_BIG_ENDIAN"
   "@
    mov\\t%0.8b, %1.8b
