@@ -1,3 +1,53 @@
+2017-11-13  Fritz Reese <fritzoreese@gmail.com>
+
+	PR fortran/78240
+	* decl.c (match_clist_expr): Replace gcc_assert with proper
+	handling of bad result from spec_size().
+	* resolve.c (check_data_variable): Avoid NULL dereference when passing
+	locus to gfc_error.
+
+2017-11-11  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/82932
+	* resolve.c (update_compcall_arglist): Improve error recovery,
+	remove a gcc_assert.
+
+2017-11-10  Fritz Reese <fritzoreese@gmail.com>
+
+	PR fortran/82886
+	* gfortran.h (gfc_build_init_expr): New prototype.
+	* invoke.texi (finit-derived): Update documentation.
+	* expr.c (gfc_build_init_expr): New, from gfc_build_default_init_expr.
+	(gfc_build_default_init_expr): Redirect to gfc_build_init_expr(,,false)
+	(component_initializer): Force building initializers using
+	gfc_build_init_expr(,,true).
+
+2017-11-10  Martin Sebor  <msebor@redhat.com>
+
+	PR c/81117
+	* gcc/fortran/decl.c (build_sym): Use strcpy instead of strncpy.
+
+2017-11-10  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/82934
+	* trans-stmt.c (gfc_trans_allocate): Remove the gcc_assert on
+	null string length for assumed length typespec and set
+	expr3_esize to NULL_TREE;
+
+2017-11-09  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/78619
+	* check.c (same_type_check): Introduce a new argument 'assoc'
+	with default value false. If this is true, use the symbol type
+	spec of BT_PROCEDURE expressions.
+	(gfc_check_associated): Set 'assoc' true in the call to
+	'same_type_check'.
+
+2017-11-09  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/78814
+	* interface.c (symbol_rank): Check for NULL pointer.
+
 2017-11-08  Steven G. Kargl  <kargl@kgcc.gnu.org>
 
 	PR Fortran/82841

@@ -6844,8 +6844,6 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	  DECL_INITIAL (decl) = NULL_TREE;
 	}
 
-      init = do_dependent_capture (init);
-
       /* Generally, initializers in templates are expanded when the
 	 template is instantiated.  But, if DECL is a variable constant
 	 then it can be used in future constant expressions, so its value
@@ -7285,12 +7283,13 @@ get_tuple_decomp_init (tree decl, unsigned i)
 
 /* It's impossible to recover the decltype of a tuple decomposition variable
    based on the actual type of the variable, so store it in a hash table.  */
-static GTY(()) hash_map<tree,tree> *decomp_type_table;
+
+static GTY((cache)) tree_cache_map *decomp_type_table;
 static void
 store_decomp_type (tree v, tree t)
 {
   if (!decomp_type_table)
-    decomp_type_table = hash_map<tree,tree>::create_ggc (13);
+    decomp_type_table = tree_cache_map::create_ggc (13);
   decomp_type_table->put (v, t);
 }
 
@@ -14899,7 +14898,7 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
       gcc_assert (TYPE_PTR_P (TREE_TYPE (t)));
 
       cp_function_chain->x_current_class_ref
-	= cp_build_indirect_ref (t, RO_NULL, tf_warning_or_error);
+	= cp_build_fold_indirect_ref (t);
       /* Set this second to avoid shortcut in cp_build_indirect_ref.  */
       cp_function_chain->x_current_class_ptr = t;
 

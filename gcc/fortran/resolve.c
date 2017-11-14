@@ -5834,7 +5834,9 @@ update_compcall_arglist (gfc_expr* e)
       return true;
     }
 
-  gcc_assert (tbp->pass_arg_num > 0);
+  if (tbp->pass_arg_num <= 0)
+    return false;
+
   e->value.compcall.actual = update_arglist_pass (e->value.compcall.actual, po,
 						  tbp->pass_arg_num,
 						  tbp->pass_arg);
@@ -15284,7 +15286,7 @@ check_data_variable (gfc_data_variable *var, locus *where)
       if (!gfc_array_size (e, &size))
 	{
 	  gfc_error ("Nonconstant array section at %L in DATA statement",
-		     &e->where);
+		     where);
 	  mpz_clear (offset);
 	  return false;
 	}
