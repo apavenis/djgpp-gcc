@@ -739,6 +739,7 @@ sub mk_manifest
         'bin/gcc\.exe', 'bin/cpp\.exe', 'bin/gcov\.exe', 'bin/gccbug',
         'bin/gcc-(?:ar|nm|ranlib)\.exe', 'bin/gcov-tool\.exe', 'bin/gcov-dump\.exe',
         'include/ssp/', 'info/(?:cpp|gcc|libquadmath)', '/djgpp\.ver$',
+	'/include/cet(?:|intrin)\.h$',
         '/include/(?:am|bm|em|m|nm|pm|sm|tm|xm)mintrin',
         '/include/(?:cpuid|float|iso646|mm_malloc|mm3dnow|mmintcommon)\.h$',
         '/include/(?:avx|imm|wmm|x86|bmi|tbm|pku|clzero|sgx)intrin\.h$',

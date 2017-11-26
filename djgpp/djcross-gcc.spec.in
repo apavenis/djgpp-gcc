@@ -15,7 +15,7 @@
 %define target @__TARGET__@
 %define gcc_src_ext @__GCC_SRC_EXT__@
 
-%define include_ada 0
+%define include_ada 1
 %define include_fortran 1
 %define include_objc 1
 %define enable_lto 1
@@ -365,6 +365,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/libssp_nonshared.*
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/ssp/*.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/*intrin*.h
+%{_libdir}/gcc/%{target}/%{gcc_version}/include/cet.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/cpuid.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/cross-stdarg.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/float.h
