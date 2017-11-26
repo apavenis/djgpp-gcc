@@ -376,6 +376,7 @@ const struct c_common_resword c_common_reswords[] =
   { "__builtin_complex", RID_BUILTIN_COMPLEX, D_CONLY },
   { "__builtin_launder", RID_BUILTIN_LAUNDER, D_CXXONLY },
   { "__builtin_shuffle", RID_BUILTIN_SHUFFLE, 0 },
+  { "__builtin_tgmath", RID_BUILTIN_TGMATH, D_CONLY },
   { "__builtin_offsetof", RID_OFFSETOF, 0 },
   { "__builtin_types_compatible_p", RID_TYPES_COMPATIBLE_P, D_CONLY },
   { "__builtin_va_arg",	RID_VA_ARG,	0 },
@@ -5358,7 +5359,7 @@ get_nonnull_operand (tree arg_num_expr, unsigned HOST_WIDE_INT *valp)
   /* Verify the arg number is a small constant.  */
   if (tree_fits_uhwi_p (arg_num_expr))
     {
-      *valp = TREE_INT_CST_LOW (arg_num_expr);
+      *valp = tree_to_uhwi (arg_num_expr);
       return true;
     }
   else
@@ -6670,13 +6671,14 @@ get_atomic_generic_size (location_t loc, tree function,
       tree p = (*params)[x];
       if (TREE_CODE (p) == INTEGER_CST)
         {
-	  int i = tree_to_uhwi (p);
-	  if (i < 0 || (memmodel_base (i) >= MEMMODEL_LAST))
-	    {
-	      warning_at (loc, OPT_Winvalid_memory_model,
-			  "invalid memory model argument %d of %qE", x + 1,
-			  function);
-	    }
+	  /* memmodel_base masks the low 16 bits, thus ignore any bits above
+	     it by using TREE_INT_CST_LOW instead of tree_to_*hwi.  Those high
+	     bits will be checked later during expansion in target specific
+	     way.  */
+	  if (memmodel_base (TREE_INT_CST_LOW (p)) >= MEMMODEL_LAST)
+	    warning_at (loc, OPT_Winvalid_memory_model,
+			"invalid memory model argument %d of %qE", x + 1,
+			function);
 	}
       else
 	if (!INTEGRAL_TYPE_P (TREE_TYPE (p)))

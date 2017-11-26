@@ -2024,7 +2024,7 @@ cgraph_edge::dump_edge_flags (FILE *f)
       fprintf (f, "(");
       count.dump (f);
       fprintf (f, ",");
-      fprintf (f, "%.2f per call) ", frequency () / (double)CGRAPH_FREQ_BASE);
+      fprintf (f, "%.2f per call) ", sreal_frequency ().to_double ());
     }
   if (can_throw_external)
     fprintf (f, "(can throw external) ");
@@ -2160,7 +2160,7 @@ cgraph_node::dump (FILE *f)
       fprintf (f, "%s ", edge->caller->dump_name ());
       edge->dump_edge_flags (f);
       if (edge->count.initialized_p ())
-	sum += edge->count;
+	sum += edge->count.ipa ();
     }
 
   fprintf (f, "\n  Calls: ");
@@ -2184,7 +2184,7 @@ cgraph_node::dump (FILE *f)
       if (global.inlined_to
 	  || (symtab->state < EXPANSION
 	      && ultimate_alias_target () == this && only_called_directly_p ()))
-	ok = !count.differs_from_p (sum);
+	ok = !count.ipa ().differs_from_p (sum);
       else if (count.ipa () > profile_count::from_gcov_type (100)
 	       && count.ipa () < sum.apply_scale (99, 100))
 	ok = false, min = true;
@@ -2196,7 +2196,7 @@ cgraph_node::dump (FILE *f)
 	    fprintf (f, ", should be at most ");
 	  else
 	    fprintf (f, ", should be ");
-	  count.dump (f);
+	  count.ipa ().dump (f);
 	  fprintf (f, "\n");
 	}
     }
@@ -2811,15 +2811,11 @@ cgraph_edge::maybe_hot_p (void)
   if (symtab->state < IPA_SSA)
     return true;
   if (caller->frequency == NODE_FREQUENCY_EXECUTED_ONCE
-      && frequency () < CGRAPH_FREQ_BASE * 3 / 2)
+      && sreal_frequency () * 2 < 3)
     return false;
-  if (opt_for_fn (caller->decl, flag_guess_branch_prob))
-    {
-      if (PARAM_VALUE (HOT_BB_FREQUENCY_FRACTION) == 0
-	  || frequency () <= (CGRAPH_FREQ_BASE
-			   / PARAM_VALUE (HOT_BB_FREQUENCY_FRACTION)))
-        return false;
-    }
+  if (PARAM_VALUE (HOT_BB_FREQUENCY_FRACTION) == 0
+      || sreal_frequency () * PARAM_VALUE (HOT_BB_FREQUENCY_FRACTION) <= 1)
+    return false;
   return true;
 }
 
@@ -3880,9 +3876,7 @@ cgraph_node::has_thunk_p (cgraph_node *node, void *)
   return false;
 }
 
-/* Expected frequency of executions within the function.
-   When set to CGRAPH_FREQ_BASE, the edge is expected to be called once
-   per function call.  The range is 0 to CGRAPH_FREQ_MAX.  */
+/* Expected frequency of executions within the function.  */
 
 sreal
 cgraph_edge::sreal_frequency ()

@@ -2749,7 +2749,7 @@ copy_blkmode_to_reg (machine_mode mode_in, tree src)
 
   x = expand_normal (src);
 
-  bytes = int_size_in_bytes (TREE_TYPE (src));
+  bytes = arg_int_size_in_bytes (TREE_TYPE (src));
   if (bytes == 0)
     return NULL_RTX;
 
@@ -2772,7 +2772,9 @@ copy_blkmode_to_reg (machine_mode mode_in, tree src)
 
   n_regs = (bytes + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
   dst_words = XALLOCAVEC (rtx, n_regs);
-  bitsize = MIN (TYPE_ALIGN (TREE_TYPE (src)), BITS_PER_WORD);
+  bitsize = BITS_PER_WORD;
+  if (targetm.slow_unaligned_access (word_mode, TYPE_ALIGN (TREE_TYPE (src))))
+    bitsize = MIN (TYPE_ALIGN (TREE_TYPE (src)), BITS_PER_WORD);
 
   /* Copy the structure BITSIZE bits at a time.  */
   for (bitpos = 0, xbitpos = padding_correction;
@@ -5105,7 +5107,8 @@ expand_assignment (tree to, tree from, bool nontemporal)
       else if (GET_CODE (to_rtx) == CONCAT)
 	{
 	  unsigned short mode_bitsize = GET_MODE_BITSIZE (GET_MODE (to_rtx));
-	  if (COMPLEX_MODE_P (TYPE_MODE (TREE_TYPE (from)))
+	  if (TYPE_MODE (TREE_TYPE (from)) == GET_MODE (to_rtx)
+	      && COMPLEX_MODE_P (GET_MODE (to_rtx))
 	      && bitpos == 0
 	      && bitsize == mode_bitsize)
 	    result = store_expr (from, to_rtx, false, nontemporal, reversep);
@@ -5126,14 +5129,30 @@ expand_assignment (tree to, tree from, bool nontemporal)
 				  nontemporal, reversep);
 	  else if (bitpos == 0 && bitsize == mode_bitsize)
 	    {
-	      rtx from_rtx;
 	      result = expand_normal (from);
-	      from_rtx = simplify_gen_subreg (GET_MODE (to_rtx), result,
-					      TYPE_MODE (TREE_TYPE (from)), 0);
-	      emit_move_insn (XEXP (to_rtx, 0),
-			      read_complex_part (from_rtx, false));
-	      emit_move_insn (XEXP (to_rtx, 1),
-			      read_complex_part (from_rtx, true));
+	      if (GET_CODE (result) == CONCAT)
+		{
+		  machine_mode to_mode = GET_MODE_INNER (GET_MODE (to_rtx));
+		  machine_mode from_mode = GET_MODE_INNER (GET_MODE (result));
+		  rtx from_real
+		    = simplify_gen_subreg (to_mode, XEXP (result, 0),
+					   from_mode, 0);
+		  rtx from_imag
+		    = simplify_gen_subreg (to_mode, XEXP (result, 1),
+					   from_mode, 1);
+		  emit_move_insn (XEXP (to_rtx, 0), from_real);
+		  emit_move_insn (XEXP (to_rtx, 1), from_imag);
+		}
+	      else
+		{
+		  rtx from_rtx
+		    = simplify_gen_subreg (GET_MODE (to_rtx), result,
+					   TYPE_MODE (TREE_TYPE (from)), 0);
+		  emit_move_insn (XEXP (to_rtx, 0),
+				  read_complex_part (from_rtx, false));
+		  emit_move_insn (XEXP (to_rtx, 1),
+				  read_complex_part (from_rtx, true));
+		}
 	    }
 	  else
 	    {
@@ -8553,6 +8572,7 @@ expand_expr_real_2 (sepops ops, rtx target, machine_mode tmode,
       return REDUCE_BIT_FIELD (simplify_gen_binary (PLUS, mode, op0, op1));
 
     case MINUS_EXPR:
+    case POINTER_DIFF_EXPR:
     do_minus:
       /* For initializers, we are allowed to return a MINUS of two
 	 symbolic constants.  Here we handle all cases when both operands
@@ -9363,26 +9383,6 @@ expand_expr_real_2 (sepops ops, rtx target, machine_mode tmode,
         target = expand_widen_pattern_expr (ops, op0, NULL_RTX, op1,
                                             target, unsignedp);
         return target;
-      }
-
-    case REDUC_MAX_EXPR:
-    case REDUC_MIN_EXPR:
-    case REDUC_PLUS_EXPR:
-      {
-        op0 = expand_normal (treeop0);
-        this_optab = optab_for_tree_code (code, type, optab_default);
-        machine_mode vec_mode = TYPE_MODE (TREE_TYPE (treeop0));
-
-	struct expand_operand ops[2];
-	enum insn_code icode = optab_handler (this_optab, vec_mode);
-
-	create_output_operand (&ops[0], target, mode);
-	create_input_operand (&ops[1], op0, vec_mode);
-	expand_insn (icode, 2, ops);
-	target = ops[0].value;
-	if (GET_MODE (target) != mode)
-	  return gen_lowpart (tmode, target);
-	return target;
       }
 
     case VEC_UNPACK_HI_EXPR:

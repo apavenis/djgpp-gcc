@@ -3778,7 +3778,7 @@ parser_build_binary_op (location_t location, enum tree_code code,
 }
 
 /* Return a tree for the difference of pointers OP0 and OP1.
-   The resulting tree has type int.  */
+   The resulting tree has type ptrdiff_t.  */
 
 static tree
 pointer_diff (location_t loc, tree op0, tree op1)
@@ -3810,7 +3810,7 @@ pointer_diff (location_t loc, tree op0, tree op1)
       op1 = convert (common_type, op1);
     }
 
-  /* Determine integer type to perform computations in.  This will usually
+  /* Determine integer type result of the subtraction.  This will usually
      be the same as the result type (ptrdiff_t), but may need to be a wider
      type if pointers for the address space are wider than ptrdiff_t.  */
   if (TYPE_PRECISION (restype) < TYPE_PRECISION (TREE_TYPE (op0)))
@@ -3825,14 +3825,21 @@ pointer_diff (location_t loc, tree op0, tree op1)
     pedwarn (loc, OPT_Wpointer_arith,
 	     "pointer to a function used in subtraction");
 
-  /* First do the subtraction as integers;
-     then drop through to build the divide operator.
-     Do not do default conversions on the minus operator
-     in case restype is a short type.  */
+  /* First do the subtraction, then build the divide operator
+     and only convert at the very end.
+     Do not do default conversions in case restype is a short type.  */
 
-  op0 = build_binary_op (loc,
-			 MINUS_EXPR, convert (inttype, op0),
-			 convert (inttype, op1), false);
+  /* POINTER_DIFF_EXPR requires a signed integer type of the same size as
+     pointers.  If some platform cannot provide that, or has a larger
+     ptrdiff_type to support differences larger than half the address
+     space, cast the pointers to some larger integer type and do the
+     computations in that type.  */
+  if (TYPE_PRECISION (inttype) > TYPE_PRECISION (TREE_TYPE (op0)))
+       op0 = build_binary_op (loc, MINUS_EXPR, convert (inttype, op0),
+			      convert (inttype, op1), false);
+  else
+    op0 = build2_loc (loc, POINTER_DIFF_EXPR, inttype, op0, op1);
+
   /* This generates an error if op1 is pointer to incomplete type.  */
   if (!COMPLETE_OR_VOID_TYPE_P (TREE_TYPE (TREE_TYPE (orig_op1))))
     error_at (loc, "arithmetic on pointer to an incomplete type");
@@ -4398,7 +4405,7 @@ build_unary_op (location_t location, enum tree_code code, tree xarg,
 	}
 
       /* Ensure the argument is fully folded inside any SAVE_EXPR.  */
-      arg = c_fully_fold (arg, false, NULL);
+      arg = c_fully_fold (arg, false, NULL, true);
 
       bool atomic_op;
       atomic_op = really_atomic_lvalue (arg);
@@ -5822,7 +5829,7 @@ build_modify_expr (location_t location, tree lhs, tree lhs_origtype,
 
   if (modifycode != NOP_EXPR)
     {
-      lhs = c_fully_fold (lhs, false, NULL);
+      lhs = c_fully_fold (lhs, false, NULL, true);
       lhs = stabilize_reference (lhs);
 
       /* Construct the RHS for any non-atomic compound assignemnt. */
@@ -7289,7 +7296,6 @@ digest_init (location_t init_loc, tree type, tree init, tree origtype,
       inside_init = TREE_OPERAND (inside_init, 0);
     }
   inside_init = c_fully_fold (inside_init, require_constant, &maybe_const);
-  inside_init = decl_constant_value_for_optimization (inside_init);
 
   /* Initialization of an array of chars from a string constant
      optionally enclosed in braces.  */
@@ -9899,7 +9905,7 @@ build_asm_expr (location_t loc, tree string, tree outputs, tree inputs,
     {
       tree output = TREE_VALUE (tail);
 
-      output = c_fully_fold (output, false, NULL);
+      output = c_fully_fold (output, false, NULL, true);
 
       /* ??? Really, this should not be here.  Users should be using a
 	 proper lvalue, dammit.  But there's a long history of using casts
@@ -9957,7 +9963,7 @@ build_asm_expr (location_t loc, tree string, tree outputs, tree inputs,
 	     mark it addressable.  */
 	  if (!allows_reg && allows_mem)
 	    {
-	      input = c_fully_fold (input, false, NULL);
+	      input = c_fully_fold (input, false, NULL, true);
 
 	      /* Strip the nops as we allow this case.  FIXME, this really
 		 should be rejected or made deprecated.  */
@@ -12723,7 +12729,7 @@ handle_omp_array_sections (tree c, enum c_omp_region_type ort)
 	}
       if (tem)
 	first = build2 (COMPOUND_EXPR, TREE_TYPE (first), tem, first);
-      first = c_fully_fold (first, false, NULL);
+      first = c_fully_fold (first, false, NULL, true);
       OMP_CLAUSE_DECL (c) = first;
     }
   else

@@ -1851,9 +1851,8 @@
 (define_insn "fnma<mode>4"
   [(set (match_operand:VHSDF 0 "register_operand" "=w")
 	(fma:VHSDF
-	  (match_operand:VHSDF 1 "register_operand" "w")
-          (neg:VHSDF
-	    (match_operand:VHSDF 2 "register_operand" "w"))
+	  (neg:VHSDF (match_operand:VHSDF 1 "register_operand" "w"))
+	  (match_operand:VHSDF 2 "register_operand" "w")
 	  (match_operand:VHSDF 3 "register_operand" "0")))]
   "TARGET_SIMD"
   "fmls\\t%0.<Vtype>, %1.<Vtype>, %2.<Vtype>"
@@ -2339,7 +2338,7 @@
 ;; 'across lanes' max and min ops.
 
 ;; Template for outputting a scalar, so we can create __builtins which can be
-;; gimple_fold'd to the REDUC_(MAX|MIN)_EXPR tree code.  (This is FP smax/smin).
+;; gimple_fold'd to the IFN_REDUC_(MAX|MIN) function.  (This is FP smax/smin).
 (define_expand "reduc_<maxmin_uns>_scal_<mode>"
   [(match_operand:<VEL> 0 "register_operand")
    (unspec:VHSDF [(match_operand:VHSDF 1 "register_operand")]

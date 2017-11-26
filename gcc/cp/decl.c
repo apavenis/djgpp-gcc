@@ -3315,7 +3315,7 @@ check_goto (tree decl)
       else if (ent->in_transaction_scope)
 	inform (input_location, "  enters synchronized or atomic statement");
       else if (ent->in_constexpr_if)
-	inform (input_location, "  enters constexpr if statement");
+	inform (input_location, "  enters %<constexpr%> if statement");
     }
 
   if (ent->in_omp_scope)
@@ -4012,6 +4012,10 @@ cxx_init_decl_processing (void)
   TREE_PUBLIC (global_namespace) = 1;
   DECL_CONTEXT (global_namespace)
     = build_translation_unit_decl (get_identifier (main_input_filename));
+  /* Remember whether we want the empty class passing ABI change warning
+     in this TU.  */
+  TRANSLATION_UNIT_WARN_EMPTY_P (DECL_CONTEXT (global_namespace))
+    = warn_abi && abi_version_crosses (12);
   debug_hooks->register_main_translation_unit
     (DECL_CONTEXT (global_namespace));
   begin_scope (sk_namespace, global_namespace);
@@ -8606,7 +8610,7 @@ grokfndecl (tree ctype,
       if (inlinep & 1)
 	error ("cannot declare %<::main%> to be inline");
       if (inlinep & 2)
-	error ("cannot declare %<::main%> to be constexpr");
+	error ("cannot declare %<::main%> to be %<constexpr%>");
       if (!publicp)
 	error ("cannot declare %<::main%> to be static");
       inlinep = 0;
@@ -12050,7 +12054,7 @@ grokdeclarator (const cp_declarator *declarator,
 			   unqualified_id);
 		else if (constexpr_p && !initialized)
 		  {
-		    error ("constexpr static data member %qD must have an "
+		    error ("%<constexpr%> static data member %qD must have an "
 			   "initializer", decl);
 		    constexpr_p = false;
 		  }
@@ -12090,7 +12094,10 @@ grokdeclarator (const cp_declarator *declarator,
 				   FIELD_DECL, unqualified_id, type);
 		DECL_NONADDRESSABLE_P (decl) = bitfield;
 		if (bitfield && !unqualified_id)
-		  TREE_NO_WARNING (decl) = 1;
+		  {
+		    TREE_NO_WARNING (decl) = 1;
+		    DECL_PADDING_P (decl) = 1;
+		  }
 
 		if (storage_class == sc_mutable)
 		  {
@@ -12278,8 +12285,8 @@ grokdeclarator (const cp_declarator *declarator,
 	  }
 	else if (constexpr_p && DECL_EXTERNAL (decl))
 	  {
-	    error ("declaration of constexpr variable %qD is not a definition",
-		   decl);
+	    error ("declaration of %<constexpr%> variable %qD "
+		   "is not a definition", decl);
 	    constexpr_p = false;
 	  }
 
@@ -13546,8 +13553,12 @@ xref_tag_1 (enum tag_types tag_code, tree name,
 	  t = make_class_type (code);
 	  TYPE_CONTEXT (t) = context;
 	  if (scope == ts_lambda)
-	    /* Mark it as a lambda type.  */
-	    CLASSTYPE_LAMBDA_EXPR (t) = error_mark_node;
+	    {
+	      /* Mark it as a lambda type.  */
+	      CLASSTYPE_LAMBDA_EXPR (t) = error_mark_node;
+	      /* And push it into current scope.  */
+	      scope = ts_current;
+	    }
 	  t = pushtag (name, t, scope);
 	}
     }
@@ -15246,7 +15257,25 @@ begin_destructor_body (void)
       if (flag_lifetime_dse
 	  /* Clobbering an empty base is harmful if it overlays real data.  */
 	  && !is_empty_class (current_class_type))
-	finish_decl_cleanup (NULL_TREE, build_clobber_this ());
+      {
+	if (sanitize_flags_p (SANITIZE_VPTR)
+	    && (flag_sanitize_recover & SANITIZE_VPTR) == 0
+	    && TYPE_CONTAINS_VPTR_P (current_class_type))
+	  {
+	    tree binfo = TYPE_BINFO (current_class_type);
+	    tree ref
+	      = cp_build_fold_indirect_ref (current_class_ptr);
+
+	    tree vtbl_ptr = build_vfield_ref (ref, TREE_TYPE (binfo));
+	    tree vtbl = build_zero_cst (TREE_TYPE (vtbl_ptr));
+	    tree stmt = cp_build_modify_expr (input_location, vtbl_ptr,
+					      NOP_EXPR, vtbl,
+					      tf_warning_or_error);
+	    finish_decl_cleanup (NULL_TREE, stmt);
+	  }
+	else
+	  finish_decl_cleanup (NULL_TREE, build_clobber_this ());
+      }
 
       /* And insert cleanups for our bases and members so that they
 	 will be properly destroyed if we throw.  */

@@ -674,6 +674,17 @@ decl_assembler_name (tree decl)
   return DECL_ASSEMBLER_NAME_RAW (decl);
 }
 
+/* The DECL_ASSEMBLER_NAME_RAW of DECL is being explicitly set to NAME
+   (either of which may be NULL).  Inform the FE, if this changes the
+   name.  */
+
+void
+overwrite_decl_assembler_name (tree decl, tree name)
+{
+  if (DECL_ASSEMBLER_NAME_RAW (decl) != name)
+    lang_hooks.overwrite_decl_assembler_name (decl, name);
+}
+
 /* When the target supports COMDAT groups, this indicates which group the
    DECL is associated with.  This can be either an IDENTIFIER_NODE or a
    decl, in which case its DECL_ASSEMBLER_NAME identifies the group.  */
@@ -8701,6 +8712,21 @@ get_containing_scope (const_tree t)
   return (TYPE_P (t) ? TYPE_CONTEXT (t) : DECL_CONTEXT (t));
 }
 
+/* Returns the ultimate TRANSLATION_UNIT_DECL context of DECL or NULL.  */
+
+const_tree
+get_ultimate_context (const_tree decl)
+{
+  while (decl && TREE_CODE (decl) != TRANSLATION_UNIT_DECL)
+    {
+      if (TREE_CODE (decl) == BLOCK)
+	decl = BLOCK_SUPERCONTEXT (decl);
+      else
+	decl = get_containing_scope (decl);
+    }
+  return decl;
+}
+
 /* Return the innermost context enclosing DECL that is
    a FUNCTION_DECL, or zero if none.  */
 
@@ -13809,6 +13835,62 @@ get_nonnull_args (const_tree fntype)
     }
 
   return argmap;
+}
+
+/* Returns true if TYPE is a type where it and all of its subobjects
+   (recursively) are of structure, union, or array type.  */
+
+static bool
+default_is_empty_type (tree type)
+{
+  if (RECORD_OR_UNION_TYPE_P (type))
+    {
+      for (tree field = TYPE_FIELDS (type); field; field = DECL_CHAIN (field))
+	if (TREE_CODE (field) == FIELD_DECL
+	    && !DECL_PADDING_P (field)
+	    && !default_is_empty_type (TREE_TYPE (field)))
+	  return false;
+      return true;
+    }
+  else if (TREE_CODE (type) == ARRAY_TYPE)
+    return (integer_minus_onep (array_type_nelts (type))
+	    || TYPE_DOMAIN (type) == NULL_TREE
+	    || default_is_empty_type (TREE_TYPE (type)));
+  return false;
+}
+
+/* Implement TARGET_EMPTY_RECORD_P.  Return true if TYPE is an empty type
+   that shouldn't be passed via stack.  */
+
+bool
+default_is_empty_record (const_tree type)
+{
+  if (!abi_version_at_least (12))
+    return false;
+
+  if (type == error_mark_node)
+    return false;
+
+  if (TREE_ADDRESSABLE (type))
+    return false;
+
+  return default_is_empty_type (TYPE_MAIN_VARIANT (type));
+}
+
+/* Like int_size_in_bytes, but handle empty records specially.  */
+
+HOST_WIDE_INT
+arg_int_size_in_bytes (const_tree type)
+{
+  return TYPE_EMPTY_P (type) ? 0 : int_size_in_bytes (type);
+}
+
+/* Like size_in_bytes, but handle empty records specially.  */
+
+tree
+arg_size_in_bytes (const_tree type)
+{
+  return TYPE_EMPTY_P (type) ? size_zero_node : size_in_bytes (type);
 }
 
 /* List of pointer types used to declare builtins before we have seen their
