@@ -11,7 +11,3 @@
 ifeq ($(findstring -pc-msdosdjgpp,$(target_alias)),-pc-msdosdjgpp)
 target_alias=djgpp
 endif
-
-# on DJGPP the 'ln -s' does not work correctly
-LN = cp -p
-LN_S = cp -p
