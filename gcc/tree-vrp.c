@@ -5082,10 +5082,9 @@ all_imm_uses_in_stmt_or_feed_cond (tree var, gimple *stmt, basic_block cond_bb)
    var is the x_3 var from ASSERT_EXPR, we can clear low 5 bits
    from the non-zero bitmask.  */
 
-static void
-maybe_set_nonzero_bits (basic_block bb, tree var)
+void
+maybe_set_nonzero_bits (edge e, tree var)
 {
-  edge e = single_pred_edge (bb);
   basic_block cond_bb = e->src;
   gimple *stmt = last_stmt (cond_bb);
   tree cst;
@@ -5200,7 +5199,7 @@ remove_range_assertions (void)
 		    set_range_info (var, SSA_NAME_RANGE_TYPE (lhs),
 				    SSA_NAME_RANGE_INFO (lhs)->get_min (),
 				    SSA_NAME_RANGE_INFO (lhs)->get_max ());
-		    maybe_set_nonzero_bits (bb, var);
+		    maybe_set_nonzero_bits (single_pred_edge (bb), var);
 		  }
 	      }
 
@@ -6021,11 +6020,14 @@ intersect_ranges (enum value_range_type *vr0type,
 		   && vrp_val_is_max (vr1max))
 	    ;
 	  /* Choose the anti-range if it is ~[0,0], that range is special
-	     enough to special case when vr1's range is relatively wide.  */
+	     enough to special case when vr1's range is relatively wide.
+	     At least for types bigger than int - this covers pointers
+	     and arguments to functions like ctz.  */
 	  else if (*vr0min == *vr0max
 		   && integer_zerop (*vr0min)
-		   && (TYPE_PRECISION (TREE_TYPE (*vr0min))
-		       == TYPE_PRECISION (ptr_type_node))
+		   && ((TYPE_PRECISION (TREE_TYPE (*vr0min))
+			>= TYPE_PRECISION (integer_type_node))
+		       || POINTER_TYPE_P (TREE_TYPE (*vr0min)))
 		   && TREE_CODE (vr1max) == INTEGER_CST
 		   && TREE_CODE (vr1min) == INTEGER_CST
 		   && (wi::clz (wi::to_wide (vr1max) - wi::to_wide (vr1min))

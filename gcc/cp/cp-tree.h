@@ -6556,7 +6556,7 @@ extern void init_template_processing		(void);
 extern void print_template_statistics		(void);
 bool template_template_parameter_p		(const_tree);
 bool template_type_parameter_p                  (const_tree);
-extern bool primary_template_instantiation_p    (const_tree);
+extern bool primary_template_specialization_p   (const_tree);
 extern tree get_primary_template_innermost_parameters	(const_tree);
 extern tree get_template_parms_at_level (tree, int);
 extern tree get_template_innermost_arguments	(const_tree);
@@ -7357,11 +7357,6 @@ extern void vtv_generate_init_routine           (void);
 extern void vtv_save_class_info                 (tree);
 extern void vtv_recover_class_info              (void);
 extern void vtv_build_vtable_verify_fndecl      (void);
-
-/* In cp/cp-array-notations.c */
-extern tree expand_array_notation_exprs         (tree);
-bool cilkplus_an_triplet_types_ok_p             (location_t, tree, tree, tree,
-						 tree);
 
 /* In constexpr.c */
 extern void fini_constexpr			(void);

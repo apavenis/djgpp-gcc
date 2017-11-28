@@ -1,4 +1,248 @@
-2017-11-14 Boris Kolpackov  <boris@codesynthesis.com>
+2017-11-28  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/80776
+	* gimple-ssa-evrp-analyze.h (evrp_range_analyzer::set_ssa_range_info):
+	Declare.
+	* gimple-ssa-evrp-analyze.c (evrp_range_analyzer::set_ssa_range_info):
+	New function.
+	(evrp_range_analyzer::record_ranges_from_incoming_edges):
+	If the incoming edge is an effective fallthru because the other
+	edge only reaches a __builtin_unreachable () then record ranges
+	derived from the controlling condition in SSA info.
+	(evrp_range_analyzer::record_ranges_from_phis): Use set_ssa_range_info.
+	(evrp_range_analyzer::record_ranges_from_stmt): Likewise.
+
+2017-11-28  Olivier Hainque  <hainque@adacore.com>
+
+	* Makefile.in (SELFTEST_FLAGS): Use nul instead of /dev/null
+	on mingw build hosts.
+
+2017-11-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/81307
+	* dbxout.c (dbx_block_with_cold_children): Fix function comment.
+
+2017-11-28  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/83141
+	* gimple-fold.c (gimple_fold_builtin_memory_op): For aggregate
+	copies generated from memcpy use a character array as reference
+	type.
+
+2017-11-28  Julia Koval  <julia.koval@intel.com>
+            Sebastian Peryt  <sebastian.peryt@intel.com>
+
+	* Makefile.in (cilkplus.def, cilk-builtins.def, c-family/cilk.o, 
+	c-family/c-cilkplus.o, c-family/array-notation-common.o,
+	cilk-common.o, cilk.h, cilk-common.c): Remove.
+	* builtin-types.def
+	(BT_FN_INT_PTR_PTR_PTR_FTYPE_BT_INT_BT_PTR_BT_PTR_BT_PTR): Remove.
+	* builtins.c (is_builtin_name): Remove cilkplus condition.
+	(BUILT_IN_CILK_DETACH, BUILT_IN_CILK_POP_FRAME): Remove.
+	* builtins.def (DEF_CILK_BUILTIN_STUB, DEF_CILKPLUS_BUILTIN,
+	cilk-builtins.def, cilkplus.def): Remove.
+	* cif-code.def (CILK_SPAWN): Remove.
+	* cilk-builtins.def: Delete.
+	* cilk-common.c: Ditto.
+	* cilk.h: Ditto.
+	* cilkplus.def: Ditto.
+	* config/darwin.h (fcilkplus): Delete.
+	* cppbuiltin.c: Ditto.
+	* doc/extend.texi: Remove cilkplus doc.
+	* doc/generic.texi: Ditto.
+	* doc/invoke.texi: Ditto.
+	* doc/passes.texi: Ditto.
+	* gcc.c (fcilkplus): Remove.
+	* gengtype.c (cilk.h): Remove.
+	* gimple-pretty-print.c (dump_gimple_omp_for): Remove cilkplus
+	support.
+	* gimple.h (GF_OMP_FOR_KIND_CILKFOR, GF_OMP_FOR_KIND_CILKSIMD):
+	Remove.
+	* gimplify.c (gimplify_return_expr, maybe_fold_stmt,
+	gimplify_call_expr,
+	is_gimple_stmt, gimplify_modify_expr, gimplify_scan_omp_clauses,
+	gimplify_adjust_omp_clauses, gimplify_omp_for, gimplify_expr): Remove
+	cilkplus conditions.
+	* ipa-fnsummary.c (ipa_dump_fn_summary, compute_fn_summary,
+	inline_read_section): Ditto.
+	* ipa-inline-analysis.c (cilk.h): Remove.
+	* ira.c (ira_setup_eliminable_regset): Remove cilkplus support.
+	* lto-wrapper.c (merge_and_complain, append_compiler_options,
+	append_linker_options): Remove condition for fcilkplus.
+	* lto/lto-lang.c (cilk.h): Remove.
+	(lto_init): Remove condition for fcilkplus.
+	* omp-expand.c (expand_cilk_for_call): Delete.
+	(expand_omp_taskreg, expand_omp_for_static_chunk,
+	expand_omp_for): Remove cilkplus
+	conditions.
+	(expand_cilk_for): Delete.
+	* omp-general.c (omp_extract_for_data): Remove cilkplus support.
+	* omp-low.c (scan_sharing_clauses, create_omp_child_function,
+	execute_lower_omp, diagnose_sb_0): Ditto.
+	* omp-simd-clone.c (simd_clone_clauses_extract): Ditto.
+	* tree-core.h (OMP_CLAUSE__CILK_FOR_COUNT_): Delete.
+	* tree-nested.c: Ditto.
+	* tree-pretty-print.c (dump_omp_clause): Remove cilkplus support.
+	(dump_generic_node): Ditto.
+	* tree.c (OMP_CLAUSE__CILK_FOR_COUNT_): Delete.
+	* tree.def (cilk_simd, cilk_for, cilk_spawn_stmt, cilk_sync_stmt):
+	Delete.
+	* tree.h (CILK_SPAWN_FN, EXPR_CILK_SPAWN): Delete.
+
+2017-11-28  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+
+	* config/aarch64/aarch64.md (div<mode>3): Change check to TARGET_FLOAT.
+	* config/aarch64/aarch64.c (aarch64_emit_approx_div): Add early exit
+	for vector mode and !TARGET_SIMD.
+
+2017-11-28  Jakub Jelinek  <jakub@redhat.com>
+
+	* tree.def (SWITCH_EXPR): Change from 3 operand to 2 operand tree.
+	Adjust comment.
+	* tree.h (SWITCH_LABELS): Remove.
+	* gimplify.c (gimplify_switch_expr): Don't test SWITCH_LABELS,
+	assert SWITCH_BODY is non-NULL.
+	* tree-pretty-print.c (dump_generic_node): Remove SWITCH_LABELS
+	handling.
+	* tree.c (block_may_fallthru): Always return true; for SWITCH_EXPR.
+
+	PR tree-optimization/80788
+	* match.pd (X +- C1 CMP C2 -> X CMP C2 -+ C1): If res
+	has TREE_OVERFLOW set, call drop_tree_overflow.
+
+2017-11-28  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/83158
+	* tree-vrp.c (intersect_ranges): Prefer ~[0, 0] in a few more
+	cases.
+
+2017-11-28  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR 81288/target
+	* config/rs6000/rs6000.c (rs6000_rtx_costs): Do not handle
+	TARGET_ISEL && !TARGET_MFCRF differently.  Simplify code.
+
+2017-11-27  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/rs6000.md (<code><GPR:mode><GPR2:mode>2_isel): Change
+	LT/GT/LTU/GTU to LE/GE/LEU/GEU where possible.
+
+2017-11-27  Michael Meissner  <meissner@linux.vnet.ibm.com>
+
+	PR middle_end/82333
+	* varasm.c (compare_constant): Take the mode of the constants into
+	account when comparing floating point constants.
+
+2017-11-27  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* hash-set.h (DEFINE_DEBUG_HASH_SET): Remove static qualifier
+	from explicit instantiation of debug_helper.
+	* vec.h (DEFINE_DEBUG_VEC): Ditto.
+
+2017-11-27  Richard Biener  <rguenther@suse.de>
+
+	* gimple-fold.c (gimple_fold_builtin_memory_op): Remove dead code,
+	refactor a bit.
+
+2017-11-27  Richard Biener  <rguenther@suse.de>
+
+	* tree.c (wide_int_to_tree): Free discarded INTEGER_CST.
+	(type_hash_canon): Also clear int_cst_hash_table entry for
+	TYPE_MIN/MAX_VALUE.
+	(build_nonstandard_integer_type): Hash all TYPE_MAX_VALUEs.
+
+2017-11-27  Tamar Christina  <tamar.christina@arm.com>
+
+	* doc/extend.texi: Add -A suffix (ARMv8*-A, ARMv7-A).
+	* doc/invoke.texi: Add -A suffix (ARMv8*-A, ARMv7-A).
+	* doc/sourcebuild.texi: Add -A suffix (ARMv8*-A, ARMv7-A).
+
+2017-11-27  Markus Trippelsdorf  <markus@trippelsdorf.de>
+
+	* hash-map.h (gt_cleare_cache): Avoid UB.
+
+2017-11-27  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* cfgloop.h (struct loop): Document usage of USHRT_MAX for unroll.
+	* loop-unroll.c (decide_unroll_constant_iterations): Implement it.
+	(decide_unroll_runtime_iterations): Likewise.
+	(decide_unroll_stupid): Likewise.
+
+2017-11-27  Igor Tsimbalist  <igor.v.tsimbalist@intel.com>
+
+	PR target/83109
+	* config/i386/i386.md: Add a loop with incssp.
+
+2017-11-27  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/81248
+	* tree-sra.c (splice_param_accesses): Remove size check.
+	(decide_one_param_reduction): Fix size check.
+	* gimple-pretty-print.c (dump_profile): Silence warning.
+	* params.def (PARAM_IPA_SRA_PTR_GROWTH_FACTOR): Adjust description.
+
+2017-11-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/81307
+	* dbxout.c (lastlineno): New variable.
+	(dbx_debug_hooks): Use dbxout_switch_text_section as
+	switch_text_section debug hook.
+	(dbxout_function_end): Switch to current_function_section
+	rather than function_section.  If crtl->has_bb_partition,
+	output just one N_FUN, depending on in_cold_section_p.
+	(dbxout_source_line): Remember last lineno in lastlineno.
+	(dbxout_switch_text_section): New function.
+	(dbxout_function_decl): Adjust dbxout_block caller.
+	(dbx_block_with_cold_children): New function.
+	(dbxout_block): Return true if any LBRAC/RBRAC have been
+	emitted.  Use dbx_block_with_cold_children at depth == 0
+	in second partition.  Add PARENT_BLOCKNUM argument, pass
+	it optionally adjusted to children.  Output LBRAC/RBRAC
+	around recursive call only if the block is in the current
+	partition, if not and anything was output, emit empty
+	range LBRAC/RBRAC.
+	* final.c (final_scan_insn): Compute cold_function_name
+	before calling switch_text_section debug hook.  Call
+	that hook even if dwarf2out_do_frame if not emitting
+	dwarf debug info.
+
+	PR target/83100
+	* varasm.c (bss_initializer_p): Return true for DECL_COMMON
+	TREE_READONLY decls.
+
+2017-11-27  Markus Trippelsdorf  <markus@trippelsdorf.de>
+
+	PR rtl-optimization/82488
+	* expr.c (fixup_args_size_notes): Avoid signed integer overflow.
+
+2017-11-26  Julia Koval  <julia.koval@intel.com>
+
+	* config/i386/i386.c (processor_target_table): Add skylake_cost for
+	skylake-avx512.
+	* config/i386/x86-tune-costs.h (skylake_memcpy, skylake_memset,
+	skylake_cost): New.
+
+2017-11-26  Julia Koval  <julia.koval@intel.com>
+
+	* config/i386/driver-i386.c (host_detect_local_cpu):
+	Detect skylake-avx512.
+
+2017-11-26  Julia Koval  <julia.koval@intel.com>
+
+	* config.gcc: Add -march=cannonlake.
+	* config/i386/driver-i386.c (host_detect_local_cpu): Detect cannonlake.
+	* config/i386/i386-c.c (ix86_target_macros_internal): Handle cannonlake.
+	* config/i386/i386.c (processor_costs): Add m_CANNONLAKE.
+	(PTA_CANNONLAKE): New.
+	(processor_target_table): Add cannonlake.
+	(ix86_option_override_internal): Ditto.
+	(fold_builtin_cpu): Ditto.
+	(get_builtin_code_for_version): Handle cannonlake.
+	(M_INTEL_COREI7_CANNONLAKE): New.
+	* config/i386/i386.h (TARGET_CANNONLAKE, PROCESSOR_CANNONLAKE): New.
+	* doc/invoke.texi: Add -march=cannonlake.
+
+2017-11-14  Boris Kolpackov  <boris@codesynthesis.com>
 
 	* plugin.c (add_new_plugin): Use platform-specific library extensions.
 	(try_init_one_plugin): Alternative implementation for MinGW.
@@ -69,12 +313,12 @@
 
 2017-11-23  Julia Koval  <julia.koval@intel.com>
 
-	config/i386/avx512vbmi2intrin.h (_mm512_mask_expand_epi8,
+	* config/i386/avx512vbmi2intrin.h (_mm512_mask_expand_epi8,
 	_mm512_maskz_expand_epi8, _mm512_mask_expandloadu_epi8,
 	_mm512_maskz_expandloadu_epi8, _mm512_mask_expand_epi16,
 	_mm512_maskz_expand_epi16, _mm512_mask_expandloadu_epi16,
 	_mm512_maskz_expandloadu_epi16): New intrinsics.
-	config/i386/avx512vbmi2vlintrin.h (_mm_mask_expand_epi8,
+	* config/i386/avx512vbmi2vlintrin.h (_mm_mask_expand_epi8,
 	_mm_maskz_expand_epi8, _mm_mask_expandloadu_epi8,
 	_mm_maskz_expandloadu_epi8, _mm_mask_expand_epi16,
 	_mm_maskz_expand_epi16, _mm_mask_expandloadu_epi16,
@@ -83,33 +327,33 @@
 	_mm256_maskz_expandloadu_epi16, _mm256_mask_expand_epi8,
 	_mm256_maskz_expand_epi8, _mm256_mask_expandloadu_epi8,
 	_mm256_maskz_expandloadu_epi8): New intrinsics.
-	config/i386/i386-builtin-types.def (V64QI_FTYPE_PCV64QI_V64QI_UDI,
+	* config/i386/i386-builtin-types.def (V64QI_FTYPE_PCV64QI_V64QI_UDI,
 	V32HI_FTYPE_PCV32HI_V32HI_USI, V32QI_FTYPE_PCV32QI_V32QI_USI,
 	V16HI_FTYPE_PCV16HI_V16HI_UHI, V16QI_FTYPE_PCV16QI_V16QI_UHI,
 	V8HI_FTYPE_PCV8HI_V8HI_UQI): New types.
-	config/i386/i386.c (ix86_expand_special_args_builtin): Use new types.
-	config/i386/sse.md (VI248_VLBW): New iterator.
+	* config/i386/i386.c (ix86_expand_special_args_builtin): Use new types.
+	* config/i386/sse.md (VI248_VLBW): New iterator.
 	(expand<mode>_mask, expand<mode>_maskz): New patterns.
 
 2017-11-23  Julia Koval  <julia.koval@intel.com>
 
-	config.gcc (avx512vbmi2intrin.h, avx512vbmi2vlintrin): New headers.
-	config/i386/avx512vbmi2intrin.h (_mm512_mask_compress_epi8,
+	* config.gcc (avx512vbmi2intrin.h, avx512vbmi2vlintrin): New headers.
+	* config/i386/avx512vbmi2intrin.h (_mm512_mask_compress_epi8,
 	_mm512_maskz_compress_epi8, _mm512_mask_compressstoreu_epi8,
 	_mm512_mask_compress_epi16, _mm512_maskz_compress_epi16,
 	_mm512_mask_compressstoreu_epi16): New.
-	config/i386/avx512vbmi2vlintrin.h (_mm_mask_compress_epi8,
+	* config/i386/avx512vbmi2vlintrin.h (_mm_mask_compress_epi8,
 	_mm_maskz_compress_epi8, _mm256_mask_compressstoreu_epi16,
 	_mm_mask_compress_epi16, _mm_maskz_compress_epi16,
 	_mm256_mask_compress_epi16, _mm256_maskz_compress_epi16,
 	_mm_mask_compressstoreu_epi8, _mm_mask_compressstoreu_epi16,
 	_mm256_mask_compress_epi8, _mm256_maskz_compress_epi8,
 	_mm256_mask_compressstoreu_epi8): New.
-	config/i386/i386-builtin-types.def (VOID_FTYPE_PV64QI_V64QI_UDI,
+	* config/i386/i386-builtin-types.def (VOID_FTYPE_PV64QI_V64QI_UDI,
 	VOID_FTYPE_PV32HI_V32HI_USI, VOID_FTYPE_PV32QI_V32QI_USI,
 	VOID_FTYPE_PV16QI_V16QI_UHI, VOID_FTYPE_PV16HI_V16HI_UHI,
 	VOID_FTYPE_PV8HI_V8HI_UQI): New types.
-	config/i386/i386-builtin.def (__builtin_ia32_compressqi512_mask,
+	* config/i386/i386-builtin.def (__builtin_ia32_compressqi512_mask,
 	__builtin_ia32_compresshi512_mask, __builtin_ia32_compressqi256_mask,
 	__builtin_ia32_compressqi128_mask, __builtin_ia32_compresshi256_mask,
 	__builtin_ia32_compresshi128_mask,
@@ -119,12 +363,12 @@
 	__builtin_ia32_compressstoreuqi128_mask,
 	__builtin_ia32_compressstoreuhi256_mask,
 	__builtin_ia32_compressstoreuhi128_mask): New builtins.
-	config/i386/i386.c (ix86_init_mmx_sse_builtins): Create special args
+	* config/i386/i386.c (ix86_init_mmx_sse_builtins): Create special args
 	array for flags2.
 	(ix86_expand_special_args_builtin): Handle new types.
 	(s4fma_expand): Handle new builtin array.
-	config/i386/immintrin.h: Include new headers.
-	config/i386/sse.md (VI12_AVX512VLBW): New iterator.
+	* config/i386/immintrin.h: Include new headers.
+	* config/i386/sse.md (VI12_AVX512VLBW): New iterator.
 	(compress<mode>_mask, compressstore<mode>_mask): New patterns.
 
 2017-11-23  Jakub Jelinek  <jakub@redhat.com>
@@ -1438,7 +1682,7 @@
 	* config/i386/i386.opt (mavx512vbmi2): New option.
 	* doc/invoke.texi: Add new option.
 
-[2017-11-16  Julia Koval  <julia.koval@intel.com>
+2017-11-16  Julia Koval  <julia.koval@intel.com>
 
 	* config/i386/gfniintrin.h (_mm_gf2p8mul_epi8, _mm256_gf2p8mul_epi8,
 	_mm_mask_gf2p8mul_epi8, _mm_maskz_gf2p8mul_epi8,
