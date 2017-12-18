@@ -54,7 +54,7 @@ static tree rationalize_conditional_expr (enum tree_code, tree,
 static int comp_ptr_ttypes_real (tree, tree, int);
 static bool comp_except_types (tree, tree, bool);
 static bool comp_array_types (const_tree, const_tree, bool);
-static tree pointer_diff (location_t, tree, tree, tree, tsubst_flags_t);
+static tree pointer_diff (location_t, tree, tree, tree, tsubst_flags_t, tree *);
 static tree get_delta_difference (tree, tree, bool, bool, tsubst_flags_t);
 static void casts_away_constness_r (tree *, tree *, tsubst_flags_t);
 static bool casts_away_constness (tree, tree, tsubst_flags_t);
@@ -1169,6 +1169,59 @@ comp_template_parms_position (tree t1, tree t2)
      parameter.  Don't confuse them.  */
   if (cxx_dialect >= cxx14 && (is_auto (t1) || is_auto (t2)))
     return TYPE_IDENTIFIER (t1) == TYPE_IDENTIFIER (t2);
+
+  return true;
+}
+
+/* Heuristic check if two parameter types can be considered ABI-equivalent.  */
+
+static bool
+cxx_safe_arg_type_equiv_p (tree t1, tree t2)
+{
+  t1 = TYPE_MAIN_VARIANT (t1);
+  t2 = TYPE_MAIN_VARIANT (t2);
+
+  if (TREE_CODE (t1) == POINTER_TYPE
+      && TREE_CODE (t2) == POINTER_TYPE)
+    return true;
+
+  /* The signedness of the parameter matters only when an integral
+     type smaller than int is promoted to int, otherwise only the
+     precision of the parameter matters.
+     This check should make sure that the callee does not see
+     undefined values in argument registers.  */
+  if (INTEGRAL_TYPE_P (t1)
+      && INTEGRAL_TYPE_P (t2)
+      && TYPE_PRECISION (t1) == TYPE_PRECISION (t2)
+      && (TYPE_UNSIGNED (t1) == TYPE_UNSIGNED (t2)
+	  || !targetm.calls.promote_prototypes (NULL_TREE)
+	  || TYPE_PRECISION (t1) >= TYPE_PRECISION (integer_type_node)))
+    return true;
+
+  return same_type_p (t1, t2);
+}
+
+/* Check if a type cast between two function types can be considered safe.  */
+
+static bool
+cxx_safe_function_type_cast_p (tree t1, tree t2)
+{
+  if (TREE_TYPE (t1) == void_type_node &&
+      TYPE_ARG_TYPES (t1) == void_list_node)
+    return true;
+
+  if (TREE_TYPE (t2) == void_type_node &&
+      TYPE_ARG_TYPES (t2) == void_list_node)
+    return true;
+
+  if (!cxx_safe_arg_type_equiv_p (TREE_TYPE (t1), TREE_TYPE (t2)))
+    return false;
+
+  for (t1 = TYPE_ARG_TYPES (t1), t2 = TYPE_ARG_TYPES (t2);
+       t1 && t2;
+       t1 = TREE_CHAIN (t1), t2 = TREE_CHAIN (t2))
+    if (!cxx_safe_arg_type_equiv_p (TREE_VALUE (t1), TREE_VALUE (t2)))
+      return false;
 
   return true;
 }
@@ -4329,8 +4382,16 @@ cp_build_binary_op (location_t location,
       if (code0 == POINTER_TYPE && code1 == POINTER_TYPE
 	  && same_type_ignoring_top_level_qualifiers_p (TREE_TYPE (type0),
 							TREE_TYPE (type1)))
-	return pointer_diff (location, op0, op1,
-			     common_pointer_type (type0, type1), complain);
+	{
+	  result = pointer_diff (location, op0, op1,
+				 common_pointer_type (type0, type1), complain,
+				 &instrument_expr);
+	  if (instrument_expr != NULL)
+	    result = build2 (COMPOUND_EXPR, TREE_TYPE (result),
+			     instrument_expr, result);
+
+	  return result;
+	}
       /* In all other cases except pointer - int, the usual arithmetic
 	 rules apply.  */
       else if (!(code0 == POINTER_TYPE && code1 == INTEGER_TYPE))
@@ -5019,6 +5080,17 @@ cp_build_binary_op (location_t location,
           else
             return error_mark_node;
 	}
+
+      if ((code0 == POINTER_TYPE || code1 == POINTER_TYPE)
+	  && sanitize_flags_p (SANITIZE_POINTER_COMPARE))
+	{
+	  op0 = save_expr (op0);
+	  op1 = save_expr (op1);
+
+	  tree tt = builtin_decl_explicit (BUILT_IN_ASAN_POINTER_COMPARE);
+	  instrument_expr = build_call_expr_loc (location, tt, 2, op0, op1);
+	}
+
       break;
 
     case UNORDERED_EXPR:
@@ -5374,11 +5446,12 @@ cp_pointer_int_sum (location_t loc, enum tree_code resultcode, tree ptrop,
 }
 
 /* Return a tree for the difference of pointers OP0 and OP1.
-   The resulting tree has type int.  */
+   The resulting tree has type int.  If POINTER_SUBTRACT sanitization is
+   enabled, assign to INSTRUMENT_EXPR call to libsanitizer.  */
 
 static tree
 pointer_diff (location_t loc, tree op0, tree op1, tree ptrtype,
-	      tsubst_flags_t complain)
+	      tsubst_flags_t complain, tree *instrument_expr)
 {
   tree result, inttype;
   tree restype = ptrdiff_type_node;
@@ -5419,6 +5492,15 @@ pointer_diff (location_t loc, tree op0, tree op1, tree ptrtype,
     inttype = c_common_type_for_size (TYPE_PRECISION (TREE_TYPE (op0)), 0);
   else
     inttype = restype;
+
+  if (sanitize_flags_p (SANITIZE_POINTER_SUBTRACT))
+    {
+      op0 = save_expr (op0);
+      op1 = save_expr (op1);
+
+      tree tt = builtin_decl_explicit (BUILT_IN_ASAN_POINTER_SUBTRACT);
+      *instrument_expr = build_call_expr_loc (loc, tt, 2, op0, op1);
+    }
 
   /* First do the subtraction, then build the divide operator
      and only convert at the very end.
@@ -7297,9 +7379,27 @@ build_reinterpret_cast_1 (tree type, tree expr, bool c_cast_p,
 	   && same_type_p (type, intype))
     /* DR 799 */
     return rvalue (expr);
-  else if ((TYPE_PTRFN_P (type) && TYPE_PTRFN_P (intype))
-	   || (TYPE_PTRMEMFUNC_P (type) && TYPE_PTRMEMFUNC_P (intype)))
-    return build_nop (type, expr);
+  else if (TYPE_PTRFN_P (type) && TYPE_PTRFN_P (intype))
+    {
+      if ((complain & tf_warning)
+	  && !cxx_safe_function_type_cast_p (TREE_TYPE (type),
+					     TREE_TYPE (intype)))
+	warning (OPT_Wcast_function_type,
+		 "cast between incompatible function types"
+		 " from %qH to %qI", intype, type);
+      return build_nop (type, expr);
+    }
+  else if (TYPE_PTRMEMFUNC_P (type) && TYPE_PTRMEMFUNC_P (intype))
+    {
+      if ((complain & tf_warning)
+	  && !cxx_safe_function_type_cast_p
+		(TREE_TYPE (TYPE_PTRMEMFUNC_FN_TYPE_RAW (type)),
+		 TREE_TYPE (TYPE_PTRMEMFUNC_FN_TYPE_RAW (intype))))
+	warning (OPT_Wcast_function_type,
+		 "cast between incompatible pointer to member types"
+		 " from %qH to %qI", intype, type);
+      return build_nop (type, expr);
+    }
   else if ((TYPE_PTRDATAMEM_P (type) && TYPE_PTRDATAMEM_P (intype))
 	   || (TYPE_PTROBV_P (type) && TYPE_PTROBV_P (intype)))
     {
@@ -8008,8 +8108,7 @@ cp_build_modify_expr (location_t loc, tree lhs, enum tree_code modifycode,
     {
       if (complain & tf_error)
 	cxx_readonly_error (lhs, lv_assign);
-      else
-	return error_mark_node;
+      return error_mark_node;
     }
 
   /* If storing into a structure or union member, it may have been given a

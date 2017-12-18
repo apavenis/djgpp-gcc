@@ -766,6 +766,11 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 #define FALLTHROUGH_LABEL_P(NODE) \
   (LABEL_DECL_CHECK (NODE)->base.private_flag)
 
+/* Set on the artificial label created for break; stmt from a switch.
+   This is used to implement -Wimplicit-fallthrough.  */
+#define SWITCH_BREAK_LABEL_P(NODE) \
+  (LABEL_DECL_CHECK (NODE)->base.protected_flag)
+
 /* Nonzero means this expression is volatile in the C sense:
    its address should be of type `volatile WHATEVER *'.
    In other words, the declared item is volatile qualified.
@@ -1003,10 +1008,24 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 #define TREE_REALPART(NODE) (COMPLEX_CST_CHECK (NODE)->complex.real)
 #define TREE_IMAGPART(NODE) (COMPLEX_CST_CHECK (NODE)->complex.imag)
 
-/* In a VECTOR_CST node.  */
-#define VECTOR_CST_NELTS(NODE) (VECTOR_CST_CHECK (NODE)->base.u.nelts)
-#define VECTOR_CST_ELTS(NODE) (VECTOR_CST_CHECK (NODE)->vector.elts)
-#define VECTOR_CST_ELT(NODE,IDX) (VECTOR_CST_CHECK (NODE)->vector.elts[IDX])
+/* In a VECTOR_CST node.  See generic.texi for details.  */
+#define VECTOR_CST_NELTS(NODE) (TYPE_VECTOR_SUBPARTS (TREE_TYPE (NODE)))
+#define VECTOR_CST_ELT(NODE,IDX) vector_cst_elt (NODE, IDX)
+
+#define VECTOR_CST_LOG2_NPATTERNS(NODE) \
+  (VECTOR_CST_CHECK (NODE)->base.u.vector_cst.log2_npatterns)
+#define VECTOR_CST_NPATTERNS(NODE) \
+  (1U << VECTOR_CST_LOG2_NPATTERNS (NODE))
+#define VECTOR_CST_NELTS_PER_PATTERN(NODE) \
+  (VECTOR_CST_CHECK (NODE)->base.u.vector_cst.nelts_per_pattern)
+#define VECTOR_CST_DUPLICATE_P(NODE) \
+  (VECTOR_CST_NELTS_PER_PATTERN (NODE) == 1)
+#define VECTOR_CST_STEPPED_P(NODE) \
+  (VECTOR_CST_NELTS_PER_PATTERN (NODE) == 3)
+#define VECTOR_CST_ENCODED_ELTS(NODE) \
+  (VECTOR_CST_CHECK (NODE)->vector.elts)
+#define VECTOR_CST_ENCODED_ELT(NODE, ELT) \
+  (VECTOR_CST_CHECK (NODE)->vector.elts[ELT])
 
 /* Define fields and accessors for some special-purpose tree nodes.  */
 
@@ -1104,8 +1123,14 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 #define VL_EXP_OPERAND_LENGTH(NODE) \
   ((int)TREE_INT_CST_LOW (VL_EXP_CHECK (NODE)->exp.operands[0]))
 
+/* Nonzero if gimple_debug_nonbind_marker_p() may possibly hold.  */
+#define MAY_HAVE_DEBUG_MARKER_STMTS debug_nonbind_markers_p
+/* Nonzero if gimple_debug_bind_p() (and thus
+   gimple_debug_source_bind_p()) may possibly hold.  */
+#define MAY_HAVE_DEBUG_BIND_STMTS flag_var_tracking_assignments
 /* Nonzero if is_gimple_debug() may possibly hold.  */
-#define MAY_HAVE_DEBUG_STMTS    (flag_var_tracking_assignments)
+#define MAY_HAVE_DEBUG_STMTS					\
+  (MAY_HAVE_DEBUG_MARKER_STMTS || MAY_HAVE_DEBUG_BIND_STMTS)
 
 /* In a LOOP_EXPR node.  */
 #define LOOP_EXPR_BODY(NODE) TREE_OPERAND_CHECK_CODE (NODE, LOOP_EXPR, 0)
@@ -1166,6 +1191,10 @@ extern void protected_set_expr_location (tree, location_t);
 /* SWITCH_EXPR accessors. These give access to the condition and body.  */
 #define SWITCH_COND(NODE)       TREE_OPERAND (SWITCH_EXPR_CHECK (NODE), 0)
 #define SWITCH_BODY(NODE)       TREE_OPERAND (SWITCH_EXPR_CHECK (NODE), 1)
+/* True if there are case labels for all possible values of SWITCH_COND, either
+   because there is a default: case label or because the case label ranges cover
+   all values.  */
+#define SWITCH_ALL_CASES_P(NODE) (SWITCH_EXPR_CHECK (NODE)->base.private_flag)
 
 /* CASE_LABEL_EXPR accessors. These give access to the high and low values
    of a case label, respectively.  */
@@ -1194,7 +1223,7 @@ extern void protected_set_expr_location (tree, location_t);
 
 /* GOTO_EXPR accessor. This gives access to the label associated with
    a goto statement.  */
-#define GOTO_DESTINATION(NODE)  TREE_OPERAND ((NODE), 0)
+#define GOTO_DESTINATION(NODE)  TREE_OPERAND (GOTO_EXPR_CHECK (NODE), 0)
 
 /* ASM_EXPR accessors. ASM_STRING returns a STRING_CST for the
    instruction (e.g., "mov x, y"). ASM_OUTPUTS, ASM_INPUTS, and
@@ -3873,6 +3902,14 @@ id_equal (const char *str, const_tree id)
   ((NODE) == error_mark_node					\
    || ((NODE) && TREE_TYPE ((NODE)) == error_mark_node))
 
+/* Return the number of elements encoded directly in a VECTOR_CST.  */
+
+inline unsigned int
+vector_cst_encoded_nelts (const_tree t)
+{
+  return VECTOR_CST_NPATTERNS (t) * VECTOR_CST_NELTS_PER_PATTERN (t);
+}
+
 extern tree decl_assembler_name (tree);
 extern void overwrite_decl_assembler_name (tree decl, tree name);
 extern tree decl_comdat_group (const_tree);
@@ -4012,10 +4049,10 @@ extern tree force_fit_type (tree, const wide_int_ref &, int, bool);
 extern tree build_int_cst (tree, HOST_WIDE_INT);
 extern tree build_int_cstu (tree type, unsigned HOST_WIDE_INT cst);
 extern tree build_int_cst_type (tree, HOST_WIDE_INT);
-extern tree make_vector (unsigned CXX_MEM_STAT_INFO);
-extern tree build_vector (tree, vec<tree> CXX_MEM_STAT_INFO);
+extern tree make_vector (unsigned, unsigned CXX_MEM_STAT_INFO);
 extern tree build_vector_from_ctor (tree, vec<constructor_elt, va_gc> *);
 extern tree build_vector_from_val (tree, tree);
+extern tree build_vec_series (tree, tree, tree);
 extern void recompute_constructor_flags (tree);
 extern void verify_constructor_flags (tree);
 extern tree build_constructor (tree, vec<constructor_elt, va_gc> *);
@@ -4258,6 +4295,9 @@ extern tree first_field (const_tree);
    aggregate of zeros.  Otherwise return FALSE.  */
 
 extern bool initializer_zerop (const_tree);
+
+extern wide_int vector_cst_int_elt (const_tree, unsigned int);
+extern tree vector_cst_elt (const_tree, unsigned int);
 
 /* Given a vector VEC, return its first element if all elements are
    the same.  Otherwise return NULL_TREE.  */
@@ -5445,6 +5485,7 @@ extern bool is_redundant_typedef (const_tree);
 extern bool default_is_empty_record (const_tree);
 extern HOST_WIDE_INT arg_int_size_in_bytes (const_tree);
 extern tree arg_size_in_bytes (const_tree);
+extern bool expr_type_first_operand_type_p (tree_code);
 
 extern location_t
 set_source_range (tree expr, location_t start, location_t finish);

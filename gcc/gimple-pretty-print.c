@@ -431,6 +431,7 @@ dump_binary_rhs (pretty_printer *buffer, gassign *gs, int spc,
     case VEC_PACK_FIX_TRUNC_EXPR:
     case VEC_WIDEN_LSHIFT_HI_EXPR:
     case VEC_WIDEN_LSHIFT_LO_EXPR:
+    case VEC_SERIES_EXPR:
       for (p = get_tree_code_name (code); *p; p++)
 	pp_character (buffer, TOUPPER (*p));
       pp_string (buffer, " <");
@@ -1361,6 +1362,13 @@ dump_gimple_debug (pretty_printer *buffer, gdebug *gs, int spc,
 	dump_gimple_fmt (buffer, spc, flags, "# DEBUG %T s=> %T",
 			 gimple_debug_source_bind_get_var (gs),
 			 gimple_debug_source_bind_get_value (gs));
+      break;
+
+    case GIMPLE_DEBUG_BEGIN_STMT:
+      if (flags & TDF_RAW)
+	dump_gimple_fmt (buffer, spc, flags, "%G BEGIN_STMT", gs);
+      else
+	dump_gimple_fmt (buffer, spc, flags, "# DEBUG BEGIN_STMT");
       break;
 
     default:

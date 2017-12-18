@@ -19,6 +19,8 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -5424,23 +5426,23 @@ h8300_insert_attributes (tree node, tree *attributes)
 
 static const struct attribute_spec h8300_attribute_table[] =
 {
-  /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-       affects_type_identity } */
-  { "interrupt_handler", 0, 0, true,  false, false,
-    h8300_handle_fndecl_attribute, false },
-  { "saveall",           0, 0, true,  false, false,
-    h8300_handle_fndecl_attribute, false },
-  { "OS_Task",           0, 0, true,  false, false,
-    h8300_handle_fndecl_attribute, false },
-  { "monitor",           0, 0, true,  false, false,
-    h8300_handle_fndecl_attribute, false },
-  { "function_vector",   0, 0, true,  false, false,
-    h8300_handle_fndecl_attribute, false },
-  { "eightbit_data",     0, 0, true,  false, false,
-    h8300_handle_eightbit_data_attribute, false },
-  { "tiny_data",         0, 0, true,  false, false,
-    h8300_handle_tiny_data_attribute, false },
-  { NULL,                0, 0, false, false, false, NULL, false }
+  /* { name, min_len, max_len, decl_req, type_req, fn_type_req,
+       affects_type_identity, handler, exclude } */
+  { "interrupt_handler", 0, 0, true,  false, false, false,
+    h8300_handle_fndecl_attribute, NULL },
+  { "saveall",           0, 0, true,  false, false, false,
+    h8300_handle_fndecl_attribute, NULL },
+  { "OS_Task",           0, 0, true,  false, false, false,
+    h8300_handle_fndecl_attribute, NULL },
+  { "monitor",           0, 0, true,  false, false, false,
+    h8300_handle_fndecl_attribute, NULL },
+  { "function_vector",   0, 0, true,  false, false, false,
+    h8300_handle_fndecl_attribute, NULL },
+  { "eightbit_data",     0, 0, true,  false, false, false,
+    h8300_handle_eightbit_data_attribute, NULL },
+  { "tiny_data",         0, 0, true,  false, false, false,
+    h8300_handle_tiny_data_attribute, NULL },
+  { NULL,                0, 0, false, false, false, false, NULL, NULL }
 };
 
 

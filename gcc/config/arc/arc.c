@@ -28,6 +28,8 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -217,23 +219,25 @@ static tree arc_handle_fndecl_attribute (tree *, tree, tree, int, bool *);
    machine specific supported attributes.  */
 const struct attribute_spec arc_attribute_table[] =
 {
- /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-      affects_type_identity } */
-  { "interrupt", 1, 1, true, false, false, arc_handle_interrupt_attribute, true },
+ /* { name, min_len, max_len, decl_req, type_req, fn_type_req,
+      affects_type_identity, handler, exclude } */
+  { "interrupt", 1, 1, true, false, false, true,
+    arc_handle_interrupt_attribute, NULL },
   /* Function calls made to this symbol must be done indirectly, because
      it may lie outside of the 21/25 bit addressing range of a normal function
      call.  */
-  { "long_call",    0, 0, false, true,  true,  NULL, false },
+  { "long_call",    0, 0, false, true,  true,  false, NULL, NULL },
   /* Whereas these functions are always known to reside within the 25 bit
      addressing range of unconditionalized bl.  */
-  { "medium_call",   0, 0, false, true,  true,  NULL, false },
+  { "medium_call",   0, 0, false, true,  true, false, NULL, NULL },
   /* And these functions are always known to reside within the 21 bit
      addressing range of blcc.  */
-  { "short_call",   0, 0, false, true,  true,  NULL, false },
+  { "short_call",   0, 0, false, true,  true,  false, NULL, NULL },
   /* Function which are not having the prologue and epilogue generated
      by the compiler.  */
-  { "naked", 0, 0, true, false, false, arc_handle_fndecl_attribute, false },
-  { NULL, 0, 0, false, false, false, NULL, false }
+  { "naked", 0, 0, true, false, false,  false, arc_handle_fndecl_attribute,
+    NULL },
+  { NULL, 0, 0, false, false, false, false, NULL, NULL }
 };
 static int arc_comp_type_attributes (const_tree, const_tree);
 static void arc_file_start (void);
@@ -5995,12 +5999,6 @@ arc_return_addr_rtx (int count, ATTRIBUTE_UNUSED rtx frame)
 bool
 arc_legitimate_constant_p (machine_mode mode, rtx x)
 {
-  if (GET_CODE (x) == SYMBOL_REF && SYMBOL_REF_TLS_MODEL (x))
-    return false;
-
-  if (!flag_pic && mode != Pmode)
-    return true;
-
   switch (GET_CODE (x))
     {
     case CONST:
@@ -7408,6 +7406,12 @@ hwloop_optimize (hwloop_info loop)
 		 loop->loop_no);
       last_insn = emit_insn_after (gen_nopv (), last_insn);
     }
+
+  /* SAVE_NOTE is used by haifa scheduler.  However, we are after it
+     and we can use it to indicate the last ZOL instruction cannot be
+     part of a delay slot.  */
+  add_reg_note (last_insn, REG_SAVE_NOTE, GEN_INT (2));
+
   loop->last_insn = last_insn;
 
   /* Get the loop iteration register.  */
@@ -7491,7 +7495,7 @@ hwloop_optimize (hwloop_info loop)
                  && NOTE_KIND (entry_after) != NOTE_INSN_CALL_ARG_LOCATION))
         entry_after = NEXT_INSN (entry_after);
 #endif
-      entry_after = next_nonnote_insn_bb (entry_after);
+      entry_after = next_nonnote_nondebug_insn_bb (entry_after);
 
       gcc_assert (entry_after);
       emit_insn_before (seq, entry_after);
@@ -7501,6 +7505,9 @@ hwloop_optimize (hwloop_info loop)
   /* Insert the loop end label before the last instruction of the
      loop.  */
   emit_label_after (end_label, loop->last_insn);
+  /* Make sure we mark the begining and end label as used.  */
+  LABEL_NUSES (loop->end_label)++;
+  LABEL_NUSES (loop->start_label)++;
 
   return true;
 }
@@ -10805,11 +10812,23 @@ arc_use_anchors_for_symbol_p (const_rtx symbol)
   return default_use_anchors_for_symbol_p (symbol);
 }
 
+/* Return true if SUBST can't safely replace its equivalent during RA.  */
+static bool
+arc_cannot_substitute_mem_equiv_p (rtx)
+{
+  /* If SUBST is mem[base+index], the address may not fit ISA,
+     thus return true.  */
+  return true;
+}
+
 #undef TARGET_USE_ANCHORS_FOR_SYMBOL_P
 #define TARGET_USE_ANCHORS_FOR_SYMBOL_P arc_use_anchors_for_symbol_p
 
 #undef TARGET_CONSTANT_ALIGNMENT
 #define TARGET_CONSTANT_ALIGNMENT constant_alignment_word_strings
+
+#undef TARGET_CANNOT_SUBSTITUTE_MEM_EQUIV_P
+#define TARGET_CANNOT_SUBSTITUTE_MEM_EQUIV_P arc_cannot_substitute_mem_equiv_p
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

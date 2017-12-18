@@ -18,6 +18,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -206,10 +208,10 @@ static void cr16_print_operand_address (FILE *, machine_mode, rtx);
 /* Table of machine attributes.  */
 static const struct attribute_spec cr16_attribute_table[] = {
   /* ISRs have special prologue and epilogue requirements.  */
-  /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-       affects_type_identity }.  */
-  {"interrupt", 0, 0, false, true, true, NULL, false},
-  {NULL, 0, 0, false, false, false, NULL, false}
+  /* { name, min_len, max_len, decl_req, type_req, fn_type_req,
+       affects_type_identity, handler, exclude }.  */
+  {"interrupt", 0, 0, false, true, true, false, NULL, NULL},
+  {NULL, 0, 0, false, false, false, false, NULL, NULL}
 };
 
 /* TARGET_ASM_UNALIGNED_xx_OP generates .?byte directive

@@ -384,6 +384,7 @@ const struct gcc_debug_hooks dbx_debug_hooks =
   debug_nothing_rtx_code_label,	         /* label */
   dbxout_handle_pch,		         /* handle_pch */
   debug_nothing_rtx_insn,	         /* var_location */
+  debug_nothing_tree,	         	 /* inline_entry */
   debug_nothing_tree,			 /* size_function */
   dbxout_switch_text_section,            /* switch_text_section */
   debug_nothing_tree_tree,		 /* set_name */
@@ -426,6 +427,7 @@ const struct gcc_debug_hooks xcoff_debug_hooks =
   debug_nothing_rtx_code_label,	         /* label */
   dbxout_handle_pch,		         /* handle_pch */
   debug_nothing_rtx_insn,	         /* var_location */
+  debug_nothing_tree,	         	 /* inline_entry */
   debug_nothing_tree,			 /* size_function */
   debug_nothing_void,                    /* switch_text_section */
   debug_nothing_tree_tree,	         /* set_name */
@@ -3844,7 +3846,7 @@ dbxout_block (tree block, int depth, tree args, int parent_blocknum)
 	      /* If we emitted any vars and didn't output any LBRAC/RBRAC,
 		 either at this level or any lower level, we need to emit
 		 an empty LBRAC/RBRAC pair now.  */
-	      char buf[20];
+	      char buf[30];
 	      const char *scope_start;
 
 	      ret = true;

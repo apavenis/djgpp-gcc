@@ -2530,7 +2530,7 @@ static void cp_parser_late_parsing_default_args
   (cp_parser *, tree);
 static tree cp_parser_sizeof_operand
   (cp_parser *, enum rid);
-static tree cp_parser_trait_expr
+static cp_expr cp_parser_trait_expr
   (cp_parser *, enum rid);
 static bool cp_parser_declares_only_class_p
   (cp_parser *);
@@ -3365,6 +3365,9 @@ cp_parser_diagnose_invalid_type_name (cp_parser *parser, tree id,
 		      id, parser->scope);
 	  if (DECL_P (decl))
 	    inform (DECL_SOURCE_LOCATION (decl), "%qD declared here", decl);
+	  else if (decl == error_mark_node)
+	    suggest_alternative_in_explicit_scope (location, id,
+						   parser->scope);
 	}
       else if (CLASS_TYPE_P (parser->scope)
 	       && constructor_name_p (id, parser->scope))
@@ -3915,7 +3918,6 @@ cp_parser_new (void)
 
   /* Special parsing data structures.  */
   parser->omp_declare_simd = NULL;
-  parser->cilk_simd_fn_info = NULL;
   parser->oacc_routine = NULL;
 
   /* Not declaring an implicit function template.  */
@@ -4398,11 +4400,75 @@ cp_parser_userdef_numeric_literal (cp_parser *parser)
 
   release_tree_vector (args);
 
-  error ("unable to find numeric literal operator %qD", name);
-  if (!cpp_get_options (parse_in)->ext_numeric_literals)
-    inform (token->location, "use -std=gnu++11 or -fext-numeric-literals "
+  /* In C++14 the standard library defines complex number suffixes that
+     conflict with GNU extensions.  Prefer them if <complex> is #included.  */
+  bool ext = cpp_get_options (parse_in)->ext_numeric_literals;
+  bool i14 = (cxx_dialect > cxx11
+	      && (id_equal (suffix_id, "i")
+		  || id_equal (suffix_id, "if")
+		  || id_equal (suffix_id, "il")));
+  diagnostic_t kind = DK_ERROR;
+  int opt = 0;
+
+  if (i14 && ext)
+    {
+      tree cxlit = lookup_qualified_name (std_node,
+					  get_identifier ("complex_literals"),
+					  0, false, false);
+      if (cxlit == error_mark_node)
+	{
+	  /* No <complex>, so pedwarn and use GNU semantics.  */
+	  kind = DK_PEDWARN;
+	  opt = OPT_Wpedantic;
+	}
+    }
+
+  bool complained
+    = emit_diagnostic (kind, input_location, opt,
+		       "unable to find numeric literal operator %qD", name);
+
+  if (!complained)
+    /* Don't inform either.  */;
+  else if (i14)
+    {
+      inform (token->location, "add %<using namespace std::complex_literals%> "
+	      "(from <complex>) to enable the C++14 user-defined literal "
+	      "suffixes");
+      if (ext)
+	inform (token->location, "or use %<j%> instead of %<i%> for the "
+		"GNU built-in suffix");
+    }
+  else if (!ext)
+    inform (token->location, "use -fext-numeric-literals "
 	    "to enable more built-in suffixes");
-  return error_mark_node;
+
+  if (kind == DK_ERROR)
+    value = error_mark_node;
+  else
+    {
+      /* Use the built-in semantics.  */
+      tree type;
+      if (id_equal (suffix_id, "i"))
+	{
+	  if (TREE_CODE (value) == INTEGER_CST)
+	    type = integer_type_node;
+	  else
+	    type = double_type_node;
+	}
+      else if (id_equal (suffix_id, "if"))
+	type = float_type_node;
+      else /* if (id_equal (suffix_id, "il")) */
+	type = long_double_type_node;
+
+      value = build_complex (build_complex_type (type),
+			     fold_convert (type, integer_zero_node),
+			     fold_convert (type, value));
+    }
+
+  if (cp_parser_uncommitted_to_tentative_parse_p (parser))
+    /* Avoid repeated diagnostics.  */
+    token->u.value = value;
+  return value;
 }
 
 /* Parse a user-defined string constant.  Returns a call to a user-defined
@@ -7981,6 +8047,8 @@ cp_parser_unary_expression (cp_parser *parser, cp_id_kind * pidk,
 	    bool saved_non_integral_constant_expression_p;
 	    bool saved_greater_than_is_operator_p;
 
+	    location_t start_loc = token->location;
+
 	    cp_lexer_consume_token (parser->lexer);
 	    matching_parens parens;
 	    parens.require_open (parser);
@@ -8017,8 +8085,19 @@ cp_parser_unary_expression (cp_parser *parser, cp_id_kind * pidk,
 
 	    parser->type_definition_forbidden_message = saved_message;
 
+	    location_t finish_loc
+	      = cp_lexer_peek_token (parser->lexer)->location;
 	    parens.require_close (parser);
-	    return finish_noexcept_expr (expr, tf_warning_or_error);
+
+	    /* Construct a location of the form:
+	       noexcept (expr)
+	       ^~~~~~~~~~~~~~~
+	       with start == caret, finishing at the close-paren.  */
+	    location_t noexcept_loc
+	      = make_location (start_loc, start_loc, finish_loc);
+
+	    return cp_expr (finish_noexcept_expr (expr, tf_warning_or_error),
+			    noexcept_loc);
 	  }
 
 	default:
@@ -9760,7 +9839,7 @@ cp_parser_builtin_offsetof (cp_parser *parser)
    Returns a representation of the expression, the underlying type
    of the type at issue when KEYWORD is RID_UNDERLYING_TYPE.  */
 
-static tree
+static cp_expr
 cp_parser_trait_expr (cp_parser* parser, enum rid keyword)
 {
   cp_trait_kind kind;
@@ -9873,6 +9952,9 @@ cp_parser_trait_expr (cp_parser* parser, enum rid keyword)
       gcc_unreachable ();
     }
 
+  /* Get location of initial token.  */
+  location_t start_loc = cp_lexer_peek_token (parser->lexer)->location;
+
   /* Consume the token.  */
   cp_lexer_consume_token (parser->lexer);
 
@@ -9916,20 +9998,27 @@ cp_parser_trait_expr (cp_parser* parser, enum rid keyword)
 	}
     }
 
+  location_t finish_loc = cp_lexer_peek_token (parser->lexer)->location;
   parens.require_close (parser);
+
+  /* Construct a location of the form:
+       __is_trivially_copyable(_Tp)
+       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     with start == caret, finishing at the close-paren.  */
+  location_t trait_loc = make_location (start_loc, start_loc, finish_loc);
 
   /* Complete the trait expression, which may mean either processing
      the trait expr now or saving it for template instantiation.  */
   switch (kind)
     {
     case CPTK_UNDERLYING_TYPE:
-      return finish_underlying_type (type1);
+      return cp_expr (finish_underlying_type (type1), trait_loc);
     case CPTK_BASES:
-      return finish_bases (type1, false);
+      return cp_expr (finish_bases (type1, false), trait_loc);
     case CPTK_DIRECT_BASES:
-      return finish_bases (type1, true);
+      return cp_expr (finish_bases (type1, true), trait_loc);
     default:
-      return finish_trait_expr (kind, type1, type2);
+      return cp_expr (finish_trait_expr (kind, type1, type2), trait_loc);
     }
 }
 
@@ -10595,6 +10684,19 @@ cp_parser_lambda_body (cp_parser* parser, tree lambda_expr)
 
 /* Statements [gram.stmt.stmt]  */
 
+/* Build and add a DEBUG_BEGIN_STMT statement with location LOC.  */
+
+static void
+add_debug_begin_stmt (location_t loc)
+{
+  if (!MAY_HAVE_DEBUG_MARKER_STMTS)
+    return;
+
+  tree stmt = build0 (DEBUG_BEGIN_STMT, void_type_node);
+  SET_EXPR_LOCATION (stmt, loc);
+  add_stmt (stmt);
+}
+
 /* Parse a statement.
 
    statement:
@@ -10670,6 +10772,7 @@ cp_parser_statement (cp_parser* parser, tree in_statement_expr,
   token = cp_lexer_peek_token (parser->lexer);
   /* Remember the location of the first token in the statement.  */
   statement_location = token->location;
+  add_debug_begin_stmt (statement_location);
   /* If this is a keyword, then that will often determine what kind of
      statement we have.  */
   if (token->type == CPP_KEYWORD)
@@ -11837,6 +11940,9 @@ cp_convert_range_for (tree statement, tree range_decl, tree range_expr,
 				     tf_warning_or_error);
   finish_for_expr (expression, statement);
 
+  if (VAR_P (range_decl) && DECL_DECOMPOSITION_P (range_decl))
+    cp_maybe_mangle_decomp (range_decl, decomp_first_name, decomp_cnt);
+
   /* The declaration is initialized with *__begin inside the loop body.  */
   cp_finish_decl (range_decl,
 		  build_x_indirect_ref (input_location, begin, RO_UNARY_STAR,
@@ -12043,7 +12149,9 @@ cp_parser_iteration_statement (cp_parser* parser, bool *if_p, bool ivdep)
 	parens.require_close (parser);
 	/* Parse the dependent statement.  */
 	parser->in_statement = IN_ITERATION_STMT;
+	bool prev = note_iteration_stmt_body_start ();
 	cp_parser_already_scoped_statement (parser, if_p, guard_tinfo);
+	note_iteration_stmt_body_end (prev);
 	parser->in_statement = in_statement;
 	/* We're done with the while-statement.  */
 	finish_while_stmt (statement);
@@ -12058,7 +12166,9 @@ cp_parser_iteration_statement (cp_parser* parser, bool *if_p, bool ivdep)
 	statement = begin_do_stmt ();
 	/* Parse the body of the do-statement.  */
 	parser->in_statement = IN_ITERATION_STMT;
+	bool prev = note_iteration_stmt_body_start ();
 	cp_parser_implicitly_scoped_statement (parser, NULL, guard_tinfo);
+	note_iteration_stmt_body_end (prev);
 	parser->in_statement = in_statement;
 	finish_do_body (statement);
 	/* Look for the `while' keyword.  */
@@ -12090,7 +12200,9 @@ cp_parser_iteration_statement (cp_parser* parser, bool *if_p, bool ivdep)
 
 	/* Parse the body of the for-statement.  */
 	parser->in_statement = IN_ITERATION_STMT;
+	bool prev = note_iteration_stmt_body_start ();
 	cp_parser_already_scoped_statement (parser, if_p, guard_tinfo);
+	note_iteration_stmt_body_end (prev);
 	parser->in_statement = in_statement;
 
 	/* We're done with the for-statement.  */
@@ -13174,6 +13286,7 @@ cp_parser_decomposition_declaration (cp_parser *parser,
 
       if (decl != error_mark_node)
 	{
+	  cp_maybe_mangle_decomp (decl, prev, v.length ());
 	  cp_finish_decl (decl, initializer, non_constant_p, NULL_TREE,
 			  is_direct_init ? LOOKUP_NORMAL : LOOKUP_IMPLICIT);
 	  cp_finish_decomp (decl, prev, v.length ());
@@ -13719,16 +13832,14 @@ cp_parser_linkage_specification (cp_parser* parser)
 static void 
 cp_parser_static_assert(cp_parser *parser, bool member_p)
 {
-  tree condition;
+  cp_expr condition;
+  location_t token_loc;
   tree message;
-  cp_token *token;
-  location_t saved_loc;
   bool dummy;
 
   /* Peek at the `static_assert' token so we can keep track of exactly
      where the static assertion started.  */
-  token = cp_lexer_peek_token (parser->lexer);
-  saved_loc = token->location;
+  token_loc = cp_lexer_peek_token (parser->lexer)->location;
 
   /* Look for the `static_assert' keyword.  */
   if (!cp_parser_require_keyword (parser, RID_STATIC_ASSERT, 
@@ -13784,9 +13895,16 @@ cp_parser_static_assert(cp_parser *parser, bool member_p)
   /* A semicolon terminates the declaration.  */
   cp_parser_require (parser, CPP_SEMICOLON, RT_SEMICOLON);
 
+  /* Get the location for the static assertion.  Use that of the
+     condition if available, otherwise, use that of the "static_assert"
+     token.  */
+  location_t assert_loc = condition.get_location ();
+  if (assert_loc == UNKNOWN_LOCATION)
+    assert_loc = token_loc;
+
   /* Complete the static assertion, which may mean either processing 
      the static assert now or saving it for template instantiation.  */
-  finish_static_assert (condition, message, saved_loc, member_p);
+  finish_static_assert (condition, message, assert_loc, member_p);
 }
 
 /* Parse the expression in decltype ( expression ).  */
@@ -18311,7 +18429,13 @@ cp_parser_namespace_name (cp_parser* parser)
       || TREE_CODE (namespace_decl) != NAMESPACE_DECL)
     {
       if (!cp_parser_uncommitted_to_tentative_parse_p (parser))
-	error_at (token->location, "%qD is not a namespace-name", identifier);
+	{
+	  error_at (token->location, "%qD is not a namespace-name", identifier);
+	  if (namespace_decl == error_mark_node
+	      && parser->scope && TREE_CODE (parser->scope) == NAMESPACE_DECL)
+	    suggest_alternative_in_explicit_scope (token->location, identifier,
+						   parser->scope);
+	}
       cp_parser_error (parser, "expected namespace-name");
       namespace_decl = error_mark_node;
     }
@@ -20641,8 +20765,7 @@ parsing_nsdmi (void)
    Returns the type indicated by the type-id.
 
    In addition to this, parse any queued up #pragma omp declare simd
-   clauses, Cilk Plus SIMD-enabled functions' vector attributes, and
-   #pragma acc routine clauses.
+   clauses, and #pragma acc routine clauses.
 
    QUALS is either a bitmask of cv_qualifiers or -1 for a non-member
    function.  */
@@ -28969,6 +29092,7 @@ cp_parser_objc_expression (cp_parser* parser)
 	default:
 	  break;
 	}
+      /* FALLTHRU */
     default:
       error_at (kwd->location,
 		"misplaced %<@%D%> Objective-C++ construct",
@@ -34501,8 +34625,7 @@ cp_parser_omp_for_incr (cp_parser *parser, tree decl)
   return build2 (MODIFY_EXPR, TREE_TYPE (decl), decl, rhs);
 }
 
-/* Parse the initialization statement of either an OpenMP for loop or
-   a Cilk Plus for loop.
+/* Parse the initialization statement of an OpenMP for loop.
 
    Return true if the resulting construct should have an
    OMP_CLAUSE_PRIVATE added to it.  */

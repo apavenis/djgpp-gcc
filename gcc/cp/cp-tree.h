@@ -364,6 +364,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       IF_STMT_CONSTEXPR_P (IF_STMT)
       TEMPLATE_TYPE_PARM_FOR_CLASS (TEMPLATE_TYPE_PARM)
       DECL_NAMESPACE_INLINE_P (in NAMESPACE_DECL)
+      SWITCH_STMT_ALL_CASES_P (in SWITCH_STMT)
    1: IDENTIFIER_KIND_BIT_1 (in IDENTIFIER_NODE)
       TI_PENDING_TEMPLATE_FLAG.
       TEMPLATE_PARMS_FOR_INLINE.
@@ -395,6 +396,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       AGGR_INIT_ZERO_FIRST (in AGGR_INIT_EXPR)
       CONSTRUCTOR_MUTABLE_POISON (in CONSTRUCTOR)
       OVL_HIDDEN_P (in OVERLOAD)
+      SWITCH_STMT_NO_BREAK_P (in SWITCH_STMT)
    3: (TREE_REFERENCE_EXPR) (in NON_LVALUE_EXPR) (commented-out).
       ICS_BAD_FLAG (in _CONV)
       FN_TRY_BLOCK_P (in TRY_BLOCK)
@@ -2447,7 +2449,8 @@ struct GTY(()) lang_decl_base {
   unsigned u2sel : 1;
   unsigned concept_p : 1;                  /* applies to vars and functions */
   unsigned var_declared_inline_p : 1;	   /* var */
-  /* 2 spare bits */
+  unsigned dependent_init_p : 1;	   /* var */
+  /* 1 spare bit */
 };
 
 /* True for DECL codes which have template info and access.  */
@@ -3877,6 +3880,13 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
   (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))->u.base.var_declared_inline_p \
    = true)
 
+/* True if NODE is a constant variable with a value-dependent initializer.  */
+#define DECL_DEPENDENT_INIT_P(NODE)				\
+  (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))			\
+   && DECL_LANG_SPECIFIC (NODE)->u.base.dependent_init_p)
+#define SET_DECL_DEPENDENT_INIT_P(NODE, X) \
+  (DECL_LANG_SPECIFIC (VAR_DECL_CHECK (NODE))->u.base.dependent_init_p = (X))
+
 /* Nonzero if NODE is an artificial VAR_DECL for a C++17 structured binding
    declaration or one of VAR_DECLs for the user identifiers in it.  */
 #define DECL_DECOMPOSITION_P(NODE) \
@@ -4840,6 +4850,14 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
 #define SWITCH_STMT_BODY(NODE)	TREE_OPERAND (SWITCH_STMT_CHECK (NODE), 1)
 #define SWITCH_STMT_TYPE(NODE)	TREE_OPERAND (SWITCH_STMT_CHECK (NODE), 2)
 #define SWITCH_STMT_SCOPE(NODE)	TREE_OPERAND (SWITCH_STMT_CHECK (NODE), 3)
+/* True if there are case labels for all possible values of switch cond, either
+   because there is a default: case label or because the case label ranges cover
+   all values.  */
+#define SWITCH_STMT_ALL_CASES_P(NODE) \
+  TREE_LANG_FLAG_0 (SWITCH_STMT_CHECK (NODE))
+/* True if the body of a switch stmt contains no BREAK_STMTs.  */
+#define SWITCH_STMT_NO_BREAK_P(NODE) \
+  TREE_LANG_FLAG_2 (SWITCH_STMT_CHECK (NODE))
 
 /* STMT_EXPR accessor.  */
 #define STMT_EXPR_STMT(NODE)	TREE_OPERAND (STMT_EXPR_CHECK (NODE), 0)
@@ -6102,8 +6120,11 @@ enum cp_tree_node_structure_enum cp_tree_node_structure
 extern void finish_scope			(void);
 extern void push_switch				(tree);
 extern void pop_switch				(void);
+extern void note_break_stmt			(void);
+extern bool note_iteration_stmt_body_start	(void);
+extern void note_iteration_stmt_body_end	(bool);
 extern tree make_lambda_name			(void);
-extern int decls_match				(tree, tree);
+extern int decls_match				(tree, tree, bool = true);
 extern bool maybe_version_functions		(tree, tree);
 extern tree duplicate_decls			(tree, tree, bool);
 extern tree declare_local_label			(tree);
@@ -6128,6 +6149,7 @@ extern void start_decl_1			(tree, bool);
 extern bool check_array_initializer		(tree, tree, tree);
 extern void cp_finish_decl			(tree, tree, bool, tree, int);
 extern tree lookup_decomp_type			(tree);
+extern void cp_maybe_mangle_decomp		(tree, tree, unsigned int);
 extern void cp_finish_decomp			(tree, tree, unsigned int);
 extern int cp_complete_array_type		(tree *, tree, bool);
 extern int cp_complete_array_type_or_error	(tree *, tree, bool, tsubst_flags_t);
@@ -7388,9 +7410,6 @@ extern void explain_invalid_constexpr_fn        (tree);
 extern vec<tree> cx_error_context               (void);
 extern tree fold_sizeof_expr			(tree);
 extern void clear_cv_and_fold_caches		(void);
-
-/* In c-family/cilk.c */
-extern bool cilk_valid_spawn                    (tree);
 
 /* In cp-ubsan.c */
 extern void cp_ubsan_maybe_instrument_member_call (tree);

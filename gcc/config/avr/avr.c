@@ -18,6 +18,8 @@
    along with GCC; see the file COPYING3.  If not see
    <http://www.gnu.org/licenses/>.  */
 
+#define IN_TARGET_CODE 1
+
 #include "config.h"
 #include "system.h"
 #include "intl.h"
@@ -9871,34 +9873,33 @@ avr_eval_addr_attrib (rtx x)
 
 
 /* AVR attributes.  */
-static const struct attribute_spec
-avr_attribute_table[] =
+static const struct attribute_spec avr_attribute_table[] =
 {
-  /* { name, min_len, max_len, decl_req, type_req, fn_type_req, handler,
-       affects_type_identity } */
-  { "progmem",   0, 0, false, false, false,  avr_handle_progmem_attribute,
-    false },
-  { "signal",    0, 0, true,  false, false,  avr_handle_fndecl_attribute,
-    false },
-  { "interrupt", 0, 0, true,  false, false,  avr_handle_fndecl_attribute,
-    false },
-  { "no_gccisr", 0, 0, true,  false, false,  avr_handle_fndecl_attribute,
-    false },
-  { "naked",     0, 0, false, true,  true,   avr_handle_fntype_attribute,
-    false },
-  { "OS_task",   0, 0, false, true,  true,   avr_handle_fntype_attribute,
-    false },
-  { "OS_main",   0, 0, false, true,  true,   avr_handle_fntype_attribute,
-    false },
-  { "io",        0, 1, true, false, false,  avr_handle_addr_attribute,
-    false },
-  { "io_low",    0, 1, true, false, false,  avr_handle_addr_attribute,
-    false },
-  { "address",   1, 1, true, false, false,  avr_handle_addr_attribute,
-    false },
-  { "absdata",   0, 0, true, false, false,  avr_handle_absdata_attribute,
-    false },
-  { NULL,        0, 0, false, false, false, NULL, false }
+  /* { name, min_len, max_len, decl_req, type_req, fn_type_req,
+       affects_type_identity, handler, exclude } */
+  { "progmem",   0, 0, false, false, false, false,
+    avr_handle_progmem_attribute, NULL },
+  { "signal",    0, 0, true,  false, false, false,
+    avr_handle_fndecl_attribute, NULL },
+  { "interrupt", 0, 0, true,  false, false, false,
+    avr_handle_fndecl_attribute, NULL },
+  { "no_gccisr", 0, 0, true,  false, false, false,
+    avr_handle_fndecl_attribute, NULL },
+  { "naked",     0, 0, false, true,  true,  false,
+    avr_handle_fntype_attribute, NULL },
+  { "OS_task",   0, 0, false, true,  true,  false,
+    avr_handle_fntype_attribute, NULL },
+  { "OS_main",   0, 0, false, true,  true,  false,
+    avr_handle_fntype_attribute, NULL },
+  { "io",        0, 1, true, false, false,  false,
+    avr_handle_addr_attribute, NULL },
+  { "io_low",    0, 1, true, false, false,  false,
+    avr_handle_addr_attribute, NULL },
+  { "address",   1, 1, true, false, false,  false,
+    avr_handle_addr_attribute, NULL },
+  { "absdata",   0, 0, true, false, false,  false,
+    avr_handle_absdata_attribute, NULL },
+  { NULL,        0, 0, false, false, false, false, NULL, NULL }
 };
 
 

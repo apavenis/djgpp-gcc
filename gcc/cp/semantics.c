@@ -731,7 +731,7 @@ finish_if_stmt_cond (tree cond, tree if_stmt)
 {
   cond = maybe_convert_cond (cond);
   if (IF_STMT_CONSTEXPR_P (if_stmt)
-      && is_constant_expression (cond)
+      && require_constant_expression (cond)
       && !value_dependent_expression_p (cond))
     {
       cond = instantiate_non_dependent_expr (cond);
@@ -1102,6 +1102,7 @@ finish_break_stmt (void)
      understand.  */
   if (!block_may_fallthru (cur_stmt_list))
     return void_node;
+  note_break_stmt ();
   return add_stmt (build_stmt (input_location, BREAK_STMT));
 }
 

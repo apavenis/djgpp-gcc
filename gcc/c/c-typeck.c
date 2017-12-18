@@ -95,7 +95,7 @@ static tree lookup_field (tree, tree);
 static int convert_arguments (location_t, vec<location_t>, tree,
 			      vec<tree, va_gc> *, vec<tree, va_gc> *, tree,
 			      tree);
-static tree pointer_diff (location_t, tree, tree);
+static tree pointer_diff (location_t, tree, tree, tree *);
 static tree convert_for_assignment (location_t, location_t, tree, tree, tree,
 				    enum impl_conv, bool, tree, tree, int);
 static tree valid_compound_expr_initializer (tree, tree);
@@ -1832,13 +1832,10 @@ c_size_in_bytes (const_tree type)
 /* Return either DECL or its known constant value (if it has one).  */
 
 tree
-decl_constant_value (tree decl)
+decl_constant_value_1 (tree decl)
 {
-  if (/* Don't change a variable array bound or initial value to a constant
-	 in a place where a variable is invalid.  Note that DECL_INITIAL
-	 isn't valid for a PARM_DECL.  */
-      current_function_decl != NULL_TREE
-      && TREE_CODE (decl) != PARM_DECL
+  if (/* Note that DECL_INITIAL isn't valid for a PARM_DECL.  */
+      TREE_CODE (decl) != PARM_DECL
       && !TREE_THIS_VOLATILE (decl)
       && TREE_READONLY (decl)
       && DECL_INITIAL (decl) != NULL_TREE
@@ -1851,6 +1848,17 @@ decl_constant_value (tree decl)
       && TREE_CODE (DECL_INITIAL (decl)) != CONSTRUCTOR)
     return DECL_INITIAL (decl);
   return decl;
+}
+
+/* Return either DECL or its known constant value (if it has one).
+   Like the above, but always return decl outside of functions.  */
+
+tree
+decl_constant_value (tree decl)
+{
+  /* Don't change a variable array bound or initial value to a constant
+     in a place where a variable is invalid.  */
+  return current_function_decl ? decl_constant_value_1 (decl) : decl;
 }
 
 /* Convert the array expression EXP to a pointer.  */
@@ -3760,10 +3768,11 @@ parser_build_binary_op (location_t location, enum tree_code code,
 }
 
 /* Return a tree for the difference of pointers OP0 and OP1.
-   The resulting tree has type ptrdiff_t.  */
+   The resulting tree has type ptrdiff_t.  If POINTER_SUBTRACT sanitization is
+   enabled, assign to INSTRUMENT_EXPR call to libsanitizer.  */
 
 static tree
-pointer_diff (location_t loc, tree op0, tree op1)
+pointer_diff (location_t loc, tree op0, tree op1, tree *instrument_expr)
 {
   tree restype = ptrdiff_type_node;
   tree result, inttype;
@@ -3807,6 +3816,17 @@ pointer_diff (location_t loc, tree op0, tree op1)
     pedwarn (loc, OPT_Wpointer_arith,
 	     "pointer to a function used in subtraction");
 
+  if (sanitize_flags_p (SANITIZE_POINTER_SUBTRACT))
+    {
+      gcc_assert (current_function_decl != NULL_TREE);
+
+      op0 = save_expr (op0);
+      op1 = save_expr (op1);
+
+      tree tt = builtin_decl_explicit (BUILT_IN_ASAN_POINTER_SUBTRACT);
+      *instrument_expr = build_call_expr_loc (loc, tt, 2, op0, op1);
+    }
+
   /* First do the subtraction, then build the divide operator
      and only convert at the very end.
      Do not do default conversions in case restype is a short type.  */
@@ -3817,8 +3837,8 @@ pointer_diff (location_t loc, tree op0, tree op1)
      space, cast the pointers to some larger integer type and do the
      computations in that type.  */
   if (TYPE_PRECISION (inttype) > TYPE_PRECISION (TREE_TYPE (op0)))
-       op0 = build_binary_op (loc, MINUS_EXPR, convert (inttype, op0),
-			      convert (inttype, op1), false);
+    op0 = build_binary_op (loc, MINUS_EXPR, convert (inttype, op0),
+			   convert (inttype, op1), false);
   else
     op0 = build2_loc (loc, POINTER_DIFF_EXPR, inttype, op0, op1);
 
@@ -5452,6 +5472,59 @@ handle_warn_cast_qual (location_t loc, tree type, tree otype)
   while (TREE_CODE (in_type) == POINTER_TYPE);
 }
 
+/* Heuristic check if two parameter types can be considered ABI-equivalent.  */
+
+static bool
+c_safe_arg_type_equiv_p (tree t1, tree t2)
+{
+  t1 = TYPE_MAIN_VARIANT (t1);
+  t2 = TYPE_MAIN_VARIANT (t2);
+
+  if (TREE_CODE (t1) == POINTER_TYPE
+      && TREE_CODE (t2) == POINTER_TYPE)
+    return true;
+
+  /* The signedness of the parameter matters only when an integral
+     type smaller than int is promoted to int, otherwise only the
+     precision of the parameter matters.
+     This check should make sure that the callee does not see
+     undefined values in argument registers.  */
+  if (INTEGRAL_TYPE_P (t1)
+      && INTEGRAL_TYPE_P (t2)
+      && TYPE_PRECISION (t1) == TYPE_PRECISION (t2)
+      && (TYPE_UNSIGNED (t1) == TYPE_UNSIGNED (t2)
+	  || !targetm.calls.promote_prototypes (NULL_TREE)
+	  || TYPE_PRECISION (t1) >= TYPE_PRECISION (integer_type_node)))
+    return true;
+
+  return comptypes (t1, t2);
+}
+
+/* Check if a type cast between two function types can be considered safe.  */
+
+static bool
+c_safe_function_type_cast_p (tree t1, tree t2)
+{
+  if (TREE_TYPE (t1) == void_type_node &&
+      TYPE_ARG_TYPES (t1) == void_list_node)
+    return true;
+
+  if (TREE_TYPE (t2) == void_type_node &&
+      TYPE_ARG_TYPES (t2) == void_list_node)
+    return true;
+
+  if (!c_safe_arg_type_equiv_p (TREE_TYPE (t1), TREE_TYPE (t2)))
+    return false;
+
+  for (t1 = TYPE_ARG_TYPES (t1), t2 = TYPE_ARG_TYPES (t2);
+       t1 && t2;
+       t1 = TREE_CHAIN (t1), t2 = TREE_CHAIN (t2))
+    if (!c_safe_arg_type_equiv_p (TREE_VALUE (t1), TREE_VALUE (t2)))
+      return false;
+
+  return true;
+}
+
 /* Build an expression representing a cast to type TYPE of expression EXPR.
    LOC is the location of the cast-- typically the open paren of the cast.  */
 
@@ -5644,6 +5717,16 @@ build_c_cast (location_t loc, tree type, tree expr)
 	  && !null_pointer_constant_p (value))
 	pedwarn (loc, OPT_Wpedantic, "ISO C forbids "
 		 "conversion of object pointer to function pointer type");
+
+      if (TREE_CODE (type) == POINTER_TYPE
+	  && TREE_CODE (otype) == POINTER_TYPE
+	  && TREE_CODE (TREE_TYPE (type)) == FUNCTION_TYPE
+	  && TREE_CODE (TREE_TYPE (otype)) == FUNCTION_TYPE
+	  && !c_safe_function_type_cast_p (TREE_TYPE (type),
+					   TREE_TYPE (otype)))
+	warning_at (loc, OPT_Wcast_function_type,
+		    "cast between incompatible function types"
+		    " from %qT to %qT", otype, type);
 
       ovalue = value;
       value = convert (type, value);
@@ -10360,6 +10443,8 @@ c_finish_case (tree body, tree type)
 			type ? type : TREE_TYPE (cs->switch_expr),
 			SWITCH_COND (cs->switch_expr),
 			cs->bool_cond_p, cs->outside_range_p);
+  if (c_switch_covers_all_cases_p (cs->cases, TREE_TYPE (cs->switch_expr)))
+    SWITCH_ALL_CASES_P (cs->switch_expr) = 1;
 
   /* Pop the stack.  */
   c_switch_stack = cs->next;
@@ -10688,6 +10773,10 @@ c_finish_stmt_expr (location_t loc, tree body)
 	}
       else
 	i = tsi_last (last);
+      if (TREE_CODE (tsi_stmt (i)) == DEBUG_BEGIN_STMT)
+	do
+	  tsi_prev (&i);
+	while (TREE_CODE (tsi_stmt (i)) == DEBUG_BEGIN_STMT);
       last_p = tsi_stmt_ptr (i);
       last = *last_p;
     }
@@ -10707,7 +10796,9 @@ c_finish_stmt_expr (location_t loc, tree body)
 
   /* In the case that the BIND_EXPR is not necessary, return the
      expression out from inside it.  */
-  if (last == BIND_EXPR_BODY (body)
+  if ((last == BIND_EXPR_BODY (body)
+       /* Skip nested debug stmts.  */
+       || last == expr_first (BIND_EXPR_BODY (body)))
       && BIND_EXPR_VARS (body) == NULL)
     {
       /* Even if this looks constant, do not allow it in a constant
@@ -11103,7 +11194,7 @@ build_binary_op (location_t location, enum tree_code code,
       if (code0 == POINTER_TYPE && code1 == POINTER_TYPE
 	  && comp_target_types (location, type0, type1))
 	{
-	  ret = pointer_diff (location, op0, op1);
+	  ret = pointer_diff (location, op0, op1, &instrument_expr);
 	  goto return_build_binary_op;
 	}
       /* Handle pointer minus int.  Just like pointer plus int.  */
@@ -11653,6 +11744,17 @@ build_binary_op (location_t location, enum tree_code code,
 	  result_type = type1;
 	  pedwarn (location, 0, "comparison between pointer and integer");
 	}
+
+      if ((code0 == POINTER_TYPE || code1 == POINTER_TYPE)
+	  && sanitize_flags_p (SANITIZE_POINTER_COMPARE))
+	{
+	  op0 = save_expr (op0);
+	  op1 = save_expr (op1);
+
+	  tree tt = builtin_decl_explicit (BUILT_IN_ASAN_POINTER_COMPARE);
+	  instrument_expr = build_call_expr_loc (location, tt, 2, op0, op1);
+	}
+
       if ((TREE_CODE (TREE_TYPE (orig_op0)) == BOOLEAN_TYPE
 	   || truth_value_p (TREE_CODE (orig_op0)))
 	  ^ (TREE_CODE (TREE_TYPE (orig_op1)) == BOOLEAN_TYPE

@@ -969,6 +969,7 @@ extern int case_compare (splay_tree_key, splay_tree_key);
 
 extern tree c_add_case_label (location_t, splay_tree, tree, tree, tree, tree,
 			      bool *);
+extern bool c_switch_covers_all_cases_p (splay_tree, tree);
 
 extern tree build_function_call (location_t, tree, tree);
 
@@ -1357,17 +1358,6 @@ enum stv_conv {
 extern enum stv_conv scalar_to_vector (location_t loc, enum tree_code code,
 				       tree op0, tree op1, bool);
 
-/* This structure holds all the scalar values and its appropriate variable 
-   replacment.  It is mainly used by the function that pulls all the invariant
-   parts that should be executed only once, which comes with array notation 
-   expressions.  */
-struct inv_list
-{
-  vec<tree, va_gc> *list_values;
-  vec<tree, va_gc> *replacement;
-  vec<enum tree_code, va_gc> *additional_tcodes; 
-};
-
 extern tree find_inv_trees (tree *, int *, void *);
 extern tree replace_inv_trees (tree *, int *, void *);
 
@@ -1460,6 +1450,7 @@ namespace selftest {
   /* Declarations for specific families of tests within c-family,
      by source file, in alphabetical order.  */
   extern void c_format_c_tests (void);
+  extern void c_spellcheck_cc_tests (void);
 
   /* The entrypoint for running all of the above tests.  */
   extern void c_family_tests (void);

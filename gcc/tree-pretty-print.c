@@ -3162,6 +3162,7 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
       is_expr = false;
       break;
 
+    case VEC_SERIES_EXPR:
     case VEC_WIDEN_MULT_HI_EXPR:
     case VEC_WIDEN_MULT_LO_EXPR:
     case VEC_WIDEN_MULT_EVEN_EXPR:
@@ -3175,6 +3176,15 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
       dump_generic_node (pp, TREE_OPERAND (node, 0), spc, flags, false);
       pp_string (pp, ", ");
       dump_generic_node (pp, TREE_OPERAND (node, 1), spc, flags, false);
+      pp_string (pp, " > ");
+      break;
+
+    case VEC_DUPLICATE_EXPR:
+      pp_space (pp);
+      for (str = get_tree_code_name (code); *str; str++)
+	pp_character (pp, TOUPPER (*str));
+      pp_string (pp, " < ");
+      dump_generic_node (pp, TREE_OPERAND (node, 0), spc, flags, false);
       pp_string (pp, " > ");
       break;
 
@@ -3228,6 +3238,10 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
 
     case BLOCK:
       dump_block_node (pp, node, spc, flags);
+      break;
+
+    case DEBUG_BEGIN_STMT:
+      pp_string (pp, "# DEBUG BEGIN STMT");
       break;
 
     default:
@@ -3325,7 +3339,10 @@ print_declaration (pretty_printer *pp, tree t, int spc, dump_flags_t flags)
 	  pp_space (pp);
 	  pp_equal (pp);
 	  pp_space (pp);
-	  dump_generic_node (pp, DECL_INITIAL (t), spc, flags, false);
+	  if (!(flags & TDF_SLIM))
+	    dump_generic_node (pp, DECL_INITIAL (t), spc, flags, false);
+	  else
+	    pp_string (pp, "<<< omitted >>>");
 	}
     }
 
