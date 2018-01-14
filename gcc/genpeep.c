@@ -1,5 +1,5 @@
 /* Generate code from machine description to perform peephole optimizations.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -306,6 +306,9 @@ match_rtx (rtx x, struct link *path, int fail_label)
 	  printf ("  if (strcmp (XSTR (x, %d), \"%s\")) goto L%d;\n",
 		  i, XSTR (x, i), fail_label);
 	}
+      else if (fmt[i] == 'p')
+	/* Not going to support subregs for legacy define_peeholes.  */
+	gcc_unreachable ();
     }
 }
 

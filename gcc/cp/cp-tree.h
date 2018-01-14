@@ -1,5 +1,5 @@
 /* Definitions for C++ parsing and type checking.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2018 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -91,6 +91,12 @@ public:
   void set_range (location_t start, location_t finish)
   {
     set_location (make_location (m_loc, start, finish));
+  }
+
+  cp_expr& maybe_add_location_wrapper ()
+  {
+    m_value = maybe_wrap_with_location (m_value, m_loc);
+    return *this;
   }
 
  private:
@@ -404,7 +410,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       DECL_NON_TRIVIALLY_INITIALIZED_P (in VAR_DECL)
       CALL_EXPR_ORDERED_ARGS (in CALL_EXPR, AGGR_INIT_EXPR)
       DECLTYPE_FOR_REF_CAPTURE (in DECLTYPE_TYPE)
-      CONSTUCTOR_C99_COMPOUND_LITERAL (in CONSTRUCTOR)
+      CONSTRUCTOR_C99_COMPOUND_LITERAL (in CONSTRUCTOR)
       OVL_NESTED_P (in OVERLOAD)
    4: IDENTIFIER_MARKED (IDENTIFIER_NODEs)
       TREE_HAS_CONSTRUCTOR (in INDIRECT_REF, SAVE_EXPR, CONSTRUCTOR,
@@ -4844,6 +4850,7 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
 #define RANGE_FOR_EXPR(NODE)	TREE_OPERAND (RANGE_FOR_STMT_CHECK (NODE), 1)
 #define RANGE_FOR_BODY(NODE)	TREE_OPERAND (RANGE_FOR_STMT_CHECK (NODE), 2)
 #define RANGE_FOR_SCOPE(NODE)	TREE_OPERAND (RANGE_FOR_STMT_CHECK (NODE), 3)
+#define RANGE_FOR_UNROLL(NODE)	TREE_OPERAND (RANGE_FOR_STMT_CHECK (NODE), 4)
 #define RANGE_FOR_IVDEP(NODE)	TREE_LANG_FLAG_6 (RANGE_FOR_STMT_CHECK (NODE))
 
 #define SWITCH_STMT_COND(NODE)	TREE_OPERAND (SWITCH_STMT_CHECK (NODE), 0)
@@ -6212,6 +6219,8 @@ extern bool require_deduced_type		(tree, tsubst_flags_t = tf_warning_or_error);
 
 extern tree finish_case_label			(location_t, tree, tree);
 extern tree cxx_maybe_build_cleanup		(tree, tsubst_flags_t);
+extern bool check_array_designated_initializer  (constructor_elt *,
+						 unsigned HOST_WIDE_INT);
 
 /* in decl2.c */
 extern void record_mangling			(tree, bool);
@@ -6321,7 +6330,7 @@ extern tree create_try_catch_expr               (tree, tree);
 extern tree cplus_expand_constant		(tree);
 extern tree mark_rvalue_use			(tree,
                                                  location_t = UNKNOWN_LOCATION,
-                                                 bool = true);
+                                                 bool reject_builtin = true);
 extern tree mark_lvalue_use			(tree);
 extern tree mark_lvalue_use_nonread		(tree);
 extern tree mark_type_use			(tree);
@@ -6332,7 +6341,8 @@ extern void mark_exp_read			(tree);
 extern int is_friend				(tree, tree);
 extern void make_friend_class			(tree, tree, bool);
 extern void add_friend				(tree, tree, bool);
-extern tree do_friend				(tree, tree, tree, tree, enum overload_flags, bool);
+extern tree do_friend				(tree, tree, tree, tree,
+						 enum overload_flags, bool);
 
 extern void set_global_friend			(tree);
 extern bool is_global_friend			(tree);
@@ -6431,7 +6441,8 @@ extern tree implicitly_declare_fn               (special_function_kind, tree,
 extern bool maybe_clone_body			(tree);
 
 /* In parser.c */
-extern tree cp_convert_range_for (tree, tree, tree, tree, unsigned int, bool);
+extern tree cp_convert_range_for (tree, tree, tree, tree, unsigned int, bool,
+				  unsigned short);
 extern bool parsing_nsdmi (void);
 extern bool parsing_default_capturing_generic_lambda_in_template (void);
 extern void inject_this_parameter (tree, cp_cv_quals);
@@ -6716,16 +6727,16 @@ extern void begin_else_clause			(tree);
 extern void finish_else_clause			(tree);
 extern void finish_if_stmt			(tree);
 extern tree begin_while_stmt			(void);
-extern void finish_while_stmt_cond		(tree, tree, bool);
+extern void finish_while_stmt_cond	(tree, tree, bool, unsigned short);
 extern void finish_while_stmt			(tree);
 extern tree begin_do_stmt			(void);
 extern void finish_do_body			(tree);
-extern void finish_do_stmt			(tree, tree, bool);
+extern void finish_do_stmt		(tree, tree, bool, unsigned short);
 extern tree finish_return_stmt			(tree);
 extern tree begin_for_scope			(tree *);
 extern tree begin_for_stmt			(tree, tree);
 extern void finish_init_stmt			(tree);
-extern void finish_for_cond			(tree, tree, bool);
+extern void finish_for_cond		(tree, tree, bool, unsigned short);
 extern void finish_for_expr			(tree, tree);
 extern void finish_for_stmt			(tree);
 extern tree begin_range_for_stmt		(tree, tree);
@@ -7418,12 +7429,6 @@ extern tree cp_ubsan_maybe_instrument_downcast	(location_t, tree, tree, tree);
 extern tree cp_ubsan_maybe_instrument_cast_to_vbase (location_t, tree, tree);
 extern void cp_ubsan_maybe_initialize_vtbl_ptrs (tree);
 
-#if CHECKING_P
-namespace selftest {
-  extern void run_cp_tests (void);
-} // namespace selftest
-#endif /* #if CHECKING_P */
-
 /* Inline bodies.  */
 
 inline tree
@@ -7453,6 +7458,24 @@ named_decl_hash::equal (const value_type existing, compare_type candidate)
   tree name = OVL_NAME (existing);
   return candidate == name;
 }
+
+inline bool
+null_node_p (const_tree expr)
+{
+  STRIP_ANY_LOCATION_WRAPPER (expr);
+  return expr == null_node;
+}
+
+#if CHECKING_P
+namespace selftest {
+  extern void run_cp_tests (void);
+
+  /* Declarations for specific families of tests within cp,
+     by source file, in alphabetical order.  */
+  extern void cp_pt_c_tests ();
+  extern void cp_tree_c_tests (void);
+} // namespace selftest
+#endif /* #if CHECKING_P */
 
 /* -- end of C++ */
 

@@ -1,5 +1,5 @@
 /* Expand builtin functions.
-   Copyright (C) 1988-2017 Free Software Foundation, Inc.
+   Copyright (C) 1988-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -248,7 +248,7 @@ static bool
 get_object_alignment_2 (tree exp, unsigned int *alignp,
 			unsigned HOST_WIDE_INT *bitposp, bool addr_p)
 {
-  HOST_WIDE_INT bitsize, bitpos;
+  poly_int64 bitsize, bitpos;
   tree offset;
   machine_mode mode;
   int unsignedp, reversep, volatilep;
@@ -346,7 +346,7 @@ get_object_alignment_2 (tree exp, unsigned int *alignp,
 	  bitpos += ptr_bitpos;
 	  if (TREE_CODE (exp) == MEM_REF
 	      || TREE_CODE (exp) == TARGET_MEM_REF)
-	    bitpos += mem_ref_offset (exp).to_short_addr () * BITS_PER_UNIT;
+	    bitpos += mem_ref_offset (exp).force_shwi () * BITS_PER_UNIT;
 	}
     }
   else if (TREE_CODE (exp) == STRING_CST)
@@ -373,8 +373,17 @@ get_object_alignment_2 (tree exp, unsigned int *alignp,
 	}
     }
 
+  /* Account for the alignment of runtime coefficients, so that the constant
+     bitpos is guaranteed to be accurate.  */
+  unsigned int alt_align = ::known_alignment (bitpos - bitpos.coeffs[0]);
+  if (alt_align != 0 && alt_align < align)
+    {
+      align = alt_align;
+      known_alignment = false;
+    }
+
   *alignp = align;
-  *bitposp = bitpos & (*alignp - 1);
+  *bitposp = bitpos.coeffs[0] & (align - 1);
   return known_alignment;
 }
 
@@ -612,6 +621,9 @@ c_strlen (tree src, int only_value)
 	  return NULL_TREE;
 	}
 
+      if (!maxelts)
+	return ssize_int (0);
+
       /* We don't know the starting offset, but we do know that the string
 	 has no internal zero bytes.  We can assume that the offset falls
 	 within the bounds of the string; otherwise, the programmer deserves
@@ -642,7 +654,8 @@ c_strlen (tree src, int only_value)
       if (only_value != 2
 	  && !TREE_NO_WARNING (src))
         {
-	  warning_at (loc, 0, "offset %qwi outside bounds of constant string",
+	  warning_at (loc, OPT_Warray_bounds,
+		      "offset %qwi outside bounds of constant string",
 		      eltoff);
           TREE_NO_WARNING (src) = 1;
         }
@@ -878,7 +891,7 @@ expand_builtin_setjmp_receiver (rtx receiver_label)
 
   /* Mark the static chain as clobbered here so life information
      doesn't get messed up for it.  */
-  chain = targetm.calls.static_chain (current_function_decl, true);
+  chain = rtx_for_static_chain (current_function_decl, true);
   if (chain && REG_P (chain))
     emit_clobber (chain);
 
@@ -1355,7 +1368,6 @@ apply_args_size (void)
   static int size = -1;
   int align;
   unsigned int regno;
-  machine_mode mode;
 
   /* The values computed by this function never change.  */
   if (size < 0)
@@ -1371,7 +1383,7 @@ apply_args_size (void)
       for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
 	if (FUNCTION_ARG_REGNO_P (regno))
 	  {
-	    mode = targetm.calls.get_raw_arg_mode (regno);
+	    fixed_size_mode mode = targetm.calls.get_raw_arg_mode (regno);
 
 	    gcc_assert (mode != VOIDmode);
 
@@ -1383,7 +1395,7 @@ apply_args_size (void)
 	  }
 	else
 	  {
-	    apply_args_mode[regno] = VOIDmode;
+	    apply_args_mode[regno] = as_a <fixed_size_mode> (VOIDmode);
 	  }
     }
   return size;
@@ -1397,7 +1409,6 @@ apply_result_size (void)
 {
   static int size = -1;
   int align, regno;
-  machine_mode mode;
 
   /* The values computed by this function never change.  */
   if (size < 0)
@@ -1407,7 +1418,7 @@ apply_result_size (void)
       for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
 	if (targetm.calls.function_value_regno_p (regno))
 	  {
-	    mode = targetm.calls.get_raw_result_mode (regno);
+	    fixed_size_mode mode = targetm.calls.get_raw_result_mode (regno);
 
 	    gcc_assert (mode != VOIDmode);
 
@@ -1418,7 +1429,7 @@ apply_result_size (void)
 	    apply_result_mode[regno] = mode;
 	  }
 	else
-	  apply_result_mode[regno] = VOIDmode;
+	  apply_result_mode[regno] = as_a <fixed_size_mode> (VOIDmode);
 
       /* Allow targets that use untyped_call and untyped_return to override
 	 the size so that machine-specific information can be stored here.  */
@@ -1437,7 +1448,7 @@ static rtx
 result_vector (int savep, rtx result)
 {
   int regno, size, align, nelts;
-  machine_mode mode;
+  fixed_size_mode mode;
   rtx reg, mem;
   rtx *savevec = XALLOCAVEC (rtx, FIRST_PSEUDO_REGISTER);
 
@@ -1466,7 +1477,7 @@ expand_builtin_apply_args_1 (void)
 {
   rtx registers, tem;
   int size, align, regno;
-  machine_mode mode;
+  fixed_size_mode mode;
   rtx struct_incoming_value = targetm.calls.struct_value_rtx (cfun ? TREE_TYPE (cfun->decl) : 0, 1);
 
   /* Create a block where the arg-pointer, structure value address,
@@ -1570,7 +1581,7 @@ static rtx
 expand_builtin_apply (rtx function, rtx arguments, rtx argsize)
 {
   int size, align, regno;
-  machine_mode mode;
+  fixed_size_mode mode;
   rtx incoming_args, result, reg, dest, src;
   rtx_call_insn *call_insn;
   rtx old_stack_level = 0;
@@ -1731,7 +1742,7 @@ static void
 expand_builtin_return (rtx result)
 {
   int size, align, regno;
-  machine_mode mode;
+  fixed_size_mode mode;
   rtx reg;
   rtx_insn *call_fusage = 0;
 
@@ -1868,7 +1879,7 @@ mathfn_built_in_2 (tree type, combined_fn fn)
     CASE_MATHFN (ATAN2)
     CASE_MATHFN (ATANH)
     CASE_MATHFN (CBRT)
-    CASE_MATHFN (CEIL)
+    CASE_MATHFN_FLOATN (CEIL)
     CASE_MATHFN (CEXPI)
     CASE_MATHFN_FLOATN (COPYSIGN)
     CASE_MATHFN (COS)
@@ -1882,7 +1893,7 @@ mathfn_built_in_2 (tree type, combined_fn fn)
     CASE_MATHFN (EXPM1)
     CASE_MATHFN (FABS)
     CASE_MATHFN (FDIM)
-    CASE_MATHFN (FLOOR)
+    CASE_MATHFN_FLOATN (FLOOR)
     CASE_MATHFN_FLOATN (FMA)
     CASE_MATHFN_FLOATN (FMAX)
     CASE_MATHFN_FLOATN (FMIN)
@@ -1921,7 +1932,7 @@ mathfn_built_in_2 (tree type, combined_fn fn)
     CASE_MATHFN (MODF)
     CASE_MATHFN (NAN)
     CASE_MATHFN (NANS)
-    CASE_MATHFN (NEARBYINT)
+    CASE_MATHFN_FLOATN (NEARBYINT)
     CASE_MATHFN (NEXTAFTER)
     CASE_MATHFN (NEXTTOWARD)
     CASE_MATHFN (POW)
@@ -1929,8 +1940,8 @@ mathfn_built_in_2 (tree type, combined_fn fn)
     CASE_MATHFN (POW10)
     CASE_MATHFN (REMAINDER)
     CASE_MATHFN (REMQUO)
-    CASE_MATHFN (RINT)
-    CASE_MATHFN (ROUND)
+    CASE_MATHFN_FLOATN (RINT)
+    CASE_MATHFN_FLOATN (ROUND)
     CASE_MATHFN (SCALB)
     CASE_MATHFN (SCALBLN)
     CASE_MATHFN (SCALBN)
@@ -1943,7 +1954,7 @@ mathfn_built_in_2 (tree type, combined_fn fn)
     CASE_MATHFN (TAN)
     CASE_MATHFN (TANH)
     CASE_MATHFN (TGAMMA)
-    CASE_MATHFN (TRUNC)
+    CASE_MATHFN_FLOATN (TRUNC)
     CASE_MATHFN (Y0)
     CASE_MATHFN (Y1)
     CASE_MATHFN (YN)
@@ -2820,102 +2831,100 @@ expand_builtin_strlen (tree exp, rtx target,
 {
   if (!validate_arglist (exp, POINTER_TYPE, VOID_TYPE))
     return NULL_RTX;
-  else
+
+  struct expand_operand ops[4];
+  rtx pat;
+  tree len;
+  tree src = CALL_EXPR_ARG (exp, 0);
+  rtx src_reg;
+  rtx_insn *before_strlen;
+  machine_mode insn_mode;
+  enum insn_code icode = CODE_FOR_nothing;
+  unsigned int align;
+
+  /* If the length can be computed at compile-time, return it.  */
+  len = c_strlen (src, 0);
+  if (len)
+    return expand_expr (len, target, target_mode, EXPAND_NORMAL);
+
+  /* If the length can be computed at compile-time and is constant
+     integer, but there are side-effects in src, evaluate
+     src for side-effects, then return len.
+     E.g. x = strlen (i++ ? "xfoo" + 1 : "bar");
+     can be optimized into: i++; x = 3;  */
+  len = c_strlen (src, 1);
+  if (len && TREE_CODE (len) == INTEGER_CST)
     {
-      struct expand_operand ops[4];
-      rtx pat;
-      tree len;
-      tree src = CALL_EXPR_ARG (exp, 0);
-      rtx src_reg;
-      rtx_insn *before_strlen;
-      machine_mode insn_mode;
-      enum insn_code icode = CODE_FOR_nothing;
-      unsigned int align;
-
-      /* If the length can be computed at compile-time, return it.  */
-      len = c_strlen (src, 0);
-      if (len)
-	return expand_expr (len, target, target_mode, EXPAND_NORMAL);
-
-      /* If the length can be computed at compile-time and is constant
-	 integer, but there are side-effects in src, evaluate
-	 src for side-effects, then return len.
-	 E.g. x = strlen (i++ ? "xfoo" + 1 : "bar");
-	 can be optimized into: i++; x = 3;  */
-      len = c_strlen (src, 1);
-      if (len && TREE_CODE (len) == INTEGER_CST)
-	{
-	  expand_expr (src, const0_rtx, VOIDmode, EXPAND_NORMAL);
-	  return expand_expr (len, target, target_mode, EXPAND_NORMAL);
-	}
-
-      align = get_pointer_alignment (src) / BITS_PER_UNIT;
-
-      /* If SRC is not a pointer type, don't do this operation inline.  */
-      if (align == 0)
-	return NULL_RTX;
-
-      /* Bail out if we can't compute strlen in the right mode.  */
-      FOR_EACH_MODE_FROM (insn_mode, target_mode)
-	{
-	  icode = optab_handler (strlen_optab, insn_mode);
-	  if (icode != CODE_FOR_nothing)
-	    break;
-	}
-      if (insn_mode == VOIDmode)
-	return NULL_RTX;
-
-      /* Make a place to hold the source address.  We will not expand
-	 the actual source until we are sure that the expansion will
-	 not fail -- there are trees that cannot be expanded twice.  */
-      src_reg = gen_reg_rtx (Pmode);
-
-      /* Mark the beginning of the strlen sequence so we can emit the
-	 source operand later.  */
-      before_strlen = get_last_insn ();
-
-      create_output_operand (&ops[0], target, insn_mode);
-      create_fixed_operand (&ops[1], gen_rtx_MEM (BLKmode, src_reg));
-      create_integer_operand (&ops[2], 0);
-      create_integer_operand (&ops[3], align);
-      if (!maybe_expand_insn (icode, 4, ops))
-	return NULL_RTX;
-
-      /* Check to see if the argument was declared attribute nonstring
-	 and if so, issue a warning since at this point it's not known
-	 to be nul-terminated.  */
-      maybe_warn_nonstring_arg (TREE_OPERAND (CALL_EXPR_FN (exp), 0), exp);
-
-      /* Now that we are assured of success, expand the source.  */
-      start_sequence ();
-      pat = expand_expr (src, src_reg, Pmode, EXPAND_NORMAL);
-      if (pat != src_reg)
-	{
-#ifdef POINTERS_EXTEND_UNSIGNED
-	  if (GET_MODE (pat) != Pmode)
-	    pat = convert_to_mode (Pmode, pat,
-				   POINTERS_EXTEND_UNSIGNED);
-#endif
-	  emit_move_insn (src_reg, pat);
-	}
-      pat = get_insns ();
-      end_sequence ();
-
-      if (before_strlen)
-	emit_insn_after (pat, before_strlen);
-      else
-	emit_insn_before (pat, get_insns ());
-
-      /* Return the value in the proper mode for this function.  */
-      if (GET_MODE (ops[0].value) == target_mode)
-	target = ops[0].value;
-      else if (target != 0)
-	convert_move (target, ops[0].value, 0);
-      else
-	target = convert_to_mode (target_mode, ops[0].value, 0);
-
-      return target;
+      expand_expr (src, const0_rtx, VOIDmode, EXPAND_NORMAL);
+      return expand_expr (len, target, target_mode, EXPAND_NORMAL);
     }
+
+  align = get_pointer_alignment (src) / BITS_PER_UNIT;
+
+  /* If SRC is not a pointer type, don't do this operation inline.  */
+  if (align == 0)
+    return NULL_RTX;
+
+  /* Bail out if we can't compute strlen in the right mode.  */
+  FOR_EACH_MODE_FROM (insn_mode, target_mode)
+    {
+      icode = optab_handler (strlen_optab, insn_mode);
+      if (icode != CODE_FOR_nothing)
+	break;
+    }
+  if (insn_mode == VOIDmode)
+    return NULL_RTX;
+
+  /* Make a place to hold the source address.  We will not expand
+     the actual source until we are sure that the expansion will
+     not fail -- there are trees that cannot be expanded twice.  */
+  src_reg = gen_reg_rtx (Pmode);
+
+  /* Mark the beginning of the strlen sequence so we can emit the
+     source operand later.  */
+  before_strlen = get_last_insn ();
+
+  create_output_operand (&ops[0], target, insn_mode);
+  create_fixed_operand (&ops[1], gen_rtx_MEM (BLKmode, src_reg));
+  create_integer_operand (&ops[2], 0);
+  create_integer_operand (&ops[3], align);
+  if (!maybe_expand_insn (icode, 4, ops))
+    return NULL_RTX;
+
+  /* Check to see if the argument was declared attribute nonstring
+     and if so, issue a warning since at this point it's not known
+     to be nul-terminated.  */
+  maybe_warn_nonstring_arg (get_callee_fndecl (exp), exp);
+
+  /* Now that we are assured of success, expand the source.  */
+  start_sequence ();
+  pat = expand_expr (src, src_reg, Pmode, EXPAND_NORMAL);
+  if (pat != src_reg)
+    {
+#ifdef POINTERS_EXTEND_UNSIGNED
+      if (GET_MODE (pat) != Pmode)
+	pat = convert_to_mode (Pmode, pat,
+			       POINTERS_EXTEND_UNSIGNED);
+#endif
+      emit_move_insn (src_reg, pat);
+    }
+  pat = get_insns ();
+  end_sequence ();
+
+  if (before_strlen)
+    emit_insn_after (pat, before_strlen);
+  else
+    emit_insn_before (pat, get_insns ());
+
+  /* Return the value in the proper mode for this function.  */
+  if (GET_MODE (ops[0].value) == target_mode)
+    target = ops[0].value;
+  else if (target != 0)
+    convert_move (target, ops[0].value, 0);
+  else
+    target = convert_to_mode (target_mode, ops[0].value, 0);
+
+  return target;
 }
 
 /* Callback routine for store_by_pieces.  Read GET_MODE_BITSIZE (MODE)
@@ -3278,8 +3287,12 @@ check_access (tree exp, tree, tree, tree dstwrite,
 /* Helper to compute the size of the object referenced by the DEST
    expression which must have pointer type, using Object Size type
    OSTYPE (only the least significant 2 bits are used).  Return
-   the size of the object if successful or NULL when the size cannot
-   be determined.  */
+   an estimate of the size of the object if successful or NULL when
+   the size cannot be determined.  When the referenced object involves
+   a non-constant offset in some range the returned value represents
+   the largest size given the smallest non-negative offset in the
+   range.  The function is intended for diagnostics and should not
+   be used to influence code generation or optimization.  */
 
 tree
 compute_objsize (tree dest, int ostype)
@@ -3292,23 +3305,56 @@ compute_objsize (tree dest, int ostype)
   if (compute_builtin_object_size (dest, ostype, &size))
     return build_int_cst (sizetype, size);
 
-  /* Unless computing the largest size (for memcpy and other raw memory
-     functions), try to determine the size of the object from its type.  */
-  if (!ostype)
-    return NULL_TREE;
-
   if (TREE_CODE (dest) == SSA_NAME)
     {
       gimple *stmt = SSA_NAME_DEF_STMT (dest);
       if (!is_gimple_assign (stmt))
 	return NULL_TREE;
 
-      tree_code code = gimple_assign_rhs_code (stmt);
-      if (code != ADDR_EXPR && code != POINTER_PLUS_EXPR)
-	return NULL_TREE;
-
       dest = gimple_assign_rhs1 (stmt);
+
+      tree_code code = gimple_assign_rhs_code (stmt);
+      if (code == POINTER_PLUS_EXPR)
+	{
+	  /* compute_builtin_object_size fails for addresses with
+	     non-constant offsets.  Try to determine the range of
+	     such an offset here and use it to adjus the constant
+	     size.  */
+	  tree off = gimple_assign_rhs2 (stmt);
+	  if (TREE_CODE (off) == SSA_NAME
+	      && INTEGRAL_TYPE_P (TREE_TYPE (off)))
+	    {
+	      wide_int min, max;
+	      enum value_range_type rng = get_range_info (off, &min, &max);
+
+	      if (rng == VR_RANGE)
+		{
+		  if (tree size = compute_objsize (dest, ostype))
+		    {
+		      wide_int wisiz = wi::to_wide (size);
+
+		      /* Ignore negative offsets for now.  For others,
+			 use the lower bound as the most optimistic
+			 estimate of the (remaining)size.  */
+		      if (wi::sign_mask (min))
+			;
+		      else if (wi::ltu_p (min, wisiz))
+			return wide_int_to_tree (TREE_TYPE (size),
+						 wi::sub (wisiz, min));
+		      else
+			return size_zero_node;
+		    }
+		}
+	    }
+	}
+      else if (code != ADDR_EXPR)
+	return NULL_TREE;
     }
+
+  /* Unless computing the largest size (for memcpy and other raw memory
+     functions), try to determine the size of the object from its type.  */
+  if (!ostype)
+    return NULL_TREE;
 
   if (TREE_CODE (dest) != ADDR_EXPR)
     return NULL_TREE;
@@ -3470,6 +3516,19 @@ expand_builtin_mempcpy (tree exp, rtx target)
   tree dest = CALL_EXPR_ARG (exp, 0);
   tree src = CALL_EXPR_ARG (exp, 1);
   tree len = CALL_EXPR_ARG (exp, 2);
+
+  /* Policy does not generally allow using compute_objsize (which
+     is used internally by check_memop_size) to change code generation
+     or drive optimization decisions.
+
+     In this instance it is safe because the code we generate has
+     the same semantics regardless of the return value of
+     check_memop_sizes.   Exactly the same amount of data is copied
+     and the return value is exactly the same in both cases.
+
+     Furthermore, check_memop_size always uses mode 0 for the call to
+     compute_objsize, so the imprecise nature of compute_objsize is
+     avoided.  */
 
   /* Avoid expanding mempcpy into memcpy when the call is determined
      to overflow the buffer.  This also prevents the same overflow
@@ -4426,102 +4485,104 @@ expand_builtin_strcmp (tree exp, ATTRIBUTE_UNUSED rtx target)
 
   insn_code cmpstr_icode = direct_optab_handler (cmpstr_optab, SImode);
   insn_code cmpstrn_icode = direct_optab_handler (cmpstrn_optab, SImode);
-  if (cmpstr_icode != CODE_FOR_nothing || cmpstrn_icode != CODE_FOR_nothing)
+  if (cmpstr_icode == CODE_FOR_nothing && cmpstrn_icode == CODE_FOR_nothing)
+    return NULL_RTX;
+
+  tree arg1 = CALL_EXPR_ARG (exp, 0);
+  tree arg2 = CALL_EXPR_ARG (exp, 1);
+
+  unsigned int arg1_align = get_pointer_alignment (arg1) / BITS_PER_UNIT;
+  unsigned int arg2_align = get_pointer_alignment (arg2) / BITS_PER_UNIT;
+
+  /* If we don't have POINTER_TYPE, call the function.  */
+  if (arg1_align == 0 || arg2_align == 0)
+    return NULL_RTX;
+
+  /* Stabilize the arguments in case gen_cmpstr(n)si fail.  */
+  arg1 = builtin_save_expr (arg1);
+  arg2 = builtin_save_expr (arg2);
+
+  rtx arg1_rtx = get_memory_rtx (arg1, NULL);
+  rtx arg2_rtx = get_memory_rtx (arg2, NULL);
+
+  rtx result = NULL_RTX;
+  /* Try to call cmpstrsi.  */
+  if (cmpstr_icode != CODE_FOR_nothing)
+    result = expand_cmpstr (cmpstr_icode, target, arg1_rtx, arg2_rtx,
+			    MIN (arg1_align, arg2_align));
+
+  /* Try to determine at least one length and call cmpstrnsi.  */
+  if (!result && cmpstrn_icode != CODE_FOR_nothing)
     {
-      rtx arg1_rtx, arg2_rtx;
-      tree fndecl, fn;
-      tree arg1 = CALL_EXPR_ARG (exp, 0);
-      tree arg2 = CALL_EXPR_ARG (exp, 1);
-      rtx result = NULL_RTX;
+      tree len;
+      rtx arg3_rtx;
 
-      unsigned int arg1_align = get_pointer_alignment (arg1) / BITS_PER_UNIT;
-      unsigned int arg2_align = get_pointer_alignment (arg2) / BITS_PER_UNIT;
+      tree len1 = c_strlen (arg1, 1);
+      tree len2 = c_strlen (arg2, 1);
 
-      /* If we don't have POINTER_TYPE, call the function.  */
-      if (arg1_align == 0 || arg2_align == 0)
-	return NULL_RTX;
+      if (len1)
+	len1 = size_binop (PLUS_EXPR, ssize_int (1), len1);
+      if (len2)
+	len2 = size_binop (PLUS_EXPR, ssize_int (1), len2);
 
-      /* Stabilize the arguments in case gen_cmpstr(n)si fail.  */
-      arg1 = builtin_save_expr (arg1);
-      arg2 = builtin_save_expr (arg2);
+      /* If we don't have a constant length for the first, use the length
+	 of the second, if we know it.  We don't require a constant for
+	 this case; some cost analysis could be done if both are available
+	 but neither is constant.  For now, assume they're equally cheap,
+	 unless one has side effects.  If both strings have constant lengths,
+	 use the smaller.  */
 
-      arg1_rtx = get_memory_rtx (arg1, NULL);
-      arg2_rtx = get_memory_rtx (arg2, NULL);
+      if (!len1)
+	len = len2;
+      else if (!len2)
+	len = len1;
+      else if (TREE_SIDE_EFFECTS (len1))
+	len = len2;
+      else if (TREE_SIDE_EFFECTS (len2))
+	len = len1;
+      else if (TREE_CODE (len1) != INTEGER_CST)
+	len = len2;
+      else if (TREE_CODE (len2) != INTEGER_CST)
+	len = len1;
+      else if (tree_int_cst_lt (len1, len2))
+	len = len1;
+      else
+	len = len2;
 
-      /* Try to call cmpstrsi.  */
-      if (cmpstr_icode != CODE_FOR_nothing)
-	result = expand_cmpstr (cmpstr_icode, target, arg1_rtx, arg2_rtx,
-				MIN (arg1_align, arg2_align));
-
-      /* Try to determine at least one length and call cmpstrnsi.  */
-      if (!result && cmpstrn_icode != CODE_FOR_nothing)
+      /* If both arguments have side effects, we cannot optimize.  */
+      if (len && !TREE_SIDE_EFFECTS (len))
 	{
-	  tree len;
-	  rtx arg3_rtx;
-
-	  tree len1 = c_strlen (arg1, 1);
-	  tree len2 = c_strlen (arg2, 1);
-
-	  if (len1)
-	    len1 = size_binop (PLUS_EXPR, ssize_int (1), len1);
-	  if (len2)
-	    len2 = size_binop (PLUS_EXPR, ssize_int (1), len2);
-
-	  /* If we don't have a constant length for the first, use the length
-	     of the second, if we know it.  We don't require a constant for
-	     this case; some cost analysis could be done if both are available
-	     but neither is constant.  For now, assume they're equally cheap,
-	     unless one has side effects.  If both strings have constant lengths,
-	     use the smaller.  */
-
-	  if (!len1)
-	    len = len2;
-	  else if (!len2)
-	    len = len1;
-	  else if (TREE_SIDE_EFFECTS (len1))
-	    len = len2;
-	  else if (TREE_SIDE_EFFECTS (len2))
-	    len = len1;
-	  else if (TREE_CODE (len1) != INTEGER_CST)
-	    len = len2;
-	  else if (TREE_CODE (len2) != INTEGER_CST)
-	    len = len1;
-	  else if (tree_int_cst_lt (len1, len2))
-	    len = len1;
-	  else
-	    len = len2;
-
-	  /* If both arguments have side effects, we cannot optimize.  */
-	  if (len && !TREE_SIDE_EFFECTS (len))
-	    {
-	      arg3_rtx = expand_normal (len);
-	      result = expand_cmpstrn_or_cmpmem
-		(cmpstrn_icode, target, arg1_rtx, arg2_rtx, TREE_TYPE (len),
-		 arg3_rtx, MIN (arg1_align, arg2_align));
-	    }
+	  arg3_rtx = expand_normal (len);
+	  result = expand_cmpstrn_or_cmpmem
+	    (cmpstrn_icode, target, arg1_rtx, arg2_rtx, TREE_TYPE (len),
+	     arg3_rtx, MIN (arg1_align, arg2_align));
 	}
-
-      if (result)
-	{
-	  /* Return the value in the proper mode for this function.  */
-	  machine_mode mode = TYPE_MODE (TREE_TYPE (exp));
-	  if (GET_MODE (result) == mode)
-	    return result;
-	  if (target == 0)
-	    return convert_to_mode (mode, result, 0);
-	  convert_move (target, result, 0);
-	  return target;
-	}
-
-      /* Expand the library call ourselves using a stabilized argument
-	 list to avoid re-evaluating the function's arguments twice.  */
-      fndecl = get_callee_fndecl (exp);
-      fn = build_call_nofold_loc (EXPR_LOCATION (exp), fndecl, 2, arg1, arg2);
-      gcc_assert (TREE_CODE (fn) == CALL_EXPR);
-      CALL_EXPR_TAILCALL (fn) = CALL_EXPR_TAILCALL (exp);
-      return expand_call (fn, target, target == const0_rtx);
     }
-  return NULL_RTX;
+
+  /* Check to see if the argument was declared attribute nonstring
+     and if so, issue a warning since at this point it's not known
+     to be nul-terminated.  */
+  tree fndecl = get_callee_fndecl (exp);
+  maybe_warn_nonstring_arg (fndecl, exp);
+
+  if (result)
+    {
+      /* Return the value in the proper mode for this function.  */
+      machine_mode mode = TYPE_MODE (TREE_TYPE (exp));
+      if (GET_MODE (result) == mode)
+	return result;
+      if (target == 0)
+	return convert_to_mode (mode, result, 0);
+      convert_move (target, result, 0);
+      return target;
+    }
+
+  /* Expand the library call ourselves using a stabilized argument
+     list to avoid re-evaluating the function's arguments twice.  */
+  tree fn = build_call_nofold_loc (EXPR_LOCATION (exp), fndecl, 2, arg1, arg2);
+  gcc_assert (TREE_CODE (fn) == CALL_EXPR);
+  CALL_EXPR_TAILCALL (fn) = CALL_EXPR_TAILCALL (exp);
+  return expand_call (fn, target, target == const0_rtx);
 }
 
 /* Expand expression EXP, which is a call to the strncmp builtin. Return
@@ -4532,8 +4593,6 @@ static rtx
 expand_builtin_strncmp (tree exp, ATTRIBUTE_UNUSED rtx target,
 			ATTRIBUTE_UNUSED machine_mode mode)
 {
-  location_t loc ATTRIBUTE_UNUSED = EXPR_LOCATION (exp);
-
   if (!validate_arglist (exp,
  			 POINTER_TYPE, POINTER_TYPE, INTEGER_TYPE, VOID_TYPE))
     return NULL_RTX;
@@ -4542,88 +4601,92 @@ expand_builtin_strncmp (tree exp, ATTRIBUTE_UNUSED rtx target,
      lengths, and it doesn't have side effects, then emit cmpstrnsi
      using length MIN(strlen(string)+1, arg3).  */
   insn_code cmpstrn_icode = direct_optab_handler (cmpstrn_optab, SImode);
-  if (cmpstrn_icode != CODE_FOR_nothing)
-  {
-    tree len, len1, len2, len3;
-    rtx arg1_rtx, arg2_rtx, arg3_rtx;
-    rtx result;
-    tree fndecl, fn;
-    tree arg1 = CALL_EXPR_ARG (exp, 0);
-    tree arg2 = CALL_EXPR_ARG (exp, 1);
-    tree arg3 = CALL_EXPR_ARG (exp, 2);
+  if (cmpstrn_icode == CODE_FOR_nothing)
+    return NULL_RTX;
 
-    unsigned int arg1_align = get_pointer_alignment (arg1) / BITS_PER_UNIT;
-    unsigned int arg2_align = get_pointer_alignment (arg2) / BITS_PER_UNIT;
+  tree len;
 
-    len1 = c_strlen (arg1, 1);
-    len2 = c_strlen (arg2, 1);
+  tree arg1 = CALL_EXPR_ARG (exp, 0);
+  tree arg2 = CALL_EXPR_ARG (exp, 1);
+  tree arg3 = CALL_EXPR_ARG (exp, 2);
 
-    if (len1)
-      len1 = size_binop_loc (loc, PLUS_EXPR, ssize_int (1), len1);
-    if (len2)
-      len2 = size_binop_loc (loc, PLUS_EXPR, ssize_int (1), len2);
+  unsigned int arg1_align = get_pointer_alignment (arg1) / BITS_PER_UNIT;
+  unsigned int arg2_align = get_pointer_alignment (arg2) / BITS_PER_UNIT;
 
-    len3 = fold_convert_loc (loc, sizetype, arg3);
+  tree len1 = c_strlen (arg1, 1);
+  tree len2 = c_strlen (arg2, 1);
 
-    /* If we don't have a constant length for the first, use the length
-       of the second, if we know it.  If neither string is constant length,
-       use the given length argument.  We don't require a constant for
-       this case; some cost analysis could be done if both are available
-       but neither is constant.  For now, assume they're equally cheap,
-       unless one has side effects.  If both strings have constant lengths,
-       use the smaller.  */
+  location_t loc = EXPR_LOCATION (exp);
 
-    if (!len1 && !len2)
-      len = len3;
-    else if (!len1)
-      len = len2;
-    else if (!len2)
-      len = len1;
-    else if (TREE_SIDE_EFFECTS (len1))
-      len = len2;
-    else if (TREE_SIDE_EFFECTS (len2))
-      len = len1;
-    else if (TREE_CODE (len1) != INTEGER_CST)
-      len = len2;
-    else if (TREE_CODE (len2) != INTEGER_CST)
-      len = len1;
-    else if (tree_int_cst_lt (len1, len2))
-      len = len1;
-    else
-      len = len2;
+  if (len1)
+    len1 = size_binop_loc (loc, PLUS_EXPR, ssize_int (1), len1);
+  if (len2)
+    len2 = size_binop_loc (loc, PLUS_EXPR, ssize_int (1), len2);
 
-    /* If we are not using the given length, we must incorporate it here.
-       The actual new length parameter will be MIN(len,arg3) in this case.  */
-    if (len != len3)
-      len = fold_build2_loc (loc, MIN_EXPR, TREE_TYPE (len), len, len3);
-    arg1_rtx = get_memory_rtx (arg1, len);
-    arg2_rtx = get_memory_rtx (arg2, len);
-    arg3_rtx = expand_normal (len);
-    result = expand_cmpstrn_or_cmpmem (cmpstrn_icode, target, arg1_rtx,
-				       arg2_rtx, TREE_TYPE (len), arg3_rtx,
-				       MIN (arg1_align, arg2_align));
-    if (result)
-      {
-	/* Return the value in the proper mode for this function.  */
-	mode = TYPE_MODE (TREE_TYPE (exp));
-	if (GET_MODE (result) == mode)
-	  return result;
-	if (target == 0)
-	  return convert_to_mode (mode, result, 0);
-	convert_move (target, result, 0);
-	return target;
-      }
+  tree len3 = fold_convert_loc (loc, sizetype, arg3);
 
-    /* Expand the library call ourselves using a stabilized argument
-       list to avoid re-evaluating the function's arguments twice.  */
-    fndecl = get_callee_fndecl (exp);
-    fn = build_call_nofold_loc (EXPR_LOCATION (exp), fndecl, 3,
-				arg1, arg2, len);
-    gcc_assert (TREE_CODE (fn) == CALL_EXPR);
-    CALL_EXPR_TAILCALL (fn) = CALL_EXPR_TAILCALL (exp);
-    return expand_call (fn, target, target == const0_rtx);
-  }
-  return NULL_RTX;
+  /* If we don't have a constant length for the first, use the length
+     of the second, if we know it.  If neither string is constant length,
+     use the given length argument.  We don't require a constant for
+     this case; some cost analysis could be done if both are available
+     but neither is constant.  For now, assume they're equally cheap,
+     unless one has side effects.  If both strings have constant lengths,
+     use the smaller.  */
+
+  if (!len1 && !len2)
+    len = len3;
+  else if (!len1)
+    len = len2;
+  else if (!len2)
+    len = len1;
+  else if (TREE_SIDE_EFFECTS (len1))
+    len = len2;
+  else if (TREE_SIDE_EFFECTS (len2))
+    len = len1;
+  else if (TREE_CODE (len1) != INTEGER_CST)
+    len = len2;
+  else if (TREE_CODE (len2) != INTEGER_CST)
+    len = len1;
+  else if (tree_int_cst_lt (len1, len2))
+    len = len1;
+  else
+    len = len2;
+
+  /* If we are not using the given length, we must incorporate it here.
+     The actual new length parameter will be MIN(len,arg3) in this case.  */
+  if (len != len3)
+    len = fold_build2_loc (loc, MIN_EXPR, TREE_TYPE (len), len, len3);
+  rtx arg1_rtx = get_memory_rtx (arg1, len);
+  rtx arg2_rtx = get_memory_rtx (arg2, len);
+  rtx arg3_rtx = expand_normal (len);
+  rtx result = expand_cmpstrn_or_cmpmem (cmpstrn_icode, target, arg1_rtx,
+					 arg2_rtx, TREE_TYPE (len), arg3_rtx,
+					 MIN (arg1_align, arg2_align));
+
+  /* Check to see if the argument was declared attribute nonstring
+     and if so, issue a warning since at this point it's not known
+     to be nul-terminated.  */
+  tree fndecl = get_callee_fndecl (exp);
+  maybe_warn_nonstring_arg (fndecl, exp);
+
+  if (result)
+    {
+      /* Return the value in the proper mode for this function.  */
+      mode = TYPE_MODE (TREE_TYPE (exp));
+      if (GET_MODE (result) == mode)
+	return result;
+      if (target == 0)
+	return convert_to_mode (mode, result, 0);
+      convert_move (target, result, 0);
+      return target;
+    }
+
+  /* Expand the library call ourselves using a stabilized argument
+     list to avoid re-evaluating the function's arguments twice.  */
+  tree fn = build_call_nofold_loc (loc, fndecl, 3, arg1, arg2, len);
+  gcc_assert (TREE_CODE (fn) == CALL_EXPR);
+  CALL_EXPR_TAILCALL (fn) = CALL_EXPR_TAILCALL (exp);
+  return expand_call (fn, target, target == const0_rtx);
 }
 
 /* Expand a call to __builtin_saveregs, generating the result in TARGET,
@@ -5118,7 +5181,7 @@ expand_builtin_trap (void)
 	 REG_ARGS_SIZE note to prevent crossjumping of calls with
 	 different args sizes.  */
       if (!ACCUMULATE_OUTGOING_ARGS)
-	add_reg_note (insn, REG_ARGS_SIZE, GEN_INT (stack_pointer_delta));
+	add_args_size_note (insn, stack_pointer_delta);
     }
   else
     {
@@ -5929,9 +5992,12 @@ expand_ifn_atomic_compare_exchange_into_call (gcall *call, machine_mode mode)
   /* Skip the boolean weak parameter.  */
   for (z = 4; z < 6; z++)
     vec->quick_push (gimple_call_arg (call, z));
+  /* At present we only have BUILT_IN_ATOMIC_COMPARE_EXCHANGE_{1,2,4,8,16}.  */
+  unsigned int bytes_log2 = exact_log2 (GET_MODE_SIZE (mode).to_constant ());
+  gcc_assert (bytes_log2 < 5);
   built_in_function fncode
     = (built_in_function) ((int) BUILT_IN_ATOMIC_COMPARE_EXCHANGE_1
-			   + exact_log2 (GET_MODE_SIZE (mode)));
+			   + bytes_log2);
   tree fndecl = builtin_decl_explicit (fncode);
   tree fn = build1 (ADDR_EXPR, build_pointer_type (TREE_TYPE (fndecl)),
 		    fndecl);

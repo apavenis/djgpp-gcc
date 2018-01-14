@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on the Renesas M32R cpu.
-   Copyright (C) 1996-2017 Free Software Foundation, Inc.
+   Copyright (C) 1996-2018 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -1555,7 +1555,7 @@ static struct m32r_frame_info zero_frame_info;
    SIZE is the size needed for local variables.  */
 
 unsigned int
-m32r_compute_frame_size (int size)	/* # of var. bytes allocated.  */
+m32r_compute_frame_size (poly_int64 size)   /* # of var. bytes allocated.  */
 {
   unsigned int regno;
   unsigned int total_size, var_size, args_size, pretend_size, extra_size;

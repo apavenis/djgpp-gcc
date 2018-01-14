@@ -1,5 +1,5 @@
 /* Target code for NVPTX.
-   Copyright (C) 2014-2017 Free Software Foundation, Inc.
+   Copyright (C) 2014-2018 Free Software Foundation, Inc.
    Contributed by Bernd Schmidt <bernds@codesourcery.com>
 
    This file is part of GCC.
@@ -176,6 +176,8 @@ nvptx_option_override (void)
      undeclared variables. */
   if (!global_options_set.x_flag_toplevel_reorder)
     flag_toplevel_reorder = 1;
+
+  debug_nonbind_markers_p = 0;
 
   /* Set flag_no_common, unless explicitly disabled.  We fake common
      using .weak, and that's not entirely accurate, so avoid it

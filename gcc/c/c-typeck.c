@@ -1,5 +1,5 @@
 /* Build expressions with type checking for C compiler.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1177,9 +1177,9 @@ comptypes_internal (const_tree type1, const_tree type2, bool *enum_and_int_p,
 
 	/* Target types must match incl. qualifiers.  */
 	if (TREE_TYPE (t1) != TREE_TYPE (t2)
-	    && 0 == (val = comptypes_internal (TREE_TYPE (t1), TREE_TYPE (t2),
-					       enum_and_int_p,
-					       different_types_p)))
+	    && (val = comptypes_internal (TREE_TYPE (t1), TREE_TYPE (t2),
+					  enum_and_int_p,
+					  different_types_p)) == 0)
 	  return 0;
 
 	if (different_types_p != NULL
@@ -1237,7 +1237,7 @@ comptypes_internal (const_tree type1, const_tree type2, bool *enum_and_int_p,
       break;
 
     case VECTOR_TYPE:
-      val = (TYPE_VECTOR_SUBPARTS (t1) == TYPE_VECTOR_SUBPARTS (t2)
+      val = (known_eq (TYPE_VECTOR_SUBPARTS (t1), TYPE_VECTOR_SUBPARTS (t2))
 	     && comptypes_internal (TREE_TYPE (t1), TREE_TYPE (t2),
 				    enum_and_int_p, different_types_p));
       break;
@@ -1662,8 +1662,8 @@ function_types_compatible_p (const_tree f1, const_tree f2,
 	 compare that with the other type's arglist.
 	 If they don't match, ask for a warning (but no error).  */
       if (TYPE_ACTUAL_ARG_TYPES (f1)
-	  && 1 != type_lists_compatible_p (args2, TYPE_ACTUAL_ARG_TYPES (f1),
-					   enum_and_int_p, different_types_p))
+	  && type_lists_compatible_p (args2, TYPE_ACTUAL_ARG_TYPES (f1),
+				      enum_and_int_p, different_types_p) != 1)
 	val = 2;
       return val;
     }
@@ -1672,8 +1672,8 @@ function_types_compatible_p (const_tree f1, const_tree f2,
       if (!self_promoting_args_p (args1))
 	return 0;
       if (TYPE_ACTUAL_ARG_TYPES (f2)
-	  && 1 != type_lists_compatible_p (args1, TYPE_ACTUAL_ARG_TYPES (f2),
-					   enum_and_int_p, different_types_p))
+	  && type_lists_compatible_p (args1, TYPE_ACTUAL_ARG_TYPES (f2),
+				      enum_and_int_p, different_types_p) != 1)
 	val = 2;
       return val;
     }
@@ -1832,20 +1832,20 @@ c_size_in_bytes (const_tree type)
 /* Return either DECL or its known constant value (if it has one).  */
 
 tree
-decl_constant_value_1 (tree decl)
+decl_constant_value_1 (tree decl, bool in_init)
 {
   if (/* Note that DECL_INITIAL isn't valid for a PARM_DECL.  */
       TREE_CODE (decl) != PARM_DECL
       && !TREE_THIS_VOLATILE (decl)
       && TREE_READONLY (decl)
       && DECL_INITIAL (decl) != NULL_TREE
-      && TREE_CODE (DECL_INITIAL (decl)) != ERROR_MARK
+      && !error_operand_p (DECL_INITIAL (decl))
       /* This is invalid if initial value is not constant.
 	 If it has either a function call, a memory reference,
 	 or a variable, then re-evaluating it could give different results.  */
       && TREE_CONSTANT (DECL_INITIAL (decl))
       /* Check for cases where this is sub-optimal, even though valid.  */
-      && TREE_CODE (DECL_INITIAL (decl)) != CONSTRUCTOR)
+      && (in_init || TREE_CODE (DECL_INITIAL (decl)) != CONSTRUCTOR))
     return DECL_INITIAL (decl);
   return decl;
 }
@@ -1858,7 +1858,7 @@ decl_constant_value (tree decl)
 {
   /* Don't change a variable array bound or initial value to a constant
      in a place where a variable is invalid.  */
-  return current_function_decl ? decl_constant_value_1 (decl) : decl;
+  return current_function_decl ? decl_constant_value_1 (decl, false) : decl;
 }
 
 /* Convert the array expression EXP to a pointer.  */
@@ -2121,8 +2121,8 @@ perform_integral_promotions (tree exp)
       && DECL_C_BIT_FIELD (TREE_OPERAND (exp, 1))
       /* If it's thinner than an int, promote it like a
 	 c_promoting_integer_type_p, otherwise leave it alone.  */
-      && 0 > compare_tree_int (DECL_SIZE (TREE_OPERAND (exp, 1)),
-			       TYPE_PRECISION (integer_type_node)))
+      && compare_tree_int (DECL_SIZE (TREE_OPERAND (exp, 1)),
+			   TYPE_PRECISION (integer_type_node)) < 0)
     return convert (integer_type_node, exp);
 
   if (c_promoting_integer_type_p (type))
@@ -7426,15 +7426,14 @@ digest_init (location_t init_loc, tree type, tree init, tree origtype,
 	      /* Subtract the size of a single (possibly wide) character
 		 because it's ok to ignore the terminating null char
 		 that is counted in the length of the constant.  */
-	      if (0 > compare_tree_int (TYPE_SIZE_UNIT (type),
-					(len
-					 - (TYPE_PRECISION (typ1)
-					    / BITS_PER_UNIT))))
+	      if (compare_tree_int (TYPE_SIZE_UNIT (type),
+				    (len - (TYPE_PRECISION (typ1)
+					    / BITS_PER_UNIT))) < 0)
 		pedwarn_init (init_loc, 0,
 			      ("initializer-string for array of chars "
 			       "is too long"));
 	      else if (warn_cxx_compat
-		       && 0 > compare_tree_int (TYPE_SIZE_UNIT (type), len))
+		       && compare_tree_int (TYPE_SIZE_UNIT (type), len) < 0)
 		warning_at (init_loc, OPT_Wc___compat,
 			    ("initializer-string for array chars "
 			     "is too long for C++"));
@@ -10752,17 +10751,21 @@ c_finish_stmt_expr (location_t loc, tree body)
  continue_searching:
   if (TREE_CODE (last) == STATEMENT_LIST)
     {
-      tree_stmt_iterator i;
+      tree_stmt_iterator l = tsi_last (last);
+
+      while (!tsi_end_p (l) && TREE_CODE (tsi_stmt (l)) == DEBUG_BEGIN_STMT)
+	tsi_prev (&l);
 
       /* This can happen with degenerate cases like ({ }).  No value.  */
-      if (!TREE_SIDE_EFFECTS (last))
+      if (tsi_end_p (l))
 	return body;
 
       /* If we're supposed to generate side effects warnings, process
 	 all of the statements except the last.  */
       if (warn_unused_value)
 	{
-	  for (i = tsi_start (last); !tsi_one_before_end_p (i); tsi_next (&i))
+	  for (tree_stmt_iterator i = tsi_start (last);
+	       tsi_stmt (i) != tsi_stmt (l); tsi_next (&i))
 	    {
 	      location_t tloc;
 	      tree t = tsi_stmt (i);
@@ -10771,13 +10774,7 @@ c_finish_stmt_expr (location_t loc, tree body)
 	      emit_side_effect_warnings (tloc, t);
 	    }
 	}
-      else
-	i = tsi_last (last);
-      if (TREE_CODE (tsi_stmt (i)) == DEBUG_BEGIN_STMT)
-	do
-	  tsi_prev (&i);
-	while (TREE_CODE (tsi_stmt (i)) == DEBUG_BEGIN_STMT);
-      last_p = tsi_stmt_ptr (i);
+      last_p = tsi_stmt_ptr (l);
       last = *last_p;
     }
 
@@ -11349,7 +11346,8 @@ build_binary_op (location_t location, enum tree_code code,
       if (code0 == VECTOR_TYPE && code1 == VECTOR_TYPE
 	  && TREE_CODE (TREE_TYPE (type0)) == INTEGER_TYPE
 	  && TREE_CODE (TREE_TYPE (type1)) == INTEGER_TYPE
-	  && TYPE_VECTOR_SUBPARTS (type0) == TYPE_VECTOR_SUBPARTS (type1))
+	  && known_eq (TYPE_VECTOR_SUBPARTS (type0),
+		       TYPE_VECTOR_SUBPARTS (type1)))
 	{
 	  result_type = type0;
 	  converted = 1;
@@ -11406,7 +11404,8 @@ build_binary_op (location_t location, enum tree_code code,
       if (code0 == VECTOR_TYPE && code1 == VECTOR_TYPE
 	  && TREE_CODE (TREE_TYPE (type0)) == INTEGER_TYPE
 	  && TREE_CODE (TREE_TYPE (type1)) == INTEGER_TYPE
-	  && TYPE_VECTOR_SUBPARTS (type0) == TYPE_VECTOR_SUBPARTS (type1))
+	  && known_eq (TYPE_VECTOR_SUBPARTS (type0),
+		       TYPE_VECTOR_SUBPARTS (type1)))
 	{
 	  result_type = type0;
 	  converted = 1;
@@ -11480,7 +11479,8 @@ build_binary_op (location_t location, enum tree_code code,
               return error_mark_node;
             }
 
-          if (TYPE_VECTOR_SUBPARTS (type0) != TYPE_VECTOR_SUBPARTS (type1))
+	  if (maybe_ne (TYPE_VECTOR_SUBPARTS (type0),
+			TYPE_VECTOR_SUBPARTS (type1)))
             {
               error_at (location, "comparing vectors with different "
                                   "number of elements");
@@ -11640,7 +11640,8 @@ build_binary_op (location_t location, enum tree_code code,
               return error_mark_node;
             }
 
-          if (TYPE_VECTOR_SUBPARTS (type0) != TYPE_VECTOR_SUBPARTS (type1))
+	  if (maybe_ne (TYPE_VECTOR_SUBPARTS (type0),
+			TYPE_VECTOR_SUBPARTS (type1)))
             {
               error_at (location, "comparing vectors with different "
                                   "number of elements");

@@ -1,5 +1,5 @@
 /* Handle parameterized types (templates) for GNU -*- C++ -*-.
-   Copyright (C) 1992-2017 Free Software Foundation, Inc.
+   Copyright (C) 1992-2018 Free Software Foundation, Inc.
    Written by Ken Raeburn (raeburn@cygnus.com) while at Watchmaker Computing.
    Rewritten by Jason Merrill (jason@cygnus.com).
 
@@ -41,6 +41,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "type-utils.h"
 #include "gimplify.h"
 #include "gcc-rich-location.h"
+#include "selftest.h"
 
 /* The type of functions taking a tree, and some additional data, and
    returning an int.  */
@@ -7838,7 +7839,7 @@ convert_template_argument (tree parm,
 	  if (innertype
 	      && TREE_CODE (innertype) == REFERENCE_TYPE
 	      && TREE_CODE (TREE_TYPE (innertype)) == FUNCTION_TYPE
-              && 0 < TREE_OPERAND_LENGTH (inner)
+	      && TREE_OPERAND_LENGTH (inner) > 0
               && reject_gcc_builtin (TREE_OPERAND (inner, 0)))
               return error_mark_node;
         }
@@ -14924,6 +14925,18 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 	/* Ordinary template template argument.  */
 	return t;
 
+    case NON_LVALUE_EXPR:
+    case VIEW_CONVERT_EXPR:
+	{
+	  /* Handle location wrappers by substituting the wrapped node
+	     first, *then* reusing the resulting type.  Doing the type
+	     first ensures that we handle template parameters and
+	     parameter pack expansions.  */
+	  gcc_assert (location_wrapper_p (t));
+	  tree op0 = tsubst_copy (TREE_OPERAND (t, 0), args, complain, in_decl);
+	  return maybe_wrap_with_location (op0, EXPR_LOCATION (t));
+	}
+
     case CAST_EXPR:
     case REINTERPRET_CAST_EXPR:
     case CONST_CAST_EXPR:
@@ -16127,7 +16140,7 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
       RECUR (FOR_INIT_STMT (t));
       finish_init_stmt (stmt);
       tmp = RECUR (FOR_COND (t));
-      finish_for_cond (tmp, stmt, false);
+      finish_for_cond (tmp, stmt, false, 0);
       tmp = RECUR (FOR_EXPR (t));
       finish_for_expr (tmp, stmt);
       {
@@ -16146,6 +16159,8 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
         decl = tsubst (decl, args, complain, in_decl);
         maybe_push_decl (decl);
         expr = RECUR (RANGE_FOR_EXPR (t));
+	const unsigned short unroll
+	  = RANGE_FOR_UNROLL (t) ? tree_to_uhwi (RANGE_FOR_UNROLL (t)) : 0;
 	if (VAR_P (decl) && DECL_DECOMPOSITION_P (decl))
 	  {
 	    unsigned int cnt;
@@ -16153,11 +16168,11 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
 	    decl = tsubst_decomp_names (decl, RANGE_FOR_DECL (t), args,
 					complain, in_decl, &first, &cnt);
 	    stmt = cp_convert_range_for (stmt, decl, expr, first, cnt,
-					 RANGE_FOR_IVDEP (t));
+					 RANGE_FOR_IVDEP (t), unroll);
 	  }
 	else
 	  stmt = cp_convert_range_for (stmt, decl, expr, NULL_TREE, 0,
-				       RANGE_FOR_IVDEP (t));
+				       RANGE_FOR_IVDEP (t), unroll);
 	bool prev = note_iteration_stmt_body_start ();
         RECUR (RANGE_FOR_BODY (t));
 	note_iteration_stmt_body_end (prev);
@@ -16168,7 +16183,7 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
     case WHILE_STMT:
       stmt = begin_while_stmt ();
       tmp = RECUR (WHILE_COND (t));
-      finish_while_stmt_cond (tmp, stmt, false);
+      finish_while_stmt_cond (tmp, stmt, false, 0);
       {
 	bool prev = note_iteration_stmt_body_start ();
 	RECUR (WHILE_BODY (t));
@@ -16186,7 +16201,7 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
       }
       finish_do_body (stmt);
       tmp = RECUR (DO_COND (t));
-      finish_do_stmt (tmp, stmt, false);
+      finish_do_stmt (tmp, stmt, false, 0);
       break;
 
     case IF_STMT:
@@ -17844,6 +17859,7 @@ tsubst_copy_and_build (tree t,
 	    exp2 = RECUR (TREE_OPERAND (t, 2));
 	  }
 
+	warning_sentinel s(warn_duplicated_branches);
 	RETURN (build_x_conditional_expr (EXPR_LOCATION (t),
 					 cond, exp1, exp2, complain));
       }
@@ -18287,6 +18303,16 @@ tsubst_copy_and_build (tree t,
 
     case REQUIRES_EXPR:
       RETURN (tsubst_requires_expr (t, args, complain, in_decl));
+
+    case NON_LVALUE_EXPR:
+    case VIEW_CONVERT_EXPR:
+      /* We should only see these for location wrapper nodes, or within
+	 instantiate_non_dependent_expr (when args is NULL_TREE).  */
+      gcc_assert (location_wrapper_p (t) || args == NULL_TREE);
+      if (location_wrapper_p (t))
+	RETURN (maybe_wrap_with_location (RECUR (TREE_OPERAND (t, 0)),
+					  EXPR_LOCATION (t)));
+      /* fallthrough.  */
 
     default:
       /* Handle Objective-C++ constructs, if appropriate.  */
@@ -24979,6 +25005,7 @@ resolve_typename_type (tree type, bool only_current_p)
 tree
 build_non_dependent_expr (tree expr)
 {
+  tree orig_expr = expr;
   tree inner_expr;
 
   /* When checking, try to get a constant value for all non-dependent
@@ -24995,6 +25022,8 @@ build_non_dependent_expr (tree expr)
       && !expanding_concept ())
     fold_non_dependent_expr (expr);
 
+  STRIP_ANY_LOCATION_WRAPPER (expr);
+
   /* Preserve OVERLOADs; the functions must be available to resolve
      types.  */
   inner_expr = expr;
@@ -25006,36 +25035,36 @@ build_non_dependent_expr (tree expr)
     inner_expr = TREE_OPERAND (inner_expr, 1);
   if (is_overloaded_fn (inner_expr)
       || TREE_CODE (inner_expr) == OFFSET_REF)
-    return expr;
+    return orig_expr;
   /* There is no need to return a proxy for a variable.  */
   if (VAR_P (expr))
-    return expr;
+    return orig_expr;
   /* Preserve string constants; conversions from string constants to
      "char *" are allowed, even though normally a "const char *"
      cannot be used to initialize a "char *".  */
   if (TREE_CODE (expr) == STRING_CST)
-    return expr;
+    return orig_expr;
   /* Preserve void and arithmetic constants, as an optimization -- there is no
      reason to create a new node.  */
   if (TREE_CODE (expr) == VOID_CST
       || TREE_CODE (expr) == INTEGER_CST
       || TREE_CODE (expr) == REAL_CST)
-    return expr;
+    return orig_expr;
   /* Preserve THROW_EXPRs -- all throw-expressions have type "void".
      There is at least one place where we want to know that a
      particular expression is a throw-expression: when checking a ?:
      expression, there are special rules if the second or third
      argument is a throw-expression.  */
   if (TREE_CODE (expr) == THROW_EXPR)
-    return expr;
+    return orig_expr;
 
   /* Don't wrap an initializer list, we need to be able to look inside.  */
   if (BRACE_ENCLOSED_INITIALIZER_P (expr))
-    return expr;
+    return orig_expr;
 
   /* Don't wrap a dummy object, we need to be able to test for it.  */
   if (is_dummy_object (expr))
-    return expr;
+    return orig_expr;
 
   if (TREE_CODE (expr) == COND_EXPR)
     return build3 (COND_EXPR,
@@ -26597,5 +26626,48 @@ print_template_statistics (void)
 	   (long) type_specializations->elements (),
 	   type_specializations->collisions ());
 }
+
+#if CHECKING_P
+
+namespace selftest {
+
+/* Verify that build_non_dependent_expr () works, for various expressions,
+   and that location wrappers don't affect the results.  */
+
+static void
+test_build_non_dependent_expr ()
+{
+  location_t loc = BUILTINS_LOCATION;
+
+  /* Verify constants, without and with location wrappers.  */
+  tree int_cst = build_int_cst (integer_type_node, 42);
+  ASSERT_EQ (int_cst, build_non_dependent_expr (int_cst));
+
+  tree wrapped_int_cst = maybe_wrap_with_location (int_cst, loc);
+  ASSERT_TRUE (location_wrapper_p (wrapped_int_cst));
+  ASSERT_EQ (wrapped_int_cst, build_non_dependent_expr (wrapped_int_cst));
+
+  tree string_lit = build_string (4, "foo");
+  TREE_TYPE (string_lit) = char_array_type_node;
+  string_lit = fix_string_type (string_lit);
+  ASSERT_EQ (string_lit, build_non_dependent_expr (string_lit));
+
+  tree wrapped_string_lit = maybe_wrap_with_location (string_lit, loc);
+  ASSERT_TRUE (location_wrapper_p (wrapped_string_lit));
+  ASSERT_EQ (wrapped_string_lit,
+	     build_non_dependent_expr (wrapped_string_lit));
+}
+
+/* Run all of the selftests within this file.  */
+
+void
+cp_pt_c_tests ()
+{
+  test_build_non_dependent_expr ();
+}
+
+} // namespace selftest
+
+#endif /* #if CHECKING_P */
 
 #include "gt-cp-pt.h"

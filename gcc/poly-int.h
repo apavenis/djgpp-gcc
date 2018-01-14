@@ -1,5 +1,5 @@
 /* Polynomial integer classes.
-   Copyright (C) 2014-2017 Free Software Foundation, Inc.
+   Copyright (C) 2014-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1288,7 +1288,7 @@ maybe_ne (const Ca &a, const poly_int_pod<N, Cb> &b)
 {
   if (N >= 2)
     for (unsigned int i = 1; i < N; i++)
-      if (0 != b.coeffs[i])
+      if (b.coeffs[i] != 0)
 	return true;
   return a != b.coeffs[0];
 }
@@ -1337,7 +1337,7 @@ maybe_le (const Ca &a, const poly_int_pod<N, Cb> &b)
 {
   if (N >= 2)
     for (unsigned int i = 1; i < N; i++)
-      if (0 < b.coeffs[i])
+      if (b.coeffs[i] > 0)
 	return true;
   return a <= b.coeffs[0];
 }
@@ -1379,7 +1379,7 @@ maybe_lt (const Ca &a, const poly_int_pod<N, Cb> &b)
 {
   if (N >= 2)
     for (unsigned int i = 1; i < N; i++)
-      if (0 < b.coeffs[i])
+      if (b.coeffs[i] > 0)
 	return true;
   return a < b.coeffs[0];
 }
@@ -2027,7 +2027,7 @@ template<typename Ca, typename Cb>
 inline typename if_nonpoly2<Ca, Cb, bool>::type
 multiple_p (Ca a, Cb b)
 {
-  return a % b != 0;
+  return a % b == 0;
 }
 
 /* Return true if A is a (polynomial) multiple of B.  */

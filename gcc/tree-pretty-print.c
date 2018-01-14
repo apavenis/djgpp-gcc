@@ -1,5 +1,5 @@
 /* Pretty formatting of GENERIC trees in C syntax.
-   Copyright (C) 2001-2017 Free Software Foundation, Inc.
+   Copyright (C) 2001-2018 Free Software Foundation, Inc.
    Adapted from c-pretty-print.c by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -1734,6 +1734,18 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
 	pp_string (pp, "(OVF)");
       break;
 
+    case POLY_INT_CST:
+      pp_string (pp, "POLY_INT_CST [");
+      dump_generic_node (pp, POLY_INT_CST_COEFF (node, 0), spc, flags, false);
+      for (unsigned int i = 1; i < NUM_POLY_INT_COEFFS; ++i)
+	{
+	  pp_string (pp, ", ");
+	  dump_generic_node (pp, POLY_INT_CST_COEFF (node, i),
+			     spc, flags, false);
+	}
+      pp_string (pp, "]");
+      break;
+
     case REAL_CST:
       /* Code copied from print_node.  */
       {
@@ -1781,13 +1793,18 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
       {
 	unsigned i;
 	pp_string (pp, "{ ");
-	for (i = 0; i < VECTOR_CST_NELTS (node); ++i)
+	unsigned HOST_WIDE_INT nunits;
+	if (!VECTOR_CST_NELTS (node).is_constant (&nunits))
+	  nunits = vector_cst_encoded_nelts (node);
+	for (i = 0; i < nunits; ++i)
 	  {
 	    if (i != 0)
 	      pp_string (pp, ", ");
 	    dump_generic_node (pp, VECTOR_CST_ELT (node, i),
 			       spc, flags, false);
 	  }
+	if (!VECTOR_CST_NELTS (node).is_constant ())
+	  pp_string (pp, ", ...");
 	pp_string (pp, " }");
       }
       break;

@@ -1,5 +1,5 @@
 /* A self-testing framework, for use by -fself-test.
-   Copyright (C) 2015-2017 Free Software Foundation, Inc.
+   Copyright (C) 2015-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -79,7 +79,7 @@ assert_streq (const location &loc,
   if (val_actual == NULL)
     fail_formatted (loc, "ASSERT_STREQ (%s, %s) expected=\"%s\" actual=NULL",
 		    desc_expected, desc_actual, val_expected);
-  if (0 == strcmp (val_expected, val_actual))
+  if (strcmp (val_expected, val_actual) == 0)
     pass (loc, "ASSERT_STREQ");
   else
     fail_formatted (loc, "ASSERT_STREQ (%s, %s) expected=\"%s\" actual=\"%s\"",

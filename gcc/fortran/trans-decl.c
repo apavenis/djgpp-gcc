@@ -1,5 +1,5 @@
 /* Backend function setup
-   Copyright (C) 2002-2017 Free Software Foundation, Inc.
+   Copyright (C) 2002-2018 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
 This file is part of GCC.
@@ -4280,10 +4280,11 @@ gfc_trans_deferred_vars (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 		{
 		  tmp = proc_sym->ts.u.cl->passed_length;
 		  tmp = build_fold_indirect_ref_loc (input_location, tmp);
-		  tmp = fold_convert (gfc_charlen_type_node, tmp);
 		  tmp = fold_build2_loc (input_location, MODIFY_EXPR,
-					 gfc_charlen_type_node, tmp,
-					 proc_sym->ts.u.cl->backend_decl);
+					 TREE_TYPE (tmp), tmp,
+					 fold_convert
+					 (TREE_TYPE (tmp),
+					  proc_sym->ts.u.cl->backend_decl));
 		}
 	      else
 		tmp = NULL_TREE;
@@ -4344,9 +4345,12 @@ gfc_trans_deferred_vars (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 					   sym->as ? sym->as->rank : 0,
 					   sym->param_list);
 	      gfc_add_expr_to_block (&tmpblock, tmp);
-	      tmp = gfc_deallocate_pdt_comp (sym->ts.u.derived,
-					     sym->backend_decl,
-					     sym->as ? sym->as->rank : 0);
+	      if (!sym->attr.result)
+		tmp = gfc_deallocate_pdt_comp (sym->ts.u.derived,
+					       sym->backend_decl,
+					       sym->as ? sym->as->rank : 0);
+	      else
+		tmp = NULL_TREE;
 	      gfc_add_init_cleanup (block, gfc_finish_block (&tmpblock), tmp);
 	    }
 	  else if (sym->attr.dummy)
@@ -4376,8 +4380,11 @@ gfc_trans_deferred_vars (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 					   sym->param_list);
 	      gfc_add_expr_to_block (&tmpblock, tmp);
 	      tmp = gfc_class_data_get (sym->backend_decl);
-	      tmp = gfc_deallocate_pdt_comp (data->ts.u.derived, tmp,
-					     data->as ? data->as->rank : 0);
+	      if (!sym->attr.result)
+		tmp = gfc_deallocate_pdt_comp (data->ts.u.derived, tmp,
+					       data->as ? data->as->rank : 0);
+	      else
+		tmp = NULL_TREE;
 	      gfc_add_init_cleanup (block, gfc_finish_block (&tmpblock), tmp);
 	    }
 	  else if (sym->attr.dummy)
@@ -5834,7 +5841,8 @@ add_argument_checking (stmtblock_t *block, gfc_symbol *sym)
 	    not_0length = fold_build2_loc (input_location, NE_EXPR,
 					   logical_type_node,
 					   cl->passed_length,
-					   build_zero_cst (gfc_charlen_type_node));
+					   build_zero_cst
+					   (TREE_TYPE (cl->passed_length)));
 	    /* The symbol needs to be referenced for gfc_get_symbol_decl.  */
 	    fsym->attr.referenced = 1;
 	    not_absent = gfc_conv_expr_present (fsym);

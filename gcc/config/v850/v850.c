@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.c for NEC V850 series
-   Copyright (C) 1996-2017 Free Software Foundation, Inc.
+   Copyright (C) 1996-2018 Free Software Foundation, Inc.
    Contributed by Jeff Law (law@cygnus.com).
 
    This file is part of GCC.
@@ -1574,7 +1574,7 @@ compute_register_save_size (long * p_reg_saved)
   -------------------------- ---- ------------------   V */
 
 int
-compute_frame_size (int size, long * p_reg_saved)
+compute_frame_size (poly_int64 size, long * p_reg_saved)
 {
   return (size
 	  + compute_register_save_size (p_reg_saved)

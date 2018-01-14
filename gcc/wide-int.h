@@ -1,5 +1,5 @@
 /* Operations with very long integers.  -*- C++ -*-
-   Copyright (C) 2012-2017 Free Software Foundation, Inc.
+   Copyright (C) 2012-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -557,6 +557,7 @@ namespace wi
   BINARY_FUNCTION udiv_floor (const T1 &, const T2 &);
   BINARY_FUNCTION sdiv_floor (const T1 &, const T2 &);
   BINARY_FUNCTION div_ceil (const T1 &, const T2 &, signop, bool * = 0);
+  BINARY_FUNCTION udiv_ceil (const T1 &, const T2 &);
   BINARY_FUNCTION div_round (const T1 &, const T2 &, signop, bool * = 0);
   BINARY_FUNCTION divmod_trunc (const T1 &, const T2 &, signop,
 				WI_BINARY_RESULT (T1, T2) *);
@@ -613,6 +614,7 @@ namespace wi
      access.  */
   struct storage_ref
   {
+    storage_ref () {}
     storage_ref (const HOST_WIDE_INT *, unsigned int, unsigned int);
 
     const HOST_WIDE_INT *val;
@@ -944,6 +946,8 @@ private:
   HOST_WIDE_INT scratch[2];
 
 public:
+  wide_int_ref_storage () {}
+
   wide_int_ref_storage (const wi::storage_ref &);
 
   template <typename T>
@@ -1323,7 +1327,7 @@ namespace wi
    bytes beyond the sizeof need to be allocated.  Use set_precision
    to initialize the structure.  */
 template <int N>
-class GTY(()) trailing_wide_ints
+class GTY((user)) trailing_wide_ints
 {
 private:
   /* The shared precision of each number.  */
@@ -1340,9 +1344,14 @@ private:
   HOST_WIDE_INT m_val[1];
 
 public:
+  typedef WIDE_INT_REF_FOR (trailing_wide_int_storage) const_reference;
+
   void set_precision (unsigned int);
+  unsigned int get_precision () const { return m_precision; }
   trailing_wide_int operator [] (unsigned int);
+  const_reference operator [] (unsigned int) const;
   static size_t extra_size (unsigned int);
+  size_t extra_size () const { return extra_size (m_precision); }
 };
 
 inline trailing_wide_int_storage::
@@ -1412,6 +1421,14 @@ trailing_wide_ints <N>::operator [] (unsigned int index)
 {
   return trailing_wide_int_storage (m_precision, &m_len[index],
 				    &m_val[index * m_max_len]);
+}
+
+template <int N>
+inline typename trailing_wide_ints <N>::const_reference
+trailing_wide_ints <N>::operator [] (unsigned int index) const
+{
+  return wi::storage_ref (&m_val[index * m_max_len],
+			  m_len[index], m_precision);
 }
 
 /* Return how many extra bytes need to be added to the end of the structure
@@ -2659,6 +2676,14 @@ wi::div_ceil (const T1 &x, const T2 &y, signop sgn, bool *overflow)
   if (wi::neg_p (x, sgn) == wi::neg_p (y, sgn) && remainder != 0)
     return quotient + 1;
   return quotient;
+}
+
+/* Return X / Y, rouding towards +inf.  Treat X and Y as unsigned values.  */
+template <typename T1, typename T2>
+inline WI_BINARY_RESULT (T1, T2)
+wi::udiv_ceil (const T1 &x, const T2 &y)
+{
+  return div_ceil (x, y, UNSIGNED);
 }
 
 /* Return X / Y, rouding towards nearest with ties away from zero.

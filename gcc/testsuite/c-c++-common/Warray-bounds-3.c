@@ -1,7 +1,7 @@
 /* Exercise that -Warray-bounds is issued for out-of-bounds offsets
    in calls to built-in functions.
    { dg-do compile }
-   { dg-options "-O2 -Warray-bounds -ftrack-macro-expansion=0" }  */
+   { dg-options "-O2 -Wno-stringop-overflow -Warray-bounds -ftrack-macro-expansion=0" }  */
 
 #include "../gcc.dg/range.h"
 
@@ -359,7 +359,7 @@ void test_strcpy_bounds_memarray_range (void)
   TM (a5, "0",    ma.a5 + i, ma.a5);
   TM (a5, "01",   ma.a5 + i, ma.a5);
   TM (a5, "012",  ma.a5 + i, ma.a5);
-  TM (a5, "0123", ma.a5 + i, ma.a5);     /* { dg-warning "offset 10 from the object at .ma. is out of the bounds of referenced subobject .\(MA::\)?a5. with type .char\\\[5]. at offset 4" "strcpy" { xfail *-*-* } } */
+  TM (a5, "0123", ma.a5 + i, ma.a5);     /* { dg-warning "offset 10 from the object at .ma. is out of the bounds of referenced subobject .\(MA::\)?a5. with type .char ?\\\[5]. at offset 4" "strcpy" } */
 
   TM (a11, "0",       ma.a5, ma.a11);
   TM (a11, "01",      ma.a5, ma.a11);

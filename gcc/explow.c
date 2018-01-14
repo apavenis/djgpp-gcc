@@ -1,5 +1,5 @@
 /* Subroutines for manipulating rtx's in semantically interesting ways.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -77,13 +77,23 @@ trunc_int_for_mode (HOST_WIDE_INT c, machine_mode mode)
   return c;
 }
 
+/* Likewise for polynomial values, using the sign-extended representation
+   for each individual coefficient.  */
+
+poly_int64
+trunc_int_for_mode (poly_int64 x, machine_mode mode)
+{
+  for (unsigned int i = 0; i < NUM_POLY_INT_COEFFS; ++i)
+    x.coeffs[i] = trunc_int_for_mode (x.coeffs[i], mode);
+  return x;
+}
+
 /* Return an rtx for the sum of X and the integer C, given that X has
    mode MODE.  INPLACE is true if X can be modified inplace or false
    if it must be treated as immutable.  */
 
 rtx
-plus_constant (machine_mode mode, rtx x, HOST_WIDE_INT c,
-	       bool inplace)
+plus_constant (machine_mode mode, rtx x, poly_int64 c, bool inplace)
 {
   RTX_CODE code;
   rtx y;
@@ -92,7 +102,7 @@ plus_constant (machine_mode mode, rtx x, HOST_WIDE_INT c,
 
   gcc_assert (GET_MODE (x) == VOIDmode || GET_MODE (x) == mode);
 
-  if (c == 0)
+  if (known_eq (c, 0))
     return x;
 
  restart:
@@ -180,10 +190,12 @@ plus_constant (machine_mode mode, rtx x, HOST_WIDE_INT c,
       break;
 
     default:
+      if (CONST_POLY_INT_P (x))
+	return immed_wide_int_const (const_poly_int_value (x) + c, mode);
       break;
     }
 
-  if (c != 0)
+  if (maybe_ne (c, 0))
     x = gen_rtx_PLUS (mode, x, gen_int_mode (c, mode));
 
   if (GET_CODE (x) == SYMBOL_REF || GET_CODE (x) == LABEL_REF)
@@ -210,8 +222,8 @@ eliminate_constant_term (rtx x, rtx *constptr)
 
   /* First handle constants appearing at this level explicitly.  */
   if (CONST_INT_P (XEXP (x, 1))
-      && 0 != (tem = simplify_binary_operation (PLUS, GET_MODE (x), *constptr,
-						XEXP (x, 1)))
+      && (tem = simplify_binary_operation (PLUS, GET_MODE (x), *constptr,
+					   XEXP (x, 1))) != 0
       && CONST_INT_P (tem))
     {
       *constptr = tem;
@@ -222,8 +234,8 @@ eliminate_constant_term (rtx x, rtx *constptr)
   x0 = eliminate_constant_term (XEXP (x, 0), &tem);
   x1 = eliminate_constant_term (XEXP (x, 1), &tem);
   if ((x1 != XEXP (x, 1) || x0 != XEXP (x, 0))
-      && 0 != (tem = simplify_binary_operation (PLUS, GET_MODE (x),
-						*constptr, tem))
+      && (tem = simplify_binary_operation (PLUS, GET_MODE (x),
+					   *constptr, tem)) != 0
       && CONST_INT_P (tem))
     {
       *constptr = tem;
@@ -929,7 +941,7 @@ adjust_stack_1 (rtx adjust, bool anti_p)
     }
 
   if (!suppress_reg_args_size)
-    add_reg_note (insn, REG_ARGS_SIZE, GEN_INT (stack_pointer_delta));
+    add_args_size_note (insn, stack_pointer_delta);
 }
 
 /* Adjust the stack pointer by ADJUST (an rtx for a number of bytes).
@@ -1463,8 +1475,8 @@ allocate_dynamic_stack_space (rtx size, unsigned size_align,
 
  /* We ought to be called always on the toplevel and stack ought to be aligned
     properly.  */
-  gcc_assert (!(stack_pointer_delta
-		% (PREFERRED_STACK_BOUNDARY / BITS_PER_UNIT)));
+  gcc_assert (multiple_p (stack_pointer_delta,
+			  PREFERRED_STACK_BOUNDARY / BITS_PER_UNIT));
 
   /* If needed, check that we have the required amount of stack.  Take into
      account what has already been checked.  */
@@ -1494,7 +1506,7 @@ allocate_dynamic_stack_space (rtx size, unsigned size_align,
     }
   else
     {
-      int saved_stack_pointer_delta;
+      poly_int64 saved_stack_pointer_delta;
 
       if (!STACK_GROWS_DOWNWARD)
 	emit_move_insn (target, virtual_stack_dynamic_rtx);
@@ -1575,7 +1587,7 @@ allocate_dynamic_stack_space (rtx size, unsigned size_align,
    of memory.  */
 
 rtx
-get_dynamic_stack_base (HOST_WIDE_INT offset, unsigned required_align)
+get_dynamic_stack_base (poly_int64 offset, unsigned required_align)
 {
   rtx target;
 
@@ -1985,11 +1997,27 @@ anti_adjust_stack_and_probe_stack_clash (rtx size)
 
   if (residual != CONST0_RTX (Pmode))
     {
+      rtx label = NULL_RTX;
+      /* RESIDUAL could be zero at runtime and in that case *sp could
+	 hold live data.  Furthermore, we do not want to probe into the
+	 red zone.
+
+	 Go ahead and just guard the probe at *sp on RESIDUAL != 0 at
+	 runtime if RESIDUAL is not a compile time constant.  */
+      if (!CONST_INT_P (residual))
+	{
+	  label = gen_label_rtx ();
+	  emit_cmp_and_jump_insns (residual, CONST0_RTX (GET_MODE (residual)),
+				   EQ, NULL_RTX, Pmode, 1, label);
+	}
+
       rtx x = force_reg (Pmode, plus_constant (Pmode, residual,
 					       -GET_MODE_SIZE (word_mode)));
       anti_adjust_stack (residual);
       emit_stack_probe (gen_rtx_PLUS (Pmode, stack_pointer_rtx, x));
       emit_insn (gen_blockage ());
+      if (!CONST_INT_P (residual))
+	emit_label (label);
     }
 
   /* Some targets make optimistic assumptions in their prologues about
@@ -2002,28 +2030,20 @@ anti_adjust_stack_and_probe_stack_clash (rtx size)
 	 live data.  Furthermore, we don't want to probe into the red
 	 zone.
 
-	 Go ahead and just guard a probe at *sp on SIZE != 0 at runtime
+	 Go ahead and just guard the probe at *sp on SIZE != 0 at runtime
 	 if SIZE is not a compile time constant.  */
-
-      /* Ideally we would just probe at *sp.  However, if SIZE is not
-	 a compile-time constant, but is zero at runtime, then *sp
-	 might hold live data.  So probe at *sp if we know that
-	 an allocation was made, otherwise probe into the red zone
-	 which is obviously undesirable.  */
-      if (CONST_INT_P (size))
+      rtx label = NULL_RTX;
+      if (!CONST_INT_P (size))
 	{
-	  emit_stack_probe (stack_pointer_rtx);
-	  emit_insn (gen_blockage ());
-	}
-      else
-	{
-	  rtx label = gen_label_rtx ();
+	  label = gen_label_rtx ();
 	  emit_cmp_and_jump_insns (size, CONST0_RTX (GET_MODE (size)),
 				   EQ, NULL_RTX, Pmode, 1, label);
-	  emit_stack_probe (stack_pointer_rtx);
-	  emit_insn (gen_blockage ());
-	  emit_label (label);
 	}
+
+      emit_stack_probe (stack_pointer_rtx);
+      emit_insn (gen_blockage ());
+      if (!CONST_INT_P (size))
+	emit_label (label);
     }
 }
 

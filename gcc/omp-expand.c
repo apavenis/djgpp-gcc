@@ -2,7 +2,7 @@
    directives to separate functions, converts others into explicit calls to the
    runtime library (libgomp) and so forth
 
-Copyright (C) 2005-2017 Free Software Foundation, Inc.
+Copyright (C) 2005-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -205,8 +205,8 @@ omp_adjust_chunk_size (tree chunk_size, bool simd_schedule)
   if (!simd_schedule)
     return chunk_size;
 
-  int vf = omp_max_vf ();
-  if (vf == 1)
+  poly_uint64 vf = omp_max_vf ();
+  if (known_eq (vf, 1U))
     return chunk_size;
 
   tree type = TREE_TYPE (chunk_size);
@@ -4368,11 +4368,12 @@ expand_omp_simd (struct omp_region *region, struct omp_for_data *fd)
 
   if (safelen)
     {
+      poly_uint64 val;
       safelen = OMP_CLAUSE_SAFELEN_EXPR (safelen);
-      if (TREE_CODE (safelen) != INTEGER_CST)
+      if (!poly_int_tree_p (safelen, &val))
 	safelen_int = 0;
-      else if (tree_fits_uhwi_p (safelen) && tree_to_uhwi (safelen) < INT_MAX)
-	safelen_int = tree_to_uhwi (safelen);
+      else
+	safelen_int = MIN (constant_lower_bound (val), INT_MAX);
       if (safelen_int == 1)
 	safelen_int = 0;
     }
@@ -7058,7 +7059,11 @@ expand_omp_target (struct omp_region *region)
 
       /* Add the new function to the offload table.  */
       if (ENABLE_OFFLOADING)
-	vec_safe_push (offload_funcs, child_fn);
+	{
+	  if (in_lto_p)
+	    DECL_PRESERVE_P (child_fn) = 1;
+	  vec_safe_push (offload_funcs, child_fn);
+	}
 
       bool need_asm = DECL_ASSEMBLER_NAME_SET_P (current_function_decl)
 		      && !DECL_ASSEMBLER_NAME_SET_P (child_fn);

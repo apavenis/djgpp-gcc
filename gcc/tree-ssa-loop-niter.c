@@ -1,5 +1,5 @@
 /* Functions to determine/estimate number of iterations of a loop.
-   Copyright (C) 2004-2017 Free Software Foundation, Inc.
+   Copyright (C) 2004-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1987,7 +1987,7 @@ expand_simple_operations (tree expr, tree stop)
 	return expand_simple_operations (e, stop);
       else if (code == ADDR_EXPR)
 	{
-	  HOST_WIDE_INT offset;
+	  poly_int64 offset;
 	  tree base = get_addr_base_and_unit_offset (TREE_OPERAND (e, 0),
 						     &offset);
 	  if (base

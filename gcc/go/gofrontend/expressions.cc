@@ -7030,7 +7030,12 @@ Bound_method_expression::do_flatten(Gogo* gogo, Named_object*,
   Expression* ret = Expression::make_struct_composite_literal(st, vals, loc);
 
   if (!gogo->compiling_runtime() || gogo->package_name() != "runtime")
-    ret = Expression::make_heap_expression(ret, loc);
+    {
+      ret = Expression::make_heap_expression(ret, loc);
+      Node* n = Node::make_node(this);
+      if ((n->encoding() & ESCAPE_MASK) == Node::ESCAPE_NONE)
+        ret->heap_expression()->set_allocate_on_stack();
+    }
   else
     {
       // When compiling the runtime, method closures do not escape.
@@ -7112,114 +7117,6 @@ Expression::make_bound_method(Expression* expr, const Method* method,
 
 // Class Builtin_call_expression.  This is used for a call to a
 // builtin function.
-
-class Builtin_call_expression : public Call_expression
-{
- public:
-  Builtin_call_expression(Gogo* gogo, Expression* fn, Expression_list* args,
-			  bool is_varargs, Location location);
-
- protected:
-  // This overrides Call_expression::do_lower.
-  Expression*
-  do_lower(Gogo*, Named_object*, Statement_inserter*, int);
-
-  Expression*
-  do_flatten(Gogo*, Named_object*, Statement_inserter*);
-
-  bool
-  do_is_constant() const;
-
-  bool
-  do_numeric_constant_value(Numeric_constant*) const;
-
-  bool
-  do_discarding_value();
-
-  Type*
-  do_type();
-
-  void
-  do_determine_type(const Type_context*);
-
-  void
-  do_check_types(Gogo*);
-
-  Expression*
-  do_copy();
-
-  Bexpression*
-  do_get_backend(Translate_context*);
-
-  void
-  do_export(Export*) const;
-
-  virtual bool
-  do_is_recover_call() const;
-
-  virtual void
-  do_set_recover_arg(Expression*);
-
- private:
-  // The builtin functions.
-  enum Builtin_function_code
-    {
-      BUILTIN_INVALID,
-
-      // Predeclared builtin functions.
-      BUILTIN_APPEND,
-      BUILTIN_CAP,
-      BUILTIN_CLOSE,
-      BUILTIN_COMPLEX,
-      BUILTIN_COPY,
-      BUILTIN_DELETE,
-      BUILTIN_IMAG,
-      BUILTIN_LEN,
-      BUILTIN_MAKE,
-      BUILTIN_NEW,
-      BUILTIN_PANIC,
-      BUILTIN_PRINT,
-      BUILTIN_PRINTLN,
-      BUILTIN_REAL,
-      BUILTIN_RECOVER,
-
-      // Builtin functions from the unsafe package.
-      BUILTIN_ALIGNOF,
-      BUILTIN_OFFSETOF,
-      BUILTIN_SIZEOF
-    };
-
-  Expression*
-  one_arg() const;
-
-  bool
-  check_one_arg();
-
-  static Type*
-  real_imag_type(Type*);
-
-  static Type*
-  complex_type(Type*);
-
-  Expression*
-  lower_make(Statement_inserter*);
-
-  Expression* flatten_append(Gogo*, Named_object*, Statement_inserter*);
-
-  bool
-  check_int_value(Expression*, bool is_length, bool* small);
-
-  // A pointer back to the general IR structure.  This avoids a global
-  // variable, or passing it around everywhere.
-  Gogo* gogo_;
-  // The builtin function being called.
-  Builtin_function_code code_;
-  // Used to stop endless loops when the length of an array uses len
-  // or cap of the array itself.
-  mutable bool seen_;
-  // Whether the argument is set for calls to BUILTIN_RECOVER.
-  bool recover_arg_is_set_;
-};
 
 Builtin_call_expression::Builtin_call_expression(Gogo* gogo,
 						 Expression* fn,
@@ -7591,6 +7488,7 @@ Builtin_call_expression::lower_make(Statement_inserter* inserter)
 	  return Expression::make_error(this->location());
 	}
       len_arg = Expression::make_integer_ul(0, NULL, loc);
+      len_small = true;
     }
   else
     {
@@ -7603,6 +7501,10 @@ Builtin_call_expression::lower_make(Statement_inserter* inserter)
 
   Expression* cap_arg = NULL;
   bool cap_small = false;
+  Numeric_constant nclen;
+  Numeric_constant nccap;
+  unsigned long vlen;
+  unsigned long vcap;
   if (is_slice && parg != args->end())
     {
       cap_arg = *parg;
@@ -7610,10 +7512,6 @@ Builtin_call_expression::lower_make(Statement_inserter* inserter)
       if (!this->check_int_value(cap_arg, false, &cap_small))
 	return Expression::make_error(this->location());
 
-      Numeric_constant nclen;
-      Numeric_constant nccap;
-      unsigned long vlen;
-      unsigned long vcap;
       if (len_arg->numeric_constant_value(&nclen)
 	  && cap_arg->numeric_constant_value(&nccap)
 	  && nclen.to_unsigned_long(&vlen) == Numeric_constant::NC_UL_VALID
@@ -7638,19 +7536,25 @@ Builtin_call_expression::lower_make(Statement_inserter* inserter)
   Expression* call;
   if (is_slice)
     {
-      Type* et = type->array_type()->element_type();
-      Expression* type_arg = Expression::make_type_descriptor(et, type_loc);
       if (cap_arg == NULL)
 	{
-	  Temporary_statement* temp = Statement::make_temporary(NULL,
-								len_arg,
-								loc);
-	  inserter->insert(temp);
-	  len_arg = Expression::make_temporary_reference(temp, loc);
-	  cap_arg = Expression::make_temporary_reference(temp, loc);
-	  cap_small = len_small;
+          cap_small = len_small;
+          if (len_arg->numeric_constant_value(&nclen)
+              && nclen.to_unsigned_long(&vlen) == Numeric_constant::NC_UL_VALID)
+            cap_arg = Expression::make_integer_ul(vlen, len_arg->type(), loc);
+          else
+            {
+              Temporary_statement* temp = Statement::make_temporary(NULL,
+                                                                    len_arg,
+                                                                    loc);
+              inserter->insert(temp);
+              len_arg = Expression::make_temporary_reference(temp, loc);
+              cap_arg = Expression::make_temporary_reference(temp, loc);
+            }
 	}
 
+      Type* et = type->array_type()->element_type();
+      Expression* type_arg = Expression::make_type_descriptor(et, type_loc);
       Runtime::Function code = Runtime::MAKESLICE;
       if (!len_small || !cap_small)
 	code = Runtime::MAKESLICE64;
@@ -7659,9 +7563,23 @@ Builtin_call_expression::lower_make(Statement_inserter* inserter)
   else if (is_map)
     {
       Expression* type_arg = Expression::make_type_descriptor(type, type_loc);
-      call = Runtime::make_call(Runtime::MAKEMAP, loc, 4, type_arg, len_arg,
-				Expression::make_nil(loc),
-				Expression::make_nil(loc));
+      if (!len_small)
+	call = Runtime::make_call(Runtime::MAKEMAP64, loc, 3, type_arg,
+				  len_arg,
+				  Expression::make_nil(loc));
+      else
+	{
+	  Numeric_constant nclen;
+	  unsigned long vlen;
+	  if (len_arg->numeric_constant_value(&nclen)
+	      && nclen.to_unsigned_long(&vlen) == Numeric_constant::NC_UL_VALID
+	      && vlen <= Map_type::bucket_size)
+	    call = Runtime::make_call(Runtime::MAKEMAP_SMALL, loc, 0);
+	  else
+	    call = Runtime::make_call(Runtime::MAKEMAP, loc, 3, type_arg,
+				      len_arg,
+				      Expression::make_nil(loc));
+	}
     }
   else if (is_chan)
     {
@@ -9611,14 +9529,8 @@ Call_expression::do_lower(Gogo* gogo, Named_object* function,
   // could implement them in normal code, but then we would have to
   // explicitly unwind the stack.  These functions are intended to be
   // efficient.  Note that this technique obviously only works for
-  // direct calls, but that is the only way they are used.  The actual
-  // argument to these functions is always the address of a parameter;
-  // we don't need that for the GCC builtin functions, so we just
-  // ignore it.
-  if (gogo->compiling_runtime()
-      && this->args_ != NULL
-      && this->args_->size() == 1
-      && gogo->package_name() == "runtime")
+  // direct calls, but that is the only way they are used.
+  if (gogo->compiling_runtime() && gogo->package_name() == "runtime")
     {
       Func_expression* fe = this->fn_->func_expression();
       if (fe != NULL
@@ -9626,15 +9538,21 @@ Call_expression::do_lower(Gogo* gogo, Named_object* function,
 	  && fe->named_object()->package() == NULL)
 	{
 	  std::string n = Gogo::unpack_hidden_name(fe->named_object()->name());
-	  if (n == "getcallerpc")
+	  if ((this->args_ == NULL || this->args_->size() == 0)
+	      && n == "getcallerpc")
 	    {
 	      static Named_object* builtin_return_address;
 	      return this->lower_to_builtin(&builtin_return_address,
 					    "__builtin_return_address",
 					    0);
 	    }
-	  else if (n == "getcallersp")
+	  else if (this->args_ != NULL
+		   && this->args_->size() == 1
+		   && n == "getcallersp")
 	    {
+	      // The actual argument to getcallersp is always the
+	      // address of a parameter; we don't need that for the
+	      // GCC builtin function, so we just ignore it.
 	      static Named_object* builtin_frame_address;
 	      return this->lower_to_builtin(&builtin_frame_address,
 					    "__builtin_frame_address",
@@ -10135,7 +10053,7 @@ Call_expression::do_check_types(Gogo*)
     }
 
   const Typed_identifier_list* parameters = fntype->parameters();
-  if (this->args_ == NULL)
+  if (this->args_ == NULL || this->args_->size() == 0)
     {
       if (parameters != NULL && !parameters->empty())
 	this->report_error(_("not enough arguments"));
@@ -10772,7 +10690,7 @@ Array_index_expression::do_determine_type(const Type_context*)
 // Check types of an array index.
 
 void
-Array_index_expression::do_check_types(Gogo* gogo)
+Array_index_expression::do_check_types(Gogo*)
 {
   Numeric_constant nc;
   unsigned long v;
@@ -10891,18 +10809,9 @@ Array_index_expression::do_check_types(Gogo* gogo)
       if (!this->array_->is_addressable())
 	this->report_error(_("slice of unaddressable value"));
       else
-	{
-	  bool escapes = true;
-
-	  // When compiling the runtime, a slice operation does not
-	  // cause local variables to escape.  When escape analysis
-	  // becomes the default, this should be changed to make it an
-	  // error if we have a slice operation that escapes.
-	  if (gogo->compiling_runtime() && gogo->package_name() == "runtime")
-	    escapes = false;
-
-	  this->array_->address_taken(escapes);
-	}
+        // Set the array address taken but not escape. The escape
+        // analysis will make it escape to heap when needed.
+        this->array_->address_taken(false);
     }
 }
 
@@ -10977,6 +10886,14 @@ Array_index_expression::do_is_addressable() const
   // An index into an array is addressable if the array is
   // addressable.
   return this->array_->is_addressable();
+}
+
+void
+Array_index_expression::do_address_taken(bool escapes)
+{
+  // In &x[0], if x is a slice, then x's address is not taken.
+  if (!this->array_->type()->is_slice_type())
+    this->array_->address_taken(escapes);
 }
 
 // Get the backend representation for an array index.
@@ -12470,10 +12387,9 @@ Allocation_expression::do_get_backend(Translate_context* context)
 {
   Gogo* gogo = context->gogo();
   Location loc = this->location();
+  Btype* btype = this->type_->get_backend(gogo);
 
-  Node* n = Node::make_node(this);
-  if (this->allocate_on_stack_
-      || (n->encoding() & ESCAPE_MASK) == int(Node::ESCAPE_NONE))
+  if (this->allocate_on_stack_)
     {
       int64_t size;
       bool ok = this->type_->backend_type_size(gogo, &size);
@@ -12482,10 +12398,20 @@ Allocation_expression::do_get_backend(Translate_context* context)
           go_assert(saw_errors());
           return gogo->backend()->error_expression();
         }
-      return gogo->backend()->stack_allocation_expression(size, loc);
+      Bstatement* decl;
+      Named_object* fn = context->function();
+      go_assert(fn != NULL);
+      Bfunction* fndecl = fn->func_value()->get_or_make_decl(gogo, fn);
+      Bexpression* zero = gogo->backend()->zero_expression(btype);
+      Bvariable* temp =
+        gogo->backend()->temporary_variable(fndecl, context->bblock(), btype,
+                                            zero, true, loc, &decl);
+      Bexpression* ret = gogo->backend()->var_expression(temp, loc);
+      ret = gogo->backend()->address_expression(ret, loc);
+      ret = gogo->backend()->compound_expression(decl, ret, loc);
+      return ret;
     }
 
-  Btype* btype = this->type_->get_backend(gogo);
   Bexpression* space =
     gogo->allocate_memory(this->type_, loc)->get_backend(context);
   Btype* pbtype = gogo->backend()->pointer_type(btype);
@@ -13249,13 +13175,8 @@ Slice_construction_expression::do_get_backend(Translate_context* context)
     }
   else
     {
+      go_assert(this->storage_escapes_ || this->element_count() == 0);
       space = Expression::make_heap_expression(this->array_val_, loc);
-      Node* n = Node::make_node(this);
-      if ((n->encoding() & ESCAPE_MASK) == int(Node::ESCAPE_NONE))
-	{
-	  n = Node::make_node(space);
-	  n->set_encoding(Node::ESCAPE_NONE);
-	}
     }
 
   // Build a constructor for the slice.
@@ -14349,8 +14270,7 @@ Heap_expression::do_get_backend(Translate_context* context)
   Btype* btype = this->type()->get_backend(gogo);
 
   Expression* alloc = Expression::make_allocation(etype, loc);
-  Node* n = Node::make_node(this);
-  if ((n->encoding() & ESCAPE_MASK) == int(Node::ESCAPE_NONE))
+  if (this->allocate_on_stack_)
     alloc->allocation_expression()->set_allocate_on_stack();
   Bexpression* space = alloc->get_backend(context);
 
@@ -14369,7 +14289,7 @@ Heap_expression::do_get_backend(Translate_context* context)
   // don't do this in the write barrier pass because in some cases
   // backend conversion can introduce new Heap_expression values.
   Bstatement* assn;
-  if (!etype->has_pointer())
+  if (!etype->has_pointer() || this->allocate_on_stack_)
     {
       space = gogo->backend()->var_expression(space_temp, loc);
       Bexpression* ref =

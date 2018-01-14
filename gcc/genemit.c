@@ -1,5 +1,5 @@
 /* Generate code from machine description to emit insns as rtl.
-   Copyright (C) 1987-2017 Free Software Foundation, Inc.
+   Copyright (C) 1987-2018 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -233,6 +233,12 @@ gen_exp (rtx x, enum rtx_code subroutine_type, char *used)
 
 	case 'r':
 	  printf ("%u", REGNO (x));
+	  break;
+
+	case 'p':
+	  /* We don't have a way of parsing polynomial offsets yet,
+	     and hopefully never will.  */
+	  printf ("%d", SUBREG_BYTE (x).to_constant ());
 	  break;
 
 	case 's':

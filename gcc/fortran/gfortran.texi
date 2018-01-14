@@ -1,7 +1,7 @@
 \input texinfo  @c -*-texinfo-*-
 @c %**start of header
 @setfilename gfortran.info
-@set copyrights-gfortran 1999-2017
+@set copyrights-gfortran 1999-2018
 
 @include gcc-common.texi
 
@@ -3447,6 +3447,14 @@ as this requires the new array descriptor.
 @node GNU Fortran Compiler Directives
 @section GNU Fortran Compiler Directives
 
+@menu
+* ATTRIBUTES directive::
+* UNROLL directive::
+@end menu
+
+@node ATTRIBUTES directive
+@subsection ATTRIBUTES directive
+
 The Fortran standard describes how a conforming program shall
 behave; however, the exact implementation is not standardized.  In order
 to allow the user to choose specific implementation details, compiler
@@ -3518,6 +3526,19 @@ start in the first column.
 For procedures, the compiler directives shall be placed into the body
 of the procedure; for variables and procedure pointers, they shall be in
 the same declaration part as the variable or procedure pointer.
+
+
+@node UNROLL directive
+@subsection UNROLL directive
+
+The syntax of the directive is
+
+@code{!GCC$ unroll N}
+
+You can use this directive to control how many times a loop should be unrolled.
+It must be placed immediately before a @code{DO} loop and applies only to the
+loop that follows.  N is an integer constant specifying the unrolling factor.
+The values of 0 and 1 block any unrolling of the loop.
 
 
 
@@ -3904,12 +3925,42 @@ front ends of GCC, e.g. to GCC's C99 compiler for @code{_Bool}
 or GCC's Ada compiler for @code{Boolean}.)
 
 For arguments of @code{CHARACTER} type, the character length is passed
-as hidden argument.  For deferred-length strings, the value is passed
-by reference, otherwise by value.  The character length has the type
-@code{INTEGER(kind=4)}.  Note with C binding, @code{CHARACTER(len=1)}
-result variables are returned according to the platform ABI and no
-hidden length argument is used for dummy arguments; with @code{VALUE},
-those variables are passed by value.
+as a hidden argument at the end of the argument list.  For
+deferred-length strings, the value is passed by reference, otherwise
+by value.  The character length has the C type @code{size_t} (or
+@code{INTEGER(kind=C_SIZE_T)} in Fortran).  Note that this is
+different to older versions of the GNU Fortran compiler, where the
+type of the hidden character length argument was a C @code{int}.  In
+order to retain compatibility with older versions, one can e.g. for
+the following Fortran procedure
+
+@smallexample
+subroutine fstrlen (s, a)
+   character(len=*) :: s
+   integer :: a
+   print*, len(s)
+end subroutine fstrlen
+@end smallexample
+
+define the corresponding C prototype as follows:
+
+@smallexample
+#if __GNUC__ > 7
+typedef size_t fortran_charlen_t;
+#else
+typedef int fortran_charlen_t;
+#endif
+
+void fstrlen_ (char*, int*, fortran_charlen_t);
+@end smallexample
+
+In order to avoid such compiler-specific details, for new code it is
+instead recommended to use the ISO_C_BINDING feature.
+
+Note with C binding, @code{CHARACTER(len=1)} result variables are
+returned according to the platform ABI and no hidden length argument
+is used for dummy arguments; with @code{VALUE}, those variables are
+passed by value.
 
 For @code{OPTIONAL} dummy arguments, an absent argument is denoted
 by a NULL pointer, except for scalar dummy arguments of type

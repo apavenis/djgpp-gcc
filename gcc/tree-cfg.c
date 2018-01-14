@@ -1,5 +1,5 @@
 /* Control flow functions for trees.
-   Copyright (C) 2001-2017 Free Software Foundation, Inc.
+   Copyright (C) 2001-2018 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -636,6 +636,67 @@ make_blocks_1 (gimple_seq seq, basic_block bb)
 static void
 make_blocks (gimple_seq seq)
 {
+  /* Look for debug markers right before labels, and move the debug
+     stmts after the labels.  Accepting labels among debug markers
+     adds no value, just complexity; if we wanted to annotate labels
+     with view numbers (so sequencing among markers would matter) or
+     somesuch, we're probably better off still moving the labels, but
+     adding other debug annotations in their original positions or
+     emitting nonbind or bind markers associated with the labels in
+     the original position of the labels.
+
+     Moving labels would probably be simpler, but we can't do that:
+     moving labels assigns label ids to them, and doing so because of
+     debug markers makes for -fcompare-debug and possibly even codegen
+     differences.  So, we have to move the debug stmts instead.  To
+     that end, we scan SEQ backwards, marking the position of the
+     latest (earliest we find) label, and moving debug stmts that are
+     not separated from it by nondebug nonlabel stmts after the
+     label.  */
+  if (MAY_HAVE_DEBUG_MARKER_STMTS)
+    {
+      gimple_stmt_iterator label = gsi_none ();
+
+      for (gimple_stmt_iterator i = gsi_last (seq); !gsi_end_p (i); gsi_prev (&i))
+	{
+	  gimple *stmt = gsi_stmt (i);
+
+	  /* If this is the first label we encounter (latest in SEQ)
+	     before nondebug stmts, record its position.  */
+	  if (is_a <glabel *> (stmt))
+	    {
+	      if (gsi_end_p (label))
+		label = i;
+	      continue;
+	    }
+
+	  /* Without a recorded label position to move debug stmts to,
+	     there's nothing to do.  */
+	  if (gsi_end_p (label))
+	    continue;
+
+	  /* Move the debug stmt at I after LABEL.  */
+	  if (is_gimple_debug (stmt))
+	    {
+	      gcc_assert (gimple_debug_nonbind_marker_p (stmt));
+	      /* As STMT is removed, I advances to the stmt after
+		 STMT, so the gsi_prev in the for "increment"
+		 expression gets us to the stmt we're to visit after
+		 STMT.  LABEL, however, would advance to the moved
+		 stmt if we passed it to gsi_move_after, so pass it a
+		 copy instead, so as to keep LABEL pointing to the
+		 LABEL.  */
+	      gimple_stmt_iterator copy = label;
+	      gsi_move_after (&i, &copy);
+	      continue;
+	    }
+
+	  /* There aren't any (more?) debug stmts before label, so
+	     there isn't anything else to move after it.  */
+	  label = gsi_none ();
+	}
+    }
+
   make_blocks_1 (seq, ENTRY_BLOCK_PTR_FOR_FN (cfun));
 }
 
@@ -1005,11 +1066,7 @@ make_edges (void)
 	      tree target;
 
 	      if (!label_stmt)
-		{
-		  if (is_gimple_debug (gsi_stmt (gsi)))
-		    continue;
-		  break;
-		}
+		break;
 
 	      target = gimple_label_label (label_stmt);
 
@@ -1519,9 +1576,6 @@ cleanup_dead_labels (void)
 
       for (i = gsi_start_bb (bb); !gsi_end_p (i); gsi_next (&i))
 	{
-	  if (is_gimple_debug (gsi_stmt (i)))
-	    continue;
-
 	  tree label;
 	  glabel *label_stmt = dyn_cast <glabel *> (gsi_stmt (i));
 
@@ -1682,12 +1736,6 @@ cleanup_dead_labels (void)
 
       for (i = gsi_start_bb (bb); !gsi_end_p (i); )
 	{
-	  if (is_gimple_debug (gsi_stmt (i)))
-	    {
-	      gsi_next (&i);
-	      continue;
-	    }
-
 	  tree label;
 	  glabel *label_stmt = dyn_cast <glabel *> (gsi_stmt (i));
 
@@ -1863,8 +1911,6 @@ gimple_can_merge_blocks_p (basic_block a, basic_block b)
        gsi_next (&gsi))
     {
       tree lab;
-      if (is_gimple_debug (gsi_stmt (gsi)))
-	continue;
       glabel *label_stmt = dyn_cast <glabel *> (gsi_stmt (gsi));
       if (!label_stmt)
 	break;
@@ -3022,7 +3068,7 @@ verify_expr (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
 	  error ("invalid first operand of MEM_REF");
 	  return x;
 	}
-      if (TREE_CODE (TREE_OPERAND (t, 1)) != INTEGER_CST
+      if (!poly_int_tree_p (TREE_OPERAND (t, 1))
 	  || !POINTER_TYPE_P (TREE_TYPE (TREE_OPERAND (t, 1))))
 	{
 	  error ("invalid offset operand of MEM_REF");
@@ -3124,8 +3170,9 @@ verify_expr (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
 	  tree t0 = TREE_OPERAND (t, 0);
 	  tree t1 = TREE_OPERAND (t, 1);
 	  tree t2 = TREE_OPERAND (t, 2);
-	  if (!tree_fits_uhwi_p (t1)
-	      || !tree_fits_uhwi_p (t2)
+	  poly_uint64 size, bitpos;
+	  if (!poly_int_tree_p (t1, &size)
+	      || !poly_int_tree_p (t2, &bitpos)
 	      || !types_compatible_p (bitsizetype, TREE_TYPE (t1))
 	      || !types_compatible_p (bitsizetype, TREE_TYPE (t2)))
 	    {
@@ -3133,8 +3180,7 @@ verify_expr (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
 	      return t;
 	    }
 	  if (INTEGRAL_TYPE_P (TREE_TYPE (t))
-	      && (TYPE_PRECISION (TREE_TYPE (t))
-		  != tree_to_uhwi (t1)))
+	      && maybe_ne (TYPE_PRECISION (TREE_TYPE (t)), size))
 	    {
 	      error ("integral result type precision does not match "
 		     "field size of BIT_FIELD_REF");
@@ -3142,16 +3188,16 @@ verify_expr (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
 	    }
 	  else if (!INTEGRAL_TYPE_P (TREE_TYPE (t))
 		   && TYPE_MODE (TREE_TYPE (t)) != BLKmode
-		   && (GET_MODE_BITSIZE (TYPE_MODE (TREE_TYPE (t)))
-		       != tree_to_uhwi (t1)))
+		   && maybe_ne (GET_MODE_BITSIZE (TYPE_MODE (TREE_TYPE (t))),
+				size))
 	    {
 	      error ("mode size of non-integral result does not "
 		     "match field size of BIT_FIELD_REF");
 	      return t;
 	    }
 	  if (!AGGREGATE_TYPE_P (TREE_TYPE (t0))
-	      && (tree_to_uhwi (t1) + tree_to_uhwi (t2)
-		  > tree_to_uhwi (TYPE_SIZE (TREE_TYPE (t0)))))
+	      && maybe_gt (size + bitpos,
+			   tree_to_poly_uint64 (TYPE_SIZE (TREE_TYPE (t0)))))
 	    {
 	      error ("position plus size exceeds size of referenced object in "
 		     "BIT_FIELD_REF");
@@ -3447,7 +3493,7 @@ verify_types_in_gimple_reference (tree expr, bool require_lvalue)
 	  debug_generic_stmt (expr);
 	  return true;
 	}
-      if (TREE_CODE (TREE_OPERAND (expr, 1)) != INTEGER_CST
+      if (!poly_int_tree_p (TREE_OPERAND (expr, 1))
 	  || !POINTER_TYPE_P (TREE_TYPE (TREE_OPERAND (expr, 1))))
 	{
 	  error ("invalid offset operand in MEM_REF");
@@ -3464,7 +3510,7 @@ verify_types_in_gimple_reference (tree expr, bool require_lvalue)
 	  return true;
 	}
       if (!TMR_OFFSET (expr)
-	  || TREE_CODE (TMR_OFFSET (expr)) != INTEGER_CST
+	  || !poly_int_tree_p (TMR_OFFSET (expr))
 	  || !POINTER_TYPE_P (TREE_TYPE (TMR_OFFSET (expr))))
 	{
 	  error ("invalid offset operand in TARGET_MEM_REF");
@@ -3729,7 +3775,8 @@ verify_gimple_comparison (tree type, tree op0, tree op1, enum tree_code code)
           return true;
         }
 
-      if (TYPE_VECTOR_SUBPARTS (type) != TYPE_VECTOR_SUBPARTS (op0_type))
+      if (maybe_ne (TYPE_VECTOR_SUBPARTS (type),
+		    TYPE_VECTOR_SUBPARTS (op0_type)))
         {
           error ("invalid vector comparison resulting type");
           debug_generic_expr (type);
@@ -4130,8 +4177,8 @@ verify_gimple_assign_binary (gassign *stmt)
 		 || (!INTEGRAL_TYPE_P (lhs_type)
 		     && !SCALAR_FLOAT_TYPE_P (lhs_type))))
 	    || !useless_type_conversion_p (lhs_type, rhs2_type)
-	    || (GET_MODE_SIZE (element_mode (rhs2_type))
-		< 2 * GET_MODE_SIZE (element_mode (rhs1_type))))
+	    || maybe_lt (GET_MODE_SIZE (element_mode (rhs2_type)),
+			 2 * GET_MODE_SIZE (element_mode (rhs1_type))))
           {
             error ("type mismatch in widening sum reduction");
             debug_generic_expr (lhs_type);
@@ -4150,8 +4197,8 @@ verify_gimple_assign_binary (gassign *stmt)
         if (TREE_CODE (rhs1_type) != VECTOR_TYPE
             || TREE_CODE (lhs_type) != VECTOR_TYPE
 	    || !types_compatible_p (rhs1_type, rhs2_type)
-            || (GET_MODE_SIZE (element_mode (lhs_type))
-		!= 2 * GET_MODE_SIZE (element_mode (rhs1_type))))
+	    || maybe_ne (GET_MODE_SIZE (element_mode (lhs_type)),
+			 2 * GET_MODE_SIZE (element_mode (rhs1_type))))
           {
             error ("type mismatch in vector widening multiplication");
             debug_generic_expr (lhs_type);
@@ -4168,8 +4215,8 @@ verify_gimple_assign_binary (gassign *stmt)
       if (VECTOR_BOOLEAN_TYPE_P (lhs_type)
 	  && VECTOR_BOOLEAN_TYPE_P (rhs1_type)
 	  && types_compatible_p (rhs1_type, rhs2_type)
-	  && (TYPE_VECTOR_SUBPARTS (lhs_type)
-	      == 2 * TYPE_VECTOR_SUBPARTS (rhs1_type)))
+	  && known_eq (TYPE_VECTOR_SUBPARTS (lhs_type),
+		       2 * TYPE_VECTOR_SUBPARTS (rhs1_type)))
 	return false;
 
       /* Fallthru.  */
@@ -4184,8 +4231,8 @@ verify_gimple_assign_binary (gassign *stmt)
 		 || (INTEGRAL_TYPE_P (TREE_TYPE (rhs1_type))
 		     == INTEGRAL_TYPE_P (TREE_TYPE (lhs_type))))
 	    || !types_compatible_p (rhs1_type, rhs2_type)
-            || (GET_MODE_SIZE (element_mode (rhs1_type))
-		!= 2 * GET_MODE_SIZE (element_mode (lhs_type))))
+	    || maybe_ne (GET_MODE_SIZE (element_mode (rhs1_type)),
+			 2 * GET_MODE_SIZE (element_mode (lhs_type))))
           {
             error ("type mismatch in vector pack expression");
             debug_generic_expr (lhs_type);
@@ -4319,8 +4366,8 @@ verify_gimple_assign_ternary (gassign *stmt)
 
     case VEC_COND_EXPR:
       if (!VECTOR_BOOLEAN_TYPE_P (rhs1_type)
-	  || TYPE_VECTOR_SUBPARTS (rhs1_type)
-	     != TYPE_VECTOR_SUBPARTS (lhs_type))
+	  || maybe_ne (TYPE_VECTOR_SUBPARTS (rhs1_type),
+		       TYPE_VECTOR_SUBPARTS (lhs_type)))
 	{
 	  error ("the first argument of a VEC_COND_EXPR must be of a "
 		 "boolean vector type of the same number of elements "
@@ -4366,11 +4413,12 @@ verify_gimple_assign_ternary (gassign *stmt)
 	  return true;
 	}
 
-      if (TYPE_VECTOR_SUBPARTS (rhs1_type) != TYPE_VECTOR_SUBPARTS (rhs2_type)
-	  || TYPE_VECTOR_SUBPARTS (rhs2_type)
-	     != TYPE_VECTOR_SUBPARTS (rhs3_type)
-	  || TYPE_VECTOR_SUBPARTS (rhs3_type)
-	     != TYPE_VECTOR_SUBPARTS (lhs_type))
+      if (maybe_ne (TYPE_VECTOR_SUBPARTS (rhs1_type),
+		    TYPE_VECTOR_SUBPARTS (rhs2_type))
+	  || maybe_ne (TYPE_VECTOR_SUBPARTS (rhs2_type),
+		       TYPE_VECTOR_SUBPARTS (rhs3_type))
+	  || maybe_ne (TYPE_VECTOR_SUBPARTS (rhs3_type),
+		       TYPE_VECTOR_SUBPARTS (lhs_type)))
 	{
 	  error ("vectors with different element number found "
 		 "in vector permute expression");
@@ -4382,8 +4430,11 @@ verify_gimple_assign_ternary (gassign *stmt)
 	}
 
       if (TREE_CODE (TREE_TYPE (rhs3_type)) != INTEGER_TYPE
-	  || GET_MODE_BITSIZE (SCALAR_INT_TYPE_MODE (TREE_TYPE (rhs3_type)))
-	     != GET_MODE_BITSIZE (SCALAR_TYPE_MODE (TREE_TYPE (rhs1_type))))
+	  || (TREE_CODE (rhs3) != VECTOR_CST
+	      && (GET_MODE_BITSIZE (SCALAR_INT_TYPE_MODE
+				    (TREE_TYPE (rhs3_type)))
+		  != GET_MODE_BITSIZE (SCALAR_TYPE_MODE
+				       (TREE_TYPE (rhs1_type))))))
 	{
 	  error ("invalid mask type in vector permute expression");
 	  debug_generic_expr (lhs_type);
@@ -4481,8 +4532,8 @@ verify_gimple_assign_ternary (gassign *stmt)
 		     && !SCALAR_FLOAT_TYPE_P (lhs_type))))
 	    || !types_compatible_p (rhs1_type, rhs2_type)
 	    || !useless_type_conversion_p (lhs_type, rhs3_type)
-	    || (GET_MODE_SIZE (element_mode (rhs3_type))
-		< 2 * GET_MODE_SIZE (element_mode (rhs1_type))))
+	    || maybe_lt (GET_MODE_SIZE (element_mode (rhs3_type)),
+			 2 * GET_MODE_SIZE (element_mode (rhs1_type))))
           {
             error ("type mismatch in dot product reduction");
             debug_generic_expr (lhs_type);
@@ -4650,9 +4701,9 @@ verify_gimple_assign_single (gassign *stmt)
 			  debug_generic_stmt (rhs1);
 			  return true;
 			}
-		      else if (CONSTRUCTOR_NELTS (rhs1)
-			       * TYPE_VECTOR_SUBPARTS (elt_t)
-			       != TYPE_VECTOR_SUBPARTS (rhs1_type))
+		      else if (maybe_ne (CONSTRUCTOR_NELTS (rhs1)
+					 * TYPE_VECTOR_SUBPARTS (elt_t),
+					 TYPE_VECTOR_SUBPARTS (rhs1_type)))
 			{
 			  error ("incorrect number of vector CONSTRUCTOR"
 				 " elements");
@@ -4667,8 +4718,8 @@ verify_gimple_assign_single (gassign *stmt)
 		      debug_generic_stmt (rhs1);
 		      return true;
 		    }
-		  else if (CONSTRUCTOR_NELTS (rhs1)
-			   > TYPE_VECTOR_SUBPARTS (rhs1_type))
+		  else if (maybe_gt (CONSTRUCTOR_NELTS (rhs1),
+				     TYPE_VECTOR_SUBPARTS (rhs1_type)))
 		    {
 		      error ("incorrect number of vector CONSTRUCTOR elements");
 		      debug_generic_stmt (rhs1);
@@ -5431,7 +5482,6 @@ verify_gimple_in_cfg (struct function *fn, bool verify_nothrow)
 	  err |= err2;
 	}
 
-      bool label_allowed = true;
       for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
 	{
 	  gimple *stmt = gsi_stmt (gsi);
@@ -5447,19 +5497,6 @@ verify_gimple_in_cfg (struct function *fn, bool verify_nothrow)
 	      error ("gimple_bb (stmt) is set to a wrong basic block");
 	      err2 = true;
 	    }
-
-	  /* Labels may be preceded only by debug markers, not debug bind
-	     or source bind or any other statements.  */
-	  if (gimple_code (stmt) == GIMPLE_LABEL)
-	    {
-	      if (!label_allowed)
-		{
-		  error ("gimple label in the middle of a basic block");
-		  err2 = true;
-		}
-	    }
-	  else if (!gimple_debug_begin_stmt_p (stmt))
-	    label_allowed = false;
 
 	  err2 |= verify_gimple_stmt (stmt);
 	  err2 |= verify_location (&blocks, gimple_location (stmt));
@@ -5584,10 +5621,6 @@ gimple_verify_flow_info (void)
       for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
 	{
 	  tree label;
-
-	  if (is_gimple_debug (gsi_stmt (gsi)))
-	    continue;
-
 	  gimple *prev_stmt = stmt;
 
 	  stmt = gsi_stmt (gsi);
@@ -5912,10 +5945,8 @@ gimple_block_label (basic_block bb)
   tree label;
   glabel *stmt;
 
-  for (i = s; !gsi_end_p (i); gsi_next (&i))
+  for (i = s; !gsi_end_p (i); first = false, gsi_next (&i))
     {
-      if (is_gimple_debug (gsi_stmt (i)))
-	continue;
       stmt = dyn_cast <glabel *> (gsi_stmt (i));
       if (!stmt)
 	break;
@@ -5926,7 +5957,6 @@ gimple_block_label (basic_block bb)
 	    gsi_move_before (&i, &s);
 	  return label;
 	}
-      first = false;
     }
 
   label = create_artificial_label (UNKNOWN_LOCATION);

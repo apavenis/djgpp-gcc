@@ -723,7 +723,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 				      TYPE_ALIGN (gnu_type));
 
 	/* Likewise, if a size is specified, use it if valid.  */
-	if (Known_Esize (gnat_entity) && No (Address_Clause (gnat_entity)))
+	if (Known_Esize (gnat_entity))
 	  gnu_size
 	    = validate_size (Esize (gnat_entity), gnu_type, gnat_entity,
 			     VAR_DECL, false, Has_Size_Clause (gnat_entity));
@@ -2111,7 +2111,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	   index to the template.  */
 	for (index = (convention_fortran_p ? ndim - 1 : 0),
 	     gnat_index = First_Index (gnat_entity);
-	     0 <= index && index < ndim;
+	     IN_RANGE (index, 0, ndim - 1);
 	     index += (convention_fortran_p ? - 1 : 1),
 	     gnat_index = Next_Index (gnat_index))
 	  {
@@ -2362,7 +2362,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	       gnat_index = First_Index (gnat_entity),
 	       gnat_base_index
 		 = First_Index (Implementation_Base_Type (gnat_entity));
-	       0 <= index && index < ndim;
+	       IN_RANGE (index, 0, ndim - 1);
 	       index += (convention_fortran_p ? - 1 : 1),
 	       gnat_index = Next_Index (gnat_index),
 	       gnat_base_index = Next_Index (gnat_base_index))
@@ -5022,9 +5022,6 @@ gnat_to_gnu_component_type (Entity_Id gnat_array, bool definition,
       && tree_fits_uhwi_p (TYPE_SIZE (gnu_type)))
     gnu_type = make_packable_type (gnu_type, false, max_align);
 
-  if (Has_Atomic_Components (gnat_array))
-    check_ok_for_atomic_type (gnu_type, gnat_array, true);
-
   /* Get and validate any specified Component_Size.  */
   gnu_comp_size
     = validate_size (Component_Size (gnat_array), gnu_type, gnat_array,
@@ -5070,6 +5067,9 @@ gnat_to_gnu_component_type (Entity_Id gnat_array, bool definition,
 	create_type_decl (TYPE_NAME (gnu_type), gnu_type, true, debug_info_p,
 			  gnat_array);
     }
+
+  if (Has_Atomic_Components (gnat_array) || Is_Atomic_Or_VFA (gnat_type))
+    check_ok_for_atomic_type (gnu_type, gnat_array, true);
 
   /* If the component type is a padded type made for a non-bit-packed array
      of scalars with reverse storage order, we need to propagate the reverse

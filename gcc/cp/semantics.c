@@ -3,7 +3,7 @@
    building RTL.  These routines are used both during actual parsing
    and during the instantiation of template functions.
 
-   Copyright (C) 1998-2017 Free Software Foundation, Inc.
+   Copyright (C) 1998-2018 Free Software Foundation, Inc.
    Written by Mark Mitchell (mmitchell@usa.net) based on code found
    formerly in parse.y and pt.c.
 
@@ -798,7 +798,8 @@ begin_while_stmt (void)
    WHILE_STMT.  */
 
 void
-finish_while_stmt_cond (tree cond, tree while_stmt, bool ivdep)
+finish_while_stmt_cond (tree cond, tree while_stmt, bool ivdep,
+			unsigned short unroll)
 {
   cond = maybe_convert_cond (cond);
   finish_cond (&WHILE_COND (while_stmt), cond);
@@ -810,6 +811,14 @@ finish_while_stmt_cond (tree cond, tree while_stmt, bool ivdep)
 				      build_int_cst (integer_type_node,
 						     annot_expr_ivdep_kind),
 				      integer_zero_node);
+  if (unroll && cond != error_mark_node)
+    WHILE_COND (while_stmt) = build3 (ANNOTATE_EXPR,
+				      TREE_TYPE (WHILE_COND (while_stmt)),
+				      WHILE_COND (while_stmt),
+				      build_int_cst (integer_type_node,
+						     annot_expr_unroll_kind),
+				      build_int_cst (integer_type_node,
+						     unroll));
   simplify_loop_decl_cond (&WHILE_COND (while_stmt), WHILE_BODY (while_stmt));
 }
 
@@ -854,7 +863,7 @@ finish_do_body (tree do_stmt)
    COND is as indicated.  */
 
 void
-finish_do_stmt (tree cond, tree do_stmt, bool ivdep)
+finish_do_stmt (tree cond, tree do_stmt, bool ivdep, unsigned short unroll)
 {
   cond = maybe_convert_cond (cond);
   end_maybe_infinite_loop (cond);
@@ -862,6 +871,10 @@ finish_do_stmt (tree cond, tree do_stmt, bool ivdep)
     cond = build3 (ANNOTATE_EXPR, TREE_TYPE (cond), cond,
 		   build_int_cst (integer_type_node, annot_expr_ivdep_kind),
 		   integer_zero_node);
+  if (unroll && cond != error_mark_node)
+    cond = build3 (ANNOTATE_EXPR, TREE_TYPE (cond), cond,
+		   build_int_cst (integer_type_node, annot_expr_unroll_kind),
+		   build_int_cst (integer_type_node, unroll));
   DO_COND (do_stmt) = cond;
 }
 
@@ -970,7 +983,7 @@ finish_init_stmt (tree for_stmt)
    FOR_STMT.  */
 
 void
-finish_for_cond (tree cond, tree for_stmt, bool ivdep)
+finish_for_cond (tree cond, tree for_stmt, bool ivdep, unsigned short unroll)
 {
   cond = maybe_convert_cond (cond);
   finish_cond (&FOR_COND (for_stmt), cond);
@@ -982,6 +995,14 @@ finish_for_cond (tree cond, tree for_stmt, bool ivdep)
 				  build_int_cst (integer_type_node,
 						 annot_expr_ivdep_kind),
 				  integer_zero_node);
+  if (unroll && cond != error_mark_node)
+    FOR_COND (for_stmt) = build3 (ANNOTATE_EXPR,
+				  TREE_TYPE (FOR_COND (for_stmt)),
+				  FOR_COND (for_stmt),
+				  build_int_cst (integer_type_node,
+						 annot_expr_unroll_kind),
+				  build_int_cst (integer_type_node,
+						 unroll));
   simplify_loop_decl_cond (&FOR_COND (for_stmt), FOR_BODY (for_stmt));
 }
 
@@ -1057,7 +1078,7 @@ begin_range_for_stmt (tree scope, tree init)
   begin_maybe_infinite_loop (boolean_false_node);
 
   r = build_stmt (input_location, RANGE_FOR_STMT,
-		  NULL_TREE, NULL_TREE, NULL_TREE, NULL_TREE);
+		  NULL_TREE, NULL_TREE, NULL_TREE, NULL_TREE, NULL_TREE);
 
   if (scope == NULL_TREE)
     {
@@ -8587,6 +8608,8 @@ void
 finish_static_assert (tree condition, tree message, location_t location, 
                       bool member_p)
 {
+  tsubst_flags_t complain = tf_warning_or_error;
+
   if (message == NULL_TREE
       || message == error_mark_node
       || condition == NULL_TREE
@@ -8619,9 +8642,9 @@ finish_static_assert (tree condition, tree message, location_t location,
     }
 
   /* Fold the expression and convert it to a boolean value. */
-  condition = instantiate_non_dependent_expr (condition);
-  condition = cp_convert (boolean_type_node, condition, tf_warning_or_error);
-  condition = maybe_constant_value (condition);
+  condition = perform_implicit_conversion_flags (boolean_type_node, condition,
+						 complain, LOOKUP_NORMAL);
+  condition = fold_non_dependent_expr (condition);
 
   if (TREE_CODE (condition) == INTEGER_CST && !integer_zerop (condition))
     /* Do nothing; the condition is satisfied. */

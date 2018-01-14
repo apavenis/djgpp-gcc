@@ -1,5 +1,5 @@
 /* SSA Dominator optimizations for trees
-   Copyright (C) 2001-2017 Free Software Foundation, Inc.
+   Copyright (C) 2001-2018 Free Software Foundation, Inc.
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -1109,7 +1109,6 @@ record_equivalences_from_phis (basic_block bb)
       tree rhs = NULL;
       size_t i;
 
-      bool ignored_phi_arg = false;
       for (i = 0; i < gimple_phi_num_args (phi); i++)
 	{
 	  tree t = gimple_phi_arg_def (phi, i);
@@ -1120,16 +1119,18 @@ record_equivalences_from_phis (basic_block bb)
 	  if (lhs == t)
 	    continue;
 
-	  /* We want to track if we ignored any PHI arguments because
-	     their associated edges were not executable.  This impacts
-	     whether or not we can use any equivalence we might discover.  */
+	  /* If the associated edge is not marked as executable, then it
+	     can be ignored.  */
 	  if ((gimple_phi_arg_edge (phi, i)->flags & EDGE_EXECUTABLE) == 0)
-	    {
-	      ignored_phi_arg = true;
-	      continue;
-	    }
+	    continue;
 
 	  t = dom_valueize (t);
+
+	  /* If T is an SSA_NAME and its associated edge is a backedge,
+	     then quit as we can not utilize this equivalence.  */
+	  if (TREE_CODE (t) == SSA_NAME
+	      && (gimple_phi_arg_edge (phi, i)->flags & EDGE_DFS_BACK))
+	    break;
 
 	  /* If we have not processed an alternative yet, then set
 	     RHS to this alternative.  */
@@ -1152,15 +1153,9 @@ record_equivalences_from_phis (basic_block bb)
 	 a useful equivalence.  We do not need to record unwind data for
 	 this, since this is a true assignment and not an equivalence
 	 inferred from a comparison.  All uses of this ssa name are dominated
-	 by this assignment, so unwinding just costs time and space.
-
-	 Note that if we ignored a PHI argument and the resulting equivalence
-	 is SSA_NAME = SSA_NAME.  Then we can not use the equivalence as the
-	 uses of the LHS SSA_NAME are not necessarily dominated by the
-	 assignment of the RHS SSA_NAME.  */
+	 by this assignment, so unwinding just costs time and space.  */
       if (i == gimple_phi_num_args (phi)
-	  && may_propagate_copy (lhs, rhs)
-	  && (!ignored_phi_arg || TREE_CODE (rhs) != SSA_NAME))
+	  && may_propagate_copy (lhs, rhs))
 	set_ssa_name_value (lhs, rhs);
     }
 }
@@ -2017,6 +2012,7 @@ dom_opt_dom_walker::optimize_stmt (basic_block bb, gimple_stmt_iterator si)
 		 undefined behavior that get diagnosed if they're left in the
 		 IL because we've attached range information to new
 		 SSA_NAMES.  */
+	      update_stmt_if_modified (stmt);
 	      edge taken_edge = NULL;
 	      evrp_range_analyzer.vrp_visit_cond_stmt (as_a <gcond *> (stmt),
 						       &taken_edge);
