@@ -1281,7 +1281,9 @@ simple_object_elf_copy_lto_debug_sections (simple_object_read *sobj,
     }
   if (new_i - 1 >= SHN_LORESERVE)
     {
+#ifdef ENOTSUP
       *err = ENOTSUP;
+#endif
       return "Too many copied sections";
     }
   eow->shdrs = XNEWVEC (unsigned char, shdr_size * (new_i - 1));
