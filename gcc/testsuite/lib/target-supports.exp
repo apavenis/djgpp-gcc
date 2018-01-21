@@ -1125,8 +1125,8 @@ proc check_effective_target_pie { } {
 	return 1;
     }
     if { [istarget *-*-solaris2.1\[1-9\]*] } {
-	# Full PIE support was added in Solaris 11.x and Solaris 12, but gcc
-	# errors out if missing, so check for that.
+	# Full PIE support was added in Solaris 11.3, but gcc errors out
+	# if missing, so check for that.
 	return [check_no_compiler_messages pie executable {
 	    int main (void) { return 0; }
 	} "-pie -fpie"]
@@ -5798,7 +5798,7 @@ proc check_effective_target_vect_hw_misalign { } {
 	  set et_vect_hw_misalign_saved($et_index) 1
 	}
 	if { [istarget arm*-*-*] } {
-	    set et_vect_hw_misalign_saved($et_index) [check_effective_target_arm_vect_no_misalign]
+	    set et_vect_hw_misalign_saved($et_index) [expr ![check_effective_target_arm_vect_no_misalign]]
 	}
     }
     verbose "check_effective_target_vect_hw_misalign:\
