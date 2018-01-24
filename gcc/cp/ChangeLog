@@ -1,3 +1,225 @@
+2018-01-23  Jason Merrill  <jason@redhat.com>
+
+	PR c++/82249 - wrong mismatched pack length error.
+	* pt.c (extract_fnparm_pack, tsubst_pack_expansion): Handle
+	unsubstituted function parameter pack.
+
+2018-01-23  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/83921
+	* decl.c (check_for_uninitialized_const_var): Not static; add
+	bool and tsubst_flags_t parameters; adjust to be used both in
+	constexpr context and not.
+	* constexpr.c (potential_constant_expression_1): Use the above.
+	* cp-tree.h (check_for_uninitialized_const_var): Declare.
+
+2018-01-23  Jason Merrill  <jason@redhat.com>
+
+	PR c++/83947 - ICE with auto declarations.
+	* pt.c (do_auto_deduction): Don't deduce from an auto decl.
+	* decl.c (undeduced_auto_decl): Limit to vars and fns.
+
+2018-01-23  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c++/83974
+	* pt.c (tsubst_copy_and_build) <CONSTRUCTOR>: Remove early bailout
+	for pointer to member function types.
+
+2018-01-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/83987
+	* tree.c (cp_free_lang_data): Change DECL_VALUE_EXPR of
+	DECL_OMP_PRIVATIZED_MEMBER vars to error_mark_node.
+
+2018-01-23  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/83988
+	* pt.c (tsubst_baselink): Remove optype assert.
+	* ptree.c (cxx_print_xnode): <case BASELINK> Print BASELINK_OPTYPE.
+
+2018-01-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/83958
+	* decl.c (cp_finish_decomp): Diagnose if reference structure binding
+	refers to incomplete type.
+
+2018-01-23  Nathan Sidwell  <nathan@acm.org>
+
+	Deprecate ARM-era for scope handling
+	* decl.c (poplevel): Flag_new_for_scope is a boolean-like.
+	(cxx_init_decl_processing): Deprecate flag_new_for_scope being
+	cleared.
+	* name-lookup.c (check_for_out_of_scope_variable): Deprecate and
+	cleanup handling.
+	* semantics.c (begin_for_scope): Flag_new_for_scope is
+	boolean-like.
+	(finish_for_stmt, begin_range_for_stmt): Likewise.
+
+2018-01-22  Jason Merrill  <jason@redhat.com>
+
+	PR c++/83720
+	* decl2.c (determine_visibility): Fix template_decl handling
+	instead of blocking it.
+
+	PR c++/83720 - ICE with lambda and LTO.
+	* decl2.c (determine_visibility): Clear template_decl for
+	function-scope decls.  Propagate anonymous linkage from containing
+	function.
+
+2018-01-22  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/81933
+	* typeck2.c (split_nonconstant_init_1): Return false if we didn't
+	split out anything.
+
+2018-01-22  Ville Voutilainen  <ville.voutilainen@gmail.com>
+
+	PR c++/83895
+	* decl.c (grokdeclarator): Don't diagnose extra parens
+	on typedefs.
+
+2018-01-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/81167
+	* call.c (joust): Use TREE_TYPE (source) if source is
+	a POINTER_TYPE_P rather than if ! DECL_CONSTRUCTOR_P (w->fn).
+
+	PR c++/83919
+	* typeck.c (convert_for_assignment): Suppress warn_ignored_qualifiers
+	for direct enum init.
+	* decl.c (reshape_init): Likewise.
+
+2018-01-19  Marek Polacek  <polacek@redhat.com>
+
+	* constexpr.c (fold_simple): Simplify.
+
+2018-01-18  Jason Merrill  <jason@redhat.com>
+
+	PR c++/83714
+	* search.c (any_dependent_bases_p): Handle null TREE_BINFO.
+	* pt.c (instantiation_dependent_scope_ref_p): True if
+	any_dependent_bases_p.
+
+2018-01-18  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* cp-tree.h: Fix comment typo (DECL_NON_TRIVIALLY_INITIALIZED_P
+	vs DECL_NONTRIVIALLY_INITIALIZED_P).
+
+2018-01-18  Jason Merrill  <jason@redhat.com>
+
+	PR c++/82461 - constexpr list-initialized member
+	* constexpr.c (potential_constant_expression_1): Check
+	TARGET_EXPR_DIRECT_INIT_P.
+
+2018-01-18  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/81013
+	* decl.c (xref_basetypes): Early return upon error about derived
+	union.
+
+2018-01-18  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/83160
+	* cp-tree.h (mark_use): Declare.
+	* expr.c (mark_use): Make extern.
+	* call.c (direct_reference_binding): Set inner conv's
+	rvaluedness_matches_p, if it is an identity.
+	(convert_like_real): Mark lvalue or rvalue use for identity as
+	rvaledness_matches_p demands.
+
+2018-01-18  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/83824
+	* parser.c (attr_chainon): New function.
+	(cp_parser_label_for_labeled_statement, cp_parser_decl_specifier_seq,
+	cp_parser_namespace_definition, cp_parser_init_declarator,
+	cp_parser_type_specifier_seq, cp_parser_parameter_declaration,
+	cp_parser_gnu_attributes_opt): Use it.
+	(cp_parser_member_declaration, cp_parser_objc_class_ivars,
+	cp_parser_objc_struct_declaration): Likewise.  Don't reset
+	prefix_attributes if attributes is error_mark_node.
+
+2018-01-17  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/78344
+	* decl.c (grokdeclarator): Do not append the error_mark_node
+	due to an erroneous optional attribute-specifier-seq.
+
+2018-01-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/83897
+	* cp-gimplify.c (cp_maybe_instrument_return): Handle
+	CLEANUP_POINT_EXPR.
+
+2018-01-17  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/81054
+	* constexpr.c (ensure_literal_type_for_constexpr_object): Return
+	error_mark_node when we give an error.
+	* decl.c (cp_finish_decl): Use the latter.
+
+2018-01-17  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/83287
+	* init.c (build_raw_new_expr): Scan list for lookups to keep.
+
+2018-01-17  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c++/83814
+	* expr.c (fold_for_warn): Move from c-common.c, reducing to just
+	the C++ part.  If processing a template, call
+	fold_non_dependent_expr rather than fully folding.
+
+2018-01-17  Jason Merrill  <jason@redhat.com>
+
+	PR c++/81067 - redundant NULL warning.
+	* call.c (convert_like_real): Restore null_node handling.
+
+2018-01-17  Jason Merrill  <jason@redhat.com>
+
+	PR c++/81843 - ICE with variadic member template.
+	PR c++/72801
+	* pt.c (unify_pack_expansion): Don't try to deduce enclosing
+	template args.
+
+2018-01-17  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c++/83799
+	* pt.c (type_dependent_expression_p): Strip any location wrapper
+	before testing tree codes.
+	(selftest::test_type_dependent_expression_p): New function.
+	(selftest::cp_pt_c_tests): Call it.
+
+2018-01-17  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/83739
+	* pt.c (tsubst_expr) <case RANGE_FOR_STMT>: Rebuild a range_for if
+	this not a final instantiation.
+
+2018-01-16  Jason Merrill  <jason@redhat.com>
+
+	PR c++/83714 - ICE checking return in template.
+	* typeck.c (check_return_expr): Call build_non_dependent_expr.
+
+2018-01-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/83817
+	* pt.c (tsubst_copy_and_build) <case CALL_EXPR>: If function
+	is AGGR_INIT_EXPR rather than CALL_EXPR, set AGGR_INIT_FROM_THUNK_P
+	instead of CALL_FROM_THUNK_P.
+
+	PR c++/83825
+	* name-lookup.c (member_vec_dedup): Return early if len is 0.
+	(resort_type_member_vec, set_class_bindings,
+	insert_late_enum_def_bindings): Use vec qsort method instead of
+	calling qsort directly.
+
+2018-01-15  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/83588
+	* class.c (find_flexarrays): Make a record of multiple flexible array
+	members.
+
 2018-01-12  Jason Merrill  <jason@redhat.com>
 
 	PR c++/83186 - ICE with static_cast of list-initialized temporary.

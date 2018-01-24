@@ -5128,15 +5128,10 @@ free_lang_data_in_type (tree type)
       TREE_PURPOSE (p) = NULL;
   else if (RECORD_OR_UNION_TYPE_P (type))
     {
-      /* Remove members that are not FIELD_DECLs (and maybe
-	 TYPE_DECLs) from the field list of an aggregate.  These occur
-	 in C++.  */
+      /* Remove members that are not FIELD_DECLs from the field list
+	 of an aggregate.  These occur in C++.  */
       for (tree *prev = &TYPE_FIELDS (type), member; (member = *prev);)
-	if (TREE_CODE (member) == FIELD_DECL
-	    || (TREE_CODE (member) == TYPE_DECL
-		&& !DECL_IGNORED_P (member)
-		&& debug_info_level > DINFO_LEVEL_TERSE
-		&& !is_redundant_typedef (member)))
+	if (TREE_CODE (member) == FIELD_DECL)
 	  prev = &DECL_CHAIN (member);
 	else
 	  *prev = DECL_CHAIN (member);
@@ -5150,15 +5145,9 @@ free_lang_data_in_type (tree type)
 	{
 	  free_lang_data_in_binfo (TYPE_BINFO (type));
 	  /* We need to preserve link to bases and virtual table for all
-	     polymorphic types to make devirtualization machinery working.
-	     Debug output cares only about bases, but output also
-	     virtual table pointers so merging of -fdevirtualize and
-	     -fno-devirtualize units is easier.  */
-	  if ((!BINFO_VTABLE (TYPE_BINFO (type))
-	       || !flag_devirtualize)
-	      && ((!BINFO_N_BASE_BINFOS (TYPE_BINFO (type))
-		   && !BINFO_VTABLE (TYPE_BINFO (type)))
-		  || debug_info_level != DINFO_LEVEL_NONE))
+	     polymorphic types to make devirtualization machinery working.  */
+	  if (!BINFO_VTABLE (TYPE_BINFO (type))
+	      || !flag_devirtualize)
 	    TYPE_BINFO (type) = NULL;
 	}
     }
@@ -5186,6 +5175,11 @@ free_lang_data_in_type (tree type)
       while (ctx && TREE_CODE (ctx) == BLOCK);
       TYPE_CONTEXT (type) = ctx;
     }
+
+  /* Drop TYPE_DECLs in TYPE_NAME in favor of the identifier in the
+     TYPE_DECL if the type doesn't have linkage.  */
+  if (! type_with_linkage_p (type))
+    TYPE_NAME (type) = TYPE_IDENTIFIER (type);
 }
 
 
@@ -5335,16 +5329,6 @@ free_lang_data_in_decl (tree decl)
 	 At this point, it is not needed anymore.  */
       DECL_SAVED_TREE (decl) = NULL_TREE;
 
-      /* Clear the abstract origin if it refers to a method.
-         Otherwise dwarf2out.c will ICE as we splice functions out of
-         TYPE_FIELDS and thus the origin will not be output
-         correctly.  */
-      if (DECL_ABSTRACT_ORIGIN (decl)
-	  && DECL_CONTEXT (DECL_ABSTRACT_ORIGIN (decl))
-	  && RECORD_OR_UNION_TYPE_P
-	       (DECL_CONTEXT (DECL_ABSTRACT_ORIGIN (decl))))
-	DECL_ABSTRACT_ORIGIN (decl) = NULL_TREE;
-
       /* Sometimes the C++ frontend doesn't manage to transform a temporary
          DECL_VINDEX referring to itself into a vtable slot number as it
 	 should.  Happens with functions that are copied and then forgotten
@@ -5408,34 +5392,6 @@ struct free_lang_data_d
 };
 
 
-/* Save all language fields needed to generate proper debug information
-   for DECL.  This saves most fields cleared out by free_lang_data_in_decl.  */
-
-static void
-save_debug_info_for_decl (tree t)
-{
-  /*struct saved_debug_info_d *sdi;*/
-
-  gcc_assert (debug_info_level > DINFO_LEVEL_TERSE && t && DECL_P (t));
-
-  /* FIXME.  Partial implementation for saving debug info removed.  */
-}
-
-
-/* Save all language fields needed to generate proper debug information
-   for TYPE.  This saves most fields cleared out by free_lang_data_in_type.  */
-
-static void
-save_debug_info_for_type (tree t)
-{
-  /*struct saved_debug_info_d *sdi;*/
-
-  gcc_assert (debug_info_level > DINFO_LEVEL_TERSE && t && TYPE_P (t));
-
-  /* FIXME.  Partial implementation for saving debug info removed.  */
-}
-
-
 /* Add type or decl T to one of the list of tree nodes that need their
    language data removed.  The lists are held inside FLD.  */
 
@@ -5443,17 +5399,9 @@ static void
 add_tree_to_fld_list (tree t, struct free_lang_data_d *fld)
 {
   if (DECL_P (t))
-    {
-      fld->decls.safe_push (t);
-      if (debug_info_level > DINFO_LEVEL_TERSE)
-	save_debug_info_for_decl (t);
-    }
+    fld->decls.safe_push (t);
   else if (TYPE_P (t))
-    {
-      fld->types.safe_push (t);
-      if (debug_info_level > DINFO_LEVEL_TERSE)
-	save_debug_info_for_type (t);
-    }
+    fld->types.safe_push (t);
   else
     gcc_unreachable ();
 }
@@ -8867,11 +8815,12 @@ variably_modified_type_p (tree type, tree fn)
   do { tree _t = (T);							\
     if (_t != NULL_TREE							\
 	&& _t != error_mark_node					\
-	&& TREE_CODE (_t) != INTEGER_CST				\
+	&& !CONSTANT_CLASS_P (_t)					\
 	&& TREE_CODE (_t) != PLACEHOLDER_EXPR				\
 	&& (!fn								\
 	    || (!TYPE_SIZES_GIMPLIFIED (type)				\
-		&& !is_gimple_sizepos (_t))				\
+		&& (TREE_CODE (_t) != VAR_DECL				\
+		    && !CONTAINS_PLACEHOLDER_P (_t)))			\
 	    || walk_tree (&_t, find_var_from_fn, fn, NULL)))		\
       return true;  } while (0)
 
@@ -14126,8 +14075,10 @@ maybe_wrap_with_location (tree expr, location_t loc)
   if (EXCEPTIONAL_CLASS_P (expr))
     return expr;
 
-  tree_code code = (CONSTANT_CLASS_P (expr) && TREE_CODE (expr) != STRING_CST
-		    ? NON_LVALUE_EXPR : VIEW_CONVERT_EXPR);
+  tree_code code
+    = (((CONSTANT_CLASS_P (expr) && TREE_CODE (expr) != STRING_CST)
+	|| (TREE_CODE (expr) == CONST_DECL && !TREE_STATIC (expr)))
+       ? NON_LVALUE_EXPR : VIEW_CONVERT_EXPR);
   tree wrapper = build1_loc (loc, code, TREE_TYPE (expr), expr);
   /* Mark this node as being a wrapper.  */
   EXPR_LOCATION_WRAPPER_P (wrapper) = 1;
@@ -14531,6 +14482,8 @@ test_location_wrappers ()
 {
   location_t loc = BUILTINS_LOCATION;
 
+  ASSERT_EQ (NULL_TREE, maybe_wrap_with_location (NULL_TREE, loc));
+
   /* Wrapping a constant.  */
   tree int_cst = build_int_cst (integer_type_node, 42);
   ASSERT_FALSE (CAN_HAVE_LOCATION_P (int_cst));
@@ -14540,6 +14493,14 @@ test_location_wrappers ()
   ASSERT_TRUE (location_wrapper_p (wrapped_int_cst));
   ASSERT_EQ (loc, EXPR_LOCATION (wrapped_int_cst));
   ASSERT_EQ (int_cst, tree_strip_any_location_wrapper (wrapped_int_cst));
+
+  /* We shouldn't add wrapper nodes for UNKNOWN_LOCATION.  */
+  ASSERT_EQ (int_cst, maybe_wrap_with_location (int_cst, UNKNOWN_LOCATION));
+
+  /* We shouldn't add wrapper nodes for nodes that CAN_HAVE_LOCATION_P.  */
+  tree cast = build1 (NOP_EXPR, char_type_node, int_cst);
+  ASSERT_TRUE (CAN_HAVE_LOCATION_P (cast));
+  ASSERT_EQ (cast, maybe_wrap_with_location (cast, loc));
 
   /* Wrapping a STRING_CST.  */
   tree string_cst = build_string (4, "foo");

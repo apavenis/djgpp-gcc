@@ -8689,6 +8689,7 @@ convert_for_assignment (tree type, tree rhs,
       if (check_narrowing (ENUM_UNDERLYING_TYPE (type), elt, complain))
 	{
 	  warning_sentinel w (warn_useless_cast);
+	  warning_sentinel w2 (warn_ignored_qualifiers);
 	  rhs = cp_build_c_cast (type, elt, complain);
 	}
       else
@@ -9332,6 +9333,9 @@ check_return_expr (tree retval, bool *no_warning)
       /* If we had an id-expression obfuscated by force_paren_expr, we need
 	 to undo it so we can try to treat it as an rvalue below.  */
       retval = maybe_undo_parenthesized_ref (retval);
+
+      if (processing_template_decl)
+	retval = build_non_dependent_expr (retval);
 
       /* Under C++11 [12.8/32 class.copy], a returned lvalue is sometimes
 	 treated as an rvalue for the purposes of overload resolution to

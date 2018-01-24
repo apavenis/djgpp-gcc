@@ -1289,7 +1289,9 @@ resolve_structure_cons (gfc_expr *expr, int init)
 	}
 
       rank = comp->as ? comp->as->rank : 0;
-      if (comp->ts.type == BT_CLASS && CLASS_DATA (comp)->as)
+      if (comp->ts.type == BT_CLASS
+	  && !comp->ts.u.derived->attr.unlimited_polymorphic
+	  && CLASS_DATA (comp)->as)
  	rank = CLASS_DATA (comp)->as->rank;
 
       if (cons->expr->expr_type != EXPR_NULL && rank != cons->expr->rank
@@ -10115,8 +10117,6 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
   bool rval = false;
   gfc_expr *lhs;
   gfc_expr *rhs;
-  int llen = 0;
-  int rlen = 0;
   int n;
   gfc_ref *ref;
   symbol_attribute attr;
@@ -10198,10 +10198,11 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
   if (lhs->ts.type == BT_CHARACTER
 	&& warn_character_truncation)
     {
+      HOST_WIDE_INT llen = 0, rlen = 0;
       if (lhs->ts.u.cl != NULL
 	    && lhs->ts.u.cl->length != NULL
 	    && lhs->ts.u.cl->length->expr_type == EXPR_CONSTANT)
-	llen = mpz_get_si (lhs->ts.u.cl->length->value.integer);
+	llen = gfc_mpz_get_hwi (lhs->ts.u.cl->length->value.integer);
 
       if (rhs->expr_type == EXPR_CONSTANT)
  	rlen = rhs->value.character.length;
@@ -10209,13 +10210,13 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
       else if (rhs->ts.u.cl != NULL
 		 && rhs->ts.u.cl->length != NULL
 		 && rhs->ts.u.cl->length->expr_type == EXPR_CONSTANT)
-	rlen = mpz_get_si (rhs->ts.u.cl->length->value.integer);
+	rlen = gfc_mpz_get_hwi (rhs->ts.u.cl->length->value.integer);
 
       if (rlen && llen && rlen > llen)
 	gfc_warning_now (OPT_Wcharacter_truncation,
 			 "CHARACTER expression will be truncated "
-			 "in assignment (%d/%d) at %L",
-			 llen, rlen, &code->loc);
+			 "in assignment (%ld/%ld) at %L",
+			 (long) llen, (long) rlen, &code->loc);
     }
 
   /* Ensure that a vector index expression for the lvalue is evaluated

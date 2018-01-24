@@ -8551,9 +8551,13 @@ fold_comparison (location_t loc, enum tree_code code, tree type,
 	{
 	  /* We can fold this expression to a constant if the non-constant
 	     offset parts are equal.  */
-	  if (offset0 == offset1
-	      || (offset0 && offset1
-		  && operand_equal_p (offset0, offset1, 0)))
+	  if ((offset0 == offset1
+	       || (offset0 && offset1
+		   && operand_equal_p (offset0, offset1, 0)))
+	      && (equality_code
+		  || (indirect_base0
+		      && (DECL_P (base0) || CONSTANT_CLASS_P (base0)))
+		  || TYPE_OVERFLOW_UNDEFINED (TREE_TYPE (arg0))))
 	    {
 	      if (!equality_code
 		  && maybe_ne (bitpos0, bitpos1)
@@ -8568,39 +8572,39 @@ fold_comparison (location_t loc, enum tree_code code, tree type,
 		{
 		case EQ_EXPR:
 		  if (known_eq (bitpos0, bitpos1))
-		    return boolean_true_node;
+		    return constant_boolean_node (true, type);
 		  if (known_ne (bitpos0, bitpos1))
-		    return boolean_false_node;
+		    return constant_boolean_node (false, type);
 		  break;
 		case NE_EXPR:
 		  if (known_ne (bitpos0, bitpos1))
-		    return boolean_true_node;
+		    return constant_boolean_node (true, type);
 		  if (known_eq (bitpos0, bitpos1))
-		    return boolean_false_node;
+		    return constant_boolean_node (false, type);
 		  break;
 		case LT_EXPR:
 		  if (known_lt (bitpos0, bitpos1))
-		    return boolean_true_node;
+		    return constant_boolean_node (true, type);
 		  if (known_ge (bitpos0, bitpos1))
-		    return boolean_false_node;
+		    return constant_boolean_node (false, type);
 		  break;
 		case LE_EXPR:
 		  if (known_le (bitpos0, bitpos1))
-		    return boolean_true_node;
+		    return constant_boolean_node (true, type);
 		  if (known_gt (bitpos0, bitpos1))
-		    return boolean_false_node;
+		    return constant_boolean_node (false, type);
 		  break;
 		case GE_EXPR:
 		  if (known_ge (bitpos0, bitpos1))
-		    return boolean_true_node;
+		    return constant_boolean_node (true, type);
 		  if (known_lt (bitpos0, bitpos1))
-		    return boolean_false_node;
+		    return constant_boolean_node (false, type);
 		  break;
 		case GT_EXPR:
 		  if (known_gt (bitpos0, bitpos1))
-		    return boolean_true_node;
+		    return constant_boolean_node (true, type);
 		  if (known_le (bitpos0, bitpos1))
-		    return boolean_false_node;
+		    return constant_boolean_node (false, type);
 		  break;
 		default:;
 		}
@@ -8612,7 +8616,11 @@ fold_comparison (location_t loc, enum tree_code code, tree type,
 	     because pointer arithmetic is restricted to retain within an
 	     object and overflow on pointer differences is undefined as of
 	     6.5.6/8 and /9 with respect to the signed ptrdiff_t.  */
-	  else if (known_eq (bitpos0, bitpos1))
+	  else if (known_eq (bitpos0, bitpos1)
+		   && (equality_code
+		       || (indirect_base0
+			   && (DECL_P (base0) || CONSTANT_CLASS_P (base0)))
+		       || TYPE_OVERFLOW_UNDEFINED (TREE_TYPE (arg0))))
 	    {
 	      /* By converting to signed sizetype we cover middle-end pointer
 	         arithmetic which operates on unsigned pointer types of size
@@ -9721,8 +9729,8 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 
 	  /* With undefined overflow prefer doing association in a type
 	     which wraps on overflow, if that is one of the operand types.  */
-	  if (POINTER_TYPE_P (type)
-	      || (INTEGRAL_TYPE_P (type) && !TYPE_OVERFLOW_WRAPS (type)))
+	  if ((POINTER_TYPE_P (type) || INTEGRAL_TYPE_P (type))
+	      && !TYPE_OVERFLOW_WRAPS (type))
 	    {
 	      if (INTEGRAL_TYPE_P (TREE_TYPE (arg0))
 		  && TYPE_OVERFLOW_WRAPS (TREE_TYPE (arg0)))
@@ -9735,8 +9743,8 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 
 	  /* With undefined overflow we can only associate constants with one
 	     variable, and constants whose association doesn't overflow.  */
-	  if (POINTER_TYPE_P (atype)
-	      || (INTEGRAL_TYPE_P (atype) && !TYPE_OVERFLOW_WRAPS (atype)))
+	  if ((POINTER_TYPE_P (atype) || INTEGRAL_TYPE_P (atype))
+	      && !TYPE_OVERFLOW_WRAPS (atype))
 	    {
 	      if ((var0 && var1) || (minus_var0 && minus_var1))
 		{
@@ -11398,8 +11406,8 @@ fold_ternary_loc (location_t loc, enum tree_code code, tree type,
 		  else /* Currently unreachable.  */
 		    return NULL_TREE;
 		}
-	      tree t = fold_vec_perm (type, arg1, arg2,
-				      vec_perm_indices (sel, 2, nelts));
+	      vec_perm_indices indices (sel, 2, nelts);
+	      tree t = fold_vec_perm (type, arg1, arg2, indices);
 	      if (t != NULL_TREE)
 		return t;
 	    }
@@ -12587,9 +12595,34 @@ multiple_of_p (tree type, const_tree top, const_tree bottom)
 	 a multiple of BOTTOM then TOP is a multiple of BOTTOM.  */
       if (!integer_pow2p (bottom))
 	return 0;
-      /* FALLTHRU */
+      return (multiple_of_p (type, TREE_OPERAND (top, 1), bottom)
+	      || multiple_of_p (type, TREE_OPERAND (top, 0), bottom));
 
     case MULT_EXPR:
+      if (TREE_CODE (bottom) == INTEGER_CST)
+	{
+	  op1 = TREE_OPERAND (top, 0);
+	  op2 = TREE_OPERAND (top, 1);
+	  if (TREE_CODE (op1) == INTEGER_CST)
+	    std::swap (op1, op2);
+	  if (TREE_CODE (op2) == INTEGER_CST)
+	    {
+	      if (multiple_of_p (type, op2, bottom))
+		return 1;
+	      /* Handle multiple_of_p ((x * 2 + 2) * 4, 8).  */
+	      if (multiple_of_p (type, bottom, op2))
+		{
+		  widest_int w = wi::sdiv_trunc (wi::to_widest (bottom),
+						 wi::to_widest (op2));
+		  if (wi::fits_to_tree_p (w, TREE_TYPE (bottom)))
+		    {
+		      op2 = wide_int_to_tree (TREE_TYPE (bottom), w);
+		      return multiple_of_p (type, op1, op2);
+		    }
+		}
+	      return multiple_of_p (type, op1, bottom);
+	    }
+	}
       return (multiple_of_p (type, TREE_OPERAND (top, 1), bottom)
 	      || multiple_of_p (type, TREE_OPERAND (top, 0), bottom));
 

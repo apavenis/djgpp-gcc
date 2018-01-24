@@ -509,6 +509,7 @@ func (b *Builder) build(a *Action) (err error) {
 			Compiler:    cfg.BuildToolchainName,
 			Dir:         a.Package.Dir,
 			GoFiles:     mkAbsFiles(a.Package.Dir, gofiles),
+			ImportPath:  a.Package.ImportPath,
 			ImportMap:   make(map[string]string),
 			PackageFile: make(map[string]string),
 		}
@@ -636,6 +637,16 @@ func (b *Builder) build(a *Action) (err error) {
 				return err
 			}
 			objects = append(objects, ofiles...)
+		case "aix":
+			asmfile, err := b.gccgoBuildIDXCOFFFile(a)
+			if err != nil {
+				return err
+			}
+			ofiles, err := BuildToolchain.asm(b, a, []string{asmfile})
+			if err != nil {
+				return err
+			}
+			objects = append(objects, ofiles...)
 		}
 	}
 
@@ -675,9 +686,14 @@ type vetConfig struct {
 	GoFiles     []string
 	ImportMap   map[string]string
 	PackageFile map[string]string
+	ImportPath  string
 
 	SucceedOnTypecheckFailure bool
 }
+
+// VetTool is the path to an alternate vet tool binary.
+// The caller is expected to set it (if needed) before executing any vet actions.
+var VetTool string
 
 // VetFlags are the flags to pass to vet.
 // The caller is expected to set them before executing any vet actions.
@@ -724,7 +740,11 @@ func (b *Builder) vet(a *Action) error {
 	}
 
 	p := a.Package
-	return b.run(a, p.Dir, p.ImportPath, env, cfg.BuildToolexec, base.Tool("vet"), VetFlags, a.Objdir+"vet.cfg")
+	tool := VetTool
+	if tool == "" {
+		tool = base.Tool("vet")
+	}
+	return b.run(a, p.Dir, p.ImportPath, env, cfg.BuildToolexec, tool, VetFlags, a.Objdir+"vet.cfg")
 }
 
 // linkActionID computes the action ID for a link action.
@@ -780,15 +800,8 @@ func (b *Builder) printLinkerConfig(h io.Writer, p *load.Package) {
 		}
 		fmt.Fprintf(h, "GO$GOARCH=%s\n", os.Getenv("GO"+strings.ToUpper(cfg.BuildContext.GOARCH))) // GO386, GOARM, etc
 
-		/*
-			// TODO(rsc): Enable this code.
-			// golang.org/issue/22475.
-			goroot := cfg.BuildContext.GOROOT
-			if final := os.Getenv("GOROOT_FINAL"); final != "" {
-				goroot = final
-			}
-			fmt.Fprintf(h, "GOROOT=%s\n", goroot)
-		*/
+		// The linker writes source file paths that say GOROOT_FINAL.
+		fmt.Fprintf(h, "GOROOT=%s\n", cfg.GOROOT_FINAL)
 
 		// TODO(rsc): Convince linker team not to add more magic environment variables,
 		// or perhaps restrict the environment variables passed to subprocesses.
@@ -1279,6 +1292,7 @@ func (b *Builder) cover(a *Action, dst, src string, perm os.FileMode, varName st
 
 var objectMagic = [][]byte{
 	{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'}, // Package archive
+	{'<', 'b', 'i', 'g', 'a', 'f', '>', '\n'}, // Package AIX big archive
 	{'\x7F', 'E', 'L', 'F'},                   // ELF
 	{0xFE, 0xED, 0xFA, 0xCE},                  // Mach-O big-endian 32-bit
 	{0xFE, 0xED, 0xFA, 0xCF},                  // Mach-O big-endian 64-bit
@@ -1288,6 +1302,8 @@ var objectMagic = [][]byte{
 	{0x00, 0x00, 0x01, 0xEB},                  // Plan 9 i386
 	{0x00, 0x00, 0x8a, 0x97},                  // Plan 9 amd64
 	{0x00, 0x00, 0x06, 0x47},                  // Plan 9 arm
+	{0x01, 0xDF},                              // XCOFF32
+	{0x01, 0xF7},                              // XCOFF64
 }
 
 func isObject(s string) bool {
@@ -1845,7 +1861,7 @@ func (b *Builder) gccSupportsFlag(compiler []string, flag string) bool {
 	// GCC and clang.
 	cmdArgs := str.StringList(compiler, flag, "-c", "-x", "c", "-")
 	if cfg.BuildN || cfg.BuildX {
-		b.Showcmd(b.WorkDir, "%s", joinUnambiguously(cmdArgs))
+		b.Showcmd(b.WorkDir, "%s || true", joinUnambiguously(cmdArgs))
 		if cfg.BuildN {
 			return false
 		}

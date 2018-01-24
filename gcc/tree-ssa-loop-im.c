@@ -1081,17 +1081,6 @@ invariantness_dom_walker::before_dom_children (basic_block bb)
   return NULL;
 }
 
-class move_computations_dom_walker : public dom_walker
-{
-public:
-  move_computations_dom_walker (cdi_direction direction)
-    : dom_walker (direction), todo_ (0) {}
-
-  virtual edge before_dom_children (basic_block);
-
-  unsigned int todo_;
-};
-
 /* Hoist the statements in basic block BB out of the loops prescribed by
    data stored in LIM_DATA structures associated with each statement.  Callback
    for walk_dominator_tree.  */
@@ -1496,7 +1485,7 @@ sort_bbs_in_loop_postorder_cmp (const void *bb1_, const void *bb2_)
   struct loop *loop1 = bb1->loop_father;
   struct loop *loop2 = bb2->loop_father;
   if (loop1->num == loop2->num)
-    return 0;
+    return bb1->index - bb2->index;
   return bb_loop_postorder[loop1->num] < bb_loop_postorder[loop2->num] ? -1 : 1;
 }
 

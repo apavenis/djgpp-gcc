@@ -78,6 +78,7 @@
 #include "target-def.h"
 
 #define WORKAROUND_PTXJIT_BUG 1
+#define WORKAROUND_PTXJIT_BUG_2 1
 
 /* The various PTX memory areas an object might reside in.  */
 enum nvptx_data_area
@@ -1899,9 +1900,15 @@ output_init_frag (rtx sym)
   
   if (sym)
     {
-      fprintf (asm_out_file, "generic(");
+      bool function = (SYMBOL_REF_DECL (sym)
+		       && (TREE_CODE (SYMBOL_REF_DECL (sym)) == FUNCTION_DECL));
+      if (!function)
+	fprintf (asm_out_file, "generic(");
       output_address (VOIDmode, sym);
-      fprintf (asm_out_file, val ? ") + " : ")");
+      if (!function)
+	fprintf (asm_out_file, ")");
+      if (val)
+	fprintf (asm_out_file, " + ");
     }
 
   if (!sym || val)
@@ -4056,7 +4063,12 @@ nvptx_single (unsigned mask, basic_block from, basic_block to)
 	if (tail_branch)
 	  before = emit_label_before (label, before);
 	else
-	  emit_label_after (label, tail);
+	  {
+	    rtx_insn *label_insn = emit_label_after (label, tail);
+	    if (mode == GOMP_DIM_VECTOR && CALL_P (tail)
+		&& find_reg_note (tail, REG_NORETURN, NULL))
+	      emit_insn_after (gen_exit (), label_insn);
+	  }
       }
 
   /* Now deal with propagating the branch condition.  */
@@ -4096,9 +4108,33 @@ nvptx_single (unsigned mask, basic_block from, basic_block to)
 
 	     There is nothing in the PTX spec to suggest that this is wrong, or
 	     to explain why the extra initialization is needed.  So, we classify
-	     it as a JIT bug, and the extra initialization as workaround.  */
-	  emit_insn_before (gen_movbi (pvar, const0_rtx),
+	     it as a JIT bug, and the extra initialization as workaround:
+
+		{
+		    .reg .u32 %x;
+		    mov.u32 %x,%tid.x;
+		    setp.ne.u32 %rnotvzero,%x,0;
+		}
+
+		+.reg .pred %rcond2;
+		+setp.eq.u32 %rcond2, 1, 0;
+
+		 @%rnotvzero bra Lskip;
+		 setp.<op>.<type> %rcond,op1,op2;
+		+mov.pred %rcond2, %rcond;
+		 Lskip:
+		+mov.pred %rcond, %rcond2;
+		 selp.u32 %rcondu32,1,0,%rcond;
+		 shfl.idx.b32 %rcondu32,%rcondu32,0,31;
+		 setp.ne.u32 %rcond,%rcondu32,0;
+	  */
+	  rtx_insn *label = PREV_INSN (tail);
+	  gcc_assert (label && LABEL_P (label));
+	  rtx tmp = gen_reg_rtx (BImode);
+	  emit_insn_before (gen_movbi (tmp, const0_rtx),
 			    bb_first_real_insn (from));
+	  emit_insn_before (gen_rtx_SET (tmp, pvar), label);
+	  emit_insn_before (gen_rtx_SET (pvar, tmp), tail);
 #endif
 	  emit_insn_before (nvptx_gen_vcast (pvar), tail);
 	}
@@ -4328,6 +4364,93 @@ nvptx_neuter_pars (parallel *par, unsigned modes, unsigned outer)
     nvptx_neuter_pars (par->next, modes, outer);
 }
 
+#if WORKAROUND_PTXJIT_BUG_2
+/* Variant of pc_set that only requires JUMP_P (INSN) if STRICT.  This variant
+   is needed in the nvptx target because the branches generated for
+   parititioning are NONJUMP_INSN_P, not JUMP_P.  */
+
+static rtx
+nvptx_pc_set (const rtx_insn *insn, bool strict = true)
+{
+  rtx pat;
+  if ((strict && !JUMP_P (insn))
+      || (!strict && !INSN_P (insn)))
+    return NULL_RTX;
+  pat = PATTERN (insn);
+
+  /* The set is allowed to appear either as the insn pattern or
+     the first set in a PARALLEL.  */
+  if (GET_CODE (pat) == PARALLEL)
+    pat = XVECEXP (pat, 0, 0);
+  if (GET_CODE (pat) == SET && GET_CODE (SET_DEST (pat)) == PC)
+    return pat;
+
+  return NULL_RTX;
+}
+
+/* Variant of condjump_label that only requires JUMP_P (INSN) if STRICT.  */
+
+static rtx
+nvptx_condjump_label (const rtx_insn *insn, bool strict = true)
+{
+  rtx x = nvptx_pc_set (insn, strict);
+
+  if (!x)
+    return NULL_RTX;
+  x = SET_SRC (x);
+  if (GET_CODE (x) == LABEL_REF)
+    return x;
+  if (GET_CODE (x) != IF_THEN_ELSE)
+    return NULL_RTX;
+  if (XEXP (x, 2) == pc_rtx && GET_CODE (XEXP (x, 1)) == LABEL_REF)
+    return XEXP (x, 1);
+  if (XEXP (x, 1) == pc_rtx && GET_CODE (XEXP (x, 2)) == LABEL_REF)
+    return XEXP (x, 2);
+  return NULL_RTX;
+}
+
+/* Insert a dummy ptx insn when encountering a branch to a label with no ptx
+   insn inbetween the branch and the label.  This works around a JIT bug
+   observed at driver version 384.111, at -O0 for sm_50.  */
+
+static void
+prevent_branch_around_nothing (void)
+{
+  rtx_insn *seen_label = NULL;
+    for (rtx_insn *insn = get_insns (); insn; insn = NEXT_INSN (insn))
+      {
+	if (seen_label == NULL)
+	  {
+	    if (INSN_P (insn) && condjump_p (insn))
+	      seen_label = label_ref_label (nvptx_condjump_label (insn, false));
+
+	    continue;
+	  }
+
+	if (NOTE_P (insn) || DEBUG_INSN_P (insn))
+	  continue;
+
+	if (INSN_P (insn))
+	  switch (recog_memoized (insn))
+	    {
+	    case CODE_FOR_nvptx_fork:
+	    case CODE_FOR_nvptx_forked:
+	    case CODE_FOR_nvptx_joining:
+	    case CODE_FOR_nvptx_join:
+	      continue;
+	    default:
+	      seen_label = NULL;
+	      continue;
+	    }
+
+	if (LABEL_P (insn) && insn == seen_label)
+	  emit_insn_before (gen_fake_nop (), insn);
+
+	seen_label = NULL;
+      }
+  }
+#endif
+
 /* PTX-specific reorganization
    - Split blocks at fork and join instructions
    - Compute live registers
@@ -4406,6 +4529,10 @@ nvptx_reorg (void)
 
   if (TARGET_UNIFORM_SIMT)
     nvptx_reorg_uniform_simt ();
+
+#if WORKAROUND_PTXJIT_BUG_2
+  prevent_branch_around_nothing ();
+#endif
 
   regstat_free_n_sets_and_refs ();
 

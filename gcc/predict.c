@@ -210,9 +210,14 @@ probably_never_executed (struct function *fun,
                          profile_count count)
 {
   gcc_checking_assert (fun);
-  if (count == profile_count::zero ())
+  if (count.ipa () == profile_count::zero ())
     return true;
-  if (count.initialized_p () && profile_status_for_fn (fun) == PROFILE_READ)
+  /* Do not trust adjusted counts.  This will make us to drop int cold section
+     code with low execution count as a result of inlining. These low counts
+     are not safe even with read profile and may lead us to dropping
+     code which actually gets executed into cold section of binary that is not
+     desirable.  */
+  if (count.precise_p () && profile_status_for_fn (fun) == PROFILE_READ)
     {
       int unlikely_count_fraction = PARAM_VALUE (UNLIKELY_BB_COUNT_FRACTION);
       if (count.apply_scale (unlikely_count_fraction, 1) >= profile_info->runs)
@@ -545,6 +550,7 @@ predict_insn_def (rtx_insn *insn, enum br_predictor predictor,
 		  enum prediction taken)
 {
    int probability = predictor_info[(int) predictor].hitrate;
+   gcc_assert (probability != PROB_UNINITIALIZED);
 
    if (taken != TAKEN)
      probability = REG_BR_PROB_BASE - probability;
@@ -747,6 +753,19 @@ dump_prediction (FILE *file, enum br_predictor predictor, int probability,
     }
 
   fprintf (file, "\n");
+
+  /* Print output that be easily read by analyze_brprob.py script. We are
+     interested only in counts that are read from GCDA files.  */
+  if (dump_file && (dump_flags & TDF_DETAILS)
+      && bb->count.precise_p ()
+      && reason == REASON_NONE)
+    {
+      gcc_assert (e->count ().precise_p ());
+      fprintf (file, ";;heuristics;%s;%" PRId64 ";%" PRId64 ";%.1f;\n",
+	       predictor_info[predictor].name,
+	       bb->count.to_gcov_type (), e->count ().to_gcov_type (),
+	       probability * 100.0 / REG_BR_PROB_BASE);
+    }
 }
 
 /* Return true if STMT is known to be unlikely executed.  */
@@ -3745,15 +3764,10 @@ compute_function_frequency (void)
       return;
     }
 
-  /* Only first time try to drop function into unlikely executed.
-     After inlining the roundoff errors may confuse us.
-     Ipa-profile pass will drop functions only called from unlikely
-     functions to unlikely and that is most of what we care about.  */
-  if (!cfun->after_inlining)
-    {
-      node->frequency = NODE_FREQUENCY_UNLIKELY_EXECUTED;
-      warn_function_cold (current_function_decl);
-    }
+  node->frequency = NODE_FREQUENCY_UNLIKELY_EXECUTED;
+  warn_function_cold (current_function_decl);
+  if (ENTRY_BLOCK_PTR_FOR_FN (cfun)->count.ipa() == profile_count::zero ())
+    return;
   FOR_EACH_BB_FN (bb, cfun)
     {
       if (maybe_hot_bb_p (cfun, bb))
@@ -4183,7 +4197,7 @@ namespace selftest {
 struct branch_predictor
 {
   const char *name;
-  unsigned probability;
+  int probability;
 };
 
 #define DEF_PREDICTOR(ENUM, NAME, HITRATE, FLAGS) { NAME, HITRATE },
@@ -4198,8 +4212,11 @@ test_prediction_value_range ()
 
   for (unsigned i = 0; predictors[i].name != NULL; i++)
     {
+      if (predictors[i].probability == PROB_UNINITIALIZED)
+	continue;
+
       unsigned p = 100 * predictors[i].probability / REG_BR_PROB_BASE;
-      ASSERT_TRUE (p > 50 && p <= 100);
+      ASSERT_TRUE (p >= 50 && p <= 100);
     }
 }
 

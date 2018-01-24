@@ -172,7 +172,8 @@ in the following sections.
 @gccoptlist{-c  -S  -E  -o @var{file}  -x @var{language}  @gol
 -v  -###  --help@r{[}=@var{class}@r{[},@dots{}@r{]]}  --target-help  --version @gol
 -pass-exit-codes  -pipe  -specs=@var{file}  -wrapper  @gol
-@@@var{file}  -fplugin=@var{file}  -fplugin-arg-@var{name}=@var{arg}  @gol
+@@@var{file}  -ffile-prefix-map=@var{old}=@var{new}  @gol
+-fplugin=@var{file}  -fplugin-arg-@var{name}=@var{arg}  @gol
 -fdump-ada-spec@r{[}-slim@r{]}  -fada-spec-parent=@var{unit}  -fdump-go-spec=@var{file}}
 
 @item C Language Options
@@ -481,9 +482,9 @@ Objective-C and Objective-C++ Dialects}.
 -dD  -dI  -dM  -dN  -dU @gol
 -fdebug-cpp  -fdirectives-only  -fdollars-in-identifiers  @gol
 -fexec-charset=@var{charset}  -fextended-identifiers  @gol
--finput-charset=@var{charset}  -fno-canonical-system-headers @gol
--fpch-deps  -fpch-preprocess  -fpreprocessed @gol
--ftabstop=@var{width}  -ftrack-macro-expansion  @gol
+-finput-charset=@var{charset} -fmacro-prefix-map=@var{old}=@var{new}  @gol
+-fno-canonical-system-headers @gol -fpch-deps  -fpch-preprocess  @gol
+-fpreprocessed -ftabstop=@var{width}  -ftrack-macro-expansion  @gol
 -fwide-exec-charset=@var{charset}  -fworking-directory @gol
 -H  -imacros @var{file}  -include @var{file} @gol
 -M  -MD  -MF  -MG  -MM  -MMD  -MP  -MQ  -MT @gol
@@ -991,6 +992,7 @@ See RS/6000 and PowerPC Options.
 -mdiv  -mno-div @gol
 -march=@var{ISA-string} @gol
 -mtune=@var{processor-string} @gol
+-mpreferred-stack-boundary=@var{num} @gol
 -msmall-data-limit=@var{N-bytes} @gol
 -msave-restore  -mno-save-restore @gol
 -mstrict-align -mno-strict-align @gol
@@ -1659,6 +1661,16 @@ gcc -c t.c -wrapper gdb,--args
 This invokes all subprograms of @command{gcc} under
 @samp{gdb --args}, thus the invocation of @command{cc1} is
 @samp{gdb --args cc1 @dots{}}.
+
+@item -ffile-prefix-map=@var{old}=@var{new}
+@opindex ffile-prefix-map
+When compiling files residing in directory @file{@var{old}}, record
+any references to them in the result of the compilation as if the
+files resided in directory @file{@var{new}} instead.  Specifying this
+option is equivalent to specifying all the individual
+@option{-f*-prefix-map} options.  This can be used to make reproducible
+builds that are location independent.  See also
+@option{-fmacro-prefix-map} and @option{-fdebug-prefix-map}.
 
 @item -fplugin=@var{name}.so
 @opindex fplugin
@@ -2456,9 +2468,8 @@ a @i{for-init-statement} extends to the end of the enclosing scope,
 as was the case in old versions of G++, and other (traditional)
 implementations of C++.
 
-If neither flag is given, the default is to follow the standard,
-but to allow and give a warning for old-style code that would
-otherwise be invalid, or have different behavior.
+This option is deprecated and the associated non-standard
+functionality will be removed.
 
 @item -fno-gnu-keywords
 @opindex fno-gnu-keywords
@@ -2956,20 +2967,23 @@ C++17 it calls @code{f<void(*)()noexcept>}.
 @item -Wclass-memaccess @r{(C++ and Objective-C++ only)}
 @opindex Wclass-memaccess
 Warn when the destination of a call to a raw memory function such as
-@code{memset} or @code{memcpy} is an object of class type writing into which
-might bypass the class non-trivial or deleted constructor or copy assignment,
-violate const-correctness or encapsulation, or corrupt the virtual table.
-Modifying the representation of such objects may violate invariants maintained
-by member functions of the class.  For example, the call to @code{memset}
-below is undefined because it modifies a non-trivial class object and is,
-therefore, diagnosed.  The safe way to either initialize or clear the storage
-of objects of such types is by using the appropriate constructor or assignment
-operator, if one is available.
+@code{memset} or @code{memcpy} is an object of class type, and when writing
+into such an object might bypass the class non-trivial or deleted constructor
+or copy assignment, violate const-correctness or encapsulation, or corrupt
+virtual table pointers.  Modifying the representation of such objects may
+violate invariants maintained by member functions of the class.  For example,
+the call to @code{memset} below is undefined because it modifies a non-trivial
+class object and is, therefore, diagnosed.  The safe way to either initialize
+or clear the storage of objects of such types is by using the appropriate
+constructor or assignment operator, if one is available.
 @smallexample
 std::string str = "abc";
-memset (&str, 0, 3);
+memset (&str, 0, sizeof str);
 @end smallexample
 The @option{-Wclass-memaccess} option is enabled by @option{-Wall}.
+Explicitly casting the pointer to the class object to @code{void *} or
+to a type that can be safely accessed by the raw memory function suppresses
+the warning.
 
 @item -Wnon-virtual-dtor @r{(C++ and Objective-C++ only)}
 @opindex Wnon-virtual-dtor
@@ -7100,13 +7114,14 @@ link processing time.  Merging is enabled by default.
 
 @item -fdebug-prefix-map=@var{old}=@var{new}
 @opindex fdebug-prefix-map
-When compiling files in directory @file{@var{old}}, record debugging
-information describing them as in @file{@var{new}} instead.  This can be
-used to replace a build-time path with an install-time path in the debug info.
-It can also be used to change an absolute path to a relative path by using
-@file{.} for @var{new}.  This can give more reproducible builds, which are
-location independent, but may require an extra command to tell GDB where to
-find the source files.
+When compiling files residing in directory @file{@var{old}}, record
+debugging information describing them as if the files resided in
+directory @file{@var{new}} instead.  This can be used to replace a
+build-time path with an install-time path in the debug info.  It can
+also be used to change an absolute path to a relative path by using
+@file{.} for @var{new}.  This can give more reproducible builds, which
+are location independent, but may require an extra command to tell GDB
+where to find the source files. See also @option{-ffile-prefix-map}.
 
 @item -fvar-tracking
 @opindex fvar-tracking
@@ -12577,6 +12592,18 @@ The options @option{-ftrapv} and @option{-fwrapv} override each other, so using
 @option{-fwrapv} being effective.  Note that only active options override, so
 using @option{-ftrapv} @option{-fwrapv} @option{-fno-wrapv} on the command-line
 results in @option{-ftrapv} being effective.
+
+@item -fwrapv-pointer
+@opindex fwrapv-pointer
+This option instructs the compiler to assume that pointer arithmetic
+overflow on addition and subtraction wraps around using twos-complement
+representation.  This flag disables some optimizations which assume
+pointer overflow is invalid.
+
+@item -fstrict-overflow
+@opindex fstrict-overflow
+This option implies @option{-fno-wrapv} @option{-fno-wrapv-pointer} and when
+negated implies @option{-fwrapv} @option{-fwrapv-pointer}.
 
 @item -fexceptions
 @opindex fexceptions
@@ -22045,6 +22072,16 @@ lower-case.  Examples include @samp{rv64i}, @samp{rv32g}, and @samp{rv32imaf}.
 @opindex mtune
 Optimize the output for the given processor, specified by microarchitecture
 name.
+
+@item -mpreferred-stack-boundary=@var{num}
+@opindex mpreferred-stack-boundary
+Attempt to keep the stack boundary aligned to a 2 raised to @var{num}
+byte boundary.  If @option{-mpreferred-stack-boundary} is not specified,
+the default is 4 (16 bytes or 128-bits).
+
+@strong{Warning:} If you use this switch, then you must build all modules with
+the same value, including any libraries.  This includes the system libraries
+and startup modules.
 
 @item -msmall-data-limit=@var{n}
 @opindex msmall-data-limit
