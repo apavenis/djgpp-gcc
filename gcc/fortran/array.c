@@ -158,6 +158,7 @@ gfc_match_array_ref (gfc_array_ref *ar, gfc_array_spec *as, int init,
   bool matched_bracket = false;
   gfc_expr *tmp;
   bool stat_just_seen = false;
+  bool team_just_seen = false;
 
   memset (ar, '\0', sizeof (*ar));
 
@@ -197,6 +198,11 @@ gfc_match_array_ref (gfc_array_ref *ar, gfc_array_spec *as, int init,
 	}
     }
 
+  if (ar->dimen >= 7
+      && !gfc_notify_std (GFC_STD_F2008,
+			  "Array reference at %C has more than 7 dimensions"))
+    return MATCH_ERROR;
+
   gfc_error ("Array reference at %C cannot have more than %d dimensions",
 	     GFC_MAX_DIMENSIONS);
   return MATCH_ERROR;
@@ -230,8 +236,21 @@ coarray:
       if (m == MATCH_ERROR)
 	return MATCH_ERROR;
 
+      team_just_seen = false;
       stat_just_seen = false;
-      if (gfc_match(" , stat = %e",&tmp) == MATCH_YES && ar->stat == NULL)
+      if (gfc_match (" , team = %e", &tmp) == MATCH_YES && ar->team == NULL)
+	{
+	  ar->team = tmp;
+	  team_just_seen = true;
+	}
+
+      if (ar->team && !team_just_seen)
+	{
+	  gfc_error ("TEAM= attribute in %C misplaced");
+	  return MATCH_ERROR;
+	}
+
+      if (gfc_match (" , stat = %e",&tmp) == MATCH_YES && ar->stat == NULL)
 	{
 	  ar->stat = tmp;
 	  stat_just_seen = true;
@@ -2226,9 +2245,12 @@ gfc_ref_dimen_size (gfc_array_ref *ar, int dimen, mpz_t *result, mpz_t *end)
       else
 	{
 	  stride_expr = gfc_copy_expr(ar->stride[dimen]); 
+
 	  if(!gfc_simplify_expr(stride_expr, 1))
 	    gfc_internal_error("Simplification error");
-	  if (stride_expr->expr_type != EXPR_CONSTANT)
+
+	  if (stride_expr->expr_type != EXPR_CONSTANT
+	      || mpz_cmp_ui (stride_expr->value.integer, 0) == 0)
 	    {
 	      mpz_clear (stride);
 	      return false;

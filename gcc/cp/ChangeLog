@@ -1,3 +1,127 @@
+2018-02-02  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* class.c (is_really_empty_class): Use DECL_UNNAMED_BIT_FIELD.
+	* constexpr.c (cx_check_missing_mem_inits): Likewise.
+	* decl.c (next_initializable_field, find_decomp_class_base,
+	cp_finish_decomp): Likewise.
+	* typeck2.c (process_init_constructor_record): Likewise.
+
+2018-02-02  Jason Merrill  <jason@redhat.com>
+
+	PR c++/84181 - ICE with lambda parm in template argument.
+	* tree.c (strip_typedefs_expr): Use cp_tree_operand_length.
+
+2018-02-01  Jason Merrill  <jason@redhat.com>
+
+	PR c++/84160 - ICE with nested variadic capture.
+	* lambda.c (is_capture_proxy_with_ref): New.
+	(insert_capture_proxy): Don't set DECL_CAPTURED_VARIABLE from a
+	COMPONENT_REF.
+	* expr.c (mark_use): Use is_capture_proxy_with_ref.
+	* constexpr.c (potential_constant_expression_1): Likewise.
+	* semantics.c (process_outer_var_ref): Likewise.
+
+2018-02-01  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/84125
+	* typeck.c (build_address): Relax the assert when
+	processing_template_decl.
+
+2018-02-01  Jason Merrill  <jason@redhat.com>
+
+	PR c++/84126 - ICE with variadic generic lambda
+	PR c++/84036
+	PR c++/82249
+	* pt.c (tsubst_pack_expansion): Handle function parameter_packs in
+	PACK_EXPANSION_EXTRA_ARGS.
+
+2018-02-01  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/83796
+	* call.c (convert_like_real): If w're initializing from {} explicitly
+	call abstract_virtuals_error_sfinae.
+
+2018-01-31  Jason Merrill  <jason@redhat.com>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/83993
+	* constexpr.c (cxx_eval_outermost_constant_expr): Build NOP_EXPR
+	around non-constant ADDR_EXPRs rather than clearing TREE_CONSTANT
+	on ADDR_EXPR.
+
+2018-01-31  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/83993
+	* constexpr.c (diag_array_subscript): Emit different diagnostics
+	if TYPE_DOMAIN (arraytype) is NULL.
+	(cxx_eval_array_reference, cxx_eval_store_expression): For arrays
+	with NULL TYPE_DOMAIN use size_zero_node as nelts.
+
+2018-01-31  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/84092
+	* semantics.c (finish_qualified_id_expr): When handling an
+	UNBOUND_CLASS_TEMPLATE only adjust qualifying_class and expr.
+
+2018-01-31  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/84138
+	* cp-gimplify.c (cp_fold): Check if X is an error node before
+	calling useless_type_conversion_p.
+
+2018-01-30  Jason Merrill  <jason@redhat.com>
+
+	PR c++/84091 - ICE with local class in lambda in template.
+	* decl2.c (determine_visibility): Look for outer containing template
+	instantiation.
+
+	PR c++/84098 - ICE with lambda in template NSDMI.
+	* pt.c (instantiate_class_template_1): Ignore more lambdas.
+
+2018-01-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/68810 - wrong location for reinterpret_cast error.
+	* cvt.c (cp_convert_to_pointer): Always build a CONVERT_EXPR when
+	!dofold.
+
+2018-01-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/83996
+	* constexpr.c (cxx_fold_indirect_ref): Compute ((foo *)&fooarray)[1]
+	=> fooarray[1] in offset_int.
+
+2018-01-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/83942 - wrong unused warning with static_cast.
+	* cvt.c (ocp_convert): Call mark_rvalue_use.
+
+2018-01-26  Jason Merrill  <jason@redhat.com>
+
+	PR c++/83956 - wrong dtor error with anonymous union
+	* method.c (walk_field_subobs): Variant members only affect
+	deletedness.
+	(maybe_explain_implicit_delete): Pass &deleted_p for diagnostic.
+
+	PR c++/84036 - ICE with variadic capture.
+	PR c++/82249
+	* pt.c (tsubst_pack_expansion): When optimizing a simple
+	substitution, pull a single pack expansion out of its pack.
+
+	PR c++/82514 - ICE with local class in generic lambda.
+	* pt.c (regenerated_lambda_fn_p): Remove.
+	(enclosing_instantiation_of): Don't use it.
+	(tsubst_function_decl): Call enclosing_instantiation_of.
+
+	* pt.c (lookup_template_class_1): Add sanity check.
+	* name-lookup.c (do_pushtag): Don't add closures to local_classes.
+
+2018-01-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/84031
+	* decl.c (find_decomp_class_base): Ignore unnamed bitfields.  Ignore
+	recursive calls that return ret.
+	(cp_finish_decomp): Ignore unnamed bitfields.
+
 2018-01-23  Jason Merrill  <jason@redhat.com>
 
 	PR c++/82249 - wrong mismatched pack length error.

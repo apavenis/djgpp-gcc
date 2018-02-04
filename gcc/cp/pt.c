@@ -222,6 +222,7 @@ static tree tsubst_attributes (tree, tree, tsubst_flags_t, tree);
 static tree canonicalize_expr_argument (tree, tsubst_flags_t);
 static tree make_argument_pack (tree);
 static void register_parameter_specializations (tree, tree);
+static tree enclosing_instantiation_of (tree tctx);
 
 /* Make the current scope suitable for access checking when we are
    processing T.  T can be FUNCTION_DECL for instantiated function
@@ -8951,6 +8952,10 @@ lookup_template_class_1 (tree d1, tree arglist, tree in_decl, tree context,
 	}
       else if (CLASS_TYPE_P (template_type))
 	{
+	  /* Lambda closures are regenerated in tsubst_lambda_expr, not
+	     instantiated here.  */
+	  gcc_assert (!LAMBDA_TYPE_P (template_type));
+
 	  t = make_class_type (TREE_CODE (template_type));
 	  CLASSTYPE_DECLARED_CLASS (t)
 	    = CLASSTYPE_DECLARED_CLASS (template_type);
@@ -10522,6 +10527,11 @@ instantiate_class_template_1 (tree type)
 	{
 	  if (TYPE_P (t))
 	    {
+	      if (LAMBDA_TYPE_P (t))
+		/* A closure type for a lambda in an NSDMI or default argument.
+		   Ignore it; it will be regenerated when needed.  */
+		continue;
+
 	      /* Build new CLASSTYPE_NESTED_UTDS.  */
 
 	      tree newtag;
@@ -10589,11 +10599,10 @@ instantiate_class_template_1 (tree type)
 		  && DECL_OMP_DECLARE_REDUCTION_P (r))
 		cp_check_omp_declare_reduction (r);
 	    }
-	  else if (DECL_CLASS_TEMPLATE_P (t)
+	  else if ((DECL_CLASS_TEMPLATE_P (t) || DECL_IMPLICIT_TYPEDEF_P (t))
 		   && LAMBDA_TYPE_P (TREE_TYPE (t)))
-	    /* A closure type for a lambda in a default argument for a
-	       member template.  Ignore it; it will be instantiated with
-	       the default argument.  */;
+	    /* A closure type for a lambda in an NSDMI or default argument.
+	       Ignore it; it will be regenerated when needed.  */;
 	  else
 	    {
 	      /* Build new TYPE_FIELDS.  */
@@ -11430,7 +11439,20 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
   pattern = PACK_EXPANSION_PATTERN (t);
 
   /* Add in any args remembered from an earlier partial instantiation.  */
-  args = add_to_template_args (PACK_EXPANSION_EXTRA_ARGS (t), args);
+  tree extra = PACK_EXPANSION_EXTRA_ARGS (t);
+  if (extra && TREE_CODE (extra) == TREE_LIST)
+    {
+      /* The partial instantiation involved function parameter packs; map
+         from the general template to our current context.  */
+      for (tree fns = TREE_CHAIN (extra); fns; fns = TREE_CHAIN (fns))
+	{
+	  tree fn = TREE_PURPOSE (fns);
+	  tree inst = enclosing_instantiation_of (fn);
+	  register_parameter_specializations (fn, inst);
+	}
+      extra = TREE_VALUE (extra);
+    }
+  args = add_to_template_args (extra, args);
 
   levels = TMPL_ARGS_DEPTH (args);
 
@@ -11570,6 +11592,12 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
       && TREE_PURPOSE (packs) == pattern)
     {
       tree args = ARGUMENT_PACK_ARGS (TREE_VALUE (packs));
+
+      /* If the argument pack is a single pack expansion, pull it out.  */
+      if (TREE_VEC_LENGTH (args) == 1
+	  && pack_expansion_args_count (args))
+	return TREE_VEC_ELT (args, 0);
+
       /* Types need no adjustment, nor does sizeof..., and if we still have
 	 some pack expansion args we won't do anything yet.  */
       if (TREE_CODE (t) == TYPE_PACK_EXPANSION
@@ -11595,7 +11623,28 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
 	 have values for all the packs.  So remember these until then.  */
 
       t = make_pack_expansion (pattern, complain);
-      PACK_EXPANSION_EXTRA_ARGS (t) = args;
+      tree extra = args;
+      if (unsubstituted_fn_pack)
+	{
+	  /* For function parameter packs it's more complicated; we need to
+	     remember which enclosing function(s) provided them to this pack
+	     expansion so we can map their parameters to the parameters of a
+	     later full instantiation.  */
+	  tree fns = NULL_TREE;
+	  for (tree p = packs; p; p = TREE_CHAIN (p))
+	    {
+	      tree parm = TREE_PURPOSE (p);
+	      if (TREE_CODE (parm) != PARM_DECL)
+		continue;
+	      parm = DECL_CONTEXT (parm);
+	      if (purpose_member (parm, fns))
+		continue;
+	      fns = tree_cons (parm, NULL_TREE, fns);
+	    }
+	  if (fns)
+	    extra = tree_cons (NULL_TREE, extra, fns);
+	}
+      PACK_EXPANSION_EXTRA_ARGS (t) = extra;
       return t;
     }
   else if (unsubstituted_packs)
@@ -12183,9 +12232,20 @@ tsubst_function_decl (tree t, tree args, tsubst_flags_t complain,
 	return t;
 
       /* Calculate the most general template of which R is a
-	 specialization, and the complete set of arguments used to
-	 specialize R.  */
+	 specialization.  */
       gen_tmpl = most_general_template (DECL_TI_TEMPLATE (t));
+
+      /* We're substituting a lambda function under tsubst_lambda_expr but not
+	 directly from it; find the matching function we're already inside.
+	 But don't do this if T is a generic lambda with a single level of
+	 template parms, as in that case we're doing a normal instantiation. */
+      if (LAMBDA_FUNCTION_P (t) && !lambda_fntype
+	  && (!generic_lambda_fn_p (t)
+	      || TMPL_PARMS_DEPTH (DECL_TEMPLATE_PARMS (gen_tmpl)) > 1))
+	return enclosing_instantiation_of (t);
+
+      /* Calculate the complete set of arguments used to
+	 specialize R.  */
       argvec = tsubst_template_args (DECL_TI_ARGS
 				     (DECL_TEMPLATE_RESULT
 				      (DECL_TI_TEMPLATE (t))),
@@ -12609,24 +12669,15 @@ lambda_fn_in_template_p (tree fn)
   return CLASSTYPE_TEMPLATE_INFO (closure) != NULL_TREE;
 }
 
-/* True if FN is the op() for a lambda regenerated from a lambda in an
-   uninstantiated template.  */
-
-bool
-regenerated_lambda_fn_p (tree fn)
-{
-  return (LAMBDA_FUNCTION_P (fn)
-	  && !DECL_TEMPLATE_INSTANTIATION (fn));
-}
-
 /* We're instantiating a variable from template function TCTX.  Return the
    corresponding current enclosing scope.  This gets complicated because lambda
    functions in templates are regenerated rather than instantiated, but generic
    lambda functions are subsequently instantiated.  */
 
 static tree
-enclosing_instantiation_of (tree tctx)
+enclosing_instantiation_of (tree otctx)
 {
+  tree tctx = otctx;
   tree fn = current_function_decl;
   int lambda_count = 0;
 
@@ -12635,22 +12686,18 @@ enclosing_instantiation_of (tree tctx)
     ++lambda_count;
   for (; fn; fn = decl_function_context (fn))
     {
-      tree lambda = fn;
+      tree ofn = fn;
       int flambda_count = 0;
-      for (; fn && regenerated_lambda_fn_p (fn);
+      for (; flambda_count < lambda_count && fn && LAMBDA_FUNCTION_P (fn);
 	   fn = decl_function_context (fn))
 	++flambda_count;
       if (DECL_TEMPLATE_INFO (fn)
 	  ? most_general_template (fn) != most_general_template (tctx)
 	  : fn != tctx)
 	continue;
-      if (lambda_count)
-	{
-	  fn = lambda;
-	  while (flambda_count-- > lambda_count)
-	    fn = decl_function_context (fn);
-	}
-      return fn;
+      gcc_assert (DECL_NAME (ofn) == DECL_NAME (otctx)
+		  || DECL_CONV_FN_P (ofn));
+      return ofn;
     }
   gcc_unreachable ();
 }

@@ -2001,12 +2001,12 @@ finish_qualified_id_expr (tree qualifying_class,
   if (template_p)
     {
       if (TREE_CODE (expr) == UNBOUND_CLASS_TEMPLATE)
-	/* cp_parser_lookup_name thought we were looking for a type,
-	   but we're actually looking for a declaration.  */
-	expr = build_qualified_name (/*type*/NULL_TREE,
-				     TYPE_CONTEXT (expr),
-				     TYPE_IDENTIFIER (expr),
-				     /*template_p*/true);
+	{
+	  /* cp_parser_lookup_name thought we were looking for a type,
+	     but we're actually looking for a declaration.  */
+	  qualifying_class = TYPE_CONTEXT (expr);
+	  expr = TYPE_IDENTIFIER (expr);
+	}
       else
 	check_template_keyword (expr);
     }
@@ -3321,7 +3321,7 @@ process_outer_var_ref (tree decl, tsubst_flags_t complain, bool odr_use)
     {
       /* Check whether we've already built a proxy.  */
       tree var = decl;
-      while (is_normal_capture_proxy (var))
+      while (is_capture_proxy_with_ref (var))
 	var = DECL_CAPTURED_VARIABLE (var);
       tree d = retrieve_local_specialization (var);
 

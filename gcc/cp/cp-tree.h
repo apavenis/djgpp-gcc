@@ -3496,7 +3496,11 @@ extern void decl_shadowed_for_var_insert (tree, tree);
     : &TYPE_MIN_VALUE_RAW (TYPE_PACK_EXPANSION_CHECK (NODE)))
 
 /* Any additional template args to be applied when substituting into
-   the pattern, set by tsubst_pack_expansion for partial instantiations.  */
+   the pattern, set by tsubst_pack_expansion for partial instantiations.
+   If this is a TREE_LIST, the TREE_VALUE of the first element is the
+   usual template argument TREE_VEC, and the TREE_PURPOSE of later elements
+   are enclosing functions that provided function parameter packs we'll need
+   to map appropriately.  */
 #define PACK_EXPANSION_EXTRA_ARGS(NODE)		\
   *(TREE_CODE (NODE) == TYPE_PACK_EXPANSION	\
     ? &TYPE_MAX_VALUE_RAW (NODE)			\
@@ -6897,6 +6901,7 @@ extern void insert_capture_proxy		(tree);
 extern void insert_pending_capture_proxies	(void);
 extern bool is_capture_proxy			(tree);
 extern bool is_normal_capture_proxy             (tree);
+extern bool is_capture_proxy_with_ref           (tree);
 extern void register_capture_members		(tree);
 extern tree lambda_expr_this_capture            (tree, bool);
 extern void maybe_generic_this_capture		(tree, tree);

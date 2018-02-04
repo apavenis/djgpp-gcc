@@ -8634,11 +8634,16 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
       if (!sym->ts.u.cl)
 	sym->ts.u.cl = target->ts.u.cl;
 
-      if (!sym->ts.u.cl->length && !sym->ts.deferred
-	  && target->expr_type == EXPR_CONSTANT)
-	sym->ts.u.cl->length
-	  = gfc_get_int_expr (gfc_charlen_int_kind,
-			      NULL, target->value.character.length);
+      if (!sym->ts.u.cl->length && !sym->ts.deferred)
+	{
+	  if (target->expr_type == EXPR_CONSTANT)
+	    sym->ts.u.cl->length =
+	      gfc_get_int_expr (gfc_charlen_int_kind, NULL,
+				target->value.character.length);
+	  else
+	    gfc_error ("Not Implemented: Associate target with type character"
+		       " and non-constant length at %L", &target->where);
+	}
     }
 
   /* If the target is a good class object, so is the associate variable.  */
@@ -11101,6 +11106,10 @@ start:
 	  break;
 
 	case EXEC_FAIL_IMAGE:
+	case EXEC_FORM_TEAM:
+	case EXEC_CHANGE_TEAM:
+	case EXEC_END_TEAM:
+	case EXEC_SYNC_TEAM:
 	  break;
 
 	case EXEC_ENTRY:
@@ -13553,6 +13562,17 @@ resolve_component (gfc_component *c, gfc_symbol *sym)
       return false;
     }
 
+  /* F2003, 15.2.1 - length has to be one.  */
+  if (sym->attr.is_bind_c && c->ts.type == BT_CHARACTER
+      && (c->ts.u.cl == NULL || c->ts.u.cl->length == NULL
+	  || !gfc_is_constant_expr (c->ts.u.cl->length)
+	  || mpz_cmp_si (c->ts.u.cl->length->value.integer, 1) != 0))
+    {
+      gfc_error ("Component %qs of BIND(C) type at %L must have length one",
+		 c->name, &c->loc);
+      return false;
+    }
+
   if (c->attr.proc_pointer && c->ts.interface)
     {
       gfc_symbol *ifc = c->ts.interface;
@@ -14798,6 +14818,15 @@ resolve_symbol (gfc_symbol *sym)
 	  gfc_error ("Variable %qs at %L cannot be BIND(C) because it "
 		     "is neither a COMMON block nor declared at the "
 		     "module level scope", sym->name, &(sym->declared_at));
+	  t = false;
+	}
+      else if (sym->ts.type == BT_CHARACTER
+	       && (sym->ts.u.cl == NULL || sym->ts.u.cl->length == NULL
+		   || !gfc_is_constant_expr (sym->ts.u.cl->length)
+		   || mpz_cmp_si (sym->ts.u.cl->length->value.integer, 1) != 0))
+	{
+	  gfc_error ("BIND(C) Variable %qs at %L must have length one",
+		     sym->name, &sym->declared_at);
 	  t = false;
 	}
       else if (sym->common_head != NULL && sym->attr.implicit_type == 0)
