@@ -152,8 +152,13 @@ my @cpp_rename = (
 my @c_inc_rename = (
 "avx512ifmavlintrin.h:avx512ifmavlintrin.h2",
 "avx512vbmivlintrin.h:avx512vbmivlintrin.h2",
+"avx512vbmi2vlintrin.h:avx512vbmi2vlintrin.h3",
+"avx512vbmiintrin.h:avx512vbmiintrin.h4",
 "avx512vldqintrin.h:avx512vldqintrin.h2",
-"avx512vlintrin.h:avx512vlintrin.h3"
+"avx512vlintrin.h:avx512vlintrin.h3",
+"avx512vnnivlintrin.h:avx512vnnivlintrin.h2",
+"avx512vpopcntdqvlintrin.h:avx512vpopcntdqvlintrin.h2",
+"quadmath_weak.h:quadmath.h2"
 );
 
 my @rename_list = (
@@ -335,65 +340,7 @@ sub objc_rename_proc
 
     my @objc_rename =
       (
-       "quadmath_weak.h:quadmath_weak.h1"
       );
-
-    foreach (@objc_rename)
-    {
-        m/^([^:]*):([^:]*)$/;
-        my $orig_path = $1;
-        my $new_name = $2;
-        my $dir_name = dirname($orig_path);
-        my $orig_name = basename($orig_path);
-
-        $dir_name = $dir_name eq "." ? "" : "$dir_name/";
-
-        my $n1 = "$cxx_inc_dir/$dir_name$orig_name";
-        my $n2 = "$cxx_inc_dir/$dir_name$new_name";
-
-        if ( -f $n1 )
-        {
-            print "Rename: $n1 ==>$n2\n";
-            if (! rename ($n1, $n2))
-            {
-                print "Rename: $n1 ==>$n2: $!\n";
-            }
-        }
-        elsif ( -f $n2 )
-        {
-            #print "New file: $n2 already exists\n";
-        }
-        else
-        {
-            print "Neither $n1 nor $n2 found\n";
-            next;
-        }
-
-        my $d1 = "";
-        my $d2 = $dir_name;
-        if (! /^djgpp\//)
-        {
-            $header_gcc{"header.gcc"} = $header_gcc{"header.gcc"} .
-                "$d2$orig_name $d2$new_name\n";
-            #print "Write: $d2$orig_name $d2$new_name >>header.gcc\n";
-        }
-        do
-        {
-            if ($d2 =~ m/^([^\/]*)\/(.*)$/)
-            {
-                $d1 = $d1 eq "" ? $1 : "$d1/$1";
-                $d2 = $2;
-            }
-            else
-            {
-                $d1 = $d1 eq "" ? $d2 : "$d1/$d2";
-                $d2 = "";
-            }
-            $header_gcc{"$d1/header.gcc"} = $header_gcc{"$d1/header.gcc"} .
-                "$d2$orig_name $d2$new_name\n";
-            #print "Write: $d2$orig_name $d2$new_name >>$d1/header.gcc\n";
-        } while ($d2 ne "");
-    }
 
     foreach (sort keys %header_gcc)
     {
@@ -706,7 +653,7 @@ sub update_dsm
 sub mk_manifest
 {
     my @ignore = (
-        '/adainclude/s-stratt-xdr.adb',
+        '/adainclude/s-stratt__xdr.adb',
 	'dsmsrc/(?:ada|gcc|gfor|gpp|objc)b\.dsi$',
         'share/info/dir$',
         'share/man/man(?:1|7)/',
@@ -739,25 +686,22 @@ sub mk_manifest
         'bin/gcc\.exe', 'bin/cpp\.exe', 'bin/gcov\.exe', 'bin/gccbug',
         'bin/gcc-(?:ar|nm|ranlib)\.exe', 'bin/gcov-tool\.exe', 'bin/gcov-dump\.exe',
         'include/ssp/', 'info/(?:cpp|gcc|libquadmath)', '/djgpp\.ver$',
-	'/include/cet(?:|intrin)\.h$',
-        '/include/(?:am|bm|em|m|nm|pm|sm|tm|xm)mintrin',
-        '/include/(?:cpuid|float|iso646|mm_malloc|mm3dnow|mmintcommon)\.h$',
-        '/include/(?:avx|imm|wmm|x86|bmi|tbm|pku|clzero|sgx)intrin\.h$',
-        '/include/(?:avx2|bmi2|f16c|fma|lzcnt)intrin.\h$',
-        '/include/std(?:align|noreturn)\.h$',
-        '/include/quadmath(?:|_weak).h',
-        '/include/(?:stdarg|stdatomic|stdbool|stddef|stdfix|tgmath|unwind|varargs)\.h$',
-        '/include/header.gcc$',
-        '/include-fixed/(?:limits|syslimits|wchar)\.h$',
-        '/include-fixed/readme$',
-        '/include/(?:abm|fma4|ia32|lwp|popcnt|xop|xtest|mwaitx)intrin.h$',
-	'/include/(?:adx|fxsr|prfchw|rdseed|rtm|xsave|xsaveopt)intrin.h$',
-        '/include/(?:clflushopt|clwb|pcommit|xsavec|xsaves|)intrin.(?:h|h2|h3)$',
-        '/include/cross-stdarg.h$',
-        '/include/stdint(?:|-gcc).h$',
-        '/include/avx512[^\.]*.(?:h|h2|h3)$',
-        '/include/shaintrin\.h$',
+        '/include/header\.gcc$',
+        '/include/.*?intrin\.h(?:|[0-9])$',
+        '/include/std.*?\.h$',
+        '/include/cet\.h$',
+        '/include/cpuid\.h$',
+        '/include/cross-stdarg\.h$',
+        '/include/float\.h$',
         '/include/gcov\.h$',
+        '/include/iso646\.h$',
+	'/include/mm(?:_malloc|3dnow)\.h$',
+        '/include/quadmath*?\.h(?:|[0-9])$',
+        '/include/tgmath\.h$',
+        '/include/unwind\.h$',
+        '/include/varargs\.h$',
+        '/include-fixed/(?:limits|syslimits)\.h$',
+        '/include-fixed/readme$',
         '/install-tools/', '/libgcc\.a', '/libgcov\.a', '/libssp*',
         '/libquadmath.(?:la|a)',
         '/cc1\.exe',
