@@ -462,6 +462,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Feb 17 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- Use MPFR-4.0.1
+
 * Sun Jan 21 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Use MPFR-4.0.0 and MPC-1.1.0
 
