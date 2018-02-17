@@ -2612,31 +2612,27 @@ rest_of_insert_endbranch (void)
       for (insn = BB_HEAD (bb); insn != NEXT_INSN (BB_END (bb));
 	   insn = NEXT_INSN (insn))
 	{
-	  if (INSN_P (insn) && GET_CODE (insn) == CALL_INSN)
+	  if (CALL_P (insn))
 	    {
 	      if (find_reg_note (insn, REG_SETJMP, NULL) == NULL)
 		continue;
 	      /* Generate ENDBRANCH after CALL, which can return more than
 		 twice, setjmp-like functions.  */
 
-	      /* Skip notes and debug insns that must be next to the
-		 call insn.  ??? This might skip a lot more than
-		 that...  ??? Skipping barriers and emitting code
-		 after them surely looks like a mistake; we probably
-		 won't ever hit it, for we'll hit BB_END first.  */
+	      /* Skip notes that must immediately follow the call insn.  */
 	      rtx_insn *next_insn = insn;
-	      while ((next_insn != BB_END (bb))
-		      && (DEBUG_INSN_P (NEXT_INSN (next_insn))
-			  || NOTE_P (NEXT_INSN (next_insn))
-			  || BARRIER_P (NEXT_INSN (next_insn))))
-		next_insn = NEXT_INSN (next_insn);
+	      if (NEXT_INSN (insn)
+		  && NOTE_P (NEXT_INSN (insn))
+		  && (NOTE_KIND (NEXT_INSN (insn))
+		      == NOTE_INSN_CALL_ARG_LOCATION))
+		next_insn = NEXT_INSN (insn);
 
 	      cet_eb = gen_nop_endbr ();
 	      emit_insn_after_setloc (cet_eb, next_insn, INSN_LOCATION (insn));
 	      continue;
 	    }
 
-	  if (INSN_P (insn) && JUMP_P (insn) && flag_cet_switch)
+	  if (JUMP_P (insn) && flag_cet_switch)
 	    {
 	      rtx target = JUMP_LABEL (insn);
 	      if (target == NULL_RTX || ANY_RETURN_P (target))
@@ -2671,7 +2667,7 @@ rest_of_insert_endbranch (void)
 	  if ((LABEL_P (insn) && LABEL_PRESERVE_P (insn))
 	      || (NOTE_P (insn)
 		  && NOTE_KIND (insn) == NOTE_INSN_DELETED_LABEL))
-/* TODO.  Check /s bit also.  */
+	    /* TODO.  Check /s bit also.  */
 	    {
 	      cet_eb = gen_nop_endbr ();
 	      emit_insn_after (cet_eb, insn);
@@ -3474,8 +3470,9 @@ ix86_option_override_internal (bool main_args_p,
   const wide_int_bitmask PTA_SKYLAKE_AVX512 = PTA_SKYLAKE | PTA_AVX512F
     | PTA_AVX512CD | PTA_AVX512VL | PTA_AVX512BW | PTA_AVX512DQ | PTA_PKU
     | PTA_CLWB;
-  const wide_int_bitmask PTA_CANNONLAKE = PTA_SKYLAKE_AVX512 | PTA_AVX512VBMI
-    | PTA_AVX512IFMA | PTA_SHA;
+  const wide_int_bitmask PTA_CANNONLAKE = PTA_SKYLAKE | PTA_AVX512F
+    | PTA_AVX512CD | PTA_AVX512VL | PTA_AVX512BW | PTA_AVX512DQ | PTA_PKU
+    | PTA_AVX512VBMI | PTA_AVX512IFMA | PTA_SHA;
   const wide_int_bitmask PTA_ICELAKE = PTA_CANNONLAKE | PTA_AVX512VNNI
     | PTA_GFNI | PTA_VAES | PTA_AVX512VBMI2 | PTA_VPCLMULQDQ | PTA_AVX512BITALG
     | PTA_RDPID;
@@ -4913,34 +4910,47 @@ ix86_option_override_internal (bool main_args_p,
       = build_target_option_node (opts);
 
   /* Do not support control flow instrumentation if CET is not enabled.  */
-  if (opts->x_flag_cf_protection != CF_NONE)
+  cf_protection_level cf_protection
+    = (cf_protection_level) (opts->x_flag_cf_protection & ~CF_SET);
+  if (cf_protection != CF_NONE)
     {
-      if (!(TARGET_IBT_P (opts->x_ix86_isa_flags2)
-	    || TARGET_SHSTK_P (opts->x_ix86_isa_flags)))
+      switch (cf_protection)
 	{
-	  if (flag_cf_protection == CF_FULL)
+	case CF_BRANCH:
+	  if (! TARGET_IBT_P (opts->x_ix86_isa_flags2))
 	    {
-	      error ("%<-fcf-protection=full%> requires CET support "
-		     "on this target. Use -mcet or one of -mibt, "
-		     "-mshstk options to enable CET");
+	      error ("%<-fcf-protection=branch%> requires Intel CET "
+		     "support. Use -mcet or -mibt option to enable CET");
+	      flag_cf_protection = CF_NONE;
+	      return false;
 	    }
-	  else if (flag_cf_protection == CF_BRANCH)
+	  break;
+	case CF_RETURN:
+	  if (! TARGET_SHSTK_P (opts->x_ix86_isa_flags))
 	    {
-	      error ("%<-fcf-protection=branch%> requires CET support "
-		     "on this target. Use -mcet or one of -mibt, "
-		     "-mshstk options to enable CET");
+	      error ("%<-fcf-protection=return%> requires Intel CET "
+		     "support. Use -mcet or -mshstk option to enable CET");
+	      flag_cf_protection = CF_NONE;
+	      return false;
 	    }
-	  else if (flag_cf_protection == CF_RETURN)
+	  break;
+	case CF_FULL:
+	  if (   ! TARGET_IBT_P (opts->x_ix86_isa_flags2)
+		 || ! TARGET_SHSTK_P (opts->x_ix86_isa_flags))
 	    {
-	      error ("%<-fcf-protection=return%> requires CET support "
-		     "on this target. Use -mcet or one of -mibt, "
+	      error ("%<-fcf-protection=full%> requires Intel CET "
+		     "support. Use -mcet or both of -mibt and "
 		     "-mshstk options to enable CET");
+	      flag_cf_protection = CF_NONE;
+	      return false;
 	    }
-	  flag_cf_protection = CF_NONE;
-	  return false;
+	  break;
+	default:
+	  gcc_unreachable ();
 	}
+
       opts->x_flag_cf_protection =
-	(cf_protection_level) (opts->x_flag_cf_protection | CF_SET);
+	(cf_protection_level) (cf_protection | CF_SET);
     }
 
   if (ix86_tune_features [X86_TUNE_AVOID_128FMA_CHAINS])
@@ -17946,7 +17956,7 @@ print_reg (rtx x, int code, FILE *file)
    F,f -- likewise, but for floating-point.
    O -- if HAVE_AS_IX86_CMOV_SUN_SYNTAX, expand to "w.", "l." or "q.",
 	otherwise nothing
-   R -- print embeded rounding and sae.
+   R -- print embedded rounding and sae.
    r -- print only sae.
    z -- print the opcode suffix for the size of the current operand.
    Z -- likewise, with special suffixes for x87 instructions.
@@ -31273,21 +31283,28 @@ ix86_init_mmx_sse_builtins (void)
 	       VOID_FTYPE_UNSIGNED_UNSIGNED, IX86_BUILTIN_MWAIT);
 
   /* AES */
-  def_builtin_const (OPTION_MASK_ISA_AES, "__builtin_ia32_aesenc128",
+  def_builtin_const (OPTION_MASK_ISA_AES | OPTION_MASK_ISA_SSE2,
+		     "__builtin_ia32_aesenc128",
 		     V2DI_FTYPE_V2DI_V2DI, IX86_BUILTIN_AESENC128);
-  def_builtin_const (OPTION_MASK_ISA_AES, "__builtin_ia32_aesenclast128",
+  def_builtin_const (OPTION_MASK_ISA_AES | OPTION_MASK_ISA_SSE2,
+		     "__builtin_ia32_aesenclast128",
 		     V2DI_FTYPE_V2DI_V2DI, IX86_BUILTIN_AESENCLAST128);
-  def_builtin_const (OPTION_MASK_ISA_AES, "__builtin_ia32_aesdec128",
+  def_builtin_const (OPTION_MASK_ISA_AES | OPTION_MASK_ISA_SSE2,
+		     "__builtin_ia32_aesdec128",
 		     V2DI_FTYPE_V2DI_V2DI, IX86_BUILTIN_AESDEC128);
-  def_builtin_const (OPTION_MASK_ISA_AES, "__builtin_ia32_aesdeclast128",
+  def_builtin_const (OPTION_MASK_ISA_AES | OPTION_MASK_ISA_SSE2,
+		     "__builtin_ia32_aesdeclast128",
 		     V2DI_FTYPE_V2DI_V2DI, IX86_BUILTIN_AESDECLAST128);
-  def_builtin_const (OPTION_MASK_ISA_AES, "__builtin_ia32_aesimc128",
+  def_builtin_const (OPTION_MASK_ISA_AES | OPTION_MASK_ISA_SSE2,
+		     "__builtin_ia32_aesimc128",
 		     V2DI_FTYPE_V2DI, IX86_BUILTIN_AESIMC128);
-  def_builtin_const (OPTION_MASK_ISA_AES, "__builtin_ia32_aeskeygenassist128",
+  def_builtin_const (OPTION_MASK_ISA_AES | OPTION_MASK_ISA_SSE2,
+		     "__builtin_ia32_aeskeygenassist128",
 		     V2DI_FTYPE_V2DI_INT, IX86_BUILTIN_AESKEYGENASSIST128);
 
   /* PCLMUL */
-  def_builtin_const (OPTION_MASK_ISA_PCLMUL, "__builtin_ia32_pclmulqdq128",
+  def_builtin_const (OPTION_MASK_ISA_PCLMUL | OPTION_MASK_ISA_SSE2,
+		     "__builtin_ia32_pclmulqdq128",
 		     V2DI_FTYPE_V2DI_V2DI_INT, IX86_BUILTIN_PCLMULQDQ128);
 
   /* RDRND */
@@ -35692,6 +35709,7 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
     case INT_FTYPE_VOID:
     case USHORT_FTYPE_VOID:
     case UINT64_FTYPE_VOID:
+    case UINT_FTYPE_VOID:
     case UNSIGNED_FTYPE_VOID:
       nargs = 0;
       klass = load;
@@ -38481,7 +38499,7 @@ s4fma_expand:
       && fcode <= IX86_BUILTIN__BDESC_CET_NORMAL_LAST)
     {
       i = fcode - IX86_BUILTIN__BDESC_CET_NORMAL_FIRST;
-      return ix86_expand_args_builtin (bdesc_cet_rdssp + i, exp,
+      return ix86_expand_special_args_builtin (bdesc_cet_rdssp + i, exp,
 				       target);
     }
 
@@ -40393,6 +40411,10 @@ ix86_multiplication_cost (const struct processor_costs *cost,
 			   ? cost->mulsd : cost->mulss, true);
   else if (GET_MODE_CLASS (mode) == MODE_VECTOR_INT)
     {
+      /* vpmullq is used in this case. No emulation is needed.  */
+      if (TARGET_AVX512DQ)
+	return ix86_vec_cost (mode, cost->mulss, true);
+
       /* V*QImode is emulated with 7-13 insns.  */
       if (mode == V16QImode || mode == V32QImode)
 	{
@@ -45884,7 +45906,18 @@ ix86_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
 			      ix86_cost->sse_op, true);
 
       case vec_construct:
-	return ix86_vec_cost (mode, ix86_cost->sse_op, false);
+	{
+	  /* N element inserts.  */
+	  int cost = ix86_vec_cost (mode, ix86_cost->sse_op, false);
+	  /* One vinserti128 for combining two SSE vectors for AVX256.  */
+	  if (GET_MODE_BITSIZE (mode) == 256)
+	    cost += ix86_vec_cost (mode, ix86_cost->addss, true);
+	  /* One vinserti64x4 and two vinserti128 for combining SSE
+	     and AVX256 vectors to AVX512.  */
+	  else if (GET_MODE_BITSIZE (mode) == 512)
+	    cost += 3 * ix86_vec_cost (mode, ix86_cost->addss, true);
+	  return cost;
+	}
 
       default:
         gcc_unreachable ();
@@ -50223,6 +50256,18 @@ ix86_add_stmt_cost (void *data, int count, enum vect_cost_for_stmt kind,
 	  break;
 	}
     }
+  /* If we do elementwise loads into a vector then we are bound by
+     latency and execution resources for the many scalar loads
+     (AGU and load ports).  Try to account for this by scaling the
+     construction cost by the number of elements involved.  */
+  if (kind == vec_construct
+      && stmt_info
+      && stmt_info->type == load_vec_info_type
+      && stmt_info->memory_access_type == VMAT_ELEMENTWISE)
+    {
+      stmt_cost = ix86_builtin_vectorization_cost (kind, vectype, misalign);
+      stmt_cost *= TYPE_VECTOR_SUBPARTS (vectype);
+    }
   if (stmt_cost == -1)
     stmt_cost = ix86_builtin_vectorization_cost (kind, vectype, misalign);
 
@@ -50560,7 +50605,7 @@ ix86_loop_unroll_adjust (unsigned nunroll, struct loop *loop)
   free (bbs);
 
   if (mem_count && mem_count <=32)
-    return 32/mem_count;
+    return MIN (nunroll, 32 / mem_count);
 
   return nunroll;
 }

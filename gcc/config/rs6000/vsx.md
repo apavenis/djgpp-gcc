@@ -1650,10 +1650,22 @@
   rtx op5 = gen_reg_rtx (DImode);
   emit_insn (gen_vsx_extract_v2di (op3, op1, GEN_INT (0)));
   emit_insn (gen_vsx_extract_v2di (op4, op2, GEN_INT (0)));
-  emit_insn (gen_muldi3 (op5, op3, op4));
+  if (TARGET_POWERPC64)
+    emit_insn (gen_muldi3 (op5, op3, op4));
+  else
+    {
+      rtx ret = expand_mult (DImode, op3, op4, NULL, 0, false);
+      emit_move_insn (op5, ret);
+    }
   emit_insn (gen_vsx_extract_v2di (op3, op1, GEN_INT (1)));
   emit_insn (gen_vsx_extract_v2di (op4, op2, GEN_INT (1)));
-  emit_insn (gen_muldi3 (op3, op3, op4));
+  if (TARGET_POWERPC64)
+    emit_insn (gen_muldi3 (op3, op3, op4));
+  else
+    {
+      rtx ret = expand_mult (DImode, op3, op4, NULL, 0, false);
+      emit_move_insn (op3, ret);
+    }
   emit_insn (gen_vsx_concat_v2di (op0, op5, op3));
   DONE;
 }"
@@ -1688,10 +1700,30 @@
   rtx op5 = gen_reg_rtx (DImode);
   emit_insn (gen_vsx_extract_v2di (op3, op1, GEN_INT (0)));
   emit_insn (gen_vsx_extract_v2di (op4, op2, GEN_INT (0)));
-  emit_insn (gen_divdi3 (op5, op3, op4));
+  if (TARGET_POWERPC64)
+    emit_insn (gen_divdi3 (op5, op3, op4));
+  else
+    {
+      rtx libfunc = optab_libfunc (sdiv_optab, DImode);
+      rtx target = emit_library_call_value (libfunc,
+					    op5, LCT_NORMAL, DImode,
+					    op3, DImode,
+					    op4, DImode);
+      emit_move_insn (op5, target);
+    }
   emit_insn (gen_vsx_extract_v2di (op3, op1, GEN_INT (1)));
   emit_insn (gen_vsx_extract_v2di (op4, op2, GEN_INT (1)));
-  emit_insn (gen_divdi3 (op3, op3, op4));
+  if (TARGET_POWERPC64)
+    emit_insn (gen_divdi3 (op3, op3, op4));
+  else
+    {
+      rtx libfunc = optab_libfunc (sdiv_optab, DImode);
+      rtx target = emit_library_call_value (libfunc,
+					    op3, LCT_NORMAL, DImode,
+					    op3, DImode,
+					    op4, DImode);
+      emit_move_insn (op3, target);
+    }
   emit_insn (gen_vsx_concat_v2di (op0, op5, op3));
   DONE;
 }"
@@ -1716,10 +1748,30 @@
   rtx op5 = gen_reg_rtx (DImode);
   emit_insn (gen_vsx_extract_v2di (op3, op1, GEN_INT (0)));
   emit_insn (gen_vsx_extract_v2di (op4, op2, GEN_INT (0)));
-  emit_insn (gen_udivdi3 (op5, op3, op4));
+  if (TARGET_POWERPC64)
+    emit_insn (gen_udivdi3 (op5, op3, op4));
+  else
+    {
+      rtx libfunc = optab_libfunc (udiv_optab, DImode);
+      rtx target = emit_library_call_value (libfunc,
+					    op5, LCT_NORMAL, DImode,
+					    op3, DImode,
+					    op4, DImode);
+      emit_move_insn (op5, target);
+    }
   emit_insn (gen_vsx_extract_v2di (op3, op1, GEN_INT (1)));
   emit_insn (gen_vsx_extract_v2di (op4, op2, GEN_INT (1)));
-  emit_insn (gen_udivdi3 (op3, op3, op4));
+  if (TARGET_POWERPC64)
+    emit_insn (gen_udivdi3 (op3, op3, op4));
+  else
+    {
+      rtx libfunc = optab_libfunc (udiv_optab, DImode);
+      rtx target = emit_library_call_value (libfunc,
+					    op3, LCT_NORMAL, DImode,
+					    op3, DImode,
+					    op4, DImode);
+      emit_move_insn (op3, target);
+    }
   emit_insn (gen_vsx_concat_v2di (op0, op5, op3));
   DONE;
 }"
@@ -5152,45 +5204,20 @@
 ;; Vector insert/extract word at arbitrary byte values.  Note, the little
 ;; endian version needs to adjust the byte number, and the V4SI element in
 ;; vinsert4b.
-(define_expand "vextract4b"
-  [(set (match_operand:DI 0 "gpc_reg_operand")
-	(unspec:DI [(match_operand:V16QI 1 "vsx_register_operand")
-		    (match_operand:QI 2 "const_0_to_12_operand")]
-		   UNSPEC_XXEXTRACTUW))]
+(define_insn "extract4b"
+  [(set (match_operand:V2DI 0 "vsx_register_operand")
+       (unspec:V2DI [(match_operand:V16QI 1 "vsx_register_operand" "wa")
+                     (match_operand:QI 2 "const_0_to_12_operand" "n")]
+                    UNSPEC_XXEXTRACTUW))]
   "TARGET_P9_VECTOR"
 {
   if (!VECTOR_ELT_ORDER_BIG)
     operands[2] = GEN_INT (12 - INTVAL (operands[2]));
+
+  return "xxextractuw %x0,%x1,%2";
 })
 
-(define_insn_and_split "*vextract4b_internal"
-  [(set (match_operand:DI 0 "gpc_reg_operand" "=wj,r")
-	(unspec:DI [(match_operand:V16QI 1 "vsx_register_operand" "wa,v")
-		    (match_operand:QI 2 "const_0_to_12_operand" "n,n")]
-		   UNSPEC_XXEXTRACTUW))]
-  "TARGET_P9_VECTOR"
-  "@
-   xxextractuw %x0,%x1,%2
-   #"
-  "&& reload_completed && int_reg_operand (operands[0], DImode)"
-  [(const_int 0)]
-{
-  rtx op0 = operands[0];
-  rtx op1 = operands[1];
-  rtx op2 = operands[2];
-  rtx op0_si = gen_rtx_REG (SImode, REGNO (op0));
-  rtx op1_v4si = gen_rtx_REG (V4SImode, REGNO (op1));
-
-  emit_move_insn (op0, op2);
-  if (VECTOR_ELT_ORDER_BIG)
-    emit_insn (gen_vextuwlx (op0_si, op0_si, op1_v4si));
-  else
-    emit_insn (gen_vextuwrx (op0_si, op0_si, op1_v4si));
-  DONE;
-}
-  [(set_attr "type" "vecperm")])
-
-(define_expand "vinsert4b"
+(define_expand "insert4b"
   [(set (match_operand:V16QI 0 "vsx_register_operand")
 	(unspec:V16QI [(match_operand:V4SI 1 "vsx_register_operand")
 		       (match_operand:V16QI 2 "vsx_register_operand")
@@ -5208,7 +5235,7 @@
     }
 })
 
-(define_insn "*vinsert4b_internal"
+(define_insn "*insert4b_internal"
   [(set (match_operand:V16QI 0 "vsx_register_operand" "=wa")
 	(unspec:V16QI [(match_operand:V4SI 1 "vsx_register_operand" "wa")
 		       (match_operand:V16QI 2 "vsx_register_operand" "0")
@@ -5218,27 +5245,6 @@
   "xxinsertw %x0,%x1,%3"
   [(set_attr "type" "vecperm")])
 
-(define_expand "vinsert4b_di"
-  [(set (match_operand:V16QI 0 "vsx_register_operand")
-	(unspec:V16QI [(match_operand:DI 1 "vsx_register_operand")
-		       (match_operand:V16QI 2 "vsx_register_operand")
-		       (match_operand:QI 3 "const_0_to_12_operand")]
-		   UNSPEC_XXINSERTW))]
-  "TARGET_P9_VECTOR"
-{
-  if (!VECTOR_ELT_ORDER_BIG)
-    operands[3] = GEN_INT (12 - INTVAL (operands[3]));
-})
-
-(define_insn "*vinsert4b_di_internal"
-  [(set (match_operand:V16QI 0 "vsx_register_operand" "=wa")
-	(unspec:V16QI [(match_operand:DI 1 "vsx_register_operand" "wj")
-		       (match_operand:V16QI 2 "vsx_register_operand" "0")
-		       (match_operand:QI 3 "const_0_to_12_operand" "n")]
-		   UNSPEC_XXINSERTW))]
-  "TARGET_P9_VECTOR"
-  "xxinsertw %x0,%x1,%3"
-  [(set_attr "type" "vecperm")])
 
 ;; Generate vector extract four float 32 values from left four elements
 ;; of eight element vector of float 16 values.
@@ -5311,35 +5317,60 @@
 
 (define_expand "p9_xxbrq_v16qi"
   [(use (match_operand:V16QI 0 "vsx_register_operand" "=wa"))
-   (use (match_operand:V16QI 1 "vsx_register_operand" "=wa"))]
+   (use (match_operand:V16QI 1 "vsx_register_operand" "wa"))]
   "TARGET_P9_VECTOR"
 {
-  rtx op0 = gen_lowpart (V1TImode, operands[0]);
+  rtx op0 = gen_reg_rtx (V1TImode);
   rtx op1 = gen_lowpart (V1TImode, operands[1]);
   emit_insn (gen_p9_xxbrq_v1ti (op0, op1));
+  emit_move_insn (operands[0], gen_lowpart (V16QImode, op0));
   DONE;
 })
 
 ;; Swap all bytes in each 64-bit element
-(define_insn "p9_xxbrd_<mode>"
-  [(set (match_operand:VSX_D 0 "vsx_register_operand" "=wa")
-	(bswap:VSX_D (match_operand:VSX_D 1 "vsx_register_operand" "wa")))]
+(define_insn "p9_xxbrd_v2di"
+  [(set (match_operand:V2DI 0 "vsx_register_operand" "=wa")
+	(bswap:V2DI (match_operand:V2DI 1 "vsx_register_operand" "wa")))]
   "TARGET_P9_VECTOR"
   "xxbrd %x0,%x1"
   [(set_attr "type" "vecperm")])
 
+(define_expand "p9_xxbrd_v2df"
+  [(use (match_operand:V2DF 0 "vsx_register_operand" "=wa"))
+   (use (match_operand:V2DF 1 "vsx_register_operand" "wa"))]
+  "TARGET_P9_VECTOR"
+{
+  rtx op0 = gen_reg_rtx (V2DImode);
+  rtx op1 = gen_lowpart (V2DImode, operands[1]);
+  emit_insn (gen_p9_xxbrd_v2di (op0, op1));
+  emit_move_insn (operands[0], gen_lowpart (V2DFmode, op0));
+  DONE;
+})
+
 ;; Swap all bytes in each 32-bit element
-(define_insn "p9_xxbrw_<mode>"
-  [(set (match_operand:VSX_W 0 "vsx_register_operand" "=wa")
-	(bswap:VSX_W (match_operand:VSX_W 1 "vsx_register_operand" "wa")))]
+(define_insn "p9_xxbrw_v4si"
+  [(set (match_operand:V4SI 0 "vsx_register_operand" "=wa")
+	(bswap:V4SI (match_operand:V4SI 1 "vsx_register_operand" "wa")))]
   "TARGET_P9_VECTOR"
   "xxbrw %x0,%x1"
   [(set_attr "type" "vecperm")])
 
+(define_expand "p9_xxbrw_v4sf"
+  [(use (match_operand:V4SF 0 "vsx_register_operand" "=wa"))
+   (use (match_operand:V4SF 1 "vsx_register_operand" "wa"))]
+  "TARGET_P9_VECTOR"
+{
+  rtx op0 = gen_reg_rtx (V4SImode);
+  rtx op1 = gen_lowpart (V4SImode, operands[1]);
+  emit_insn (gen_p9_xxbrw_v4si (op0, op1));
+  emit_move_insn (operands[0], gen_lowpart (V4SFmode, op0));
+  DONE;
+})
+
 ;; Swap all bytes in each element of vector
 (define_expand "revb_<mode>"
-  [(set (match_operand:VEC_REVB 0 "vsx_register_operand")
-	(bswap:VEC_REVB (match_operand:VEC_REVB 1 "vsx_register_operand")))]
+  [(use (match_operand:VEC_REVB 0 "vsx_register_operand"))
+   (use (match_operand:VEC_REVB 1 "vsx_register_operand"))]
   ""
 {
   if (TARGET_P9_VECTOR)

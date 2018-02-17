@@ -942,13 +942,7 @@ match_reload (signed char out, signed char *ins, signed char *outs,
 	  reg = new_in_reg
 	    = lra_create_new_reg_with_unique_value (inmode, in_rtx,
 						    goal_class, "");
-	  if (SCALAR_INT_MODE_P (inmode))
-	    new_out_reg = gen_lowpart_SUBREG (outmode, reg);
-	  else
-	    {
-	      poly_uint64 offset = subreg_lowpart_offset (outmode, inmode);
-	      new_out_reg = gen_rtx_SUBREG (outmode, reg, offset);
-	    }
+	  new_out_reg = gen_lowpart_SUBREG (outmode, reg);
 	  LRA_SUBREG_P (new_out_reg) = 1;
 	  /* If the input reg is dying here, we can use the same hard
 	     register for REG and IN_RTX.  We do it only for original
@@ -965,13 +959,7 @@ match_reload (signed char out, signed char *ins, signed char *outs,
 	  reg = new_out_reg
 	    = lra_create_new_reg_with_unique_value (outmode, out_rtx,
 						    goal_class, "");
-	  if (SCALAR_INT_MODE_P (outmode))
-	    new_in_reg = gen_lowpart_SUBREG (inmode, reg);
-	  else
-	    {
-	      poly_uint64 offset = subreg_lowpart_offset (inmode, outmode);
-	      new_in_reg = gen_rtx_SUBREG (inmode, reg, offset);
-	    }
+	  new_in_reg = gen_lowpart_SUBREG (inmode, reg);
 	  /* NEW_IN_REG is non-paradoxical subreg.  We don't want
 	     NEW_OUT_REG living above.  We add clobber clause for
 	     this.  This is just a temporary clobber.  We can remove
@@ -5299,7 +5287,8 @@ inherit_reload_reg (bool def_p, int original_regno,
 	  lra_assert (DEBUG_INSN_P (usage_insn));
 	  next_usage_insns = XEXP (next_usage_insns, 1);
 	}
-      lra_substitute_pseudo (&usage_insn, original_regno, new_reg, false);
+      lra_substitute_pseudo (&usage_insn, original_regno, new_reg, false,
+			     DEBUG_INSN_P (usage_insn));
       lra_update_insn_regno_info (as_a <rtx_insn *> (usage_insn));
       if (lra_dump_file != NULL)
 	{
@@ -5620,7 +5609,8 @@ split_reg (bool before_p, int original_regno, rtx_insn *insn,
       usage_insn = XEXP (next_usage_insns, 0);
       lra_assert (DEBUG_INSN_P (usage_insn));
       next_usage_insns = XEXP (next_usage_insns, 1);
-      lra_substitute_pseudo (&usage_insn, original_regno, new_reg, false);
+      lra_substitute_pseudo (&usage_insn, original_regno, new_reg, false,
+			     true);
       lra_update_insn_regno_info (as_a <rtx_insn *> (usage_insn));
       if (lra_dump_file != NULL)
 	{
@@ -6356,7 +6346,13 @@ inherit_in_ebb (rtx_insn *head, rtx_insn *tail)
 						 PSEUDO_REGNO_MODE (src_regno),
 						 reg_renumber[src_regno]);
 			}
-		      add_next_usage_insn (src_regno, use_insn, reloads_num);
+		      if (src_regno >= FIRST_PSEUDO_REGISTER)
+			add_next_usage_insn (src_regno, use_insn, reloads_num);
+		      else
+			{
+			  for (i = 0; i < hard_regno_nregs (src_regno, reg->biggest_mode); i++)
+			    add_next_usage_insn (src_regno + i, use_insn, reloads_num);
+			}
 		    }
 		}
 	  /* Process used call regs.  */

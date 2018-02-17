@@ -261,6 +261,7 @@ is_capture_proxy (tree decl)
   return (VAR_P (decl)
 	  && DECL_HAS_VALUE_EXPR_P (decl)
 	  && !DECL_ANON_UNION_VAR_P (decl)
+	  && !DECL_DECOMPOSITION_P (decl)
 	  && LAMBDA_FUNCTION_P (DECL_CONTEXT (decl)));
 }
 
@@ -450,24 +451,16 @@ build_capture_proxy (tree member, tree init)
 	{
 	  if (PACK_EXPANSION_P (init))
 	    init = PACK_EXPANSION_PATTERN (init);
-	  if (TREE_CODE (init) == INDIRECT_REF)
+	  if (INDIRECT_REF_P (init))
 	    init = TREE_OPERAND (init, 0);
 	  STRIP_NOPS (init);
 	}
 
-      if (TREE_CODE (init) == COMPONENT_REF)
-	/* We're capturing a capture of a function parameter pack, and have
-	   lost track of the original variable.  It's not important to have
-	   DECL_CAPTURED_VARIABLE in this case, since a function parameter pack
-	   isn't a constant variable, so don't bother trying to set it.  */;
-      else
-	{
-	  gcc_assert (VAR_P (init) || TREE_CODE (init) == PARM_DECL);
-	  while (is_normal_capture_proxy (init))
-	    init = DECL_CAPTURED_VARIABLE (init);
-	  retrofit_lang_decl (var);
-	  DECL_CAPTURED_VARIABLE (var) = init;
-	}
+      gcc_assert (VAR_P (init) || TREE_CODE (init) == PARM_DECL);
+      while (is_normal_capture_proxy (init))
+	init = DECL_CAPTURED_VARIABLE (init);
+      retrofit_lang_decl (var);
+      DECL_CAPTURED_VARIABLE (var) = init;
     }
 
   if (name == this_identifier)

@@ -1087,7 +1087,9 @@ decls_match (tree newdecl, tree olddecl, bool record_versions /* = true */)
 	  && !DECL_EXTERN_C_P (newdecl)
 	  && !DECL_EXTERN_C_P (olddecl)
 	  && record_versions
-	  && maybe_version_functions (newdecl, olddecl))
+	  && maybe_version_functions (newdecl, olddecl,
+				      (!DECL_FUNCTION_VERSIONED (newdecl)
+				       || !DECL_FUNCTION_VERSIONED (olddecl))))
 	return 0;
     }
   else if (TREE_CODE (newdecl) == TEMPLATE_DECL)
@@ -1145,19 +1147,17 @@ decls_match (tree newdecl, tree olddecl, bool record_versions /* = true */)
 }
 
 /* NEWDECL and OLDDECL have identical signatures.  If they are
-   different versions adjust them and return true.  */
+   different versions adjust them and return true.
+   If RECORD is set to true, record function versions.  */
 
 bool
-maybe_version_functions (tree newdecl, tree olddecl)
+maybe_version_functions (tree newdecl, tree olddecl, bool record)
 {
   if (!targetm.target_option.function_versions (newdecl, olddecl))
     return false;
 
-  bool record = false;
-
   if (!DECL_FUNCTION_VERSIONED (olddecl))
     {
-      record = true;
       DECL_FUNCTION_VERSIONED (olddecl) = 1;
       if (DECL_ASSEMBLER_NAME_SET_P (olddecl))
 	mangle_decl (olddecl);
@@ -1165,13 +1165,11 @@ maybe_version_functions (tree newdecl, tree olddecl)
 
   if (!DECL_FUNCTION_VERSIONED (newdecl))
     {
-      record = true;
       DECL_FUNCTION_VERSIONED (newdecl) = 1;
       if (DECL_ASSEMBLER_NAME_SET_P (newdecl))
 	mangle_decl (newdecl);
     }
 
-  /* Only record if at least one was not already versions.  */
   if (record)
     cgraph_node::record_function_versions (olddecl, newdecl);
 
@@ -4093,8 +4091,14 @@ cxx_init_decl_processing (void)
   pop_namespace ();
 
   flag_noexcept_type = (cxx_dialect >= cxx17);
+  /* There's no fixed location for <command-line>, the current
+     location is <builtins>, which is somewhat confusing.  */
   if (!flag_new_for_scope)
-    warning (OPT_Wdeprecated, "%<-fno-for-scope%> is deprecated");
+    warning_at (UNKNOWN_LOCATION, OPT_Wdeprecated,
+		"%<-fno-for-scope%> is deprecated");
+  if (flag_friend_injection)
+    warning_at (UNKNOWN_LOCATION, OPT_Wdeprecated,
+		"%<-ffriend-injection%> is deprecated");
 
   c_common_nodes_and_builtins ();
 
@@ -9836,7 +9840,14 @@ check_special_function_return_type (special_function_kind sfk,
 	error_at (smallest_type_quals_location (type_quals, locations),
 		  "qualifiers are not allowed on declaration of "
 		  "deduction guide");
-      type = make_template_placeholder (CLASSTYPE_TI_TEMPLATE (optype));
+      if (TREE_CODE (optype) == TEMPLATE_TEMPLATE_PARM)
+	{
+	  error ("template template parameter %qT in declaration of "
+		 "deduction guide", optype);
+	  type = error_mark_node;
+	}
+      else
+	type = make_template_placeholder (CLASSTYPE_TI_TEMPLATE (optype));
       for (int i = 0; i < ds_last; ++i)
 	if (i != ds_explicit && locations[i])
 	  error_at (locations[i],

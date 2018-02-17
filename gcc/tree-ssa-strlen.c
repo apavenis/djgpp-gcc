@@ -1849,7 +1849,7 @@ maybe_diag_stxncpy_trunc (gimple_stmt_iterator gsi, tree src, tree cnt)
 
   /* Look for dst[i] = '\0'; after the stxncpy() call and if found
      avoid the truncation warning.  */
-  gsi_next (&gsi);
+  gsi_next_nondebug (&gsi);
   gimple *next_stmt = gsi_stmt (gsi);
 
   if (!gsi_end_p (gsi) && is_gimple_assign (next_stmt))
@@ -1878,6 +1878,7 @@ maybe_diag_stxncpy_trunc (gimple_stmt_iterator gsi, tree src, tree cnt)
       poly_int64 lhsoff;
       tree lhsbase = get_addr_base_and_unit_offset (lhs, &lhsoff);
       if (lhsbase
+	  && dstbase
 	  && known_eq (dstoff, lhsoff)
 	  && operand_equal_p (dstbase, lhsbase, 0))
 	return false;
@@ -1899,7 +1900,10 @@ maybe_diag_stxncpy_trunc (gimple_stmt_iterator gsi, tree src, tree cnt)
     {
       tree range[2];
       get_range_strlen (src, range);
-      if (range[0])
+      if (range[0] != NULL_TREE
+	  && TREE_CODE (range[0]) == INTEGER_CST
+	  && range[1] != NULL_TREE
+	  && TREE_CODE (range[1]) == INTEGER_CST)
 	{
 	  lenrange[0] = wi::to_wide (range[0], prec);
 	  lenrange[1] = wi::to_wide (range[1], prec);

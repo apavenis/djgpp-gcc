@@ -215,16 +215,6 @@ static tree end_of_base (tree);
 static tree get_vcall_index (tree, tree);
 static bool type_maybe_constexpr_default_constructor (tree);
 
-/* Variables shared between class.c and call.c.  */
-
-int n_vtables = 0;
-int n_vtable_entries = 0;
-int n_vtable_searches = 0;
-int n_vtable_elems = 0;
-int n_convert_harshness = 0;
-int n_compute_conversion_costs = 0;
-int n_inner_fields_searched = 0;
-
 /* Return a COND_EXPR that executes TRUE_STMT if this execution of the
    'structor is in charge of 'structing virtual bases, or FALSE_STMT
    otherwise.  */
@@ -892,12 +882,6 @@ build_primary_vtable (tree binfo, tree type)
       virtuals = NULL_TREE;
     }
 
-  if (GATHER_STATISTICS)
-    {
-      n_vtables += 1;
-      n_vtable_elems += list_length (virtuals);
-    }
-
   /* Initialize the association list for this type, based
      on our first approximation.  */
   BINFO_VTABLE (TYPE_BINFO (type)) = decl;
@@ -1099,7 +1083,7 @@ add_method (tree type, tree method, bool via_using)
 	  /* If these are versions of the same function, process and
 	     move on.  */
 	  if (TREE_CODE (fn) == FUNCTION_DECL
-	      && maybe_version_functions (method, fn))
+	      && maybe_version_functions (method, fn, true))
 	    continue;
 
 	  if (DECL_INHERITED_CTOR (method))
@@ -4232,8 +4216,14 @@ build_base_field_1 (tree t, tree basetype, tree *&next_field)
   DECL_ARTIFICIAL (decl) = 1;
   DECL_IGNORED_P (decl) = 1;
   DECL_FIELD_CONTEXT (decl) = t;
-  DECL_SIZE (decl) = CLASSTYPE_SIZE (basetype);
-  DECL_SIZE_UNIT (decl) = CLASSTYPE_SIZE_UNIT (basetype);
+  if (is_empty_class (basetype))
+    /* CLASSTYPE_SIZE is one byte, but the field needs to have size zero.  */
+    DECL_SIZE (decl) = DECL_SIZE_UNIT (decl) = size_zero_node;
+  else
+    {
+      DECL_SIZE (decl) = CLASSTYPE_SIZE (basetype);
+      DECL_SIZE_UNIT (decl) = CLASSTYPE_SIZE_UNIT (basetype);
+    }
   SET_DECL_ALIGN (decl, CLASSTYPE_ALIGN (basetype));
   DECL_USER_ALIGN (decl) = CLASSTYPE_USER_ALIGN (basetype);
   SET_DECL_MODE (decl, TYPE_MODE (basetype));
@@ -7078,7 +7068,7 @@ finish_struct (tree t, tree attributes)
       /* People keep complaining that the compiler crashes on an invalid
 	 definition of initializer_list, so I guess we should explicitly
 	 reject it.  What the compiler internals care about is that it's a
-	 template and has a pointer field followed by an integer field.  */
+	 template and has a pointer field followed by size_type field.  */
       bool ok = false;
       if (processing_template_decl)
 	{
@@ -7091,9 +7081,8 @@ finish_struct (tree t, tree attributes)
 	    }
 	}
       if (!ok)
-	fatal_error (input_location,
-		     "definition of std::initializer_list does not match "
-		     "#include <initializer_list>");
+	fatal_error (input_location, "definition of %qD does not match "
+		     "%<#include <initializer_list>%>", TYPE_NAME (t));
     }
 
   input_location = saved_loc;
@@ -8116,23 +8105,6 @@ get_vfield_name (tree type)
 			       + IDENTIFIER_LENGTH (ctor_name) + 2);
   sprintf (buf, VFIELD_NAME_FORMAT, IDENTIFIER_POINTER (ctor_name));
   return get_identifier (buf);
-}
-
-void
-print_class_statistics (void)
-{
-  if (! GATHER_STATISTICS)
-    return;
-
-  fprintf (stderr, "convert_harshness = %d\n", n_convert_harshness);
-  fprintf (stderr, "compute_conversion_costs = %d\n", n_compute_conversion_costs);
-  if (n_vtables)
-    {
-      fprintf (stderr, "vtables = %d; vtable searches = %d\n",
-	       n_vtables, n_vtable_searches);
-      fprintf (stderr, "vtable entries = %d; vtable elems = %d\n",
-	       n_vtable_entries, n_vtable_elems);
-    }
 }
 
 /* Build a dummy reference to ourselves so Derived::Base (and A::A) works,

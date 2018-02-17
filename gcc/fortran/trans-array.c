@@ -5354,8 +5354,8 @@ gfc_array_init_size (tree descriptor, int rank, int corank, tree * poffset,
     }
   else
     {
-      tmp = gfc_get_dtype_rank_type (rank, gfc_get_element_type (type));
-      gfc_add_modify (pblock, gfc_conv_descriptor_dtype (descriptor), tmp);
+      tmp = gfc_conv_descriptor_dtype (descriptor);
+      gfc_add_modify (pblock, tmp, gfc_get_dtype (type));
     }
 
   or_expr = logical_false_node;
@@ -7529,9 +7529,9 @@ gfc_conv_expr_descriptor (gfc_se *se, gfc_expr *expr)
 	      : base;
 	  gfc_conv_descriptor_offset_set (&loop.pre, parm, tmp);
 	}
-      else if (IS_CLASS_ARRAY (expr) && !se->data_not_needed
-	       && (!rank_remap || se->use_offset)
-	       && GFC_DESCRIPTOR_TYPE_P (TREE_TYPE (desc)))
+      else if (GFC_DESCRIPTOR_TYPE_P (TREE_TYPE (desc))
+	       && !se->data_not_needed
+	       && (!rank_remap || se->use_offset))
 	{
 	  gfc_conv_descriptor_offset_set (&loop.pre, parm,
 					 gfc_conv_descriptor_offset_get (desc));
@@ -8747,15 +8747,17 @@ structure_alloc_comps (gfc_symbol * der_type, tree decl,
 	      cmp_has_alloc_comps = false;
 	    }
 
-	  if (flag_coarray == GFC_FCOARRAY_LIB
-	      && (caf_in_coarray (caf_mode) || c->attr.codimension))
+	  if (flag_coarray == GFC_FCOARRAY_LIB && caf_in_coarray (caf_mode))
 	    {
-	      /* Register the component with the coarray library.  */
+	      /* Register a component of a derived type coarray with the
+		 coarray library.  Do not register ultimate component
+		 coarrays here.  They are treated like regular coarrays and
+		 are either allocated on all images or on none.  */
 	      tree token;
 
 	      comp = fold_build3_loc (input_location, COMPONENT_REF, ctype,
 				      decl, cdecl, NULL_TREE);
-	      if (c->attr.dimension || c->attr.codimension)
+	      if (c->attr.dimension)
 		{
 		  /* Set the dtype, because caf_register needs it.  */
 		  gfc_add_modify (&fnblock, gfc_conv_descriptor_dtype (comp),

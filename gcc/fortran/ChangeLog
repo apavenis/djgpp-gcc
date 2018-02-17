@@ -1,3 +1,109 @@
+2018-02-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/84418
+	* trans-openmp.c (gfc_trans_omp_clauses): For OMP_CLAUSE_LINEAR_REF
+	kind set OMP_CLAUSE_LINEAR_STEP to TYPE_SIZE_UNIT times last_step.
+
+2018-02-16  Dominique d'Humieres  <dominiq@gcc.gnu.org>
+
+	PR fortran/84354
+	* decl.c (gfc_get_pdt_instance): Replace '%qs' with %qs.
+
+2018-02-15  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/84409
+	* interface.c (check_dtio_arg_TKR_intent): Add a check for character
+	length.
+
+2018-02-14  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/84385
+	* match.c (gfc_match_select_type): Fix check for selector in
+	SELECT TYPE statement.
+
+2018-02-13  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/84313
+	* symbol.c (check_conflict): Reject procedure pointers in common blocks.
+
+2018-02-13  Alastair McKinstry  <alastair.mckinstry@sceal.ie>
+	    Janne Blomqvist  <jb@gcc.gnu.org>
+
+	* module.c (dump_module): Use lbasename to ensure that module
+	files are reproducible.
+
+2018-02-12  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/84273
+	* resolve.c (resolve_component): Fix checks of passed argument in
+	procedure-pointer components.
+
+2018-02-11  Francois-Xavier Coudert  <fxcoudert@gcc.gnu.org>
+
+	PR fortran/35299
+	* resolve.c (resolve_formal_arglist): Update error message.
+
+2018-02-11  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	* gfortran.texi: Fix typos in documentation of caf_register ().
+	* trans-array.c (structure_alloc_comps): Only register a component of
+	a derived typed corray, not of an ultimate component coarray.
+
+2018-02-11  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/54223
+	PR fortran/84276
+	* interface.c (compare_actual_formal): Add in_statement_function
+	bool parameter.  Skip check of INTENT attribute for statement
+	functions.  Arguments to a statement function cannot be optional,
+	issue error for missing argument.
+	(gfc_procedure_use, gfc_ppc_use, gfc_arglist_matches_symbol): Use
+	 in_statement_function.
+
+2018-02-11  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/84074
+	* trans-expr.c (gfc_conv_derived_to_class): Set the use_offset
+	flag. If the is a vector subscript or the expression is not a
+	variable, make the descriptor one-based.
+
+2018-02-10  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/84141
+	PR fortran/84155
+	* trans-array.c (gfc_array_init_size): Revert the change made
+	in revision 257356 setting the dtype.
+	* trans-types.c (gfc_get_dtype): Do not use the cached dtype.
+	Call gfc_get_dtype_rank_type every time.
+
+	PR fortran/56691
+	* trans-array.c (gfc_conv_expr_descriptor): If the source array
+	is a descriptor type, use its offset, removing the condition
+	that is be a class expression.
+
+2018-02-07  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/82994
+	* match.c (gfc_match_deallocate): Check for NULL pointer.
+
+2018-02-07  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/68560
+	* trans-intrinsic.c (gfc_conv_intrinsic_shape): New function.
+	(gfc_conv_intrinsic_function): Call it.
+
+2018-02-07  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/82049
+	* match.c (gfc_match_type_spec): If the charlen is non-NULL, then
+	try to resolve it.  While here return early if possible.
+
+2018-02-04  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/84115
+	* trans-decl.c (gfc_get_symbol_decl): Do not finish the decl of
+	'length' if the symbol charlen backend_decl is an indirect ref.
+
 2018-02-03  Paul Thomas  <pault@gcc.gnu.org>
 
 	PR fortran/84141
@@ -290,7 +396,7 @@
 	* trans-io.c (get_dtio_proc): Likewise. (transfer_expr): Fix
 	whitespace.
 
-2018-01-13  Thomas Koenig <tkoenig@gcc.gnu.org>
+2018-01-13  Thomas Koenig  <tkoenig@gcc.gnu.org>
 
 	PR fortran/83744
 	* dump-parse-tree.c (get_c_type_name): Remove extra line.
@@ -314,7 +420,7 @@
 	* trans-array.c (is_pointer_array): Remove unconditional return
 	of false for -fopenmp.
 
-2018-01-13  Thomas Koenig <tkoenig@gcc.gnu.org>
+2018-01-13  Thomas Koenig  <tkoenig@gcc.gnu.org>
 	<emsr@gcc.gnu.org>
 
 	PR fortran/83803
