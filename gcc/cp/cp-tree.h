@@ -352,6 +352,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       TEMPLATE_PARM_PARAMETER_PACK (in TEMPLATE_PARM_INDEX)
       ATTR_IS_DEPENDENT (in the TREE_LIST for an attribute)
       ABI_TAG_IMPLICIT (in the TREE_LIST for the argument of abi_tag)
+      LAMBDA_CAPTURE_EXPLICIT_P (in a TREE_LIST in LAMBDA_EXPR_CAPTURE_LIST)
       CONSTRUCTOR_IS_DIRECT_INIT (in CONSTRUCTOR)
       LAMBDA_EXPR_CAPTURES_THIS_P (in LAMBDA_EXPR)
       DECLTYPE_FOR_LAMBDA_CAPTURE (in DECLTYPE_TYPE)
@@ -403,6 +404,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       CONSTRUCTOR_MUTABLE_POISON (in CONSTRUCTOR)
       OVL_HIDDEN_P (in OVERLOAD)
       SWITCH_STMT_NO_BREAK_P (in SWITCH_STMT)
+      LAMBDA_EXPR_CAPTURE_OPTIMIZED (in LAMBDA_EXPR)
    3: (TREE_REFERENCE_EXPR) (in NON_LVALUE_EXPR) (commented-out).
       ICS_BAD_FLAG (in _CONV)
       FN_TRY_BLOCK_P (in TRY_BLOCK)
@@ -423,6 +425,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       DECL_VTABLE_OR_VTT_P (in VAR_DECL)
       FUNCTION_RVALUE_QUALIFIED (in FUNCTION_TYPE, METHOD_TYPE)
       CALL_EXPR_REVERSE_ARGS (in CALL_EXPR, AGGR_INIT_EXPR)
+      CONSTRUCTOR_PLACEHOLDER_BOUNDARY (in CONSTRUCTOR)
    6: IDENTIFIER_REPO_CHOSEN (in IDENTIFIER_NODE)
       DECL_CONSTRUCTION_VTABLE_P (in VAR_DECL)
       TYPE_MARKED_P (in _TYPE)
@@ -1257,6 +1260,15 @@ enum cp_lambda_default_capture_mode_type {
 /* Predicate tracking whether the lambda was declared 'mutable'.  */
 #define LAMBDA_EXPR_MUTABLE_P(NODE) \
   TREE_LANG_FLAG_1 (LAMBDA_EXPR_CHECK (NODE))
+
+/* True iff uses of a const variable capture were optimized away.  */
+#define LAMBDA_EXPR_CAPTURE_OPTIMIZED(NODE) \
+  TREE_LANG_FLAG_2 (LAMBDA_EXPR_CHECK (NODE))
+
+/* True if this TREE_LIST in LAMBDA_EXPR_CAPTURE_LIST is for an explicit
+   capture.  */
+#define LAMBDA_CAPTURE_EXPLICIT_P(NODE) \
+  TREE_LANG_FLAG_0 (TREE_LIST_CHECK (NODE))
 
 /* The source location of the lambda.  */
 #define LAMBDA_EXPR_LOCATION(NODE) \
@@ -3060,7 +3072,7 @@ struct GTY(()) lang_decl {
 /* For a non-member friend function, the class (if any) in which this
    friend was defined.  For example, given:
 
-     struct S { friend void f (); };
+     struct S { friend void f () { ... } };
 
    the DECL_FRIEND_CONTEXT for `f' will be `S'.  */
 #define DECL_FRIEND_CONTEXT(NODE)				\
@@ -4132,6 +4144,12 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
    than C++11 functional cast syntax.  */
 #define CONSTRUCTOR_C99_COMPOUND_LITERAL(NODE) \
   (TREE_LANG_FLAG_3 (CONSTRUCTOR_CHECK (NODE)))
+
+/* True if this CONSTRUCTOR contains PLACEHOLDER_EXPRs referencing the
+   CONSTRUCTOR's type not nested inside another CONSTRUCTOR marked with
+   CONSTRUCTOR_PLACEHOLDER_BOUNDARY.  */
+#define CONSTRUCTOR_PLACEHOLDER_BOUNDARY(NODE) \
+  (TREE_LANG_FLAG_5 (CONSTRUCTOR_CHECK (NODE)))
 
 #define DIRECT_LIST_INIT_P(NODE) \
    (BRACE_ENCLOSED_INITIALIZER_P (NODE) && CONSTRUCTOR_IS_DIRECT_INIT (NODE))
@@ -6463,7 +6481,8 @@ extern void end_specialization			(void);
 extern void begin_explicit_instantiation	(void);
 extern void end_explicit_instantiation		(void);
 extern void check_unqualified_spec_or_inst	(tree, location_t);
-extern tree check_explicit_specialization	(tree, tree, int, int);
+extern tree check_explicit_specialization	(tree, tree, int, int,
+						 tree = NULL_TREE);
 extern int num_template_headers_for_class	(tree);
 extern void check_template_variable		(tree);
 extern tree make_auto				(void);
@@ -6557,6 +6576,7 @@ extern int processing_template_parmlist;
 extern bool dependent_type_p			(tree);
 extern bool dependent_scope_p			(tree);
 extern bool any_dependent_template_arguments_p  (const_tree);
+extern bool any_erroneous_template_args_p       (const_tree);
 extern bool dependent_template_p		(tree);
 extern bool dependent_template_id_p		(tree, tree);
 extern bool type_dependent_expression_p		(tree);
@@ -6890,12 +6910,11 @@ extern tree lambda_function			(tree);
 extern void apply_deduced_return_type           (tree, tree);
 extern tree add_capture                         (tree, tree, tree, bool, bool);
 extern tree add_default_capture                 (tree, tree, tree);
-extern tree build_capture_proxy			(tree, tree);
 extern void insert_capture_proxy		(tree);
 extern void insert_pending_capture_proxies	(void);
 extern bool is_capture_proxy			(tree);
 extern bool is_normal_capture_proxy             (tree);
-extern bool is_capture_proxy_with_ref           (tree);
+extern bool is_constant_capture_proxy           (tree);
 extern void register_capture_members		(tree);
 extern tree lambda_expr_this_capture            (tree, bool);
 extern void maybe_generic_this_capture		(tree, tree);
@@ -6903,6 +6922,7 @@ extern tree maybe_resolve_dummy			(tree, bool);
 extern tree current_nonlambda_function		(void);
 extern tree nonlambda_method_basetype		(void);
 extern tree current_nonlambda_scope		(void);
+extern tree current_lambda_expr			(void);
 extern bool generic_lambda_fn_p			(tree);
 extern tree do_dependent_capture		(tree, bool = false);
 extern bool lambda_fn_in_template_p		(tree);
@@ -7008,6 +7028,7 @@ extern tree array_type_nelts_top		(tree);
 extern tree break_out_target_exprs		(tree);
 extern tree build_ctor_subob_ref		(tree, tree, tree);
 extern tree replace_placeholders		(tree, tree, bool * = NULL);
+extern bool find_placeholders			(tree);
 extern tree get_type_decl			(tree);
 extern tree decl_namespace_context		(tree);
 extern bool decl_anon_ns_mem_p			(const_tree);
@@ -7051,6 +7072,7 @@ extern tree cxx_copy_lang_qualifiers		(const_tree, const_tree);
 
 extern void cxx_print_statistics		(void);
 extern bool maybe_warn_zero_as_null_pointer_constant (tree, location_t);
+extern void cp_warn_deprecated_use		(tree);
 
 /* in ptree.c */
 extern void cxx_print_xnode			(FILE *, tree, int);
@@ -7409,8 +7431,10 @@ extern bool is_static_init_expression    (tree);
 extern bool potential_rvalue_constant_expression (tree);
 extern bool require_potential_constant_expression (tree);
 extern bool require_constant_expression (tree);
+extern bool require_rvalue_constant_expression (tree);
 extern bool require_potential_rvalue_constant_expression (tree);
 extern tree cxx_constant_value			(tree, tree = NULL_TREE);
+extern tree cxx_constant_init			(tree, tree = NULL_TREE);
 extern tree maybe_constant_value		(tree, tree = NULL_TREE);
 extern tree maybe_constant_init			(tree, tree = NULL_TREE);
 extern tree fold_non_dependent_expr		(tree);

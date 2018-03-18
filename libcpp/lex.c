@@ -1639,6 +1639,21 @@ is_macro(cpp_reader *pfile, const uchar *base)
   return !result ? false : (result->type == NT_MACRO);
 }
 
+/* Returns true if a literal suffix does not have the expected form
+   and is defined as a macro.  */
+
+static bool
+is_macro_not_literal_suffix(cpp_reader *pfile, const uchar *base)
+{
+  /* User-defined literals outside of namespace std must start with a single
+     underscore, so assume anything of that form really is a UDL suffix.
+     We don't need to worry about UDLs defined inside namespace std because
+     their names are reserved, so cannot be used as macro names in valid
+     programs.  */
+  if (base[0] == '_' && base[1] != '_')
+    return false;
+  return is_macro (pfile, base);
+}
 
 /* Lexes a raw string.  The stored string contains the spelling, including
    double quotes, delimiter string, '(' and ')', any leading
@@ -1909,10 +1924,8 @@ lex_raw_string (cpp_reader *pfile, cpp_token *token, const uchar *base,
     {
       /* If a string format macro, say from inttypes.h, is placed touching
 	 a string literal it could be parsed as a C++11 user-defined string
-	 literal thus breaking the program.
-	 Try to identify macros with is_macro. A warning is issued.
-	 The macro name should not start with '_' for this warning. */
-      if ((*cur != '_') && is_macro (pfile, cur))
+	 literal thus breaking the program.  */
+      if (is_macro_not_literal_suffix (pfile, cur))
 	{
 	  /* Raise a warning, but do not consume subsequent tokens.  */
 	  if (CPP_OPTION (pfile, warn_literal_suffix) && !pfile->state.skipping)
@@ -2040,10 +2053,8 @@ lex_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
     {
       /* If a string format macro, say from inttypes.h, is placed touching
 	 a string literal it could be parsed as a C++11 user-defined string
-	 literal thus breaking the program.
-	 Try to identify macros with is_macro. A warning is issued.
-	 The macro name should not start with '_' for this warning. */
-      if ((*cur != '_') && is_macro (pfile, cur))
+	 literal thus breaking the program.  */
+      if (is_macro_not_literal_suffix (pfile, cur))
 	{
 	  /* Raise a warning, but do not consume subsequent tokens.  */
 	  if (CPP_OPTION (pfile, warn_literal_suffix) && !pfile->state.skipping)

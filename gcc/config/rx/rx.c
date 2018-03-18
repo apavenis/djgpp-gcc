@@ -1644,6 +1644,20 @@ mark_frame_related (rtx insn)
     }
 }
 
+/* Create CFI notes for register pops.  */
+static void
+add_pop_cfi_notes (rtx_insn *insn, unsigned int high, unsigned int low)
+{
+  rtx t = plus_constant (Pmode, stack_pointer_rtx,
+                        (high - low + 1) * UNITS_PER_WORD);
+  t = gen_rtx_SET (stack_pointer_rtx, t);
+  add_reg_note (insn, REG_CFA_ADJUST_CFA, t);
+  RTX_FRAME_RELATED_P (insn) = 1;
+  for (unsigned int i = low; i <= high; i++)
+    add_reg_note (insn, REG_CFA_RESTORE, gen_rtx_REG (word_mode, i));
+}
+
+
 static bool
 ok_for_max_constant (HOST_WIDE_INT val)
 {
@@ -2029,11 +2043,14 @@ rx_can_use_simple_return (void)
 static void
 pop_regs (unsigned int high, unsigned int low)
 {
+  rtx_insn *insn;
   if (high == low)
-    emit_insn (gen_stack_pop (gen_rtx_REG (SImode, low)));
+    insn = emit_insn (gen_stack_pop (gen_rtx_REG (SImode, low)));
   else
-    emit_insn (gen_stack_popm (GEN_INT (((high - low) + 1) * UNITS_PER_WORD),
-			       gen_rx_popm_vector (low, high)));
+    insn = emit_insn (gen_stack_popm (GEN_INT (((high - low) + 1)
+						* UNITS_PER_WORD),
+				      gen_rx_popm_vector (low, high)));
+  add_pop_cfi_notes (insn, high, low);
 }
 
 void
@@ -2976,6 +2993,62 @@ rx_address_cost (rtx addr, machine_mode mode ATTRIBUTE_UNUSED,
 }
 
 static bool
+rx_rtx_costs (rtx x, machine_mode mode, int outer_code ATTRIBUTE_UNUSED,
+	      int opno ATTRIBUTE_UNUSED, int* total, bool speed)
+{
+  if (x == const0_rtx)
+    {
+      *total = 0;
+      return true;
+    }
+
+  switch (GET_CODE (x))
+    {
+    case MULT:
+      if (mode == DImode)
+	{
+	  *total = COSTS_N_INSNS (2);
+	  return true;
+	}
+      /* fall through */
+
+    case PLUS:
+    case MINUS:
+    case AND:
+    case COMPARE:
+    case IOR:
+    case XOR:
+      *total = COSTS_N_INSNS (1);
+      return true;
+
+    case DIV:
+      if (speed)
+	/* This is the worst case for a division.  Pessimize divisions when
+	   not optimizing for size and allow reciprocal optimizations which
+	   produce bigger code.  */
+	*total = COSTS_N_INSNS (20);
+      else
+	*total = COSTS_N_INSNS (3);
+      return true;
+
+    case UDIV:
+      if (speed)
+	/* This is the worst case for a division.  Pessimize divisions when
+	   not optimizing for size and allow reciprocal optimizations which
+	   produce bigger code.  */
+	*total = COSTS_N_INSNS (18);
+      else
+	*total = COSTS_N_INSNS (3);
+      return true;
+
+    default:
+      break;
+    }
+
+  return false;
+}
+
+static bool
 rx_can_eliminate (const int from ATTRIBUTE_UNUSED, const int to)
 {
   /* We can always eliminate to the frame pointer.
@@ -3708,6 +3781,9 @@ rx_modes_tieable_p (machine_mode mode1, machine_mode mode2)
 
 #undef  TARGET_MODES_TIEABLE_P
 #define TARGET_MODES_TIEABLE_P			rx_modes_tieable_p
+
+#undef  TARGET_RTX_COSTS
+#define TARGET_RTX_COSTS rx_rtx_costs
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

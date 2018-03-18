@@ -16556,16 +16556,6 @@ create_fix_barrier (Mfix *fix, HOST_WIDE_INT max_address)
   /* Make sure that we found a place to insert the jump.  */
   gcc_assert (selected);
 
-  /* Make sure we do not split a call and its corresponding
-     CALL_ARG_LOCATION note.  */
-  if (CALL_P (selected))
-    {
-      rtx_insn *next = NEXT_INSN (selected);
-      if (next && NOTE_P (next)
-	  && NOTE_KIND (next) == NOTE_INSN_CALL_ARG_LOCATION)
-	  selected = next;
-    }
-
   /* Create a new JUMP_INSN that branches around a barrier.  */
   from = emit_jump_insn_after (gen_jump (label), selected);
   JUMP_LABEL (from) = label;
@@ -31518,8 +31508,8 @@ arm_can_change_mode_class (machine_mode from, machine_mode to,
 {
   if (TARGET_BIG_END
       && !(GET_MODE_SIZE (from) == 16 && GET_MODE_SIZE (to) == 8)
-      && (GET_MODE_SIZE (from) > UNITS_PER_WORD
-	  || GET_MODE_SIZE (to) > UNITS_PER_WORD)
+      && (GET_MODE_UNIT_SIZE (from) > UNITS_PER_WORD
+	  || GET_MODE_UNIT_SIZE (to) > UNITS_PER_WORD)
       && reg_classes_intersect_p (VFP_REGS, rclass))
     return false;
   return true;

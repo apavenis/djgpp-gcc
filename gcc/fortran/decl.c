@@ -585,6 +585,20 @@ gfc_match_data (void)
       if (m != MATCH_YES)
 	goto cleanup;
 
+      if (new_data->var->iter.var
+	  && new_data->var->iter.var->ts.type == BT_INTEGER
+	  && new_data->var->iter.var->symtree->n.sym->attr.implied_index == 1
+	  && new_data->var->list
+	  && new_data->var->list->expr
+	  && new_data->var->list->expr->ts.type == BT_CHARACTER
+	  && new_data->var->list->expr->ref
+	  && new_data->var->list->expr->ref->type == REF_SUBSTRING)
+	{
+	  gfc_error ("Invalid substring in data-implied-do at %L in DATA "
+		     "statement", &new_data->var->list->expr->where);
+	  goto cleanup;
+	}
+
       m = top_val_list (new_data);
       if (m != MATCH_YES)
 	goto cleanup;
@@ -790,7 +804,7 @@ cleanup:
 static bool
 merge_array_spec (gfc_array_spec *from, gfc_array_spec *to, bool copy)
 {
-  int i;
+  int i, j;
 
   if ((from->type == AS_ASSUMED_RANK && to->corank)
       || (to->type == AS_ASSUMED_RANK && from->corank))
@@ -808,8 +822,14 @@ merge_array_spec (gfc_array_spec *from, gfc_array_spec *to, bool copy)
 
       for (i = 0; i < to->corank; i++)
 	{
-	  to->lower[from->rank + i] = to->lower[i];
-	  to->upper[from->rank + i] = to->upper[i];
+	  /* Do not exceed the limits on lower[] and upper[].  gfortran
+	     cleans up elsewhere.  */
+	  j = from->rank + i;
+	  if (j >= GFC_MAX_DIMENSIONS)
+	    break;
+
+	  to->lower[j] = to->lower[i];
+	  to->upper[j] = to->upper[i];
 	}
       for (i = 0; i < from->rank; i++)
 	{
@@ -832,19 +852,33 @@ merge_array_spec (gfc_array_spec *from, gfc_array_spec *to, bool copy)
 
       for (i = 0; i < from->corank; i++)
 	{
+	  /* Do not exceed the limits on lower[] and upper[].  gfortran
+	     cleans up elsewhere.  */
+	  j = to->rank + i;
+	  if (j >= GFC_MAX_DIMENSIONS)
+	    break;
+
 	  if (copy)
 	    {
-	      to->lower[to->rank + i] = gfc_copy_expr (from->lower[i]);
-	      to->upper[to->rank + i] = gfc_copy_expr (from->upper[i]);
+	      to->lower[j] = gfc_copy_expr (from->lower[i]);
+	      to->upper[j] = gfc_copy_expr (from->upper[i]);
 	    }
 	  else
 	    {
-	      to->lower[to->rank + i] = from->lower[i];
-	      to->upper[to->rank + i] = from->upper[i];
+	      to->lower[j] = from->lower[i];
+	      to->upper[j] = from->upper[i];
 	    }
 	}
     }
 
+  if (to->rank + to->corank > GFC_MAX_DIMENSIONS)
+    {
+      gfc_error ("Sum of array rank %d and corank %d at %C exceeds maximum "
+		 "allowed dimensions of %d",
+		 to->rank, to->corank, GFC_MAX_DIMENSIONS);
+      to->corank = GFC_MAX_DIMENSIONS - to->rank;
+      return false;
+    }
   return true;
 }
 
@@ -1175,8 +1209,13 @@ get_proc_name (const char *name, gfc_symbol **result, bool module_fcn_entry)
 	 accessible names.  */
       if (sym->attr.flavor != 0
 	  && sym->attr.proc != 0
-	  && (sym->attr.subroutine || sym->attr.function)
+	  && (sym->attr.subroutine || sym->attr.function || sym->attr.entry)
 	  && sym->attr.if_source != IFSRC_UNKNOWN)
+	gfc_error_now ("Procedure %qs at %C is already defined at %L",
+		       name, &sym->declared_at);
+
+      if (sym->attr.flavor != 0
+	  && sym->attr.entry && sym->attr.if_source != IFSRC_UNKNOWN)
 	gfc_error_now ("Procedure %qs at %C is already defined at %L",
 		       name, &sym->declared_at);
 
@@ -2290,7 +2329,10 @@ variable_decl (int elem)
   /* At this point, we know for sure if the symbol is PARAMETER and can thus
      determine (and check) whether it can be implied-shape.  If it
      was parsed as assumed-size, change it because PARAMETERs can not
-     be assumed-size.  */
+     be assumed-size.
+
+     An explicit-shape-array cannot appear under several conditions.
+     That check is done here as well.  */
   if (as)
     {
       if (as->type == AS_IMPLIED_SHAPE && current_attr.flavor != FL_PARAMETER)
@@ -2311,6 +2353,50 @@ variable_decl (int elem)
 	{
 	  m = MATCH_ERROR;
 	  goto cleanup;
+	}
+
+      /* F2018:C830 (R816) An explicit-shape-spec whose bounds are not
+	 constant expressions shall appear only in a subprogram, derived
+	 type definition, BLOCK construct, or interface body.  */
+      if (as->type == AS_EXPLICIT
+	  && gfc_current_state () != COMP_BLOCK
+	  && gfc_current_state () != COMP_DERIVED
+	  && gfc_current_state () != COMP_FUNCTION
+	  && gfc_current_state () != COMP_INTERFACE
+	  && gfc_current_state () != COMP_SUBROUTINE)
+	{
+	  gfc_expr *e;
+	  bool not_constant = false;
+
+	  for (int i = 0; i < as->rank; i++)
+	    {
+	      e = gfc_copy_expr (as->lower[i]);
+	      gfc_resolve_expr (e);
+	      gfc_simplify_expr (e, 0);
+	      if (e && (e->expr_type != EXPR_CONSTANT))
+		{
+		  not_constant = true;
+		  break;
+		}
+	      gfc_free_expr (e);
+
+	      e = gfc_copy_expr (as->upper[i]);
+	      gfc_resolve_expr (e);
+	      gfc_simplify_expr (e, 0);
+	      if (e && (e->expr_type != EXPR_CONSTANT))
+		{
+		  not_constant = true;
+		  break;
+		}
+	      gfc_free_expr (e);
+	    }
+
+	  if (not_constant)
+	    { 
+	      gfc_error ("Explicit shaped array with nonconstant bounds at %C");
+	      m = MATCH_ERROR;
+	      goto cleanup;
+	    }
 	}
     }
 
@@ -3086,7 +3172,24 @@ done:
   if (seen_length == 0)
     cl->length = gfc_get_int_expr (gfc_charlen_int_kind, NULL, 1);
   else
-    cl->length = len;
+    {
+      /* If gfortran ends up here, then the len may be reducible to a
+	 constant.  Try to do that here.  If it does not reduce, simply
+	 assign len to the charlen.  */
+      if (len && len->expr_type != EXPR_CONSTANT)
+	{
+	  gfc_expr *e;
+	  e = gfc_copy_expr (len);
+	  gfc_reduce_init_expr (e);
+	  if (e->expr_type == EXPR_CONSTANT)
+	    gfc_replace_expr (len, e);
+	  else
+	    gfc_free_expr (e);
+	  cl->length = len;
+	}
+      else
+	cl->length = len;
+    }
 
   ts->u.cl = cl;
   ts->kind = kind == 0 ? gfc_default_character_kind : kind;
