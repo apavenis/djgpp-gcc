@@ -174,7 +174,7 @@ test05()
   int n = 0;
   while (ss >> n)
     sum += n;
-  assert( sum == 1 );
+  VERIFY( sum == 1 );
 
 #if __cplusplus >= 201402L
   static_assert( lt(y, y+1), "constexpr less<const X*>" );
@@ -195,6 +195,39 @@ test05()
 #endif
 }
 
+struct Overloaded {
+  bool operator>(int) { return true; }
+  bool operator<(int) { return false; }
+  bool operator>=(int) { return true; }
+  bool operator<=(int) { return false; }
+};
+bool operator>(Overloaded, Overloaded) { return false; }
+bool operator<(Overloaded, Overloaded) { return false; }
+bool operator>=(Overloaded, Overloaded) { return true; }
+bool operator<=(Overloaded, Overloaded) { return true; }
+
+void
+test06()
+{
+#if __cplusplus >= 201402L
+  std::greater<void> gt;
+  std::less<void> lt;
+  std::greater_equal<void> ge;
+  std::less_equal<void> le;
+
+  Overloaded o;
+  VERIFY( !gt(o, o) );
+  VERIFY( !lt(o, o) );
+  VERIFY( ge(o, o) );
+  VERIFY( le(o, o) );
+
+  VERIFY( gt(o, 1) );
+  VERIFY( !lt(o, 1) );
+  VERIFY( ge(o, 1) );
+  VERIFY( !le(o, 1) );
+#endif
+}
+
 int
 main()
 {
@@ -203,4 +236,5 @@ main()
   test03();
   test04();
   test05();
+  test06();
 }
