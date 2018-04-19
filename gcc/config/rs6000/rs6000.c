@@ -3916,6 +3916,7 @@ rs6000_builtin_mask_calculate (void)
 	  | ((TARGET_P9_MISC)		    ? RS6000_BTM_P9_MISC   : 0)
 	  | ((TARGET_MODULO)		    ? RS6000_BTM_MODULO    : 0)
 	  | ((TARGET_64BIT)		    ? RS6000_BTM_64BIT     : 0)
+	  | ((TARGET_POWERPC64)		    ? RS6000_BTM_POWERPC64 : 0)
 	  | ((TARGET_CRYPTO)		    ? RS6000_BTM_CRYPTO	   : 0)
 	  | ((TARGET_HTM)		    ? RS6000_BTM_HTM	   : 0)
 	  | ((TARGET_DFP)		    ? RS6000_BTM_DFP	   : 0)
@@ -10609,7 +10610,9 @@ rs6000_emit_move (rtx dest, rtx source, machine_mode mode)
       if (regno >= FIRST_PSEUDO_REGISTER)
 	{
 	  cl = reg_preferred_class (regno);
-	  regno = cl == NO_REGS ? -1 : ira_class_hard_regs[cl][1];
+	  regno = reg_renumber[regno];
+	  if (regno < 0)
+	    regno = cl == NO_REGS ? -1 : ira_class_hard_regs[cl][1];
 	}
       if (regno >= 0 && ! FP_REGNO_P (regno))
 	{
@@ -10634,7 +10637,9 @@ rs6000_emit_move (rtx dest, rtx source, machine_mode mode)
 	{
 	  cl = reg_preferred_class (regno);
 	  gcc_assert (cl != NO_REGS);
-	  regno = ira_class_hard_regs[cl][0];
+	  regno = reg_renumber[regno];
+	  if (regno < 0)
+	    regno = ira_class_hard_regs[cl][0];
 	}
       if (FP_REGNO_P (regno))
 	{
@@ -10663,7 +10668,9 @@ rs6000_emit_move (rtx dest, rtx source, machine_mode mode)
       if (regno >= FIRST_PSEUDO_REGISTER)
 	{
 	  cl = reg_preferred_class (regno);
-	  regno = cl == NO_REGS ? -1 : ira_class_hard_regs[cl][0];
+	  regno = reg_renumber[regno];
+	  if (regno < 0)
+	    regno = cl == NO_REGS ? -1 : ira_class_hard_regs[cl][0];
 	}
       if (regno >= 0 && ! FP_REGNO_P (regno))
 	{
@@ -10688,7 +10695,9 @@ rs6000_emit_move (rtx dest, rtx source, machine_mode mode)
 	{
 	  cl = reg_preferred_class (regno);
 	  gcc_assert (cl != NO_REGS);
-	  regno = ira_class_hard_regs[cl][0];
+	  regno = reg_renumber[regno];
+	  if (regno < 0)
+	    regno = ira_class_hard_regs[cl][0];
 	}
       if (FP_REGNO_P (regno))
 	{
@@ -15896,6 +15905,18 @@ paired_expand_predicate_builtin (enum insn_code icode, tree exp, rtx target)
   return target;
 }
 
+/* Check whether a builtin function is supported in this target
+   configuration.  */
+bool
+rs6000_builtin_is_supported_p (enum rs6000_builtins fncode)
+{
+  HOST_WIDE_INT fnmask = rs6000_builtin_info[fncode].mask;
+  if ((fnmask & rs6000_builtin_mask) != fnmask)
+    return false;
+  else
+    return true;
+}
+
 /* Raise an error message for a builtin function that is called without the
    appropriate target options being set.  */
 
@@ -15952,6 +15973,11 @@ rs6000_invalid_builtin (enum rs6000_builtins fncode)
 	   name);
   else if ((fnmask & RS6000_BTM_FLOAT128) != 0)
     error ("builtin function %qs requires the %qs option", name, "-mfloat128");
+  else if ((fnmask & (RS6000_BTM_POPCNTD | RS6000_BTM_POWERPC64))
+	   == (RS6000_BTM_POPCNTD | RS6000_BTM_POWERPC64))
+    error ("builtin function %qs requires the %qs (or newer), and "
+	   "%qs or %qs options",
+	   name, "-mcpu=power7", "-m64", "-mpowerpc64");
   else
     error ("builtin function %qs is not supported with the current options",
 	   name);
@@ -16947,7 +16973,7 @@ rs6000_init_builtins (void)
   bool_char_type_node = build_distinct_type_copy (unsigned_intQI_type_node);
   bool_short_type_node = build_distinct_type_copy (unsigned_intHI_type_node);
   bool_int_type_node = build_distinct_type_copy (unsigned_intSI_type_node);
-  bool_long_type_node = build_distinct_type_copy (unsigned_intDI_type_node);
+  bool_long_long_type_node = build_distinct_type_copy (unsigned_intDI_type_node);
   pixel_type_node = build_distinct_type_copy (unsigned_intHI_type_node);
 
   long_integer_type_internal_node = long_integer_type_node;
@@ -17064,7 +17090,7 @@ rs6000_init_builtins (void)
   bool_V2DI_type_node = rs6000_vector_type (TARGET_POWERPC64
 					    ? "__vector __bool long"
 					    : "__vector __bool long long",
-					    bool_long_type_node, 2);
+					    bool_long_long_type_node, 2);
   pixel_V8HI_type_node = rs6000_vector_type ("__vector __pixel",
 					     pixel_type_node, 8);
 
@@ -18053,9 +18079,7 @@ builtin_function_type (machine_mode mode_ret, machine_mode mode_arg0,
     case CRYPTO_BUILTIN_VPMSUM:
     case MISC_BUILTIN_ADDG6S:
     case MISC_BUILTIN_DIVWEU:
-    case MISC_BUILTIN_DIVWEUO:
     case MISC_BUILTIN_DIVDEU:
-    case MISC_BUILTIN_DIVDEUO:
     case VSX_BUILTIN_UDIV_V2DI:
     case ALTIVEC_BUILTIN_VMAXUB:
     case ALTIVEC_BUILTIN_VMINUB:
@@ -18561,6 +18585,26 @@ init_float128_ibm (machine_mode mode)
     }
 }
 
+/* Create a decl for either complex long double multiply or complex long double
+   divide when long double is IEEE 128-bit floating point.  We can't use
+   __multc3 and __divtc3 because the original long double using IBM extended
+   double used those names.  The complex multiply/divide functions are encoded
+   as builtin functions with a complex result and 4 scalar inputs.  */
+
+static void
+create_complex_muldiv (const char *name, built_in_function fncode, tree fntype)
+{
+  tree fndecl = add_builtin_function (name, fntype, fncode, BUILT_IN_NORMAL,
+				      name, NULL_TREE);
+
+  set_builtin_decl (fncode, fndecl, true);
+
+  if (TARGET_DEBUG_BUILTIN)
+    fprintf (stderr, "create complex %s, fncode: %d\n", name, (int) fncode);
+
+  return;
+}
+
 /* Set up IEEE 128-bit floating point routines.  Use different names if the
    arguments can be passed in a vector register.  The historical PowerPC
    implementation of IEEE 128-bit floating point used _q_<op> for the names, so
@@ -18572,6 +18616,27 @@ init_float128_ieee (machine_mode mode)
 {
   if (FLOAT128_VECTOR_P (mode))
     {
+      /* Set up to call __mulkc3 and __divkc3 under -mabi=ieeelongdouble.  */
+     if (mode == TFmode && TARGET_IEEEQUAD)
+       {
+	 built_in_function fncode_mul =
+	   (built_in_function) (BUILT_IN_COMPLEX_MUL_MIN + TCmode
+				- MIN_MODE_COMPLEX_FLOAT);
+	 built_in_function fncode_div =
+	   (built_in_function) (BUILT_IN_COMPLEX_DIV_MIN + TCmode
+				- MIN_MODE_COMPLEX_FLOAT);
+
+	 tree fntype = build_function_type_list (complex_long_double_type_node,
+						 long_double_type_node,
+						 long_double_type_node,
+						 long_double_type_node,
+						 long_double_type_node,
+						 NULL_TREE);
+
+	 create_complex_muldiv ("__mulkc3", fncode_mul, fntype);
+	 create_complex_muldiv ("__divkc3", fncode_div, fntype);
+       }
+
       set_optab_libfunc (add_optab, mode, "__addkf3");
       set_optab_libfunc (sub_optab, mode, "__subkf3");
       set_optab_libfunc (neg_optab, mode, "__negkf2");
@@ -32855,7 +32920,7 @@ rs6000_mangle_type (const_tree type)
   if (type == bool_short_type_node) return "U6__bools";
   if (type == pixel_type_node) return "u7__pixel";
   if (type == bool_int_type_node) return "U6__booli";
-  if (type == bool_long_type_node) return "U6__booll";
+  if (type == bool_long_long_type_node) return "U6__boolx";
 
   /* Use a unique name for __float128 rather than trying to use "e" or "g". Use
      "g" for IBM extended double, no matter whether it is long double (using
@@ -36614,6 +36679,7 @@ static struct rs6000_opt_mask const rs6000_builtin_mask_names[] =
   { "hard-dfp",		 RS6000_BTM_DFP,	false, false },
   { "hard-float",	 RS6000_BTM_HARD_FLOAT,	false, false },
   { "long-double-128",	 RS6000_BTM_LDBL128,	false, false },
+  { "powerpc64",	 RS6000_BTM_POWERPC64,  false, false },
   { "float128",		 RS6000_BTM_FLOAT128,   false, false },
   { "float128-hw",	 RS6000_BTM_FLOAT128_HW,false, false },
 };

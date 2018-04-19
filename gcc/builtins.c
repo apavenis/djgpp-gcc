@@ -3172,13 +3172,12 @@ check_access (tree exp, tree, tree, tree dstwrite,
 			  exp, func, range[0], dstsize);
 	    }
 	  else if (tree_int_cst_equal (range[0], range[1]))
-	    warning_at (loc, opt,
-			(integer_onep (range[0])
-			 ? G_("%K%qD writing %E byte into a region "
-			      "of size %E overflows the destination")
-			 : G_("%K%qD writing %E bytes into a region "
-			      "of size %E overflows the destination")),
-			exp, func, range[0], dstsize);
+	    warning_n (loc, opt, tree_to_uhwi (range[0]),
+		       "%K%qD writing %E byte into a region "
+		       "of size %E overflows the destination",
+		       "%K%qD writing %E bytes into a region "
+		       "of size %E overflows the destination",
+		       exp, func, range[0], dstsize);
 	  else if (tree_int_cst_sign_bit (range[1]))
 	    {
 	      /* Avoid printing the upper bound if it's invalid.  */
@@ -3273,10 +3272,9 @@ check_access (tree exp, tree, tree, tree dstwrite,
       location_t loc = tree_nonartificial_location (exp);
 
       if (tree_int_cst_equal (range[0], range[1]))
-	warning_at (loc, opt,
-		    (tree_int_cst_equal (range[0], integer_one_node)
-		     ? G_("%K%qD reading %E byte from a region of size %E")
-		     : G_("%K%qD reading %E bytes from a region of size %E")),
+	warning_n (loc, opt, tree_to_uhwi (range[0]),
+		   "%K%qD reading %E byte from a region of size %E",
+		   "%K%qD reading %E bytes from a region of size %E",
 		    exp, func, range[0], slen);
       else if (tree_int_cst_sign_bit (range[1]))
 	{
@@ -3379,7 +3377,7 @@ compute_objsize (tree dest, int ostype)
   type = TYPE_MAIN_VARIANT (type);
 
   if (TREE_CODE (type) == ARRAY_TYPE
-      && !array_at_struct_end_p (dest))
+      && !array_at_struct_end_p (TREE_OPERAND (dest, 0)))
     {
       /* Return the constant size unless it's zero (that's a zero-length
 	 array likely at the end of a struct).  */
@@ -3652,12 +3650,16 @@ expand_builtin_memory_copy_args (tree dest, tree src, tree len,
   set_mem_align (src_mem, src_align);
 
   /* Copy word part most expediently.  */
-  dest_addr = emit_block_move_hints (dest_mem, src_mem, len_rtx,
-				     CALL_EXPR_TAILCALL (exp)
-				     && (endp == 0 || target == const0_rtx)
-				     ? BLOCK_OP_TAILCALL : BLOCK_OP_NORMAL,
+  enum block_op_methods method = BLOCK_OP_NORMAL;
+  if (CALL_EXPR_TAILCALL (exp) && (endp == 0 || target == const0_rtx))
+    method = BLOCK_OP_TAILCALL;
+  if (endp == 1 && target != const0_rtx)
+    method = BLOCK_OP_NO_LIBCALL_RET;
+  dest_addr = emit_block_move_hints (dest_mem, src_mem, len_rtx, method,
 				     expected_align, expected_size,
 				     min_size, max_size, probable_max_size);
+  if (dest_addr == pc_rtx)
+    return NULL_RTX;
 
   if (dest_addr == 0)
     {
@@ -5070,18 +5072,24 @@ expand_builtin_alloca (tree exp)
   return result;
 }
 
-/* Emit a call to __asan_allocas_unpoison call in EXP.  Replace second argument
-   of the call with virtual_stack_dynamic_rtx because in asan pass we emit a
-   dummy value into second parameter relying on this function to perform the
-   change.  See motivation for this in comment to handle_builtin_stack_restore
-   function.  */
+/* Emit a call to __asan_allocas_unpoison call in EXP.  Add to second argument
+   of the call virtual_stack_dynamic_rtx - stack_pointer_rtx, which is the
+   STACK_DYNAMIC_OFFSET value.  See motivation for this in comment to
+   handle_builtin_stack_restore function.  */
 
 static rtx
 expand_asan_emit_allocas_unpoison (tree exp)
 {
   tree arg0 = CALL_EXPR_ARG (exp, 0);
+  tree arg1 = CALL_EXPR_ARG (exp, 1);
   rtx top = expand_expr (arg0, NULL_RTX, ptr_mode, EXPAND_NORMAL);
-  rtx bot = convert_memory_address (ptr_mode, virtual_stack_dynamic_rtx);
+  rtx bot = expand_expr (arg1, NULL_RTX, ptr_mode, EXPAND_NORMAL);
+  rtx off = expand_simple_binop (Pmode, MINUS, virtual_stack_dynamic_rtx,
+				 stack_pointer_rtx, NULL_RTX, 0,
+				 OPTAB_LIB_WIDEN);
+  off = convert_modes (ptr_mode, Pmode, off, 0);
+  bot = expand_simple_binop (ptr_mode, PLUS, bot, off, NULL_RTX, 0,
+			     OPTAB_LIB_WIDEN);
   rtx ret = init_one_libfunc ("__asan_allocas_unpoison");
   ret = emit_library_call_value (ret, NULL_RTX, LCT_NORMAL, ptr_mode,
 				 top, ptr_mode, bot, ptr_mode);
@@ -8000,6 +8008,7 @@ fold_builtin_expect (location_t loc, tree arg0, tree arg1, tree arg2)
     {
       tree op0 = TREE_OPERAND (inner, 0);
       tree op1 = TREE_OPERAND (inner, 1);
+      arg1 = save_expr (arg1);
 
       op0 = build_builtin_expect_predicate (loc, op0, arg1, arg2);
       op1 = build_builtin_expect_predicate (loc, op1, arg1, arg2);

@@ -1294,16 +1294,20 @@ cp_genericize_r (tree *stmt_p, int *walk_subtrees, void *data)
 	  }
 	if (block)
 	  {
-	    tree using_directive;
-	    gcc_assert (TREE_OPERAND (stmt, 0));
+	    tree decl = TREE_OPERAND (stmt, 0);
+	    gcc_assert (decl);
 
-	    using_directive = make_node (IMPORTED_DECL);
-	    TREE_TYPE (using_directive) = void_type_node;
+	    if (undeduced_auto_decl (decl))
+	      /* Omit from the GENERIC, the back-end can't handle it.  */;
+	    else
+	      {
+		tree using_directive = make_node (IMPORTED_DECL);
+		TREE_TYPE (using_directive) = void_type_node;
 
-	    IMPORTED_DECL_ASSOCIATED_DECL (using_directive)
-	      = TREE_OPERAND (stmt, 0);
-	    DECL_CHAIN (using_directive) = BLOCK_VARS (block);
-	    BLOCK_VARS (block) = using_directive;
+		IMPORTED_DECL_ASSOCIATED_DECL (using_directive) = decl;
+		DECL_CHAIN (using_directive) = BLOCK_VARS (block);
+		BLOCK_VARS (block) = using_directive;
+	      }
 	  }
 	/* The USING_STMT won't appear in GENERIC.  */
 	*stmt_p = build1 (NOP_EXPR, void_type_node, integer_zero_node);
@@ -2211,6 +2215,28 @@ cp_fold (tree x)
       goto unary;
 
     case ADDR_EXPR:
+      loc = EXPR_LOCATION (x);
+      op0 = cp_fold_maybe_rvalue (TREE_OPERAND (x, 0), false);
+
+      /* Cope with user tricks that amount to offsetof.  */
+      if (op0 != error_mark_node
+	  && TREE_CODE (TREE_TYPE (op0)) != FUNCTION_TYPE
+	  && TREE_CODE (TREE_TYPE (op0)) != METHOD_TYPE)
+	{
+	  tree val = get_base_address (op0);
+	  if (val
+	      && INDIRECT_REF_P (val)
+	      && COMPLETE_TYPE_P (TREE_TYPE (val))
+	      && TREE_CONSTANT (TREE_OPERAND (val, 0)))
+	    {
+	      val = TREE_OPERAND (val, 0);
+	      STRIP_NOPS (val);
+	      if (TREE_CODE (val) == INTEGER_CST)
+		return fold_convert (TREE_TYPE (x), fold_offsetof_1 (op0));
+	    }
+	}
+      goto finish_unary;
+
     case REALPART_EXPR:
     case IMAGPART_EXPR:
       rval_ops = false;
@@ -2228,6 +2254,7 @@ cp_fold (tree x)
       loc = EXPR_LOCATION (x);
       op0 = cp_fold_maybe_rvalue (TREE_OPERAND (x, 0), rval_ops);
 
+    finish_unary:
       if (op0 != TREE_OPERAND (x, 0))
 	{
 	  if (op0 == error_mark_node)
@@ -2504,6 +2531,8 @@ cp_fold (tree x)
 	    CONSTRUCTOR_PLACEHOLDER_BOUNDARY (x)
 	      = CONSTRUCTOR_PLACEHOLDER_BOUNDARY (org_x);
 	  }
+	if (VECTOR_TYPE_P (TREE_TYPE (x)))
+	  x = fold (x);
 	break;
       }
     case TREE_VEC:

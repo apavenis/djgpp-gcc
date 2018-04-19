@@ -182,6 +182,10 @@ ix86_target_macros_internal (HOST_WIDE_INT isa_flag,
       def_or_undef (parse_in, "__knm");
       def_or_undef (parse_in, "__knm__");
       break;
+    case PROCESSOR_SKYLAKE:
+      def_or_undef (parse_in, "__skylake");
+      def_or_undef (parse_in, "__skylake__");
+      break;
     case PROCESSOR_SKYLAKE_AVX512:
       def_or_undef (parse_in, "__skylake_avx512");
       def_or_undef (parse_in, "__skylake_avx512__");
@@ -312,6 +316,9 @@ ix86_target_macros_internal (HOST_WIDE_INT isa_flag,
       break;
     case PROCESSOR_KNM:
       def_or_undef (parse_in, "__tune_knm__");
+      break;
+    case PROCESSOR_SKYLAKE:
+      def_or_undef (parse_in, "__tune_skylake__");
       break;
     case PROCESSOR_SKYLAKE_AVX512:
       def_or_undef (parse_in, "__tune_skylake_avx512__");
@@ -492,13 +499,15 @@ ix86_target_macros_internal (HOST_WIDE_INT isa_flag,
     def_or_undef (parse_in, "__RDPID__");
   if (isa_flag & OPTION_MASK_ISA_GFNI)
     def_or_undef (parse_in, "__GFNI__");
-  if (isa_flag2 & OPTION_MASK_ISA_IBT)
+  if ((isa_flag2 & OPTION_MASK_ISA_IBT)
+      || (flag_cf_protection & CF_BRANCH))
     {
       def_or_undef (parse_in, "__IBT__");
       if (flag_cf_protection != CF_NONE)
 	def_or_undef (parse_in, "__CET__");
     }
-  if (isa_flag & OPTION_MASK_ISA_SHSTK)
+  if ((isa_flag & OPTION_MASK_ISA_SHSTK)
+      || (flag_cf_protection & CF_RETURN))
     {
       def_or_undef (parse_in, "__SHSTK__");
       if (flag_cf_protection != CF_NONE)
@@ -508,6 +517,10 @@ ix86_target_macros_internal (HOST_WIDE_INT isa_flag,
     def_or_undef (parse_in, "__VAES__");
   if (isa_flag & OPTION_MASK_ISA_VPCLMULQDQ)
     def_or_undef (parse_in, "__VPCLMULQDQ__");
+  if (isa_flag & OPTION_MASK_ISA_MOVDIRI)
+    def_or_undef (parse_in, "__MOVDIRI__");
+  if (isa_flag2 & OPTION_MASK_ISA_MOVDIR64B)
+    def_or_undef (parse_in, "__MOVDIR64B__");
   if (TARGET_IAMCU)
     {
       def_or_undef (parse_in, "__iamcu");

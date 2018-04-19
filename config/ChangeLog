@@ -1,3 +1,18 @@
+2018-04-19  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/cet.m4 (GCC_CET_FLAGS): Default to --disable-cet, replace
+	--enable-cet=default with --enable-cet=auto.
+
+2018-04-18  David Malcolm  <dmalcolm@redhat.com>
+
+	PR jit/85384
+	* acx.m4 (GCC_BASE_VER): Remove \$\$ from sed expression.
+
+2018-04-05  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR gas/22318
+	* plugins.m4 (AC_PLUGINS): Use dlsym to check if libdl is needed.
+
 2018-02-14  Igor Tsimbalist  <igor.v.tsimbalist@intel.com>
 
 	PR target/84148

@@ -187,6 +187,10 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_IBT_P(x)	TARGET_ISA_IBT_P(x)
 #define TARGET_SHSTK	TARGET_ISA_SHSTK
 #define TARGET_SHSTK_P(x)	TARGET_ISA_SHSTK_P(x)
+#define TARGET_MOVDIRI	TARGET_ISA_MOVDIRI
+#define TARGET_MOVDIRI_P(x) TARGET_ISA_MOVDIRI_P(x)
+#define TARGET_MOVDIR64B	TARGET_ISA_MOVDIR64B
+#define TARGET_MOVDIR64B_P(x) TARGET_ISA_MOVDIR64B_P(x)
 
 #define TARGET_LP64	TARGET_ABI_64
 #define TARGET_LP64_P(x)	TARGET_ABI_64_P(x)
@@ -385,6 +389,7 @@ extern const struct processor_costs ix86_size_cost;
 #define TARGET_SILVERMONT (ix86_tune == PROCESSOR_SILVERMONT)
 #define TARGET_KNL (ix86_tune == PROCESSOR_KNL)
 #define TARGET_KNM (ix86_tune == PROCESSOR_KNM)
+#define TARGET_SKYLAKE (ix86_tune == PROCESSOR_SKYLAKE)
 #define TARGET_SKYLAKE_AVX512 (ix86_tune == PROCESSOR_SKYLAKE_AVX512)
 #define TARGET_CANNONLAKE (ix86_tune == PROCESSOR_CANNONLAKE)
 #define TARGET_ICELAKE_CLIENT (ix86_tune == PROCESSOR_ICELAKE_CLIENT)
@@ -1716,7 +1721,7 @@ typedef struct ix86_args {
 
 /* Length in units of the trampoline for entering a nested function.  */
 
-#define TRAMPOLINE_SIZE (TARGET_64BIT ? 24 : 10)
+#define TRAMPOLINE_SIZE (TARGET_64BIT ? 28 : 14)
 
 /* Definitions for register eliminations.
 
@@ -2267,6 +2272,7 @@ enum processor_type
   PROCESSOR_SILVERMONT,
   PROCESSOR_KNL,
   PROCESSOR_KNM,
+  PROCESSOR_SKYLAKE,
   PROCESSOR_SKYLAKE_AVX512,
   PROCESSOR_CANNONLAKE,
   PROCESSOR_ICELAKE_CLIENT,

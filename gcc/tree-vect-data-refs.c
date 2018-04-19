@@ -132,6 +132,8 @@ vect_get_smallest_scalar_type (gimple *stmt, HOST_WIDE_INT *lhs_size_unit,
 
   if (is_gimple_assign (stmt)
       && (gimple_assign_cast_p (stmt)
+          || gimple_assign_rhs_code (stmt) == DOT_PROD_EXPR
+          || gimple_assign_rhs_code (stmt) == WIDEN_SUM_EXPR
           || gimple_assign_rhs_code (stmt) == WIDEN_MULT_EXPR
           || gimple_assign_rhs_code (stmt) == WIDEN_LSHIFT_EXPR
           || gimple_assign_rhs_code (stmt) == FLOAT_EXPR))
@@ -5008,6 +5010,27 @@ bump_vector_ptr (tree dataref_ptr, gimple *ptr_incr, gimple_stmt_iterator *gsi,
 }
 
 
+/* Copy memory reference info such as base/clique from the SRC reference
+   to the DEST MEM_REF.  */
+
+void
+vect_copy_ref_info (tree dest, tree src)
+{
+  if (TREE_CODE (dest) != MEM_REF)
+    return;
+
+  tree src_base = src;
+  while (handled_component_p (src_base))
+    src_base = TREE_OPERAND (src_base, 0);
+  if (TREE_CODE (src_base) != MEM_REF
+      && TREE_CODE (src_base) != TARGET_MEM_REF)
+    return;
+
+  MR_DEPENDENCE_CLIQUE (dest) = MR_DEPENDENCE_CLIQUE (src_base);
+  MR_DEPENDENCE_BASE (dest) = MR_DEPENDENCE_BASE (src_base);
+}
+
+
 /* Function vect_create_destination_var.
 
    Create a new temporary of type VECTYPE.  */
@@ -5559,6 +5582,7 @@ vect_setup_realignment (gimple *stmt, gimple_stmt_iterator *gsi,
       data_ref
 	= build2 (MEM_REF, TREE_TYPE (vec_dest), new_temp,
 		  build_int_cst (reference_alias_ptr_type (DR_REF (dr)), 0));
+      vect_copy_ref_info (data_ref, DR_REF (dr));
       new_stmt = gimple_build_assign (vec_dest, data_ref);
       new_temp = make_ssa_name (vec_dest, new_stmt);
       gimple_assign_set_lhs (new_stmt, new_temp);

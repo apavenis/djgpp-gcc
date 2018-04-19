@@ -1078,6 +1078,9 @@ cp_build_reference_type (tree to_type, bool rval)
 {
   tree lvalue_ref, t;
 
+  if (to_type == error_mark_node)
+    return error_mark_node;
+
   if (TREE_CODE (to_type) == REFERENCE_TYPE)
     {
       rval = rval && TYPE_REF_IS_RVALUE (to_type);
@@ -1783,6 +1786,10 @@ strip_typedefs_expr (tree t, bool *remove_attributes)
 
     case LAMBDA_EXPR:
       error ("lambda-expression in a constant expression");
+      return error_mark_node;
+
+    case STATEMENT_LIST:
+      error ("statement-expression in a constant expression");
       return error_mark_node;
 
     default:
@@ -2901,12 +2908,19 @@ array_type_nelts_total (tree type)
   return sz;
 }
 
+struct bot_data
+{
+  splay_tree target_remap;
+  bool clear_location;
+};
+
 /* Called from break_out_target_exprs via mapcar.  */
 
 static tree
-bot_manip (tree* tp, int* walk_subtrees, void* data)
+bot_manip (tree* tp, int* walk_subtrees, void* data_)
 {
-  splay_tree target_remap = ((splay_tree) data);
+  bot_data &data = *(bot_data*)data_;
+  splay_tree target_remap = data.target_remap;
   tree t = *tp;
 
   if (!TYPE_P (t) && TREE_CONSTANT (t) && !TREE_SIDE_EFFECTS (t))
@@ -2946,7 +2960,8 @@ bot_manip (tree* tp, int* walk_subtrees, void* data)
 			 (splay_tree_key) TREE_OPERAND (t, 0),
 			 (splay_tree_value) TREE_OPERAND (u, 0));
 
-      TREE_OPERAND (u, 1) = break_out_target_exprs (TREE_OPERAND (u, 1));
+      TREE_OPERAND (u, 1) = break_out_target_exprs (TREE_OPERAND (u, 1),
+						    data.clear_location);
       if (TREE_OPERAND (u, 1) == error_mark_node)
 	return error_mark_node;
 
@@ -2985,22 +3000,9 @@ bot_manip (tree* tp, int* walk_subtrees, void* data)
   /* Make a copy of this node.  */
   t = copy_tree_r (tp, walk_subtrees, NULL);
   if (TREE_CODE (*tp) == CALL_EXPR)
-    {
-      set_flags_from_callee (*tp);
-
-      /* builtin_LINE and builtin_FILE get the location where the default
-	 argument is expanded, not where the call was written.  */
-      tree callee = get_callee_fndecl (*tp);
-      if (callee && DECL_BUILT_IN_CLASS (callee) == BUILT_IN_NORMAL)
-	switch (DECL_FUNCTION_CODE (callee))
-	  {
-	  case BUILT_IN_FILE:
-	  case BUILT_IN_LINE:
-	    SET_EXPR_LOCATION (*tp, input_location);
-	  default:
-	    break;
-	  }
-    }
+    set_flags_from_callee (*tp);
+  if (data.clear_location && EXPR_HAS_LOCATION (*tp))
+    SET_EXPR_LOCATION (*tp, input_location);
   return t;
 }
 
@@ -3009,9 +3011,10 @@ bot_manip (tree* tp, int* walk_subtrees, void* data)
    variables.  */
 
 static tree
-bot_replace (tree* t, int* /*walk_subtrees*/, void* data)
+bot_replace (tree* t, int* /*walk_subtrees*/, void* data_)
 {
-  splay_tree target_remap = ((splay_tree) data);
+  bot_data &data = *(bot_data*)data_;
+  splay_tree target_remap = data.target_remap;
 
   if (VAR_P (*t))
     {
@@ -3049,10 +3052,13 @@ bot_replace (tree* t, int* /*walk_subtrees*/, void* data)
 /* When we parse a default argument expression, we may create
    temporary variables via TARGET_EXPRs.  When we actually use the
    default-argument expression, we make a copy of the expression
-   and replace the temporaries with appropriate local versions.  */
+   and replace the temporaries with appropriate local versions.
+
+   If CLEAR_LOCATION is true, override any EXPR_LOCATION with
+   input_location.  */
 
 tree
-break_out_target_exprs (tree t)
+break_out_target_exprs (tree t, bool clear_location /* = false */)
 {
   static int target_remap_count;
   static splay_tree target_remap;
@@ -3061,9 +3067,10 @@ break_out_target_exprs (tree t)
     target_remap = splay_tree_new (splay_tree_compare_pointers,
 				   /*splay_tree_delete_key_fn=*/NULL,
 				   /*splay_tree_delete_value_fn=*/NULL);
-  if (cp_walk_tree (&t, bot_manip, target_remap, NULL) == error_mark_node)
+  bot_data data = { target_remap, clear_location };
+  if (cp_walk_tree (&t, bot_manip, &data, NULL) == error_mark_node)
     t = error_mark_node;
-  cp_walk_tree (&t, bot_replace, target_remap, NULL);
+  cp_walk_tree (&t, bot_replace, &data, NULL);
 
   if (!--target_remap_count)
     {
@@ -3138,7 +3145,7 @@ replace_placeholders_r (tree* t, int* walk_subtrees, void* data_)
 	for (; !same_type_ignoring_top_level_qualifiers_p (TREE_TYPE (*t),
 							   TREE_TYPE (x));
 	     x = TREE_OPERAND (x, 0))
-	  gcc_assert (TREE_CODE (x) == COMPONENT_REF);
+	  gcc_assert (handled_component_p (x));
 	*t = unshare_expr (x);
 	*walk_subtrees = false;
 	d->seen = true;
@@ -4887,10 +4894,12 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
       /* User variables should be mentioned in BIND_EXPR_VARS
 	 and their initializers and sizes walked when walking
 	 the containing BIND_EXPR.  Compiler temporaries are
-	 handled here.  */
+	 handled here.  And also normal variables in templates,
+	 since do_poplevel doesn't build a BIND_EXPR then.  */
       if (VAR_P (TREE_OPERAND (*tp, 0))
-	  && DECL_ARTIFICIAL (TREE_OPERAND (*tp, 0))
-	  && !TREE_STATIC (TREE_OPERAND (*tp, 0)))
+	  && (processing_template_decl
+	      || (DECL_ARTIFICIAL (TREE_OPERAND (*tp, 0))
+		  && !TREE_STATIC (TREE_OPERAND (*tp, 0)))))
 	{
 	  tree decl = TREE_OPERAND (*tp, 0);
 	  WALK_SUBTREE (DECL_INITIAL (decl));
