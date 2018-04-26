@@ -16594,10 +16594,23 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
     case ALTIVEC_BUILTIN_VSPLTISH:
     case ALTIVEC_BUILTIN_VSPLTISW:
       {
+	 int size;
+
+         if (fn_code == ALTIVEC_BUILTIN_VSPLTISB)
+           size = 8;
+         else if (fn_code == ALTIVEC_BUILTIN_VSPLTISH)
+           size = 16;
+         else
+           size = 32;
+
 	 arg0 = gimple_call_arg (stmt, 0);
 	 lhs = gimple_call_lhs (stmt);
-	 /* Only fold the vec_splat_*() if arg0 is constant.  */
-	 if (TREE_CODE (arg0) != INTEGER_CST)
+
+	 /* Only fold the vec_splat_*() if the lower bits of arg 0 is a
+	    5-bit signed constant in range -16 to +15.  */
+	 if (TREE_CODE (arg0) != INTEGER_CST
+	     || !IN_RANGE (sext_hwi(TREE_INT_CST_LOW (arg0), size),
+			   -16, 15))
 	   return false;
 	 gimple_seq stmts = NULL;
 	 location_t loc = gimple_location (stmt);
@@ -18643,7 +18656,8 @@ init_float128_ieee (machine_mode mode)
       set_optab_libfunc (smul_optab, mode, "__mulkf3");
       set_optab_libfunc (sdiv_optab, mode, "__divkf3");
       set_optab_libfunc (sqrt_optab, mode, "__sqrtkf2");
-      set_optab_libfunc (abs_optab, mode, "__abstkf2");
+      set_optab_libfunc (abs_optab, mode, "__abskf2");
+      set_optab_libfunc (powi_optab, mode, "__powikf2");
 
       set_optab_libfunc (eq_optab, mode, "__eqkf2");
       set_optab_libfunc (ne_optab, mode, "__nekf2");

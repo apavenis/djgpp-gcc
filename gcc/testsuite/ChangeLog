@@ -1,3 +1,228 @@
+2018-04-25  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from mainline
+	2018-04-25  Sebastian Peryt  <sebastian.peryt@intel.com>
+
+	PR target/85473
+	* gcc.target/i386/pr85473-1.c: New test.
+	* gcc.target/i386/pr85473-2.c: New test.
+
+2018-04-25  Nathan Sidwell  <nathan@acm.org>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/85437
+	PR c++/49171
+	* g++.dg/cpp0x/addressof1.C: Make reinterpret cases runtime checks.
+	* g++.dg/cpp0x/constexpr-cast.C: Remove xfails
+	* g++.dg/cpp0x/constexpr-nullptr-2.C: Likewise.
+	* g++.dg/cpp0x/constexpr-pmf1.C: Check when optimized.
+	* g++.dg/cpp0x/pr85437-1.C: New.
+	* g++.dg/cpp0x/pr85437-2.C: New.
+	* g++.dg/cpp0x/pr85437-3.C: New.
+	* g++.dg/cpp0x/pr85437-4.C: New.
+
+2018-04-24  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/85520
+	* gfortran.dg/pr85520.f90: New test.
+
+2018-04-24  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/85512
+	* gcc.dg/pr85512.c: New test.
+
+2018-04-24  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85485
+	* g++.dg/cet-notrack-1.C (dg-options): Remove -mcet.
+	* g++.dg/torture/pr85334.C (dg-additional-options): Likwise.
+	* gcc.dg/pr85388-1.c (dg-options): Likwise.
+	* gcc.dg/pr85388-2.c (dg-options): Likwise.
+	* gcc.dg/pr85388-3.c (dg-options): Likwise.
+	* gcc.dg/pr85388-4.c (dg-options): Likwise.
+	* gcc.dg/pr85388-5.c (dg-options): Likwise.
+	* gcc.dg/pr85388-6.c (dg-options): Likwise.
+	* gcc.dg/torture/pr85397-1.c (dg-additional-options): Likwise.
+	* gcc.target/i386/attr-nocf-check-1a.c (dg-options): Likwise.
+	* gcc.target/i386/attr-nocf-check-3a.c (dg-options): Likwise.
+	* gcc.target/i386/cet-label.c (dg-options): Likwise.
+	* gcc.target/i386/cet-label-2.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-1b.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-2a.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-2b.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-3.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-4b.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-5a.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-5b.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-6a.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-6b.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-7.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-icf-2.c (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-icf-4.c (dg-options): Likwise.
+	* gcc.target/i386/cet-property-1.c (dg-options): Likwise.
+	* gcc.target/i386/cet-property-2.c (dg-options): Likwise.
+	* gcc.target/i386/cet-sjlj-1.c (dg-options): Likwise.
+	* gcc.target/i386/cet-sjlj-2.c (dg-options): Likwise.
+	* gcc.target/i386/cet-sjlj-3.c (dg-options): Likwise.
+	* gcc.target/i386/cet-sjlj-4.c (dg-options): Likwise.
+	* gcc.target/i386/cet-sjlj-5.c (dg-options): Likwise.
+	* gcc.target/i386/cet-sjlj-6a.c (dg-options): Likwise.
+	* gcc.target/i386/cet-sjlj-6b.c (dg-options): Likwise.
+	* gcc.target/i386/cet-switch-1.c (dg-options): Likwise.
+	* gcc.target/i386/cet-switch-2.c (dg-options): Likwise.
+	* gcc.target/i386/cet-switch-3.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-11.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-12.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-attr-12.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-attr-13.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-attr-14.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-attr-15.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-attr-16.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-extern-8.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-extern-9.c (dg-options): Likwise.
+	* gcc.target/i386/indirect-thunk-extern-10.c (dg-options): Likwise.
+	* gcc.target/i386/pr82659-1.c (dg-options): Likwise.
+	* gcc.target/i386/pr82659-2.c (dg-options): Likwise.
+	* gcc.target/i386/pr82659-3.c (dg-options): Likwise.
+	* gcc.target/i386/pr82659-4.c (dg-options): Likwise.
+	* gcc.target/i386/pr82659-5.c (dg-options): Likwise.
+	* gcc.target/i386/pr82659-6.c (dg-options): Likwise.
+	* gcc.target/i386/pr84146.c (dg-options): Likwise.
+	* gcc.target/i386/pr85403.c (dg-options): Likwise.
+	* gcc.target/i386/pr85404.c (dg-options): Likwise.
+	* gcc.target/i386/cet-intrin-3.c (dg-options): Replace -mcet
+	with -mshstk.
+	* gcc.target/i386/cet-intrin-5.c (dg-options): Likwise.
+	* gcc.target/i386/cet-intrin-6.c (dg-options): Likwise.
+	* gcc.target/i386/cet-intrin-7.c (dg-options): Likwise.
+	* gcc.target/i386/cet-intrin-8.c (dg-options): Likwise.
+	* gcc.target/i386/cet-intrin-9.c (dg-options): Likwise.
+	* gcc.target/i386/cet-intrin-10.c (dg-options): Likwise.
+	* gcc.target/i386/cet-rdssp-1.c (dg-options): Likwise.
+	* (dg-options): Likwise.
+	* gcc.target/i386/cet-notrack-1a.c (dg-options): Remove
+	-mno-cet.
+	* gcc.target/i386/cet-notrack-4a.c (dg-options): Likwise.
+	* gcc.target/i386/cet-label-3.c: Removed.
+	* gcc.target/i386/cet-property-3.c: Likwise.
+	* gcc.target/i386/cet-sjlj-7.c: Likwise.
+
+2018-04-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/85511
+	* gcc.target/i386/pr85511.c: New test.
+
+	PR target/85503
+	* g++.dg/ext/pr85503.C: New test.
+
+	PR target/85508
+	* gcc.target/i386/pr85508.c: New test.
+
+2018-04-24  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	PR tree-optimization/85478
+	* g++.dg/pr85478.C: New test.
+
+2018-04-23  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* g++.dg/torture/pr85496.C: New test.
+
+2018-04-23  Andrey Belevantsev  <abel@ispras.ru>
+
+	PR rtl-optimization/85423
+	* gcc.dg/pr85423.c: New test.
+
+2018-04-20  Martin Sebor  <msebor@redhat.com>
+
+	PR c/85365
+	* gcc.dg/Wrestrict-15.c: New test.
+
+2018-04-20  Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/85456
+	* gcc.target/powerpc/pr85456.c: New test.
+
+2018-04-20  Bill Schmidt  <wschmidt@linux.ibm.com>
+
+	* g++.dg/ext/undef-bool-1.C: Require lp64.
+	* gcc.target/powerpc/undef-bool-2.c: Likewise.
+
+2018-04-20  Jeff Law  <law@redhat.com>
+
+	* gcc.dg/stack-check-5.c: Improve dg-skip-if selector for the
+	stack protector.
+	* gcc.dg/stack-check-6.c: Likewise.
+	* gcc.dg/stack-check-6a.c: Likewise.
+	* gcc.target/i386/stack-check-17.c: Add dg-skip-if selector.
+	* gcc.target/i386/stack-check-18.c: Likewise.
+	* gcc.target/i386/stack-check-19.c: Likewise.
+
+2018-04-20  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR testsuite/85483
+	* gcc.target/aarch64/sve/vcond_1.c: Move to...
+	* g++.dg/other/sve_vcond_1.C: ... Here.  Add target directives.
+	* gcc.target/aarch64/sve/vcond_1_run.c: Move to...
+	* g++.dg/other/sve_vcond_1_run.C: ... Here.  Change include file name.
+
+2018-04-20  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85469
+	* gcc.target/i386/pr85044.c (dg-options): Remove -mibt.
+	* gcc.target/i386/sse-26.c (dg-options): Remove -mno-ibt.
+
+2018-04-20  Richard Biener <rguenther@suse.de>
+
+	PR middle-end/85475
+	* gcc.dg/torture/pr85475.c: New testcase.
+
+2018-04-20  Martin Jambor  <mjambor@suse.cz>
+
+	ipa/85449
+	* gcc.dg/ipa/pr85449.c: New test.
+
+2018-04-20  Martin Jambor  <mjambor@suse.cz>
+
+	ipa/85447
+	* g++.dg/ipa/pr85447.C: New file.
+	* gcc.dg/ipa/ipcp-self-recursion-1.c: Likewise.
+
+2018-04-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/85462
+	* g++.dg/cpp0x/pr85462.C: New test.
+
+2018-04-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* gcc.target/i386/pr85404.c: Require CET target.
+
+2018-04-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/85467
+	* gcc.dg/pr85467.c: New test.
+
+2018-04-19  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	PR c++/84611
+	* g++.dg/parse/crash68.C: New.
+
+2018-04-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR libgcc/85334
+	* g++.dg/torture/pr85334.C: New test.
+
+2018-04-19  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR c++/85464 - missing location for -Wignored-qualifiers diagnostic
+	* g++.dg/diagnostic/pr85464.C: New.
+
+2018-04-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85397
+	* gcc.dg/torture/pr85397-1.c: New test.
+	* gcc.target/i386/cet-sjlj-6a.c: Adjusted.
+	* gcc.target/i386/cet-sjlj-6b.c: Likewise.
+
 2018-04-19  H.J. Lu  <hongjiu.lu@intel.com>
 
 	PR target/85404

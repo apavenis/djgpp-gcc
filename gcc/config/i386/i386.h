@@ -183,8 +183,6 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_MWAITX_P(x)	TARGET_ISA_MWAITX_P(x)
 #define TARGET_PKU	TARGET_ISA_PKU
 #define TARGET_PKU_P(x)	TARGET_ISA_PKU_P(x)
-#define TARGET_IBT	TARGET_ISA_IBT
-#define TARGET_IBT_P(x)	TARGET_ISA_IBT_P(x)
 #define TARGET_SHSTK	TARGET_ISA_SHSTK
 #define TARGET_SHSTK_P(x)	TARGET_ISA_SHSTK_P(x)
 #define TARGET_MOVDIRI	TARGET_ISA_MOVDIRI
@@ -1947,6 +1945,17 @@ do {							\
    After generation of rtl, the compiler makes no further distinction
    between pointers and any other objects of this machine mode.  */
 #define Pmode (ix86_pmode == PMODE_DI ? DImode : SImode)
+
+/* Supply a definition of STACK_SAVEAREA_MODE for emit_stack_save.
+   NONLOCAL needs space to save both shadow stack and stack pointers.
+
+   FIXME: We only need to save and restore stack pointer in ptr_mode.
+   But expand_builtin_setjmp_setup and expand_builtin_longjmp use Pmode
+   to save and restore stack pointer.  See
+   https://gcc.gnu.org/bugzilla/show_bug.cgi?id=84150
+ */
+#define STACK_SAVEAREA_MODE(LEVEL)			\
+  ((LEVEL) == SAVE_NONLOCAL ? (TARGET_64BIT ? TImode : DImode) : Pmode)
 
 /* Specify the machine mode that bounds have.  */
 #define BNDmode (ix86_pmode == PMODE_DI ? BND64mode : BND32mode)

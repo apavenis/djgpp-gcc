@@ -3489,9 +3489,8 @@ cgraph_edge_brings_value_p (cgraph_edge *cs, ipcp_value_source<tree> *src,
       || availability <= AVAIL_INTERPOSABLE
       || caller_info->node_dead)
     return false;
-  /* At the moment we do not propagate over arithmetic jump functions in SCCs,
-     so it is safe to detect self-feeding recursive calls in this way.  */
-  if (!src->val || src->val == dest_val)
+
+  if (!src->val)
     return true;
 
   if (caller_info->ipcp_orig_node)
@@ -3506,6 +3505,12 @@ cgraph_edge_brings_value_p (cgraph_edge *cs, ipcp_value_source<tree> *src,
     }
   else
     {
+      /* At the moment we do not propagate over arithmetic jump functions in
+	 SCCs, so it is safe to detect self-feeding recursive calls in this
+	 way.  */
+      if (src->val == dest_val)
+	return true;
+
       struct ipcp_agg_lattice *aglat;
       struct ipcp_param_lattices *plats = ipa_get_parm_lattices (caller_info,
 								 src->index);
@@ -3867,9 +3872,17 @@ create_specialized_node (struct cgraph_node *node,
   for (unsigned j = 0; j < self_recursive_calls.length (); j++)
     {
       cgraph_edge *cs = next_edge_clone[self_recursive_calls[j]->uid];
-      gcc_checking_assert (cs);
-      gcc_assert (cs->caller == new_node);
-      cs->redirect_callee_duplicating_thunks (new_node);
+      /* Cloned edges can disappear during cloning as speculation can be
+	 resolved, check that we have one and that it comes from the last
+	 cloning.  */
+      if (cs && cs->caller == new_node)
+	cs->redirect_callee_duplicating_thunks (new_node);
+      /* Any future code that would make more than one clone of an outgoing
+	 edge would confuse this mechanism, so let's check that does not
+	 happen.  */
+      gcc_checking_assert (!cs
+			   || !next_edge_clone[cs->uid]
+			   || next_edge_clone[cs->uid]->caller != new_node);
     }
   if (have_self_recursive_calls)
     new_node->expand_all_artificial_thunks ();

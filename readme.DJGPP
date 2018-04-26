@@ -135,11 +135,12 @@ Rebuilding gcc-@GCCVER@ from the sources
 Requirements
 ------------
 
--  Long filename support. I built it in DOS session under Windows 10 Home
-   32 bit or Windows 10 Home 32 bit. Other 32 bit Windows versions
-   beginning with Win95 should be hopefully OK. I have not however tested
-   myself whether it can be build under Win95, Win98, Win2k or Win2K, WinXP
-   or Win 7.
+-  Long filename support. I built it in DOS session under Windows Vista Business
+   32 bit SP3. Other 32 bit Windows versions beginning with Win95 should be
+   hopefully OK (Exception Windows 10 32 bit with current updates installed cannot
+   be used as DJGPP support is broken since 2018.03 cumulative update).
+   I have not however tested myself whether it can be build under Win95, Win98, Win2k or Win2K,
+   WinXP or Win 7.
 
 -  plenty of physical RAM available. I guess that 1 GB should
    be enough (I had more on build machine)
