@@ -6513,7 +6513,9 @@ check_initializer (tree decl, tree init, int flags, vec<tree, va_gc> **cleanups)
     }
 
   if (init_code
-      && (DECL_IN_AGGR_P (decl) && !DECL_VAR_DECLARED_INLINE_P (decl)))
+      && (DECL_IN_AGGR_P (decl)
+	  && DECL_INITIALIZED_IN_CLASS_P (decl)
+	  && !DECL_VAR_DECLARED_INLINE_P (decl)))
     {
       static int explained = 0;
 
@@ -9540,10 +9542,10 @@ fold_sizeof_expr (tree t)
   tree r;
   if (SIZEOF_EXPR_TYPE_P (t))
     r = cxx_sizeof_or_alignof_type (TREE_TYPE (TREE_OPERAND (t, 0)),
-				    SIZEOF_EXPR, false);
+				    SIZEOF_EXPR, false, false);
   else if (TYPE_P (TREE_OPERAND (t, 0)))
     r = cxx_sizeof_or_alignof_type (TREE_OPERAND (t, 0), SIZEOF_EXPR,
-				    false);
+				    false, false);
   else
     r = cxx_sizeof_or_alignof_expr (TREE_OPERAND (t, 0), SIZEOF_EXPR,
 				    false);

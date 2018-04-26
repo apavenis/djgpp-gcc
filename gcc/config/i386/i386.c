@@ -2766,7 +2766,6 @@ ix86_target_string (HOST_WIDE_INT isa, HOST_WIDE_INT isa2,
     { "-msgx",		OPTION_MASK_ISA_SGX },
     { "-mavx5124vnniw", OPTION_MASK_ISA_AVX5124VNNIW },
     { "-mavx5124fmaps", OPTION_MASK_ISA_AVX5124FMAPS },
-    { "-mibt",		OPTION_MASK_ISA_IBT },
     { "-mhle",		OPTION_MASK_ISA_HLE },
     { "-mmovbe",	OPTION_MASK_ISA_MOVBE },
     { "-mclzero",	OPTION_MASK_ISA_CLZERO },
@@ -5377,7 +5376,6 @@ ix86_valid_target_attribute_inner_p (tree args, char *p_strings[],
     IX86_ATTR_ISA ("clwb",	OPT_mclwb),
     IX86_ATTR_ISA ("rdpid",	OPT_mrdpid),
     IX86_ATTR_ISA ("gfni",	OPT_mgfni),
-    IX86_ATTR_ISA ("ibt",	OPT_mibt),
     IX86_ATTR_ISA ("shstk",	OPT_mshstk),
     IX86_ATTR_ISA ("vaes",	OPT_mvaes),
     IX86_ATTR_ISA ("vpclmulqdq", OPT_mvpclmulqdq),
@@ -31936,14 +31934,20 @@ ix86_init_mmx_sse_builtins (void)
 	       IX86_BUILTIN_SBB64);
 
   /* Read/write FLAGS.  */
-  def_builtin (0, "__builtin_ia32_readeflags_u32",
-               UNSIGNED_FTYPE_VOID, IX86_BUILTIN_READ_FLAGS);
-  def_builtin (OPTION_MASK_ISA_64BIT, "__builtin_ia32_readeflags_u64",
-               UINT64_FTYPE_VOID, IX86_BUILTIN_READ_FLAGS);
-  def_builtin (0, "__builtin_ia32_writeeflags_u32",
-               VOID_FTYPE_UNSIGNED, IX86_BUILTIN_WRITE_FLAGS);
-  def_builtin (OPTION_MASK_ISA_64BIT, "__builtin_ia32_writeeflags_u64",
-               VOID_FTYPE_UINT64, IX86_BUILTIN_WRITE_FLAGS);
+  if (TARGET_64BIT)
+    {
+      def_builtin (OPTION_MASK_ISA_64BIT, "__builtin_ia32_readeflags_u64",
+		   UINT64_FTYPE_VOID, IX86_BUILTIN_READ_FLAGS);
+      def_builtin (OPTION_MASK_ISA_64BIT, "__builtin_ia32_writeeflags_u64",
+		   VOID_FTYPE_UINT64, IX86_BUILTIN_WRITE_FLAGS);
+    }
+  else
+    {
+      def_builtin (0, "__builtin_ia32_readeflags_u32",
+		   UNSIGNED_FTYPE_VOID, IX86_BUILTIN_READ_FLAGS);
+      def_builtin (0, "__builtin_ia32_writeeflags_u32",
+		   VOID_FTYPE_UNSIGNED, IX86_BUILTIN_WRITE_FLAGS);
+    }
 
   /* CLFLUSHOPT.  */
   def_builtin (OPTION_MASK_ISA_CLFLUSHOPT, "__builtin_ia32_clflushopt",
@@ -37143,11 +37147,14 @@ ix86_expand_builtin (tree exp, rtx target, rtx subtarget,
       arg1 = CALL_EXPR_ARG (exp, 1);
       op0 = expand_normal (arg0);
       op1 = expand_normal (arg1);
-      mode0 = (TARGET_64BIT ? DImode : SImode);
 
-      op0 = force_reg (mode0, op0);
-      if (!memory_operand (op1, mode0))
-	op1 = gen_rtx_MEM (mode0, op1);
+      op0 = ix86_zero_extend_to_Pmode (op0);
+      if (!address_operand (op1, VOIDmode))
+      {
+	op1 = convert_memory_address (Pmode, op1);
+	op1 = copy_addr_to_reg (op1);
+      }
+      op1 = gen_rtx_MEM (XImode, op1);
 
       insn = (TARGET_64BIT
 		? gen_movdir64b_di (op0, op1)
@@ -43196,7 +43203,7 @@ ix86_expand_vector_init_one_var (bool mmx_ok, machine_mode mode,
       else
 	{
 	  var = convert_modes (HImode, QImode, var, true);
-	  x = gen_int_mode (INTVAL (x) << 8, HImode);
+	  x = gen_int_mode (UINTVAL (x) << 8, HImode);
 	}
       if (x != const0_rtx)
 	var = expand_simple_binop (HImode, IOR, var, x, var,
@@ -50552,8 +50559,9 @@ ix86_add_stmt_cost (void *data, int count, enum vect_cost_for_stmt kind,
      construction cost by the number of elements involved.  */
   if (kind == vec_construct
       && stmt_info
-      && stmt_info->type == load_vec_info_type
-      && stmt_info->memory_access_type == VMAT_ELEMENTWISE)
+      && STMT_VINFO_TYPE (stmt_info) == load_vec_info_type
+      && STMT_VINFO_MEMORY_ACCESS_TYPE (stmt_info) == VMAT_ELEMENTWISE
+      && TREE_CODE (DR_STEP (STMT_VINFO_DATA_REF (stmt_info))) != INTEGER_CST)
     {
       stmt_cost = ix86_builtin_vectorization_cost (kind, vectype, misalign);
       stmt_cost *= TYPE_VECTOR_SUBPARTS (vectype);

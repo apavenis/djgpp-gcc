@@ -1261,7 +1261,7 @@ See RS/6000 and PowerPC Options.
 -msse4a  -m3dnow  -m3dnowa  -mpopcnt  -mabm  -mbmi  -mtbm  -mfma4  -mxop @gol
 -mlzcnt  -mbmi2  -mfxsr  -mxsave  -mxsaveopt  -mrtm  -mlwp  -mmpx  @gol
 -mmwaitx  -mclzero  -mpku  -mthreads -mgfni  -mvaes  @gol
--mcet -mibt -mshstk -mforce-indirect-call -mavx512vbmi2 @gol
+-mshstk -mforce-indirect-call -mavx512vbmi2 @gol
 -mvpclmulqdq -mavx512bitalg -mmovdiri -mmovdir64b -mavx512vpopcntdq @gol
 -mms-bitfields  -mno-align-stringops  -minline-all-stringops @gol
 -minline-stringops-dynamically  -mstringop-strategy=@var{alg} @gol
@@ -7652,6 +7652,7 @@ by @option{-O2} and also turns on the following optimization flags:
 -ftree-loop-distribution @gol
 -ftree-loop-distribute-patterns @gol
 -floop-interchange @gol
+-floop-unroll-and-jam @gol
 -fsplit-paths @gol
 -ftree-slp-vectorize @gol
 -fvect-cost-model @gol
@@ -11827,6 +11828,11 @@ implements checking of validity at the point of returning from a
 function.  The value @code{full} is an alias for specifying both
 @code{branch} and @code{return}. The value @code{none} turns off
 instrumentation.
+
+The macro @code{__CET__} is defined when @option{-fcf-protection} is
+used.  The first bit of @code{__CET__} is set to 1 for the value
+@code{branch} and the second bit of @code{__CET__} is set to 1 for
+the @code{return}.
 
 You can also use the @code{nocf_check} attribute to identify
 which functions and calls should be skipped from instrumentation
@@ -27294,9 +27300,6 @@ preferred alignment to @option{-mpreferred-stack-boundary=2}.
 @itemx -mpku
 @opindex mpku
 @need 200
-@itemx -mcet
-@opindex mcet
-@need 200
 @itemx -mavx512vbmi2
 @opindex mavx512vbmi2
 @need 200
@@ -27347,11 +27350,6 @@ perform run-time CPU detection must compile separate files for each
 supported architecture, using the appropriate flags.  In particular,
 the file containing the CPU detection code should be compiled without
 these options.
-
-The @option{-mcet} option turns on the @option{-mibt} and @option{-mshstk}
-options.  The compiler provides a number of built-in functions for
-fine-grained control in a CET-based application.  See
-@xref{x86 Built-in Functions}, for more information.
 
 @item -mdump-tune-features
 @opindex mdump-tune-features
@@ -27445,19 +27443,10 @@ see @ref{Other Builtins} for details.
 This option enables use of the @code{movbe} instruction to implement
 @code{__builtin_bswap32} and @code{__builtin_bswap64}.
 
-@item -mibt
-@opindex mibt
-This option enables indirect branch tracking built-in functions from
-x86 Control-flow Enforcement Technology (CET).  The option
-@option{-mibt} is on by default when the @code{-mcet} option is
-specified.
-
 @item -mshstk
 @opindex mshstk
-This option enables shadow stack built-in functions from x86
-Control-flow Enforcement Technology (CET).  The option
-@option{-mshstk} is on by default when the @option{-mcet} option is
-specified.
+The @option{-mshstk} option enables shadow stack built-in functions
+from x86 Control-flow Enforcement Technology (CET).
 
 @item -mcrc32
 @opindex mcrc32
