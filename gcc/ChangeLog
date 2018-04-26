@@ -1,3 +1,349 @@
+2018-04-26  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-data-refs.c (vect_get_data_access_cost): Get
+	prologue cost vector and pass it to vect_get_load_cost.
+	(vect_get_peeling_costs_all_drs): Likewise.
+	(vect_peeling_hash_get_lowest_cost): Likewise.
+	(vect_enhance_data_refs_alignment): Likewise.
+
+2018-04-26  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/85450
+	* tree-cfg.c (verify_gimple_assign_unary): Restore proper
+	checking of integer<->pointer conversions.
+	* omp-expand.c (expand_omp_for_static_nochunk): Avoid
+	sign-/zero-extending pointer types.
+	(expand_omp_for_static_chunk): Likewise.
+
+2018-03-22  Hans-Peter Nilsson  <hp@axis.com>
+	    Jean Lee  <xiaoyur347@gmail.com>
+
+	* config/mips/mips.c (mips_asan_shadow_offset): New function.
+	(TARGET_ASAN_SHADOW_OFFSET): Define.
+	* config/mips/mips.h (FRAME_GROWS_DOWNWARD): Augment to also be
+	true for -fsanitize=address.
+
+2018-04-25  Mark Wielaard  <mark@klomp.org>
+
+	* dwarf2out.c (file_info_cmp): Sort longer dir prefixes before
+	shorter ones.
+
+2018-04-25  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/i386/i386.md (*x86_mov<mode>cc_0_m1): Use type "alu1" rather
+	than "alu", remove explicit "memory" and "imm_disp" attributes.
+	(*x86_mov<mode>cc_0_m1_se, *x86_mov<mode>cc_0_m1_neg): Likewise.
+
+	PR middle-end/85414
+	* simplify-rtx.c (simplify_unary_operation_1) <case SIGN_EXTEND,
+	case ZERO_EXTEND>: Pass SUBREG_REG (op) rather than op to
+	gen_lowpart_no_emit.
+
+2018-04-25  Sebastian Peryt  <sebastian.peryt@intel.com>
+
+	PR target/85473
+	* config/i386/i386.c (ix86_expand_builtin): Change memory
+	operand to XI, extend p0 to Pmode.
+	* config/i386/i386.md: Change unspec volatile and operand
+	1 mode to XI, change operand 0 mode to P.
+
+2018-04-25  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32-predicates.c (nds32_can_use_bclr_p): Mask with
+	GET_MODE_MASK before any checking.
+	(nds32_can_use_bset_p): Likewise.
+	(nds32_can_use_btgl_p): Likewise.
+
+2018-04-25  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32-doubleword.md: New define_split pattern for
+	illegal register number.
+
+2018-04-25  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32.c (nds32_print_operand): Set op_value ealier.
+
+2018-04-25  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32.h (ASM_APP_ON): Add missing newline character.
+
+2018-04-25  Richard Biener  <rguenther@suse.de>
+
+	* lto-streamer.h (LTO_major_version): Bump to 8.
+
+2018-04-25  Jakub Jelinek  <jakub@redhat.com>
+
+	* BASE-VER: Set to 9.0.0.
+
+2018-04-24  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/rs6000.c (init_float128_ieee): Fix spelling mistakes
+	in __abskf2 and __powikf2.
+
+2018-04-24  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/85512
+	* config/aarch64/constraints.md (Usg, Usj): New constraints.
+	* config/aarch64/iterators.md (cmode_simd): New mode attribute.
+	* config/aarch64/aarch64.md (*aarch64_ashr_sisd_or_int_<mode>3):
+	Use the above on operand 2.  Reindent.
+	(*aarch64_lshr_sisd_or_int_<mode>3): Likewise.
+
+2018-04-24  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85485
+	* common/config/i386/i386-common.c (ix86_handle_option): Don't
+	handle OPT_mcet.
+	* config/i386/i386.opt (mcet): Removed.
+	* doc/install.texi: Remove -mcet documentation.
+	* doc/invoke.texi: Likewise.
+
+2018-04-24  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85485
+	* doc/install.texi: Remove -mcet from bootstrap-cet.
+
+2018-04-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/85511
+	* config/i386/i386.c (ix86_init_mmx_sse_builtins): Don't define
+	__builtin_ia32_readeflags_u32 and __builtin_ia32_writeeflags_u32
+	if TARGET_64BIT.
+
+	PR target/85503
+	* config/rs6000/rs6000-p8swap.c (const_load_sequence_p): Punt if
+	const_vector is not CONST_VECTOR or SYMBOL_REF for a constant pool
+	containing a CONST_VECTOR.
+
+2018-04-24  Cesar Philippidis  <cesar@codesourcery.com>
+
+	* doc/install.texi: Update newlib dependency for nvptx.
+
+2018-04-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/85508
+	* config/i386/i386.c (ix86_expand_vector_init_one_var): Use UINTVAL
+	instead of INTVAL when shifting x left.
+
+2018-04-24  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	PR tree-optimization/85478
+	* tree-vect-loop.c (vect_analyze_loop_2): Do not call
+	vect_grouped_store_supported for single element vectors.
+
+2018-04-24  Richard Biener  <rguenther@suse.de>
+
+	PR target/85491
+	* config/i386/i386.c (ix86_add_stmt_cost): Restrict strided
+	load cost increase to the case of non-constant step.
+
+2018-04-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/84828
+	* reg-stack.c (move_for_stack_reg): Don't fail assertion about dead
+	destination if any_malformed_asm.
+
+2018-04-23  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR middle-end/85496
+	* expr.c (store_field): In the bitfield case, if the value comes from
+	a function call and is returned in registers by means of a PARALLEL,
+	do not change the mode of the temporary unless BLKmode and VOIDmode.
+
+2018-04-23  Andrey Belevantsev  <abel@ispras.ru>
+
+	PR rtl-optimization/85423
+	* sel-sched-ir.c (has_dependence_note_mem_dep): Only discard
+	dependencies to debug insns when the previous insn is non-debug.
+
+2018-04-23  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/arc.md ("vunspec"): Delete it, unify all the unspec
+	enums into a single definition.
+	(fls): Fix predicates and printing.
+	(seti): Likewise.
+
+2018-04-23  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/arc-protos.h (check_if_valid_sleep_operand): Remove.
+	* config/arc/arc.c (arc_expand_builtin): Sleep accepts registers
+	and short u6 immediate.
+	(check_if_valid_sleep_operand): Remove.
+	* config/arc/arc.md (Sleep): Accepts registers and u6 immediates.
+
+2018-04-22  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32.c (nds32_compute_stack_frame): Consider
+	flag_always_save_lp condition.
+	* config/nds32/nds32.opt (malways-save-lp): New option.
+
+2018-04-22  Shiva Chen  <shiva0217@gmail.com>
+
+	* config/nds32/nds32-protos.h (nds32_use_load_post_increment): Declare.
+	* config/nds32/nds32.c (nds32_use_load_post_increment): New.
+	* config/nds32/nds32.h
+	(USE_LOAD_POST_INCREMENT, USE_LOAD_POST_DECREMENT): Define.
+	(USE_STORE_POST_INCREMENT, USE_STORE_POST_DECREMENT): Define.
+
+2018-04-22  Shiva Chen  <shiva0217@gmail.com>
+
+	* config/nds32/nds32-protos.h (nds32_ls_333_p): Remove.
+	* config/nds32/nds32.c (nds32_ls_333_p): Remove.
+
+2018-04-22  Shiva Chen  <shiva0217@gmail.com>
+	    Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32-protos.h (nds32_case_vector_shorten_mode):
+	Declare.
+	* config/nds32/nds32.c (nds32_case_vector_shorten_mode): New function.
+	* config/nds32/nds32.h (CASE_VECTOR_SHORTEN_MODE): Modify.
+
+2018-04-22  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32.c (nds32_compute_stack_frame): Fix wrong value.
+
+2018-04-22  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32-protos.h (nds32_data_alignment,
+	nds32_local_alignment): Declare.
+	* config/nds32/nds32.c (nds32_data_alignment, nds32_constant_alignment,
+	nds32_local_alignment): New functions.
+	(TARGET_CONSTANT_ALIGNMENT): Define.
+	* config/nds32/nds32.h (DATA_ALIGNMENT, LOCAL_ALIGNMENT): Define.
+
+2018-04-22  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32.c
+	(TARGET_HARD_REGNO_MODE_OK): Move to the bottom of file.
+	(TARGET_MODES_TIEABLE_P): Likewise.
+
+2018-04-22  Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/nds32.c (nds32_asm_file_start): Display optimization
+	level Ofast and Og.
+
+2018-04-22  Monk Chiang  <sh.chiang04@gmail.com>
+	    Chung-Ju Wu  <jasonwucj@gmail.com>
+
+	* config/nds32/constants.md (unspec_volatile_element): Add enum values
+	for unaligned access.
+	* config/nds32/nds32-intrinsic.c: Implementation of expanding
+	unaligned access.
+	* config/nds32/nds32-intrinsic.md: Likewise.
+	* config/nds32/nds32_intrinsic.h: Likewise.
+	* config/nds32/nds32.h (nds32_builtins): Likewise.
+	* config/nds32/nds32.opt (munaligned-access): New option.
+	* config/nds32/nds32.c (nds32_asm_file_start): Display
+	flag_unaligned_access status.
+
+2018-04-20  Kito Cheng  <kito.cheng@gmail.com>
+
+	* config/riscv/elf.h (LINK_SPEC): Pass --no-relax if
+	-mno-relax is present.
+	* config/riscv/linux.h (LINK_SPEC): Ditto.
+
+2018-04-20  Martin Sebor  <msebor@redhat.com>
+
+	PR c/85365
+	* gimple-fold.c (gimple_fold_builtin_strcpy): Suppress -Wrestrict
+	for null pointers.
+	(gimple_fold_builtin_stxcpy_chk): Same.
+	* gimple-ssa-warn-restrict.c (check_bounds_or_overlap): Same.
+
+2018-04-20  Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/85456
+	* config/rs6000/rs6000.c (init_float128_ieee): Add support to call
+	__powikf2 when long double is IEEE 128-bit.
+
+2018-04-20  Kito Cheng  <kito.cheng@gmail.com>
+
+	* config/riscv/riscv.c (riscv_first_stack_step): Round up min
+	step to make sure stack always aligned.
+
+2018-04-20  Carl Love  <cel@us.ibm.com>
+
+        PR target/83402
+        * config/rs6000/rs6000-c.c (rs6000_gimple_fold_builtin): Add
+        size check for arg0.
+
+2018-04-20  Nathan Sidwell  <nathan@codesourcery.com>
+	    Tom de Vries  <tom@codesourcery.com>
+
+	PR target/85445
+	* config/nvptx/nvptx.c (nvptx_emit_forking, nvptx_emit_joining):
+	Emit insns for calls too.
+	(nvptx_find_par): Always look for worker-level predecessor insn.
+	(nvptx_propagate): Add is_call parm, return bool.  Copy frame for
+	calls.
+	(nvptx_vpropagate, nvptx_wpropagate): Adjust.
+	(nvptx_process_pars): Propagate frames for calls.
+
+2018-04-20  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85469
+	* common/config/i386/i386-common.c (OPTION_MASK_ISA_IBT_SET):
+	Removed.
+	(OPTION_MASK_ISA_IBT_UNSET): Likewise.
+	(ix86_handle_option): Don't handle OPT_mibt.
+	* config/i386/cet.h: Check __CET__ instead of __IBT__ and
+	__SHSTK__.
+	* config/i386/driver-i386.c (host_detect_local_cpu): Remove
+	has_ibt and ibt.
+	* config/i386/i386-c.c (ix86_target_macros_internal): Don't
+	check OPTION_MASK_ISA_IBT nor flag_cf_protection.
+	(ix86_target_macros): Define __CET__ with flag_cf_protection
+	for -fcf-protection.
+	* config/i386/i386.c (isa2_opts): Remove -mibt.
+	* config/i386/i386.h (TARGET_IBT): Removed.
+	(TARGET_IBT_P): Likewise.
+	(ix86_valid_target_attribute_inner_p): Don't check OPT_mibt.
+	* config/i386/i386.md (nop_endbr): Don't check TARGET_IBT.
+	* config/i386/i386.opt (mcet): Update help message.
+	(mshstk): Likewise.
+	(mibt): Removed.
+	* doc/invoke.texi: Remove -mibt.  Document __CET__.  Document
+	-mcet as an alias for -mshstk.
+
+2018-04-20  Richard Biener <rguenther@suse.de>
+
+	PR middle-end/85475
+	* match.pd ((X * CST) * Y -> (X * Y) * CST): Avoid exponential
+	complexity by forcing a single use of the multiply operand.
+
+2018-04-20  Martin Jambor  <mjambor@suse.cz>
+
+	ipa/85449
+	* ipa-cp.c (cgraph_edge_brings_value_p): Move check for self-feeding
+	recursion dependency to only apply to non-clones.
+
+2018-04-20  Martin Jambor  <mjambor@suse.cz>
+
+	ipa/85447
+	* ipa-cp.c (create_specialized_node): Check that clones of
+	self-recursive edges exist during IPA-CP.
+
+2018-04-19  Toon Moene  <toon@moene.org>
+
+	* doc/invoke.texi: Add -floop-unroll-and-jam to options enabled
+	by -O3. 
+
+2018-04-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/85467
+	* fold-const.c (fold_ternary_loc) <case BIT_FIELD_REF>: Use
+	VECTOR_TYPE_P macro.  If type is vector type, VIEW_CONVERT_EXPR the
+	VECTOR_CST element to type.
+
+2018-04-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85397
+	* config/i386/i386.h (STACK_SAVEAREA_MODE): New.
+	* config/i386/i386.md (builtin_setjmp_setup): Removed.
+	(builtin_longjmp): Likewise.
+	(save_stack_nonlocal): New pattern.
+	(restore_stack_nonlocal): Likewise.
+
 2018-04-19  H.J. Lu  <hongjiu.lu@intel.com>
 
 	PR target/85404

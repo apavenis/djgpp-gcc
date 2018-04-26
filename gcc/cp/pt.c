@@ -8945,15 +8945,14 @@ tinst_level::to_list ()
   return ret;
 }
 
-/* Increment OBJ's refcount.  */
+const unsigned short tinst_level::refcount_infinity;
+
+/* Increment OBJ's refcount unless it is already infinite.  */
 static tinst_level *
 inc_refcount_use (tinst_level *obj)
 {
-  if (obj)
-    {
-      ++obj->refcount;
-      gcc_assert (obj->refcount != 0);
-    }
+  if (obj && obj->refcount != tinst_level::refcount_infinity)
+    ++obj->refcount;
   return obj;
 }
 
@@ -8966,15 +8965,16 @@ tinst_level::free (tinst_level *obj)
   tinst_level_freelist ().free (obj);
 }
 
-/* Decrement OBJ's refcount.  If it reaches zero, release OBJ's DECL
-   and OBJ, and start over with the tinst_level object that used to be
-   referenced by OBJ's NEXT.  */
+/* Decrement OBJ's refcount if not infinite.  If it reaches zero, release
+   OBJ's DECL and OBJ, and start over with the tinst_level object that
+   used to be referenced by OBJ's NEXT.  */
 static void
 dec_refcount_use (tinst_level *obj)
 {
-  while (obj && !--obj->refcount)
+  while (obj
+	 && obj->refcount != tinst_level::refcount_infinity
+	 && !--obj->refcount)
     {
-      gcc_assert (obj->refcount+1 != 0);
       tinst_level *next = obj->next;
       tinst_level::free (obj);
       obj = next;
@@ -9444,7 +9444,9 @@ lookup_template_class_1 (tree d1, tree arglist, tree in_decl, tree context,
 
 	  /* A local class.  Make sure the decl gets registered properly.  */
 	  if (context == current_function_decl)
-	    pushtag (DECL_NAME (gen_tmpl), t, /*tag_scope=*/ts_current);
+	    if (pushtag (DECL_NAME (gen_tmpl), t, /*tag_scope=*/ts_current)
+		== error_mark_node)
+	      return error_mark_node;
 
 	  if (comp_template_args (CLASSTYPE_TI_ARGS (template_type), arglist))
 	    /* This instantiation is another name for the primary
@@ -10143,8 +10145,7 @@ push_tinst_level_loc (tree tldcl, tree targs, location_t loc)
   new_level->tldcl = tldcl;
   new_level->targs = targs;
   new_level->locus = loc;
-  new_level->errors = errorcount+sorrycount;
-  new_level->in_system_header_p = in_system_header_at (input_location);
+  new_level->errors = errorcount + sorrycount;
   new_level->next = NULL;
   new_level->refcount = 0;
   set_refcount_ptr (new_level->next, current_tinst_level);
@@ -15597,7 +15598,8 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 		expanded = make_argument_pack (expanded);
 
 	      if (TYPE_P (expanded))
-		return cxx_sizeof_or_alignof_type (expanded, SIZEOF_EXPR, 
+		return cxx_sizeof_or_alignof_type (expanded, SIZEOF_EXPR,
+						   false,
 						   complain & tf_error);
 	      else
 		return cxx_sizeof_or_alignof_expr (expanded, SIZEOF_EXPR,
@@ -15635,7 +15637,10 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
       {
 	tree type = tsubst (TREE_TYPE (t), args, complain, in_decl);
 	tree op0 = tsubst_copy (TREE_OPERAND (t, 0), args, complain, in_decl);
-	return build1 (code, type, op0);
+	r = build1 (code, type, op0);
+	if (code == ALIGNOF_EXPR)
+	  ALIGNOF_EXPR_STD_P (r) = ALIGNOF_EXPR_STD_P (t);
+	return r;
       }
 
     case COMPONENT_REF:
@@ -18001,6 +18006,8 @@ tsubst_copy_and_build (tree t,
 	op1 = TREE_OPERAND (t, 0);
 	if (TREE_CODE (t) == SIZEOF_EXPR && SIZEOF_EXPR_TYPE_P (t))
 	  op1 = TREE_TYPE (op1);
+	bool std_alignof = (TREE_CODE (t) == ALIGNOF_EXPR
+			    && ALIGNOF_EXPR_STD_P (t));
         if (!args)
 	  {
 	    /* When there are no ARGS, we are trying to evaluate a
@@ -18024,7 +18031,7 @@ tsubst_copy_and_build (tree t,
 	    --c_inhibit_evaluation_warnings;
 	  }
         if (TYPE_P (op1))
-	  r = cxx_sizeof_or_alignof_type (op1, TREE_CODE (t),
+	  r = cxx_sizeof_or_alignof_type (op1, TREE_CODE (t), std_alignof,
 					  complain & tf_error);
 	else
 	  r = cxx_sizeof_or_alignof_expr (op1, TREE_CODE (t),
