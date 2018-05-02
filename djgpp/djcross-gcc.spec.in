@@ -462,6 +462,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Wed May  2 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-8.1.0.
+
 * Sat Feb 17 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Use MPFR-4.0.1
 
