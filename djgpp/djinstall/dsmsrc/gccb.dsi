@@ -35,7 +35,7 @@ replaces: gcc < @version@
 
 requires: DPMI
 requires: djdev @djreq@
-requires: binutils >= 2.16
+requires: binutils >= 2.30
 conflicts-with: gcc < @version@
 
 # For reading docs
