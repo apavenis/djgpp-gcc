@@ -50,6 +50,18 @@ case "x$devphase" in
         ;;
 esac
 
+# Extract minimal set of changes required for building cross-compiler for DJGPP target
+rm -f djgpp-changes-minimal.diff
+for file in $(cd .. && git diff --name-only $upstream $dj_branch); do
+   case $file in
+       djgpp* | readme.DJGPP | ChangeLog.DJGPP)
+           ;;
+       *)
+           ( cd .. && git diff -u $upstream $dj_branch -- $file ) >>djgpp-changes-minimal.diff
+           ;;
+   esac
+done
+
 dest=djcross-gcc-$ver1
 rm -rf $dest
 
