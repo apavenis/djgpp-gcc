@@ -33,7 +33,7 @@ replaces: objc < @version@
 
 requires: DPMI
 requires: djdev @djreq@
-requires: binutils >= 2.162
+requires: binutils >= 2.30
 requires: gcc @version@
 conflicts-with: ada < @version@
 
