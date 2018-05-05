@@ -62,8 +62,8 @@ Source6: ftp://ftp.gnu.org/gnu/automake/automake-%{automake_version}.tar.gz
 
 Buildroot: %{_tmppath}/%{name}-%{version}-root
 BuildArch: i686 x86_64
-Requires: djcrx djcross-binutils >= 2.22
-BuildRequires: gcc gcc-gnat djcrx djcross-binutils >= 2.22
+Requires: djcrx djcross-binutils >= 2.30
+BuildRequires: gcc-c++ >= 4.4 gcc-gnat >= 4.4 djcrx >= 2.05 djcross-binutils >= 2.30
 BuildRequires: zlib-devel glibc-devel texinfo-tex
 BuildRequires:  flex
 
@@ -462,6 +462,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat May  5 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- Update requirements for building and using cross-compiler RPMs
+
 * Wed May  2 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-8.1.0.
 
