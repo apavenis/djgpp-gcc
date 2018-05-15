@@ -2527,6 +2527,10 @@ check_extern_c_conflict (tree decl)
   if (DECL_ARTIFICIAL (decl) || DECL_IN_SYSTEM_HEADER (decl))
     return;
 
+  /* This only applies to decls at namespace scope.  */
+  if (!DECL_NAMESPACE_SCOPE_P (decl))
+    return;
+
   if (!extern_c_decls)
     extern_c_decls = hash_table<named_decl_hash>::create_ggc (127);
 
@@ -3742,7 +3746,7 @@ debug (cp_binding_level *ptr)
 }
 
 
-void
+static void
 print_other_binding_stack (cp_binding_level *stack)
 {
   cp_binding_level *level;
@@ -5858,6 +5862,12 @@ consider_binding_level (tree name, best_match <tree, const char *> &bm,
       if (TREE_CODE (d) == FUNCTION_DECL
 	  && DECL_BUILT_IN (d)
 	  && DECL_ANTICIPATED (d))
+	continue;
+
+      /* Skip compiler-generated variables (e.g. __for_begin/__for_end
+	 within range for).  */
+      if (TREE_CODE (d) == VAR_DECL
+	  && DECL_ARTIFICIAL (d))
 	continue;
 
       tree suggestion = DECL_NAME (d);

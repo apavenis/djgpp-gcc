@@ -3042,6 +3042,17 @@ build_ptrmemfunc_access_expr (tree ptrmem, tree member_name)
   tree ptrmem_type;
   tree member;
 
+  if (TREE_CODE (ptrmem) == CONSTRUCTOR)
+    {
+      unsigned int ix;
+      tree index, value;
+      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ptrmem),
+				ix, index, value)
+	if (index && DECL_P (index) && DECL_NAME (index) == member_name)
+	  return value;
+      gcc_unreachable ();
+    }
+
   /* This code is a stripped down version of
      build_class_member_access_expr.  It does not work to use that
      routine directly because it expects the object to be of class
@@ -6833,34 +6844,29 @@ convert_ptrmem (tree type, tree expr, bool allow_inverse_p,
 
   if (TYPE_PTRDATAMEM_P (type))
     {
-      tree delta;
+      tree obase = TYPE_PTRMEM_CLASS_TYPE (TREE_TYPE (expr));
+      tree nbase = TYPE_PTRMEM_CLASS_TYPE (type);
+      tree delta = (get_delta_difference
+		    (obase, nbase,
+		     allow_inverse_p, c_cast_p, complain));
 
-      delta = get_delta_difference (TYPE_PTRMEM_CLASS_TYPE (TREE_TYPE (expr)),
-				    TYPE_PTRMEM_CLASS_TYPE (type),
-				    allow_inverse_p,
-				    c_cast_p, complain);
       if (delta == error_mark_node)
 	return error_mark_node;
 
-      if (!integer_zerop (delta))
+      if (!same_type_p (obase, nbase))
 	{
-	  tree cond, op1, op2;
-
 	  if (TREE_CODE (expr) == PTRMEM_CST)
 	    expr = cplus_expand_constant (expr);
-	  cond = cp_build_binary_op (input_location,
-				     EQ_EXPR,
-				     expr,
-				     build_int_cst (TREE_TYPE (expr), -1),
-				     complain);
-	  op1 = build_nop (ptrdiff_type_node, expr);
-	  op2 = cp_build_binary_op (input_location,
-				    PLUS_EXPR, op1, delta,
-				    complain);
+
+	  tree cond = cp_build_binary_op (input_location, EQ_EXPR, expr,
+					  build_int_cst (TREE_TYPE (expr), -1),
+					  complain);
+	  tree op1 = build_nop (ptrdiff_type_node, expr);
+	  tree op2 = cp_build_binary_op (input_location, PLUS_EXPR, op1, delta,
+					 complain);
 
 	  expr = fold_build3_loc (input_location,
-			      COND_EXPR, ptrdiff_type_node, cond, op1, op2);
-			 
+				  COND_EXPR, ptrdiff_type_node, cond, op1, op2);
 	}
 
       return build_nop (type, expr);
@@ -8517,7 +8523,7 @@ build_ptrmemfunc (tree type, tree pfn, int force, bool c_cast_p,
 	{
 	  if (same_type_p (to_type, pfn_type))
 	    return pfn;
-	  else if (integer_zerop (n))
+	  else if (integer_zerop (n) && TREE_CODE (pfn) != CONSTRUCTOR)
 	    return build_reinterpret_cast (to_type, pfn, 
                                            complain);
 	}
@@ -8537,12 +8543,15 @@ build_ptrmemfunc (tree type, tree pfn, int force, bool c_cast_p,
       /* Just adjust the DELTA field.  */
       gcc_assert  (same_type_ignoring_top_level_qualifiers_p
 		   (TREE_TYPE (delta), ptrdiff_type_node));
-      if (TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_delta)
-	n = cp_build_binary_op (input_location,
-				LSHIFT_EXPR, n, integer_one_node,
-				complain);
-      delta = cp_build_binary_op (input_location,
-				  PLUS_EXPR, delta, n, complain);
+      if (!integer_zerop (n))
+	{
+	  if (TARGET_PTRMEMFUNC_VBIT_LOCATION == ptrmemfunc_vbit_in_delta)
+	    n = cp_build_binary_op (input_location,
+				    LSHIFT_EXPR, n, integer_one_node,
+				    complain);
+	  delta = cp_build_binary_op (input_location,
+				      PLUS_EXPR, delta, n, complain);
+	}
       return build_ptrmemfunc1 (to_type, delta, npfn);
     }
 
