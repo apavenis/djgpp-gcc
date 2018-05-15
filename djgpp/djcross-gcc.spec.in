@@ -462,6 +462,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Tue May 15 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- Fix value of macros __DATE__ and __TIME__ for DJGPP host.
+
 * Sat May  5 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Update requirements for building and using cross-compiler RPMs
 
