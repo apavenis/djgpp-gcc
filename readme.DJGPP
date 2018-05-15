@@ -8,7 +8,7 @@ and FAQ where needed.
 
 Requirements to use this binary release:
     -  DJGPP-@DJVER@.
-    -  binutils-2.22 or above (Earlier versions will NOT work)
+    -  binutils-2.30 or above (Earlier versions will NOT work)
 
 Changes since release of DJGPP port of gcc-6.3.0:
     - support for std::experimental::filesystem added (note that library
@@ -17,7 +17,6 @@ Changes since release of DJGPP port of gcc-6.3.0:
 
 Source archives
 ===============
-
 
 Archive djcross-gcc-@GCCVER@.tar.bz2 contains script which modifies
 original gcc-@GCCVER@ sources for DJGPP. You don't need it unless You
@@ -77,11 +76,9 @@ You should remove previous installation of gcc completely
 (unless You really know what You are doing).
 
 Following packages are required for binaries:
-	binutils-2.22 or above. Linker script is no more included in DJGPP
-	    release of GCC and all earlier binutils releases for DJGPP
-	    had incompatible scripts. SO PLEASE UPGRADE.
+	binutils-2.30 or above.
 
-	DJGPP-@DJVER@ (djdev205.zip)
+	DJGPP-@DJVER@ (djdev205.zip). Later development version recommended
 
 Rrquired packages for different programming languages
 	C 			: gcc@GCCVER3@b.zip
@@ -94,7 +91,7 @@ Rrquired packages for different programming languages
 
         Ada                     : gcc@GCCVER3@b.zip, ada@GCCVER3@b.zip
 
-Of course for ALL languages You also need at least binutils (bnu222b.zip
+Of course for ALL languages You also need at least binutils (bnu230b.zip
 or newer) and @DJDEV@.zip (or newer when it will be released)
 
 Unzip all the zip files from that directory, preserving the
@@ -114,6 +111,7 @@ NOTE:   For debugging GDB version 7.11 or above is recommended.
 Unzip the binaries with an unzip program, which can restore the long filenames
 stored in the zip archive.
 
+
 2. Only short filenames
 -----------------------
 
@@ -128,6 +126,24 @@ about setting the NameNumericTail to 0 __BEFORE__!!! unzipping the archives.
 Use an unzip program which can restore the long filenames and follow
 the instructions under 2. when the unzipper knows about long filenames.
 
+Notes for using under Windows
+-----------------------------
+
+1. Windows 10 32 bit cannot be used after 2018.03 cummulative update (KB4088776)
+from Microsoft is applied. Microsoft could possibly fix this sometime in future (maybe).
+
+2. DJGPP will NOT work under Windows when creating short file names is disabled from
+Windows registry. See
+   https://support.microsoft.com/en-us/help/121007/how-to-disable-8-3-file-name-creation-on-ntfs-partitions
+for details. One needs to reboot after change of this setting is applied. It does not
+however create short file names for files written before creating SFNs is reenabled.
+
+3. One needs to increase max. allowed DPMI memory size in windows registry (Windows Vista SP1 and all
+newer versions). Create entry REG_DWORD entry DpmiLimit with large enough value under
+Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\WOW. Values up slightly below 2GB work for me.
+No reboot required after changing or adding value. Applying Windows updates may remove DpmiLimit value from
+registry. Just create it again.
+
 
 Rebuilding gcc-@GCCVER@ from the sources
 ======================================
@@ -137,16 +153,14 @@ Requirements
 
 -  Long filename support. I built it in DOS session under Windows Vista Business
    32 bit SP3. Other 32 bit Windows versions beginning with Win95 should be
-   hopefully OK (Exception Windows 10 32 bit with current updates installed cannot
-   be used as DJGPP support is broken since 2018.03 cumulative update).
-   I have not however tested myself whether it can be build under Win95, Win98, Win2k or Win2K,
-   WinXP or Win 7.
+   hopefully OK. I have not however tested myself whether it can be build under Win95,
+   Win98, Win2k or Win2K, WinXP or Win 7. Windows 10 32 bit currently cannot be used.
 
 -  plenty of physical RAM available. I guess that 1 GB should
    be enough (I had more on build machine)
 
 -  Much of free disk space: the total size of all directories after build
-   was about 3 GB. Perhaps one need more to be safe.
+   was about 6 GB. Perhaps one need more to be safe.
 
 -  Amount of available DPMI memory for DOS session should
    be set to auto.
@@ -159,24 +173,27 @@ Requirements
 -  many GNU utilities and libraries (the list may be incomplete)
 
 	last version of DJGPP port of bash-2.0.5b
-	GNU Diffutils 2.8 or above
+	GNU Diffutils 3.6 or above
 	GNU Fileutils-4.1
 	GNU Find 4.1.7 or above
 	GNU grep 2.5.1 or above
 	GNU Awk 3.1.1 or above
-	GNU Make 3.80 or above
-	GNU Sed 4.0.7 or above
+	GNU Make 4.2 or above
+	GNU Sed 4.5 or above
 	GNU shell utils 2.0.11
 	GNU Textutils 2.0
-	GNU Texinfo 4.8 or above
+	GNU Texinfo 4.13 or above
 	GNU tar 1.1.2 or above
-	GNU binutils 2.22 (required, older versions cannot be used!!!)
+	GNU binutils 2.30 (required, older versions cannot be used!!!)
 	recent GNU GMP version (versions 6.1.0 and newer are OK)
         recent MPFR versions (versions 3.0.0 or newer are OK)
 	recent MPC versions (versions 1.0.0 or newer are OK)
-	Zlib-1.2.5 or above (Warning configure does not check for presence
+	Zlib-1.2.11 or above (Warning configure does not check for presence
 	     one only gets build error later)
 	working GNU C compiler (perhaps not earlier than gcc-4.4.
+
+   Some of earlier versions may possibly work (unless exlicitly said otherwise),
+   but it is not tested.
 
 -  one may need to increase DOS transfer buffer size to 24 KB or
    32 KB for some executables (GNU Make and ld) to optimize lower
@@ -235,9 +252,14 @@ by running script djconfig.sh.
 
 	sh djconfig.sh
 
+It is possible that building this way do not work due to too long
+path names. One can move directories build.gcc, install.gcc and
+gcc-@GCCVER@ to then top directory of drive and retry. I myself am
+building DJGPP port of GCC this way (I had related trouble earlier and
+I do not want to repeat attempt each time).
+
 When this is done You can build gcc-@GCCVER@ by running script djmake.sh
-Under Win9X You'll have to restart it some times when it will crash
-due to Win9X DPMI descriptor leaks. You may use redir to get output in file.
+You may use redir to get output in file.
 
 	sh djmake.sh bootstrap
 
@@ -246,7 +268,6 @@ all into directory gnu/install.gcc
 
 After that change to this directory and run script makepkg.sh
 to create binary distribution packages
-
 
 Installing newly compiled gcc
 -----------------------------
