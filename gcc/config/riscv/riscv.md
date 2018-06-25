@@ -56,6 +56,11 @@
   UNSPECV_FRFLAGS
   UNSPECV_FSFLAGS
 
+  ;; Interrupt handler instructions.
+  UNSPECV_MRET
+  UNSPECV_SRET
+  UNSPECV_URET
+
   ;; Blockage and synchronization.
   UNSPECV_BLOCKAGE
   UNSPECV_FENCE
@@ -64,11 +69,16 @@
 
 (define_constants
   [(RETURN_ADDR_REGNUM		1)
+   (GP_REGNUM 			3)
    (T0_REGNUM			5)
    (T1_REGNUM			6)
    (S0_REGNUM			8)
    (S1_REGNUM			9)
    (S2_REGNUM			18)
+
+   (NORMAL_RETURN		0)
+   (SIBCALL_RETURN		1)
+   (EXCEPTION_RETURN		2)
 ])
 
 (include "predicates.md")
@@ -1504,7 +1514,7 @@
   [(set_attr "type" "shift")
    (set_attr "mode" "SI")])
 
-(define_insn_and_split "<optab>si3_mask"
+(define_insn_and_split "*<optab>si3_mask"
   [(set (match_operand:SI     0 "register_operand" "= r")
 	(any_shift:SI
 	    (match_operand:SI 1 "register_operand" "  r")
@@ -1523,7 +1533,7 @@
   [(set_attr "type" "shift")
    (set_attr "mode" "SI")])
 
-(define_insn_and_split "<optab>si3_mask_1"
+(define_insn_and_split "*<optab>si3_mask_1"
   [(set (match_operand:SI     0 "register_operand" "= r")
 	(any_shift:SI
 	    (match_operand:SI 1 "register_operand" "  r")
@@ -1559,7 +1569,7 @@
   [(set_attr "type" "shift")
    (set_attr "mode" "DI")])
 
-(define_insn_and_split "<optab>di3_mask"
+(define_insn_and_split "*<optab>di3_mask"
   [(set (match_operand:DI     0 "register_operand" "= r")
 	(any_shift:DI
 	    (match_operand:DI 1 "register_operand" "  r")
@@ -1579,7 +1589,7 @@
   [(set_attr "type" "shift")
    (set_attr "mode" "DI")])
 
-(define_insn_and_split "<optab>di3_mask_1"
+(define_insn_and_split "*<optab>di3_mask_1"
   [(set (match_operand:DI     0 "register_operand" "= r")
 	(any_shift:DI
 	    (match_operand:DI 1 "register_operand" "  r")
@@ -2032,7 +2042,7 @@
   [(const_int 2)]
   ""
 {
-  riscv_expand_epilogue (false);
+  riscv_expand_epilogue (NORMAL_RETURN);
   DONE;
 })
 
@@ -2040,7 +2050,7 @@
   [(const_int 2)]
   ""
 {
-  riscv_expand_epilogue (true);
+  riscv_expand_epilogue (SIBCALL_RETURN);
   DONE;
 })
 
@@ -2082,6 +2092,9 @@
     emit_insn (gen_eh_set_lr_di (operands[0]));
   else
     emit_insn (gen_eh_set_lr_si (operands[0]));
+
+  emit_jump_insn (gen_eh_return_internal ());
+  emit_barrier ();
   DONE;
 })
 
@@ -2109,6 +2122,14 @@
   riscv_set_return_address (operands[0], operands[1]);
   DONE;
 })
+
+(define_insn_and_split "eh_return_internal"
+  [(eh_return)]
+  ""
+  "#"
+  "epilogue_completed"
+  [(const_int 0)]
+  "riscv_expand_epilogue (EXCEPTION_RETURN); DONE;")
 
 ;;
 ;;  ....................
@@ -2267,12 +2288,27 @@
   [(set (match_operand:SI 0 "register_operand" "=r")
 	(unspec_volatile [(const_int 0)] UNSPECV_FRFLAGS))]
   "TARGET_HARD_FLOAT"
-  "frflags %0")
+  "frflags\t%0")
 
 (define_insn "riscv_fsflags"
   [(unspec_volatile [(match_operand:SI 0 "csr_operand" "rK")] UNSPECV_FSFLAGS)]
   "TARGET_HARD_FLOAT"
-  "fsflags %0")
+  "fsflags\t%0")
+
+(define_insn "riscv_mret"
+  [(unspec_volatile [(const_int 0)] UNSPECV_MRET)]
+  ""
+  "mret")
+
+(define_insn "riscv_sret"
+  [(unspec_volatile [(const_int 0)] UNSPECV_SRET)]
+  ""
+  "sret")
+
+(define_insn "riscv_uret"
+  [(unspec_volatile [(const_int 0)] UNSPECV_URET)]
+  ""
+  "uret")
 
 (define_insn "stack_tie<mode>"
   [(set (mem:BLK (scratch))

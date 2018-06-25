@@ -1,3 +1,16 @@
+2018-06-19  Martin Liska  <mliska@suse.cz>
+
+	* gcc-rtl.vim: New file.
+
+2018-06-12  Jeff Law  <law@redhat.com>
+
+	* config-list.mk (LIST): Remove alpha-freebsd6.
+
+2018-05-08  Richard Biener  <rguenther@suse.de>
+
+	PR bootstrap/85571
+	* compare-lto: New script derived from compare-debug.
+
 2018-05-02  Jakub Jelinek  <jakub@redhat.com>
 
 	* gennews (files): Add files for GCC 8.

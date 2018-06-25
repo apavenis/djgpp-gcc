@@ -205,6 +205,11 @@ no)	;;
 *)	gcc_gxx_include_dir=$with_gxx_include_dir ;;
 esac])
 
+# If both --with-sysroot and --with-gxx-include-dir are passed, we interpolate
+# the former in the latter and, upon success, compute gcc_gxx_include_dir as
+# relative to the sysroot.
+gcc_gxx_include_dir_add_sysroot=0
+
 # This logic must match libstdc++-v3/acinclude.m4:GLIBCXX_EXPORT_INSTALL_INFO.
 libstdcxx_incdir_base=c++
 AC_SUBST(libstdcxx_incdir_base)
@@ -219,15 +224,10 @@ if test x${gcc_gxx_include_dir} = x; then
     fi
     gcc_gxx_include_dir="\$(libsubdir)/\$(libsubdir_to_prefix)$libstdcxx_incdir"
   fi
-fi
-
-gcc_gxx_include_dir_add_sysroot=0
-if test "${with_sysroot+set}" = set; then
+elif test "${with_sysroot+set}" = set; then
   gcc_gxx_without_sysroot=`expr "${gcc_gxx_include_dir}" : "${with_sysroot}"'\(.*\)'`
   if test "${gcc_gxx_without_sysroot}"; then
-    if test x${with_sysroot} != x/; then
-      gcc_gxx_include_dir="${gcc_gxx_without_sysroot}"
-    fi
+    gcc_gxx_include_dir="${gcc_gxx_without_sysroot}"
     gcc_gxx_include_dir_add_sysroot=1
   fi
 fi
@@ -2956,6 +2956,34 @@ if test $gcc_cv_as_eh_frame = buggy; then
   [Define if your assembler mis-optimizes .eh_frame data.])
 fi
 
+# Test if the assembler supports the section flag 'e' or #exclude for
+# specifying an excluded section.
+gcc_GAS_CHECK_FEATURE([section exclude flag], gcc_cv_as_section_exclude_e,
+ [2,22,51], [--fatal-warnings],
+ [.section foo1,"e"
+  .byte 0,0,0,0])
+if test $gcc_cv_as_section_exclude_e = no; then
+  case "${target}" in
+    # Solaris as uses #exclude instead.
+    *-*-solaris2*)
+      case "${target}" in
+	sparc*-*-solaris2*)
+	  conftest_s='.section "foo1", #exclude'
+	  ;;
+	i?86-*-solaris2* | x86_64-*-solaris2*)
+	  conftest_s='.section foo1, #exclude'
+	  ;;      
+      esac
+      ;;
+    esac
+  gcc_GAS_CHECK_FEATURE([section exclude flag], gcc_cv_as_section_exclude_hash,,,
+    [$conftest_s
+     .byte 0,0,0,0])
+fi
+AC_DEFINE_UNQUOTED(HAVE_GAS_SECTION_EXCLUDE,
+  [`if test $gcc_cv_as_section_exclude_e = yes || test $gcc_cv_as_section_exclude_hash = yes; then echo 1; else echo 0; fi`],
+[Define if your assembler supports specifying the exclude section flag.])
+
 gcc_GAS_CHECK_FEATURE(section merging support, gcc_cv_as_shf_merge,
  [elf,2,12,0], [--fatal-warnings],
  [.section .rodata.str, "aMS", @progbits, 1])
@@ -4204,16 +4232,6 @@ foo:	nop
       [-xbrace_comment=no], [.text],,
       [AC_DEFINE(HAVE_AS_XBRACE_COMMENT_OPTION, 1,
 		[Define if your assembler supports -xbrace_comment option.])])
-
-    # Test if the assembler supports the section flag 'e' for specifying
-    # an excluded section.
-    gcc_GAS_CHECK_FEATURE([.section with e], gcc_cv_as_section_has_e,
-      [2,22,51], [--fatal-warnings],
-[.section foo1,"e"
-.byte 0,0,0,0])
-    AC_DEFINE_UNQUOTED(HAVE_GAS_SECTION_EXCLUDE,
-      [`if test $gcc_cv_as_section_has_e = yes; then echo 1; else echo 0; fi`],
-      [Define if your assembler supports specifying the section flag e.])
 
     gcc_GAS_CHECK_FEATURE([filds and fists mnemonics],
        gcc_cv_as_ix86_filds,,,

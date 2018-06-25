@@ -1918,6 +1918,7 @@ create_runtime_alias_checks (struct loop *loop,
 {
   tree part_cond_expr;
 
+  fold_defer_overflow_warnings ();
   for (size_t i = 0, s = alias_pairs->length (); i < s; ++i)
     {
       const dr_with_seg_len& dr_a = (*alias_pairs)[i].first;
@@ -1940,6 +1941,7 @@ create_runtime_alias_checks (struct loop *loop,
       else
 	*cond_expr = part_cond_expr;
     }
+  fold_undefer_and_ignore_overflow_warnings ();
 }
 
 /* Check if OFFSET1 and OFFSET2 (DR_OFFSETs of some data-refs) are identical
@@ -5452,6 +5454,8 @@ static tree
 dr_step_indicator (struct data_reference *dr, int useful_min)
 {
   tree step = DR_STEP (dr);
+  if (!step)
+    return NULL_TREE;
   STRIP_NOPS (step);
   /* Look for cases where the step is scaled by a positive constant
      integer, which will often be the access size.  If the multiplication

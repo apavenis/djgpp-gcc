@@ -77,7 +77,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-vrp.h"
 #include "ipa-prop.h"
 #include "gcse.h"
-#include "tree-chkp.h"
 #include "omp-offload.h"
 #include "hsa-common.h"
 #include "edit-context.h"
@@ -495,7 +494,8 @@ compile_file (void)
 
   /* Compilation unit is finalized.  When producing non-fat LTO object, we are
      basically finished.  */
-  if (in_lto_p || !flag_lto || flag_fat_lto_objects)
+  if ((in_lto_p && flag_incremental_link != INCREMENTAL_LINK_LTO)
+      || !flag_lto || flag_fat_lto_objects)
     {
       /* File-scope initialization for AddressSanitizer.  */
       if (flag_sanitize & SANITIZE_ADDRESS)
@@ -503,9 +503,6 @@ compile_file (void)
 
       if (flag_sanitize & SANITIZE_THREAD)
 	tsan_finish_file ();
-
-      if (flag_check_pointer_bounds)
-	chkp_finish_file ();
 
       omp_finish_file ();
 
@@ -1311,49 +1308,6 @@ process_options (void)
 		    "%<-fcf-protection=return%> is not supported for this "
 		    "target");
 	  flag_cf_protection = CF_NONE;
-	}
-    }
-
-  if (flag_check_pointer_bounds)
-    {
-      if (targetm.chkp_bound_mode () == VOIDmode)
-	{
-	  error_at (UNKNOWN_LOCATION,
-		    "%<-fcheck-pointer-bounds%> is not supported for this "
-		    "target");
-	  flag_check_pointer_bounds = 0;
-	}
-
-      if (flag_sanitize & SANITIZE_BOUNDS_STRICT)
-	{
-	  error_at (UNKNOWN_LOCATION,
-		    "%<-fcheck-pointer-bounds%> is not supported with "
-		    "%<-fsanitize=bounds-strict%>");
-	  flag_check_pointer_bounds = 0;
-	}
-      else if (flag_sanitize & SANITIZE_BOUNDS)
-	{
-	  error_at (UNKNOWN_LOCATION,
-		    "%<-fcheck-pointer-bounds%> is not supported with "
-		    "%<-fsanitize=bounds%>");
-	  flag_check_pointer_bounds = 0;
-	}
-
-      if (flag_sanitize & SANITIZE_ADDRESS)
-	{
-	  error_at (UNKNOWN_LOCATION,
-		    "%<-fcheck-pointer-bounds%> is not supported with "
-		    "Address Sanitizer");
-	  flag_check_pointer_bounds = 0;
-	}
-
-      if (flag_sanitize & SANITIZE_THREAD)
-	{
-	  error_at (UNKNOWN_LOCATION,
-		    "%<-fcheck-pointer-bounds%> is not supported with "
-		    "Thread Sanitizer");
-
-	  flag_check_pointer_bounds = 0;
 	}
     }
 
