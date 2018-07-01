@@ -2265,7 +2265,7 @@ package body System.OS_Lib is
       --    * Remove all double-quotes
 
       if On_Windows
-	and then Is_Djgpp = 0
+        and then Is_Djgpp = 0
       then
          --  Replace all '/' by '\'
          for Index in 1 .. End_Path loop
