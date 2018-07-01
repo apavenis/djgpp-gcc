@@ -2862,6 +2862,20 @@ cp_parser_error_1 (cp_parser* parser, const char* gmsgid,
       if (cp_lexer_peek_conflict_marker (parser->lexer, token->type, &loc))
 	{
 	  error_at (loc, "version control conflict marker in file");
+	  expanded_location token_exploc = expand_location (token->location);
+	  /* Consume tokens until the end of the source line.  */
+	  while (1)
+	    {
+	      cp_lexer_consume_token (parser->lexer);
+	      cp_token *next = cp_lexer_peek_token (parser->lexer);
+	      if (next == NULL)
+		break;
+	      expanded_location next_exploc = expand_location (next->location);
+	      if (next_exploc.file != token_exploc.file)
+		break;
+	      if (next_exploc.line != token_exploc.line)
+		break;
+	    }
 	  return;
 	}
     }
@@ -4291,7 +4305,16 @@ make_char_string_pack (tree value)
   /* Fill in CHARVEC with all of the parameters.  */
   charvec = make_tree_vec (len);
   for (i = 0; i < len; ++i)
-    TREE_VEC_ELT (charvec, i) = build_int_cst (char_type_node, str[i]);
+    {
+      unsigned char s[3] = { '\'', str[i], '\'' };
+      cpp_string in = { 3, s };
+      cpp_string out = { 0, 0 };
+      if (!cpp_interpret_string (parse_in, &in, 1, &out, CPP_STRING))
+	return NULL_TREE;
+      gcc_assert (out.len == 2);
+      TREE_VEC_ELT (charvec, i) = build_int_cst (char_type_node,
+						 out.text[0]);
+    }
 
   /* Build the argument packs.  */
   SET_ARGUMENT_PACK_ARGS (argpack, charvec);
@@ -4407,6 +4430,12 @@ cp_parser_userdef_numeric_literal (cp_parser *parser)
   if (decl && decl != error_mark_node)
     {
       tree tmpl_args = make_char_string_pack (num_string);
+      if (tmpl_args == NULL_TREE)
+	{
+	  error ("failed to translate literal to execution character set %qT",
+		 num_string);
+	  return error_mark_node;
+	}
       decl = lookup_template_function (decl, tmpl_args);
       result = finish_call_expr (decl, &args, false, true,
 				 tf_warning_or_error);
@@ -34902,7 +34931,7 @@ cp_parser_omp_for_incr (cp_parser *parser, tree decl)
 static tree
 cp_parser_omp_for_loop_init (cp_parser *parser,
 			     tree &this_pre_body,
-			     vec<tree, va_gc> *for_block,
+			     vec<tree, va_gc> *&for_block,
 			     tree &init,
 			     tree &orig_init,
 			     tree &decl,

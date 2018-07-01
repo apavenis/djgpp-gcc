@@ -354,6 +354,7 @@ Objective-C and Objective-C++ Dialects}.
 -ginternal-reset-location-views  -gno-internal-reset-location-views @gol
 -ginline-points  -gno-inline-points @gol
 -gvms  -gxcoff  -gxcoff+  -gz@r{[}=@var{type}@r{]} @gol
+-gsplit-dwarf @gol
 -fdebug-prefix-map=@var{old}=@var{new}  -fdebug-types-section @gol
 -fno-eliminate-unused-debug-types @gol
 -femit-struct-debug-baseonly  -femit-struct-debug-reduced @gol
@@ -969,11 +970,9 @@ Objective-C and Objective-C++ Dialects}.
 
 @emph{PDP-11 Options}
 @gccoptlist{-mfpu  -msoft-float  -mac0  -mno-ac0  -m40  -m45  -m10 @gol
--mbcopy  -mbcopy-builtin  -mint32  -mno-int16 @gol
--mint16  -mno-int32  -mfloat32  -mno-float64 @gol
--mfloat64  -mno-float32  -mabshi  -mno-abshi @gol
--mbranch-expensive  -mbranch-cheap @gol
--munix-asm  -mdec-asm}
+-mint32  -mno-int16 -mint16  -mno-int32 @gol
+-mfloat32  -mno-float64 -mfloat64  -mno-float32 @gol
+-msplit -munix-asm  -mdec-asm}
 
 @emph{picoChip Options}
 @gccoptlist{-mae=@var{ae_type}  -mvliw-lookahead=@var{N} @gol
@@ -11353,6 +11352,9 @@ and used by @option{-fprofile-use} and @option{-fbranch-probabilities}
 and its related options.  Both absolute and relative paths can be used.
 By default, GCC uses the current directory as @var{path}, thus the
 profile data file appears in the same directory as the object file.
+In order to prevent filename clashing, if object file name is not an absolute
+path, we mangle absolute path of @file{@var{sourcename}.gcda} file and
+use it as file name of a @file{.gcda} file.
 
 When an executable is run in a massive parallel environment, it is recommended
 to save profile to different folders.  That can be done with variables
@@ -14665,18 +14667,19 @@ Specify the name of the target processor for which GCC should tune the
 performance of the code.  Permissible values for this option are:
 @samp{generic}, @samp{cortex-a35}, @samp{cortex-a53}, @samp{cortex-a55},
 @samp{cortex-a57}, @samp{cortex-a72}, @samp{cortex-a73}, @samp{cortex-a75},
-@samp{exynos-m1}, @samp{falkor}, @samp{qdf24xx}, @samp{saphira},
-@samp{xgene1}, @samp{vulcan}, @samp{thunderx},
+@samp{cortex-a76}, @samp{exynos-m1}, @samp{falkor}, @samp{qdf24xx},
+@samp{saphira}, @samp{xgene1}, @samp{vulcan}, @samp{thunderx},
 @samp{thunderxt88}, @samp{thunderxt88p1}, @samp{thunderxt81},
 @samp{thunderxt83}, @samp{thunderx2t99}, @samp{cortex-a57.cortex-a53},
 @samp{cortex-a72.cortex-a53}, @samp{cortex-a73.cortex-a35},
 @samp{cortex-a73.cortex-a53}, @samp{cortex-a75.cortex-a55},
+@samp{cortex-a76.cortex-a55}
 @samp{native}.
 
 The values @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53},
 @samp{cortex-a73.cortex-a35}, @samp{cortex-a73.cortex-a53},
-@samp{cortex-a75.cortex-a55} specify that GCC should tune for a
-big.LITTLE system.
+@samp{cortex-a75.cortex-a55}, @samp{cortex-a76.cortex-a55} specify that GCC
+should tune for a big.LITTLE system.
 
 Additionally on native AArch64 GNU/Linux systems the value
 @samp{native} tunes performance to the host system.  This option has no effect
@@ -16207,8 +16210,8 @@ Permissible names are: @samp{arm2}, @samp{arm250},
 @samp{cortex-a9}, @samp{cortex-a12}, @samp{cortex-a15}, @samp{cortex-a17},
 @samp{cortex-a32}, @samp{cortex-a35}, @samp{cortex-a53}, @samp{cortex-a55},
 @samp{cortex-a57}, @samp{cortex-a72}, @samp{cortex-a73}, @samp{cortex-a75},
-@samp{cortex-r4}, @samp{cortex-r4f}, @samp{cortex-r5}, @samp{cortex-r7},
-@samp{cortex-r8}, @samp{cortex-r52},
+@samp{cortex-a76}, @samp{cortex-r4}, @samp{cortex-r4f}, @samp{cortex-r5},
+@samp{cortex-r7}, @samp{cortex-r8}, @samp{cortex-r52},
 @samp{cortex-m33},
 @samp{cortex-m23},
 @samp{cortex-m7},
@@ -16232,7 +16235,7 @@ of the code for a big.LITTLE system.  Permissible names are:
 @samp{cortex-a15.cortex-a7}, @samp{cortex-a17.cortex-a7},
 @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53},
 @samp{cortex-a72.cortex-a35}, @samp{cortex-a73.cortex-a53},
-@samp{cortex-a75.cortex-a55}.
+@samp{cortex-a75.cortex-a55}, @samp{cortex-a76.cortex-a55}.
 
 @option{-mtune=generic-@var{arch}} specifies that GCC should tune the
 performance for a blend of processors within architecture @var{arch}.
@@ -22017,7 +22020,7 @@ These options are defined for the PDP-11:
 @item -mfpu
 @opindex mfpu
 Use hardware FPP floating point.  This is the default.  (FIS floating
-point on the PDP-11/40 is not supported.)
+point on the PDP-11/40 is not supported.)  Implies -m45.
 
 @item -msoft-float
 @opindex msoft-float
@@ -22033,7 +22036,7 @@ Return floating-point results in memory.  This is the default.
 
 @item -m40
 @opindex m40
-Generate code for a PDP-11/40.
+Generate code for a PDP-11/40.  Implies -msoft-float -mno-split.
 
 @item -m45
 @opindex m45
@@ -22041,16 +22044,7 @@ Generate code for a PDP-11/45.  This is the default.
 
 @item -m10
 @opindex m10
-Generate code for a PDP-11/10.
-
-@item -mbcopy-builtin
-@opindex mbcopy-builtin
-Use inline @code{movmemhi} patterns for copying memory.  This is the
-default.
-
-@item -mbcopy
-@opindex mbcopy
-Do not use inline @code{movmemhi} patterns for copying memory.
+Generate code for a PDP-11/10.  Implies -msoft-float -mno-split.
 
 @item -mint16
 @itemx -mno-int32
@@ -22076,32 +22070,17 @@ Use 64-bit @code{float}.  This is the default.
 @opindex mno-float64
 Use 32-bit @code{float}.
 
-@item -mabshi
-@opindex mabshi
-Use @code{abshi2} pattern.  This is the default.
-
-@item -mno-abshi
-@opindex mno-abshi
-Do not use @code{abshi2} pattern.
-
-@item -mbranch-expensive
-@opindex mbranch-expensive
-Pretend that branches are expensive.  This is for experimenting with
-code generation only.
-
-@item -mbranch-cheap
-@opindex mbranch-cheap
-Do not pretend that branches are expensive.  This is the default.
+@item -msplit
+@opindex msplit
+Target has split instruction and data space.  Implies -m45.
 
 @item -munix-asm
 @opindex munix-asm
-Use Unix assembler syntax.  This is the default when configured for
-@samp{pdp11-*-bsd}.
+Use Unix assembler syntax.
 
 @item -mdec-asm
 @opindex mdec-asm
-Use DEC assembler syntax.  This is the default when configured for any
-PDP-11 target other than @samp{pdp11-*-bsd}.
+Use DEC assembler syntax.  This is the default.
 @end table
 
 @node picoChip Options

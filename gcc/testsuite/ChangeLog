@@ -1,3 +1,232 @@
+2018-06-30  Jim Wilson  <jimw@sifive.com>
+
+	* gcc.target/riscv/shift-shift-1.c: New.
+	* gcc.target/riscv/shift-shift-2.c: New.
+	* gcc.target/riscv/shift-shift-3.c: New.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-widen-mult-extern-1.c: New test.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-widen-mult-sum.c: Remove xfail.
+	* gcc.dg/vect/no-scevccp-outer-6.c: Don't match widened multiplications
+	by 4 in the computation of a[i].
+	* gcc.dg/vect/vect-mult-const-pattern-1.c: Test specifically for the
+	main multiplication constant.
+	* gcc.dg/vect/vect-mult-const-pattern-2.c: Likewise.
+	* gcc.dg/vect/vect-widen-mult-const-s16.c: Likewise.
+	* gcc.dg/vect/vect-widen-mult-const-u16.c: Likewise.  Expect the
+	pattern to cast the result to int.
+	* gcc.dg/vect/vect-reduc-dot-1.c: New test.
+	* gcc.dg/vect/vect-reduc-dot-2.c: Likewise.
+	* gcc.dg/vect/vect-reduc-dot-3.c: Likewise.
+	* gcc.dg/vect/vect-reduc-dot-4.c: Likewise.
+	* gcc.dg/vect/vect-reduc-dot-5.c: Likewise.
+	* gcc.dg/vect/vect-reduc-dot-6.c: Likewise.
+	* gcc.dg/vect/vect-reduc-dot-7.c: Likewise.
+	* gcc.dg/vect/vect-reduc-dot-8.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-1.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-2.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-3.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-4.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-5.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-6.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-7.c: Likewise.
+	* gcc.dg/vect/vect-reduc-sad-8.c: Likewise.
+	* gcc.dg/vect/vect-widen-mult-1.c: Likewise.
+	* gcc.dg/vect/vect-widen-mult-2.c: Likewise.
+	* gcc.dg/vect/vect-widen-mult-3.c: Likewise.
+	* gcc.dg/vect/vect-widen-mult-4.c: Likewise.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-reduc-dot-u16b.c: Remove xfail and update the
+	test for vectorization along the lines described in the comment.
+
+2018-06-30  Tom de Vries  <tdevries@suse.de>
+
+	* gcc.dg/guality/guality.exp (guality_transform_options): New proc.
+	(toplevel): Apply guality_transform_options on DG_TORTURE_OPTIONS and
+	LTO_TORTURE_OPTIONS.
+	* gcc.dg/guality/prevent-optimization.h: New file.
+	* gcc.dg/guality/pr45882.c: Include prevent-optimization.h.
+	(a): Replace __attribute__((used)) with ATTRIBUTE_USED.
+
+2018-06-30  Tom de Vries  <tdevries@suse.de>
+
+	* gcc.dg/guality/pr45882.c (foo): Use relative line numbers.
+	* lib/gcc-dg.exp (dg-final): New proc.
+	* lib/gcc-gdb-test.exp (gdb-test): Add and handle additional line number
+	argument.
+
+2018-06-29  Martin Sebor  <msebor@redhat.com>
+
+	* gcc.dg/strlenopt-46.c: Define strnlen for targets like Solaris 10
+	that don't define the function.
+
+2018-06-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/86184
+	* g++.dg/ext/cond3.C: New test.
+
+2018-06-29  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* gcc.target/arm/arm-soft-strd-even.c: New test.
+
+2018-06-29  Tom de Vries  <tdevries@suse.de>
+
+	* gcc.dg/guality/pr45882.c (foo): Add line number var for breakpoint
+	line, and use it.
+	* lib/gcc-dg.exp (get-absolute-line): Factor out of ...
+	(process-message): ... here.
+	* lib/gcc-gdb-test.exp (gdb-test): Use get-absolute-line.
+
+2018-06-29  Martin Liska  <mliska@suse.cz>
+
+        PR tree-optimization/86263
+	* gcc.dg/tree-ssa/pr86263.c: New test.
+
+2018-06-28  Carl Love  <cel@us.ibm.com>
+
+	* gcc.target/p9-extract-1.c: Add test case.
+	* gcc.target/builtins-3-p9-runnable.c: Add test case to match
+	name in ABI.
+
+2018-06-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/86348
+	* gcc.target/i386/pr86348.c: New test.
+
+2018-06-28  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* gcc.target/aarch64/f16_mov_immediate_3.c: Fix testcase.
+
+2018-06-28  Fritz Reese  <fritzoreese@gmail.com>
+
+	PR fortran/82865
+	* gfortran.dg/dec_type_print_2.f03: New testcase.
+
+2018-06-28  David Pagan  <dave.pagan@oracle.com>
+
+	PR c/55976
+	* gcc.dg/noncompile/pr55976-1.c: Add dg-prune-output for extraneous
+	message causing unexpected test FAIL.
+
+2018-06-28  Martin Liska  <mliska@suse.cz>
+
+	* gcc.dg/tree-ssa/switch-1.c: New test.
+
+2018-06-28  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/debug15.adb: New test.
+
+2018-06-27  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c++/86329
+	* g++.dg/lookup/pr86329.C: New test.
+
+2018-06-27  Carl Love  <cel@us.ibm.com>
+
+	* gcc.target/vsx-vector-abss.c: New file to test vec_abss.
+
+2018-06-27 Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/85769
+	* gcc.target/aarch64/f16_mov_immediate_3.c: New.
+
+2018-06-26  Kelvin Nilsen  <kelvin@gcc.gnu.org>
+
+	* gcc.target/powerpc/builtins-1.c: Correct a comment.
+
+2018-06-26  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	* gcc.target/powerpc/fold-vec-neg-int.p8.c: Specify powerpc_p8vector_ok
+	requirement for this test.
+	* gcc.target/powerpc/fold-vec-neg-int.c: Specify powerpc_p8vector_ok
+	requirement, and -mpower8-vector compile option.
+
+2018-06-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/86314
+	* gcc.dg/pr86314.c: New test.
+
+	PR debug/86257
+	* gcc.target/i386/pr86257.c: Add -mtls-dialect=gnu to dg-options.
+
+2018-06-26  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* gcc.target/i386/pr86257.c: Require 64-bit.
+
+2018-06-26  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* g++.dg/pr86082.C: Require IBM1047 support.
+
+2018-06-26  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/86271
+	* gcc.dg/pr86271.c: New testcase.
+
+2018-06-26  Alexandre Oliva <aoliva@redhat.com>
+
+	PR debug/86064
+	* gcc.dg/pr86064.c: New.
+
+2018-06-25  Jeff Law  <law@redhat.com>
+
+	* lib/target-supports.exp
+	(check_effective_target_logical_op_short_circuit): Add v850.
+
+2018-06-25  Martin Sebor  <msebor@redhat.com>
+
+	PR tree-optimization/86204
+	* gcc.dg/strlenopt-46.c: New test.
+
+2018-06-25  Martin Sebor  <msebor@redhat.com>
+
+	PR tree-optimization/85700
+	* gcc.dg/Wstringop-truncation-4.c: New test.
+
+2018-06-25  Fritz Reese  <fritzoreese@gmail.com>
+
+	PR fortran/82972
+	PR fortran/83088
+	PR fortran/85851
+	* gfortran.dg/init_flag_17.f90: New testcase.
+
+2018-06-25  Carl Love  <cel@us.ibm.com>
+
+	* gcc.target/powerpc/p9-extract-1.c: Make second argument of
+ 	vec_extract a signed int. Add vec_extract tests for bool char
+	and bool int.
+	* gcc.target/powerpc/p9-extract-4.c:  New test file for long long
+	vec_extract tests.
+
+2018-06-25  Tom de Vries  <tdevries@suse.de>
+
+	* lib/gcc-gdb-test.exp (report_gdb): Handle gdb -v failure.
+
+2018-06-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/84786
+	* gcc.target/i386/avx512f-pr84786-3.c: New test.
+
+2018-06-25  Eric Botcazou  <ebotcazou@libertysurf.fr>
+
+	* gnat.dg/sso9.adb: New testcase.
+	* gnat.dg/sso9_pkg.ads: Likewise.
+
+2018-06-25  Tom de Vries  <tdevries@suse.de>
+
+	PR debug/86257
+	* gcc.target/i386/pr86257.c: New test.
+
+2018-06-25  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	PR C++/86082
+	* g++.dg/pr86082.C: New test.
+
 2018-06-24  Tom de Vries  <tdevries@suse.de>
 
 	* g++.dg/guality/guality.exp: Don't use which on gdb arg to report_gdb.

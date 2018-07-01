@@ -1,3 +1,81 @@
+2018-06-29  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/20_util/add_rvalue_reference/requirements/alias_decl.cc:
+	Add whitespace to dejagnu directive.
+	* testsuite/23_containers/array/element_access/at_neg.cc: Likewise.
+
+2018-06-27  François Dumont  <fdumont@gcc.gnu.org>
+
+	* include/bits/stl_vector.h
+	(struct _Vector_base<>::_Vector_impl_data): New.
+	(struct _Vector_base<>::_Vector_impl): Inherit from latter.
+	(_Vector_base<>::_Vector_impl::_M_swap_data): Move...
+	(_Vector_base<>::_Vector_impl_data::_M_swap_data): ...here.
+	(_Vector_base<>::_Vector_impl()): Add noexcept qualification.
+	(_Vector_base<>::_Vector_impl(_Vector_impl&&)): New.
+	(_Vector_base<>::_Vector_impl(_Tp_alloc_type&&, _Vector_impl&&)): New.
+	(_Vector_base(const allocator_type&, _Vector_base&&)): New, use latter.
+	(_Vector_base()): Default.
+	(_Vector_base(_Vector_base&&)): Default.
+	(_Vector_base(size_t)) [_GLIBCXX_INLINE_VERSION]: Delete.
+	(_Vector_base(_Tp_alloc_type&&)) [_GLIBCXX_INLINE_VERSION]: Delete.
+	(_Vector_base::_M_create_storage(size_t)): Make protected.
+	(vector()): Default.
+	(vector(vector&&)): Default.
+	(vector(vector&&, const allocator_type&, true_type)): New.
+	(vector(vector&&, const allocator_type&, false_type)): New.
+	(vector(vector&&, const allocator_type&)): Use latters.
+	(vector(_InputIte, _InputIte, const allocator_type&)): Call
+	_M_range_initialize directly.
+	* include/debug/vector
+	(vector(vector&&, const allocator_type&)): Add noexcept qualification.
+	* testsuite/23_containers/vector/allocator/default_init.cc: New.
+	* testsuite/23_containers/vector/cons/noexcept_move_construct.cc: Add
+	static assertions.
+
+2018-06-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/cpp_type_traits.h [__cplusplus >= 201703]
+	(__is_byte<byte>): Define specialization for std::byte.
+
+	PR libstdc++/86138
+	* include/bits/basic_string.tcc: [_GLIBCXX_EXTERN_TEMPLATE < 0]
+	Declare explicit instantiations of COW empty reps and I/O functions.
+
+2018-06-26  David Edelsohn  <dje.gcc@gmail.com>
+
+	* testsuite/experimental/algorithm/sample-2.cc: Add TLS DejaGNU
+	directives.
+	* testsuite/experimental/algorithm/shuffle.cc: Likewise.
+
+2018-06-26  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/regex.tcc (regex_iterator::operator==): Add missing
+	noexcept.
+
+2018-06-25  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/86112
+	* python/libstdcxx/v6/printers.py (add_one_template_type_printer):
+	Replace dict comprehension.
+
+	PR libstdc++/81092
+	* config/abi/post/powerpc64-linux-gnu/baseline_symbols.txt: Update.
+
+	PR libstdc++/86292
+	* include/bits/stl_vector.h (vector::_M_range_initialize<InputIter>):
+	Add try-catch block.
+	* testsuite/23_containers/vector/cons/86292.cc: New.
+
+	* doc/xml/manual/status_cxx2017.xml: Document N4531 status.
+
+	* include/experimental/algorithm (sample, shuffle): Add new overloads
+	using per-thread random number engine.
+	* testsuite/experimental/algorithm/sample.cc: Simpify and reduce
+	dependencies by using __gnu_test::test_container.
+	* testsuite/experimental/algorithm/sample-2.cc: New.
+	* testsuite/experimental/algorithm/shuffle.cc: New.
+
 2018-06-22  Jonathan Wakely  <jwakely@redhat.com>
 
 	* config/abi/pre/gnu.ver: Fix __cxx11::basic_string patterns for

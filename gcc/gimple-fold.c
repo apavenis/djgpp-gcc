@@ -347,8 +347,7 @@ fold_gimple_assign (gimple_stmt_iterator *si)
 		  {
 		    if (dump_enabled_p ())
 		      {
-			location_t loc = gimple_location_safe (stmt);
-			dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, loc,
+			dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, stmt,
 					 "resolving virtual function address "
 					 "reference to function %s\n",
 					 targets.length () == 1
@@ -2051,10 +2050,12 @@ gimple_fold_builtin_strncat (gimple_stmt_iterator *gsi)
   if (!nowarn && cmpsrc == 0)
     {
       tree fndecl = gimple_call_fndecl (stmt);
-
-      /* To avoid certain truncation the specified bound should also
-	 not be equal to (or less than) the length of the source.  */
       location_t loc = gimple_location (stmt);
+
+      /* To avoid possible overflow the specified bound should also
+	 not be equal to the length of the source, even when the size
+	 of the destination is unknown (it's not an uncommon mistake
+	 to specify as the bound to strncpy the length of the source).  */
       if (warning_at (loc, OPT_Wstringop_overflow_,
 		      "%G%qD specified bound %E equals source length",
 		      stmt, fndecl, len))
@@ -4061,8 +4062,7 @@ gimple_fold_call (gimple_stmt_iterator *gsi, bool inplace)
 	      tree lhs = gimple_call_lhs (stmt);
 	      if (dump_enabled_p ())
 		{
-		  location_t loc = gimple_location_safe (stmt);
-		  dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, loc,
+		  dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, stmt,
 				   "folding virtual function call to %s\n",
 		 		   targets.length () == 1
 		  		   ? targets[0]->name ()

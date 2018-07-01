@@ -1301,7 +1301,7 @@ create_lcssa_for_virtual_phi (struct loop *loop)
    location is calculated.
    Return the loop location if succeed and NULL if not.  */
 
-source_location
+dump_user_location_t
 find_loop_location (struct loop *loop)
 {
   gimple *stmt = NULL;
@@ -1309,19 +1309,19 @@ find_loop_location (struct loop *loop)
   gimple_stmt_iterator si;
 
   if (!loop)
-    return UNKNOWN_LOCATION;
+    return dump_user_location_t ();
 
   stmt = get_loop_exit_condition (loop);
 
   if (stmt
       && LOCATION_LOCUS (gimple_location (stmt)) > BUILTINS_LOCATION)
-    return gimple_location (stmt);
+    return stmt;
 
   /* If we got here the loop is probably not "well formed",
      try to estimate the loop location */
 
   if (!loop->header)
-    return UNKNOWN_LOCATION;
+    return dump_user_location_t ();
 
   bb = loop->header;
 
@@ -1329,10 +1329,10 @@ find_loop_location (struct loop *loop)
     {
       stmt = gsi_stmt (si);
       if (LOCATION_LOCUS (gimple_location (stmt)) > BUILTINS_LOCATION)
-        return gimple_location (stmt);
+        return stmt;
     }
 
-  return UNKNOWN_LOCATION;
+  return dump_user_location_t ();
 }
 
 /* Return true if PHI defines an IV of the loop to be vectorized.  */
@@ -2498,7 +2498,7 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 	}
     }
 
-  source_location loop_loc = find_loop_location (loop);
+  dump_user_location_t loop_loc = find_loop_location (loop);
   struct loop *scalar_loop = LOOP_VINFO_SCALAR_LOOP (loop_vinfo);
   if (prolog_peeling)
     {
@@ -3038,8 +3038,9 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
 	 while we need to move it above LOOP's preheader.  */
       e = loop_preheader_edge (loop);
       scalar_e = loop_preheader_edge (scalar_loop);
-      gcc_assert (empty_block_p (e->src)
-		  && single_pred_p (e->src));
+      /* The vector loop preheader might not be empty, since new
+	 invariants could have been created while analyzing the loop.  */
+      gcc_assert (single_pred_p (e->src));
       gcc_assert (empty_block_p (scalar_e->src)
 		  && single_pred_p (scalar_e->src));
       gcc_assert (single_pred_p (condition_bb));
@@ -3072,7 +3073,7 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
       loop_constraint_set (loop, LOOP_C_INFINITE);
     }
 
-  if (LOCATION_LOCUS (vect_location) != UNKNOWN_LOCATION
+  if (LOCATION_LOCUS (vect_location.get_location_t ()) != UNKNOWN_LOCATION
       && dump_enabled_p ())
     {
       if (version_alias)

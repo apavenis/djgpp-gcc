@@ -150,13 +150,6 @@ static GTY(()) vec<rtx, va_gc> *used_rtx_array;
    it.  */
 static GTY(()) vec<tree, va_gc> *incomplete_types;
 
-/* A pointer to the base of a table of references to declaration
-   scopes.  This table is a display which tracks the nesting
-   of declaration scopes at the current scope and containing
-   scopes.  This table is used to find the proper place to
-   define type declaration DIE's.  */
-static GTY(()) vec<tree, va_gc> *decl_scope_table;
-
 /* Pointers to various DWARF2 sections.  */
 static GTY(()) section *debug_info_section;
 static GTY(()) section *debug_skeleton_info_section;
@@ -3835,8 +3828,6 @@ static void add_name_and_src_coords_attributes (dw_die_ref, tree, bool = false);
 static void add_discr_value (dw_die_ref, dw_discr_value *);
 static void add_discr_list (dw_die_ref, dw_discr_list_ref);
 static inline dw_discr_list_ref AT_discr_list (dw_attr_node *);
-static void push_decl_scope (tree);
-static void pop_decl_scope (void);
 static dw_die_ref scope_die_for (tree, dw_die_ref);
 static inline int local_scope_p (dw_die_ref);
 static inline int class_scope_p (dw_die_ref);
@@ -10029,7 +10020,15 @@ new_loc_list (dw_loc_descr_ref expr, const char *begin, var_loc_view vbegin,
   return retlist;
 }
 
-/* Return true iff there's any nonzero view number in the loc list.  */
+/* Return true iff there's any nonzero view number in the loc list.
+
+   ??? When views are not enabled, we'll often extend a single range
+   to the entire function, so that we emit a single location
+   expression rather than a location list.  With views, even with a
+   single range, we'll output a list if start or end have a nonzero
+   view.  If we change this, we may want to stop splitting a single
+   range in dw_loc_list just because of a nonzero view, even if it
+   straddles across hot/cold partitions.  */
 
 static bool
 loc_list_has_views (dw_loc_list_ref list)
@@ -17139,7 +17138,13 @@ dw_loc_list (var_loc_list *loc_list, tree decl, int want_address)
 		 of first partition and second one starting at the
 		 beginning of second partition.  */
 	      if (node == loc_list->last_before_switch
-		  && (node != loc_list->first || loc_list->first->next)
+		  && (node != loc_list->first || loc_list->first->next
+		      /* If we are to emit a view number, we will emit
+			 a loclist rather than a single location
+			 expression for the entire function (see
+			 loc_list_has_views), so we have to split the
+			 range that straddles across partitions.  */
+		      || !ZERO_VIEW_P (node->view))
 		  && current_function_decl)
 		{
 		  endname = cfun->fde->dw_fde_end;
@@ -21347,22 +21352,6 @@ dwarf2out_vms_debug_main_pointer (void)
 }
 #endif /* VMS_DEBUGGING_INFO */
 
-/* Push a new declaration scope.  */
-
-static void
-push_decl_scope (tree scope)
-{
-  vec_safe_push (decl_scope_table, scope);
-}
-
-/* Pop a declaration scope.  */
-
-static inline void
-pop_decl_scope (void)
-{
-  decl_scope_table->pop ();
-}
-
 /* walk_tree helper function for uses_local_type, below.  */
 
 static tree
@@ -22345,7 +22334,6 @@ gen_type_die_for_member (tree type, tree member, dw_die_ref context_die)
       dw_die_ref type_die;
       gcc_assert (!decl_ultimate_origin (member));
 
-      push_decl_scope (type);
       type_die = lookup_type_die_strip_naming_typedef (type);
       if (TREE_CODE (member) == FUNCTION_DECL)
 	gen_subprogram_die (member, type_die);
@@ -22367,8 +22355,6 @@ gen_type_die_for_member (tree type, tree member, dw_die_ref context_die)
 	}
       else
 	gen_variable_die (member, NULL_TREE, type_die);
-
-      pop_decl_scope ();
     }
 }
 
@@ -22766,26 +22752,22 @@ gen_subprogram_die (tree decl, dw_die_ref context_die)
 	 apply; we just use the old DIE.  */
       expanded_location s = expand_location (DECL_SOURCE_LOCATION (decl));
       struct dwarf_file_data * file_index = lookup_filename (s.file);
-      if ((is_cu_die (old_die->die_parent)
-	   /* This condition fixes the inconsistency/ICE with the
-	      following Fortran test (or some derivative thereof) while
-	      building libgfortran:
+      if (((is_unit_die (old_die->die_parent)
+	    /* This condition fixes the inconsistency/ICE with the
+	       following Fortran test (or some derivative thereof) while
+	       building libgfortran:
 
-		 module some_m
-		 contains
-		    logical function funky (FLAG)
-		      funky = .true.
-		   end function
-		 end module
-	   */
-	   || (old_die->die_parent
-	       && old_die->die_parent->die_tag == DW_TAG_module)
-	   || context_die == NULL)
+		  module some_m
+		  contains
+		     logical function funky (FLAG)
+		       funky = .true.
+		    end function
+		  end module
+	     */
+	    || (old_die->die_parent
+		&& old_die->die_parent->die_tag == DW_TAG_module)
+	    || context_die == NULL)
 	   && (DECL_ARTIFICIAL (decl)
-	       /* The location attributes may be in the abstract origin
-		  which in the case of LTO might be not available to
-		  look at.  */
-	       || get_AT (old_die, DW_AT_abstract_origin)
 	       || (get_AT_file (old_die, DW_AT_decl_file) == file_index
 		   && (get_AT_unsigned (old_die, DW_AT_decl_line)
 		       == (unsigned) s.line)
@@ -22793,6 +22775,10 @@ gen_subprogram_die (tree decl, dw_die_ref context_die)
 		       || s.column == 0
 		       || (get_AT_unsigned (old_die, DW_AT_decl_column)
 			   == (unsigned) s.column)))))
+	  /* With LTO if there's an abstract instance for
+	     the old DIE, this is a concrete instance and
+	     thus re-use the DIE.  */
+	  || get_AT (old_die, DW_AT_abstract_origin))
 	{
 	  subr_die = old_die;
 
@@ -25139,9 +25125,7 @@ gen_struct_or_union_type_die (tree type, dw_die_ref context_die,
       if (type_die->die_parent == NULL)
 	add_child_die (scope_die, type_die);
 
-      push_decl_scope (type);
       gen_member_die (type, type_die);
-      pop_decl_scope ();
 
       add_gnat_descriptive_type_attribute (type_die, type, context_die);
       if (TYPE_ARTIFICIAL (type))
@@ -25295,14 +25279,12 @@ gen_tagged_type_die (tree type,
 		     dw_die_ref context_die,
 		     enum debug_info_usage usage)
 {
-  int need_pop;
-
   if (type == NULL_TREE
       || !is_tagged_type (type))
     return;
 
   if (TREE_ASM_WRITTEN (type))
-    need_pop = 0;
+    ;
   /* If this is a nested type whose containing class hasn't been written
      out yet, writing it out will cover this one, too.  This does not apply
      to instantiations of member class templates; they need to be added to
@@ -25319,9 +25301,7 @@ gen_tagged_type_die (tree type,
 	return;
 
       /* If that failed, attach ourselves to the stub.  */
-      push_decl_scope (TYPE_CONTEXT (type));
       context_die = lookup_type_die (TYPE_CONTEXT (type));
-      need_pop = 1;
     }
   else if (TYPE_CONTEXT (type) != NULL_TREE
 	   && (TREE_CODE (TYPE_CONTEXT (type)) == FUNCTION_DECL))
@@ -25334,13 +25314,9 @@ gen_tagged_type_die (tree type,
 	 specification.  */
       if (context_die && is_declaration_die (context_die))
 	context_die = NULL;
-      need_pop = 0;
     }
   else
-    {
-      context_die = declare_in_namespace (type, context_die);
-      need_pop = 0;
-    }
+    context_die = declare_in_namespace (type, context_die);
 
   if (TREE_CODE (type) == ENUMERAL_TYPE)
     {
@@ -25351,9 +25327,6 @@ gen_tagged_type_die (tree type,
     }
   else
     gen_struct_or_union_type_die (type, context_die, usage);
-
-  if (need_pop)
-    pop_decl_scope ();
 
   /* Don't set TREE_ASM_WRITTEN on an incomplete struct; we want to fix
      it up if it is ever completed.  gen_*_type_die will set it for us
@@ -28643,9 +28616,6 @@ dwarf2out_init (const char *filename ATTRIBUTE_UNUSED)
 
   /* Allocate the cached_dw_loc_list_table.  */
   cached_dw_loc_list_table = hash_table<dw_loc_list_hasher>::create_ggc (10);
-
-  /* Allocate the initial hunk of the decl_scope_table.  */
-  vec_alloc (decl_scope_table, 256);
 
   /* Allocate the initial hunk of the abbrev_die_table.  */
   vec_alloc (abbrev_die_table, 256);
@@ -32088,7 +32058,6 @@ dwarf2out_c_finalize (void)
   cached_next_real_insn = NULL;
   used_rtx_array = NULL;
   incomplete_types = NULL;
-  decl_scope_table = NULL;
   debug_info_section = NULL;
   debug_skeleton_info_section = NULL;
   debug_abbrev_section = NULL;

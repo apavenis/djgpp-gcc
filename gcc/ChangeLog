@@ -1,3 +1,897 @@
+2018-07-01  Aldy Hernandez  <aldyh@redhat.com>
+
+	* tree-ssa-threadupdate.c (mark_threaded_blocks): Avoid
+	dereferencing path[] beyond its length.
+	(debug_path): New.
+	(debug_all_paths): New.
+	(rewire_first_differing_edge): New.
+	(adjust_paths_after_duplication): New.
+	(duplicate_thread_path): Call adjust_paths_after_duplication.
+	Add new argument.
+	(thread_through_all_blocks): Add new argument to
+	duplicate_thread_path.
+
+2018-06-30  Jim Wilson  <jimw@sifive.com>
+
+	* config/riscv/predicates.md (p2m1_shift_operand): New.
+	(high_mask_shift_operand): New.
+	* config/riscv/riscv.md (lshrsi3_zero_extend_3+1): New combiner
+	pattern using p2m1_shift_operand.
+	(lshsi3_zero_extend_3+2): New combiner pattern using
+	high_mask_shift_operand.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (vect_get_external_def_edge): New function,
+	split out from...
+	(vect_recog_rotate_pattern): ...here.
+	(vect_convert_input): Try to insert casts of invariants in the
+	preheader.
+	* tree-vect-loop-manip.c (vect_loop_versioning): Don't require the
+	preheader to be empty.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (append_pattern_def_seq): Take an optional
+	vector type.  If given, install it in the new statement's
+	STMT_VINFO_VECTYPE.
+	(vect_element_precision): New function.
+	(vect_unpromoted_value): New struct.
+	(vect_unpromoted_value::vect_unpromoted_value): New function.
+	(vect_unpromoted_value::set_op): Likewise.
+	(vect_look_through_possible_promotion): Likewise.
+	(vect_joust_widened_integer, vect_joust_widened_type): Likewise.
+	(vect_widened_op_tree, vect_convert_input): Likewise.
+	(vect_convert_inputs, vect_convert_output): Likewise.
+	(vect_recog_dot_prod_pattern): Use vect_look_through_possible_promotion
+	to handle the optional cast of the multiplication result and
+	vect_widened_op_tree to detect the widened multiplication itself.
+	Do not require the input and output of promotion casts to have
+	the same sign, but base the signedness of the operation on the
+	input rather than the result.  If the pattern includes two
+	promotions, check that those promotions have the same sign.
+	Do not restrict the MULT_EXPR handling to a double-width result;
+	handle quadruple-width results and wider.  Use vect_convert_inputs
+	to convert the inputs to the common type.
+	(vect_recog_sad_pattern):  Use vect_look_through_possible_promotion
+	to handle the optional cast of the ABS result.  Also allow a sign
+	change or a sign extension between the ABS and MINUS.
+	Use vect_widened_op_tree to detect the widened subtraction and use
+	vect_convert_inputs to convert the inputs to the common type.
+	(vect_handle_widen_op_by_const): Delete.
+	(vect_recog_widen_op_pattern): New function.
+	(vect_recog_widen_mult_pattern): Use it.
+	(vect_recog_widen_shift_pattern): Likewise.
+	(vect_recog_widen_sum_pattern): Use
+	vect_look_through_possible_promotion to handle the promoted
+	PLUS_EXPR operand.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gimple-iterator.c (gsi_for_stmt): Add a new overload that takes
+	the containing gimple_seq *.
+	* gimple-iterator.h (gsi_for_stmt): Declare it.
+	* tree-vect-patterns.c (vect_recog_dot_prod_pattern)
+	(vect_recog_sad_pattern, vect_recog_widen_sum_pattern)
+	(vect_recog_widen_shift_pattern, vect_recog_rotate_pattern)
+	(vect_recog_vector_vector_shift_pattern, vect_recog_divmod_pattern)
+	(vect_recog_mask_conversion_pattern): Remove STMT_VINFO_IN_PATTERN_P
+	checks.
+	(vect_init_pattern_stmt, vect_set_pattern_stmt): New functions,
+	split out from...
+	(vect_mark_pattern_stmts): ...here.  Handle cases in which the
+	statement being replaced is part of an existing pattern
+	definition sequence, inserting the new pattern statements before
+	the original one.
+	(vect_pattern_recog_1): Don't return a bool.  If the statement
+	is already part of a pattern, instead apply pattern matching
+	to the pattern definition statements.  Don't clear the
+	STMT_VINFO_RELATED_STMT if is_pattern_stmt_p.
+	(vect_pattern_recog): Don't break after the first match;
+	continue processing the pattern definition statements instead.
+	Don't bail out for STMT_VINFO_IN_PATTERN_P here.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (vect_reassociating_reduction_p): New function.
+	(vect_recog_dot_prod_pattern, vect_recog_sad_pattern)
+	(vect_recog_widen_sum_pattern): Use it.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-loop.c (vectorizable_reduction): Assert that the
+	phi is not a pattern statement and has not been replaced by
+	a pattern statement.
+	* tree-vect-patterns.c (type_conversion_p): Don't check
+	STMT_VINFO_IN_PATTERN_P.
+	(vect_recog_vector_vector_shift_pattern): Likewise.
+	(vect_recog_dot_prod_pattern): Expect vect_is_simple_use to return
+	the pattern statement rather than the original statement; check
+	directly for a WIDEN_MULT_EXPR here.
+	* tree-vect-slp.c (vect_get_and_check_slp_defs): Expect
+	vect_is_simple_use to return the pattern statement rather
+	than the original statement; use is_pattern_stmt_p to check
+	for such a pattern statement.
+	* tree-vect-stmts.c (process_use): Expect vect_is_simple_use
+	to return the pattern statement rather than the original statement;
+	don't do the same transformation here.
+	(vect_is_simple_use): If the defining statement has been replaced
+	by a pattern statement, return the pattern statement instead.
+	Remove the corresponding (local) transformation from the vectype
+	overload.
+
+2018-06-30  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vectorizer.h (vect_is_simple_use): Move the gimple ** to the
+	end and default to null.
+	* tree-vect-loop.c (vect_create_epilog_for_reduction)
+	(vectorizable_reduction): Update calls accordingly, dropping the
+	gimple ** argument if the passed-back statement isn't needed.
+	* tree-vect-patterns.c (vect_get_internal_def, type_conversion_p)
+	(vect_recog_rotate_pattern): Likewise.
+	(vect_recog_mask_conversion_pattern): Likewise.
+	* tree-vect-slp.c (vect_get_and_check_slp_defs): Likewise.
+	(vect_mask_constant_operand_p): Likewise.
+	* tree-vect-stmts.c (is_simple_and_all_uses_invariant, process_use):
+	(vect_model_simple_cost, vect_get_vec_def_for_operand): Likewise.
+	(get_group_load_store_type, get_load_store_type): Likewise.
+	(vect_check_load_store_mask, vect_check_store_rhs): Likewise.
+	(vectorizable_call, vectorizable_simd_clone_call): Likewise.
+	(vectorizable_conversion, vectorizable_assignment): Likewise.
+	(vectorizable_shift, vectorizable_operation): Likewise.
+	(vectorizable_store, vect_is_simple_cond): Likewise.
+	(vectorizable_condition, vectorizable_comparison): Likewise.
+	(get_same_sized_vectype, vect_get_mask_type_for_stmt): Likewise.
+	(vect_is_simple_use): Rename the def_stmt argument to def_stmt_out
+	and move it to the end.  Cope with null def_stmt_outs.
+
+2018-06-30  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	* Makefile.in (FLAGS_TO_PASS): Add RANLIB_FOR_TARGET.
+
+2018-06-29  Jeff Law  <law@redhat.com>
+
+	* config/v850/v850.c (v850_legitimate_address_p): Handle large
+	displacements for TARGET_V850E2V3 and newer.
+	(TARGET_LRA_P): Remove.  Defaults to LRA now.
+	* config/v850/v850.md (sign23byte_load): Remove.
+	(unsign23byte_load, sign23hword_load, unsign23hword_load): Likewise.
+	(23word_load, 23byte_store, 23hword_store, 23word_store): Likewise.
+
+2018-06-29  Martin Liska  <mliska@suse.cz>
+
+	PR lto/85759
+	* coverage.c (coverage_init): Mangle full path name.
+	* doc/invoke.texi: Document the change.
+	* gcov-io.c (mangle_path): New.
+	* gcov-io.h (mangle_path): Likewise.
+	* gcov.c (mangle_name): Use mangle_path for path mangling.
+
+2018-06-29  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm.c (output_move_double): Don't allow STRD instructions
+	if starting source register is not even.
+
+2018-06-29  Martin Liska  <mliska@suse.cz>
+
+        PR tree-optimization/86263
+	* tree-switch-conversion.c (switch_decision_tree::try_switch_expansion):
+        Make edge redirection.
+
+2018-06-29  David Malcolm  <dmalcolm@redhat.com>
+
+	* dumpfile.c (dump_loc): Add indentation based on scope depth.
+	(dump_scope_depth): New variable.
+	(get_dump_scope_depth): New function.
+	(dump_begin_scope): New function.
+	(dump_end_scope): New function.
+	* dumpfile.h (get_dump_scope_depth): New declaration.
+	(dump_begin_scope): New declaration.
+	(dump_end_scope): New declaration.
+	(class auto_dump_scope): New class.
+	(AUTO_DUMP_SCOPE): New macro.
+	* tree-vectorizer.h (DUMP_VECT_SCOPE): Reimplement in terms of
+	AUTO_DUMP_SCOPE.
+
+2018-06-29  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-data-refs.c (vect_analyze_data_ref_dependences): Assert
+	compute_all_dependences succeeds.
+	* tree-vect-loop.c (vect_get_datarefs_in_loop): Fail early if we
+	exceed --param loop-max-datarefs-for-datadeps.
+
+2018-06-29  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/rs6000/t-rs6000: Append rs6000-modes.h to TM_H.
+
+2018-06-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/86348
+	* config/i386/sse.md (*vec_extractv4si_0_zext_sse4): Use
+	alternative 0 in preferred_for_speed attribute.
+
+2018-06-28  Paul Koning  <ni1d@arrl.net>
+
+	* config/pdp11/pdp11-protos.h (pdp11_shift_length): New function.
+	* config/pdp11/pdp11.c (pdp11_shift_length): New function.
+	* config/pdp11/pdp11.h (ADJUST_INSN_LENGTH): Remove.
+	* config/pdp11/pdp11.md: Correct "length" attribute calculation
+	for shift insn patterns.
+
+2018-06-28  David Malcolm  <dmalcolm@redhat.com>
+
+	* cgraph.c (cgraph_node::get_body): Replace assignments to
+	"dump_file" with calls to set_dump_file.
+	* dumpfile.c (alt_dump_file): Make static, and group with...
+	(alt_flags): ...this definition.
+	(dumps_are_enabled): New variable.
+	(refresh_dumps_are_enabled): New function.
+	(set_dump_file): New function.
+	(set_alt_dump_file): New function.
+	(gcc::dump_manager::dump_start): Replace assignments to
+	"dump_file" and "alt_dump_file" with calls to set_dump_file and
+	set_alt_dump_file.
+	(gcc::dump_manager::dump_finish): Likewise.
+	* dumpfile.h (alt_dump_file): Delete decl.
+	(dumps_are_enabled): New variable decl.
+	(set_dump_file): New function decl.
+	(dump_enabled_p): Rewrite in terms of new "dumps_are_enabled"
+	global.
+	* tree-nested.c (lower_nested_functions): Replace assignments to
+	"dump_file" with calls to set_dump_file.
+
+2018-06-28  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-cfg.c (verify_gimple_in_cfg): Call verify_location on the
+	goto_locus of each outgoing edge of each basic block.
+
+2018-06-28  Richard Biener  <rguenther@suse.de>
+
+	* dwarf2out.c (decl_scope_table): Remove.
+	(push_decl_scope): Likewise.
+	(pop_decl_scope): Likewise.
+	(gen_type_die_for_member): Do not call push/pop_decl_scope.
+	(gen_struct_or_union_type_die): Likewise.
+	(gen_tagged_type_die): Likewise.
+	(dwarf2out_init): Do not initialize decl_scope_table.
+	(dwarf2out_c_finalize): Do not free it.
+
+2018-06-28  Richard Biener  <rguenther@suse.de>
+
+	* dwarf2out.c (gen_subprogram_die): Use is_unit_die when
+	deciding whether to not re-use a DIE.
+
+2018-06-28  Richard Biener  <rguenther@suse.de>
+
+	* dwarf2out.c (gen_subprogram_die): Always re-use DIEs with an
+	DW_AT_abstract_origin attribute.
+
+2018-06-28  Martin Liska  <mliska@suse.cz>
+
+	* tree-switch-conversion.c (jump_table_cluster::can_be_handled):
+        Use newly introduced constants.
+	* tree-switch-conversion.h (struct jump_table_cluster):
+        Define max_ratio_for_size and max_ratio_for_speed.
+
+2018-06-28  Martin Liska  <mliska@suse.cz>
+
+	* tree-switch-conversion.c (jump_table_cluster::find_jump_tables):
+        Add new checking assert to catch invalid state.
+	(jump_table_cluster::can_be_handled): Handle single case
+        clusters.
+	(jump_table_cluster::is_beneficial): Bail out for such case.
+	(bit_test_cluster::find_bit_tests):
+        Add new checking assert to catch invalid state.
+	(bit_test_cluster::can_be_handled): Handle single case
+        clusters.
+	(bit_test_cluster::is_beneficial): Bail out for such case.
+	(switch_decision_tree::analyze_switch_statement):
+        Fix comment.
+
+2018-06-28  Martin Liska  <mliska@suse.cz>
+
+	* common.opt: Introduce -completion option.
+	* gcc.c (driver_handle_option): Handle it.
+	(driver::main): Print completions if completion
+        is set.
+	* opt-suggestions.c (option_proposer::get_completions):
+        New function.
+	(option_proposer::suggest_completion): Likewise.
+	(option_proposer::find_param_completions): Likewise.
+	(verify_autocompletions): Likewise.
+	(test_completion_valid_options): Likewise.
+	(test_completion_valid_params): Likewise.
+	(in_completion_p): Likewise.
+	(empty_completion_p): Likewise.
+	(test_completion_partial_match): Likewise.
+	(test_completion_garbage): Likewise.
+	(opt_proposer_c_tests): Likewise.
+	* opt-suggestions.h: Declare new functions.
+	* opts.c (common_handle_option): Handle OPT__completion_.
+	* selftest-run-tests.c (selftest::run_tests): Add
+        opt_proposer_c_tests.
+	* selftest.c (assert_str_startswith): New.
+	* selftest.h (assert_str_startswith): Likewise.
+	(opt_proposer_c_tests): New.
+	(ASSERT_STR_STARTSWITH): Likewise.
+
+2018-06-28  Martin Liska  <mliska@suse.cz>
+
+	* Makefile.in: Add opt-suggestions.o.
+	* gcc-main.c: Include opt-suggestions.h.
+	* gcc.c (driver::driver): Likewise.
+	(driver::~driver): Remove m_option_suggestions.
+	(driver::build_option_suggestions): Moved to option_proposer.
+	(driver::suggest_option): Likewise.
+	(driver::handle_unrecognized_options): Use option_proposer.
+	* gcc.h (class driver): Add new memver m_option_proposer.
+	* opt-suggestions.c: New file.
+	* opt-suggestions.h: New file.
+
+2018-06-28  Martin Liska  <mliska@suse.cz>
+
+	* vec.h (class auto_string_vec): New (moved from auto_argvec).
+	(auto_string_vec::~auto_string_vec): Likewise.
+
+2018-06-28  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-inline.c (remap_gimple_stmt): Force input_location on the new
+	statement if id->reset_location is true.
+	(copy_edges_for_bb): Do not set goto_locus on the new edges if
+	id->reset_location is true.
+	(copy_phis_for_bb): Force input_location on the arguments if
+	id->reset_location is true.
+	(expand_call_inline): Set id->reset_location if DECL_IGNORED_P
+	is set on the function to be inlined.
+	* tree-inline.h (struct copy_body_data): Move remapping_type_depth and
+	prevent_decl_creation_for_types fields up and add reset_location field.
+
+2018-06-27  Stephan Bergmann  <sbergman@redhat.com>
+
+	* doc/invoke.texi (Debugging Options): Add -gsplit-dwarf.
+
+2018-06-27  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* lra-eliminations.c (update_reg_eliminate): Mark all spanning hard
+	registers for Pmode.
+	* lra-lives.c (check_pseudos_live_through_calls): Mark all spanning
+	hard registers for the clobbered pseudo.
+
+2018-06-27  Paul Koning  <ni1d@arrl.net>
+
+	* common/config/pdp11/pdp11-common.c (pdp11_handle_option): Handle
+	mutually exclusive options.
+	* config/pdp11/constraints.md (h): New constraint.
+	(O): Update definition to match shift code generation.
+	(D): New constraint.
+	* config/pdp11/pdp11-modes.def (CCNZ): Define mode.
+	(CCFP): Remove.
+	* config/pdp11/pdp11-protos.h (int_no_side_effect_operand): New
+	function.
+	(output_jump): Change arguments.
+	(pdp11_fixed_cc_regs): New function.
+	(pdp11_cc_mode): Ditto.
+	(pdp11_expand_shift): Ditto.
+	(pdp11_assemble_shift): Ditto.
+	(pdp11_small_shift): Ditto.
+	(pdp11_branch_cost): Remove.
+	* config/pdp11/pdp11.c (pdp11_assemble_integer): Remove comments
+	from output.
+	(pdp11_register_move_cost): Update for CC registers.
+	(pdp11_rtx_costs): Add case for LSHIFTRT.
+	(pdp11_output_jump): Add CCNZ mode conditional branches.
+	(notice_update_cc_on_set): Remove.
+	(pdp11_cc_mode): New function.
+	(simple_memory_operand): Correct pre/post decrement case.
+	(no_side_effect_operand): New function.
+	(pdp11_regno_reg_class): Add CC_REGS class.
+	(pdp11_fixed_cc_regs): New function.
+	(pdp11_small_shift): New function.
+	(pdp11_expand_shift): New function to expand shift insns.
+	(pdp11_assemble_shift): New function to output shifts.
+	(pdp11_branch_cost): Remove.
+	(pdp11_modes_tieable_p): Make QI/HI modes tieable.
+	* config/pdp11/pdp11.h (SIZE_TYPE): Ensure 16-bit type.
+	(WCHAR_TYPE): Ditto.
+	(PTRDIFF_TYPE): Ditto.
+	(ADJUST_INSN_LENGTH): New macro.
+	(FIXED_REGISTERS): Add CC registers.
+	(CALL_USED_REGISTERS): Ditto.
+	(reg_class): Ditto.
+	(REG_CLASS_NAMES): Ditto.
+	(REG_CLASS_CONTENTS): Ditto.
+	(SELECT_CC_MODE): Use new function.
+	(TARGET_FLAGS_REGNUM): New macro.
+	(TARGET_FIXED_CONDITION_CODE_REGS): Ditto.
+	(cc0_reg_rtx): Remove.
+	(CC_STATUS_MDEP): Remove.
+	(CC_STATUS_MDEFP_INIT): Remove.
+	(CC_IN_FPU): Remove.
+	(NOTICE_UPDATE_CC): Remove.
+	(REGISTER_NAMES): Add CC registers.
+	(BRANCH_COST): Change to constant 1.
+	* config/pdp11/pdp11.md: Rewrite for CCmode condition code
+	handling.
+	* config/pdp11/pdp11.opt (mbcopy): Remove.
+	(mbcopy-builtin): Remove.
+	(mbranch-cheap): Remove.
+	(mbranch-expensive): Remove.
+	* config/pdp11/predicates.md (expand_shift_operand): Update to
+	match shift code generation.
+	(ccnz_operator): New predicate.
+	* doc/invoke.texi (PDP-11 Options): Remove deleted options
+	-mbcopy, -mbcopy-builtin, -mbranch-cheap, -mbranch-expensive.
+	Remove non-existent option -mabshi, -mno-abshi.  Document mutually
+	exclusive options.
+	* doc/md.texi (PDP-11): Document new D and h constraints.  Update
+	description of O constraint.
+
+2018-06-27  Jeff Law  <law@redhat.com>
+	    Austin Law  <austinklaw@gmail.com>
+
+	* config/v850/v850.md (addsi3_set_flags): New pattern.
+	(subsi3_set_flags, negsi2_set_flags, andsi3_set_flags): Likewise.
+	(iorsi3_set_flags, xorsi3_set_flags, one_cmplsi2_set_flags): Likewise.
+	(zero_extendhisi2_v850_set_flags): Likewise.
+	(zero_extendqisi2_v850_set_flags): Likewise.
+	(ashlsi3_set_flags, ashlsi3_v850e2_set_flags): Likewise.
+	(lshrsi3_set_flags, lshrsi3_v850e2_set_flags): Likewise.
+	(ashrsi3_set_flags, ashrsi3_v850e2_set_flags): Likewise.
+
+	* config/v850/v850-protos.h (notice_update_cc): Remove.
+	* config/v850/v850.c (v850_compare_op0, v850_compare_op1): Remove.
+	(v850_print_operand): Handle 'D' and "d".
+	(v850_select_cc_mode): Remove ATTRIBUTE_UNUSED for last argument.
+	Add handling of arithmetic/logical operations compared against zero.
+	(v850_gen_float_compare): Remove ATTRIBUTE_UNUSED for last argument.
+	Do not look at v850_compare_op, instead get mode from last argument.
+	(v850_gen_compare): Remove
+	(increment_stack): Use addsi3_clobber_flags to avoid splitting failure
+	after reload for prologue insns.
+	(expand_prologue): Account for CLOBBER of CC_REGNUM in various
+	patterns.
+	(construct_save_jarl): Likewise.
+	(TARGET_FLAGS_REGNUM): Define.
+	* config/v850/v850.h (v850_compare_op0, v850_compare_op1): Remove.
+	(NOTICE_UPDATE_CC): Remove.
+	* config/v850/v850.md (v850_tst1): Use (reg:CCZ CC_REGNUM) rather
+	than cc0.  Conditionalize on reload_completed.
+	(cmpsi_insn, setfcc_insn): Likewise.
+	(tst1 splitter): Turn into define_and_split which sets the flags
+	after reload.
+	(cstoresi4, cbranchsf4, cbranchdf4, cbranchsi4_insn): Likewise.
+	(cbranchsi4, branch_normal, branch_invert): Do not expose cc0 here.
+	(cstoresf4, cstoredf4): Clobber the flags.
+	(cmpsi, cmpsf, cmpdf): Remove expanders.
+	(setf_insn): Remove pattern.
+	(addsi3): Turn into define_and_split which clobbers the flags after
+	reload and a suitable pattern (addsi3_clobber_flags) for use after
+	reload.
+	(subsi3, negsi2, andsi3, iorsi3, xorsi3, one_cmplsi2) Likewise.
+	(ashlsi3, ashlsi3_v850e2, lshrsi3, lsh4si3_v850e2): Likewise.
+	(ashrsi3, ashrsi3_v850e2): Likewise.
+	(bins): Clobber the flags.
+	(movsicc_normal_cc, movsicc_normal, movsicc_tst1): Likewise.
+	(movsicc_tst1_revesed, sasf, swap and rotate patterns): Likewise.
+	(fix_loop_counter, call_internal_short, call_internal_long): Likewise.
+	(call_value_internal_short, call_value_internal_long): Likewise.
+	(callt_save_interrupt, callt_return_interrupt): Likewise.
+	(save_interrupt, return_interrupt): Likewise.
+	(callt_save_all_interrupt, save_all_interrupt): Likewise.
+	(_save_all_interrupt, callt_restore_all_interrupt): Likewise.
+	(restore_all_interrupt, _restore_all_interrupt): Likewise.
+	(All FP comparisons): Only allow after reload has completed.
+	(trfsr): Likewise.
+	(divh, divhu): Tweak output template.
+	(branch_z_normal, branch_z_invert): Remove
+	(branch_nz_normal, branch_nz_invert): Likewise.
+	(extendhisi_insn, extendqisi_insn): Do not clobber flags.
+
+	* config/v850/v850-modes.def (CCZ, CCNZ): Add new modes.
+	* config/v850/v850.c (notice_update_cc): Remove.
+	* config/v850/v850.h  (CC_OVERFLOW_UNUSABLE): Remove
+	(CC_NO_CARRY): Likewise.
+	(NOTICE_UPDATE_CC): Define to nothing.
+	* config/v850/v850.md: Remove block comment on cc0 handling
+	Remove "cc" attribute from all patterns.  Remove cc_status handling
+	from all patterns.  Minor formatting fixes.
+
+2018-06-27  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64-cores.def (cortex-a76): New entry.
+	(cortex-a76.cortex-a55): Likewise.
+	* config/aarch64/aarch64-tune.md: Regenerate.
+	* doc/invoke.texi (AArch64 Options): Document cortex-a76 and
+	cortex-a76.cortex-a55.
+
+2018-06-27  Jeff Law  <law@redhat.com>
+
+	* config/v850/t-v850 (MULTILIB_OPTIONS): Remove 8byte-align.
+	(MULTILIB_DIRNAMES): Similarly.
+
+2018-06-27  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gimple.h (gimple_return_retbnd): Delete.
+	(gimple_return_set_retbnd): Likewise.
+	* cgraphunit.c (cgraph_node::expand_thunk): Remove call to
+	gimple_return_set_retbnd.
+	* gimple-pretty-print.c (dump_gimple_return): Remove call to
+	gimple_return_retbnd and adjust.
+	* tree-inline.h (struct copy_body_data): Remove retbnd field.
+	* tree-inline.c (remap_gimple_stmt): Remove handling of retbnd.
+	Explicitly return NULL in a couple more cases.  Move assertion
+	on debug statements and remove unreachable code.
+	(reset_debug_binding): Do not test id->retbnd.
+	(expand_call_inline): Do not set it.
+
+2018-06-27  Rasmus Villemoes  <rv@rasmusvillemoes.dk>
+
+	* configure.ac: Add --disable-gcov option.
+	* configure: Regenerate.
+	* Makefile.in: Honour @enable_gcov@.
+	* doc/install.texi: Document --disable-gcov.
+
+2018-06-27  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm-cpus.in (cortex-a76): New entry.
+	(cortex-a76.cortex-a55): Likewise.
+	* config/arm/arm-tables.opt: Regenerate.
+	* config/arm/arm-tune.md: Likewise.
+	* config/arm/driver-arm.c (arm_cpu_table): Add Cortex-A76 entry.
+	* doc/invoke.texi (ARM Options): Document cortex-a76 and
+	cortex-a76.cortex-a55.
+
+2018-06-27 Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/85769
+	* config/aarch64/aarch64.md (*movhf_aarch64): Add dup v0.4h pattern.
+
+2018-06-27  Siddhesh Poyarekar  <siddhesh@sourceware.org>
+
+	* config/aarch64/aarch64.h (CALL_USE_REGISTERS): Fix obsolete
+	comment.
+	(EPILOGUE_USES): Likewise.
+
+2018-06-26  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* tree-inline.c (remap_location): New function extracted from...
+	(copy_edges_for_bb): Add ID parameter.  Remap goto_locus.
+	(copy_phis_for_bb): ...here.  Call remap_location.
+	(copy_cfg_body): Adjust call to copy_edges_for_bb.
+
+2018-06-26  Aaron Sawdey  <acsawdey@linux.ibm.com>
+
+	* config/rs6000/rs6000-string.c (expand_block_clear): Don't use
+	unaligned vsx for 16B memset.
+
+2018-06-26  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR target/86285
+	* config/rs6000/rs6000.c (rs6000_init_builtins): Do not set
+	ieee128_float_type_node to long_double_type_node unless
+	TARGET_LONG_DOUBLE_128 is set.
+
+2018-06-26  David Malcolm  <dmalcolm@redhat.com>
+
+	* cfgloop.c (get_loop_location): Convert return type from
+	location_t to dump_user_location_t, replacing INSN_LOCATION lookups
+	by implicit construction from rtx_insn *, and using
+	dump_user_location_t::from_function_decl for the fallback case.
+	* cfgloop.h (get_loop_location): Convert return type from
+	location_t to dump_user_location_t.
+	* cgraphunit.c (walk_polymorphic_call_targets): Update call to
+	dump_printf_loc to pass in a dump_location_t rather than a
+	location_t, via the gimple stmt.
+	* coverage.c (get_coverage_counts): Update calls to
+	dump_printf_loc to pass in dump_location_t rather than a
+	location_t.
+	* doc/optinfo.texi (Dump types): Convert example of
+	dump_printf_loc from taking "locus" to taking "insn".  Update
+	description of the "_loc" calls to cover dump_location_t.
+	* dumpfile.c: Include "backend.h", "gimple.h", "rtl.h", and
+	"selftest.h".
+	(dump_user_location_t::dump_user_location_t): New constructors,
+	from gimple *stmt and rtx_insn *.
+	(dump_user_location_t::from_function_decl): New function.
+	(dump_loc): Make static.
+	(dump_gimple_stmt_loc): Convert param "loc" from location_t to
+	const dump_location_t &.
+	(dump_generic_expr_loc): Delete.
+	(dump_printf_loc): Convert param "loc" from location_t to
+	const dump_location_t &.
+	(selftest::test_impl_location): New function.
+	(selftest::dumpfile_c_tests): New function.
+	* dumpfile.h: Include "profile-count.h".
+	(class dump_user_location_t): New class.
+	(struct dump_impl_location_t): New struct.
+	(class dump_location_t): New class.
+	(dump_printf_loc): Convert 2nd param from source_location to
+	const dump_location_t &.
+	(dump_generic_expr_loc): Delete.
+	(dump_gimple_stmt_loc): Convert 2nd param from source_location to
+	const dump_location_t &.
+	* gimple-fold.c (fold_gimple_assign): Update call to
+	dump_printf_loc to pass in a dump_location_t rather than a
+	location_t, via the gimple stmt.
+	(gimple_fold_call): Likewise.
+	* gimple-loop-interchange.cc
+	(loop_cand::analyze_iloop_reduction_var): Update for change to
+	check_reduction_path.
+	(tree_loop_interchange::interchange): Update for change to
+	find_loop_location.
+	* graphite-isl-ast-to-gimple.c (scop_to_isl_ast): Update for
+	change in return-type of find_loop_location.
+	(graphite_regenerate_ast_isl): Likewise.
+	* graphite-optimize-isl.c (optimize_isl): Likewise.
+	* graphite.c (graphite_transform_loops): Likewise.
+	* ipa-devirt.c (ipa_devirt): Update call to dump_printf_loc to
+	pass in a dump_location_t rather than a location_t, via the
+	gimple stmt.
+	* ipa-prop.c (ipa_make_edge_direct_to_target): Likewise.
+	* ipa.c (walk_polymorphic_call_targets): Likewise.
+	* loop-unroll.c (report_unroll): Convert "locus" param from
+	location_t to dump_location_t.
+	(decide_unrolling): Update for change to get_loop_location's
+	return type.
+	* omp-grid.c (struct grid_prop): Convert field "target_loc" from
+	location_t to dump_user_location_t.
+	(grid_find_single_omp_among_assignments_1): Updates calls to
+	dump_printf_loc to pass in a dump_location_t rather than a
+	location_t, via the gimple stmt.
+	(grid_parallel_clauses_gridifiable): Convert "tloc" from
+	location_t to dump_location_t.  Updates calls to dump_printf_loc
+	to pass in a dump_location_t rather than a location_t, via the
+	gimple stmt.
+	(grid_inner_loop_gridifiable_p): Likewise.
+	(grid_dist_follows_simple_pattern): Likewise.
+	(grid_gfor_follows_tiling_pattern): Likewise.
+	(grid_target_follows_gridifiable_pattern): Likewise.
+	(grid_attempt_target_gridification): Convert initialization
+	of local "grid" from memset to zero-initialization; FIXME: does
+	this require C++11?  Update call to dump_printf_loc to pass in a
+	optinfo_location rather than a location_t, via the gimple stmt.
+	* profile.c (read_profile_edge_counts): Updates call to
+	dump_printf_loc to pass in a dump_location_t rather than a
+	location_t
+	(compute_branch_probabilities): Likewise.
+	* selftest-run-tests.c (selftest::run_tests): Call
+	dumpfile_c_tests.
+	* selftest.h (dumpfile_c_tests): New decl.
+	* tree-loop-distribution.c (pass_loop_distribution::execute):
+	Update for change in return type of find_loop_location.
+	* tree-parloops.c (parallelize_loops): Likewise.
+	* tree-ssa-loop-ivcanon.c (try_unroll_loop_completely): Convert
+	"locus" from location_t to dump_user_location_t.
+	(canonicalize_loop_induction_variables): Likewise.
+	* tree-ssa-loop-ivopts.c (tree_ssa_iv_optimize_loop): Update
+	for change in return type of find_loop_location.
+	* tree-ssa-loop-niter.c (number_of_iterations_exit): Update call
+	to dump_printf_loc to pass in a dump_location_t rather than a
+	location_t, via the stmt.
+	* tree-ssa-sccvn.c (eliminate_dom_walker::before_dom_children):
+	Likewise.
+	* tree-vect-loop-manip.c (find_loop_location): Convert return
+	type from source_location to dump_user_location_t.
+	(vect_do_peeling): Update for above change.
+	(vect_loop_versioning): Update for change in type of
+	vect_location.
+	* tree-vect-loop.c (check_reduction_path): Convert "loc" param
+	from location_t to dump_user_location_t.
+	(vect_estimate_min_profitable_iters): Update for change in type
+	of vect_location.
+	* tree-vect-slp.c (vect_print_slp_tree): Convert param "loc" from
+	location_t to dump_location_t.
+	(vect_slp_bb): Update for change in type of vect_location.
+	* tree-vectorizer.c (vect_location): Convert from source_location
+	to dump_user_location_t.
+	(try_vectorize_loop_1): Update for change in vect_location's type.
+	(vectorize_loops): Likewise.
+	(increase_alignment): Likewise.
+	* tree-vectorizer.h (vect_location): Convert from source_location
+	to dump_user_location_t.
+	(find_loop_location): Convert return type from source_location to
+	dump_user_location_t.
+	(check_reduction_path): Convert 1st param from location_t to
+	dump_user_location_t.
+	* value-prof.c (check_counter): Update call to dump_printf_loc to
+	pass in a dump_user_location_t rather than a location_t; update
+	call to error_at for change in type of "locus".
+	(check_ic_target): Update call to dump_printf_loc to
+	pass in a dump_user_location_t rather than a location_t, via the
+	call_stmt.
+
+2018-06-26  Robin Dapp  <rdapp@linux.vnet.ibm.com>
+
+        * config/s390/s390.h (enum processor_flags): Do not use
+        default tune parameter when -march was specified.
+
+2018-06-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/86314
+	* config/i386/i386.md (setcc + movzbl to xor + setcc peephole2s):
+	Check reg_overlap_mentioned_p in addition to reg_set_p with the same
+	operands.
+
+2018-06-26  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/86287
+	PR bootstrap/86316
+	* tree-vect-loop.c (vect_transform_loop_stmt): Fix read-after-free.
+	(vect_analyze_loop): Initialize n_stmts.
+
+2018-06-26  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/86271
+	* fold-const.c (fold_convertible_p): Pointer extension
+	isn't valid.
+
+2018-06-26  Alexandre Oliva <aoliva@redhat.com>
+
+	PR debug/86064
+	* dwarf2out.c (loc_list_has_views): Adjust comments.
+	(dw_loc_list): Split single cross-partition range with
+	nonzero locview.
+
+2018-06-25  Jeff Law  <law@redhat.com>
+
+	* common/config/v850/v850-common.c (TARGET_DEFAULT_TARGET_FLAGS): Turn
+	on -mbig-switch by default.
+
+	* config/v850/predicates.md (const_float_1_operand): Fix match_code
+	test.
+	(const_float_0_operand): Remove unused predicate.
+	* config/v850/v850.md (define_constants): Remove UNSPEC_LOOP.
+	(define_c_enum unspec): Add LOOP, RCP and RSQRT constants.
+	(recipsf2): New expander.  Original pattern now called
+	(recipsf2_insn).
+	(recipdf2, recipdf2_insn): Similarly.
+	(rsqrtsf2, rsqrtsf2_insn): Similarly
+	(rsqrtdf2, rsqrtdf2_insn): Similarly
+
+2018-06-26  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* ginclude/stddef.h: Remove an obsolete comment on FreeBSD 5.
+	Simplify logic for FreeBSD (twice).
+
+2018-06-25  Martin Sebor  <msebor@redhat.com>
+
+	PR tree-optimization/86204
+	* tree-ssa-strlen.c (handle_builtin_strlen): Avoid storing
+	a strnlen result if it's less than the length of the string.
+
+2018-06-25  Martin Sebor  <msebor@redhat.com>
+
+	PR tree-optimization/85700
+	* gimple-fold.c (gimple_fold_builtin_strncat): Adjust comment.
+	* tree-ssa-strlen.c (is_strlen_related_p): Handle integer subtraction.
+	(maybe_diag_stxncpy_trunc): Distinguish strncat from strncpy.
+
+2018-06-25  Martin Sebor  <msebor@redhat.com>
+
+	* doc/extend.texi (Zero-length arrays): Update and clarify.
+
+2018-06-25  Michael Meissner  <meissner@linux.ibm.com>
+
+	* config.gcc (powerpc64le*): Revert January 16th, 2018 patch that
+	added IEEE/IBM long double multilib support on PowerPC little
+	endian Linux systems.
+	* config/rs6000/linux64.h (MULTILIB_DEFAULTS_IEEE): Likewise.
+	(MULTILIB_DEFAULTS): Likewise.
+	* config/rs6000/rs6000.c (rs6000_option_override_internal):
+	Likewise.
+	* config/rs6000/rs6000.h (TARGET_IEEEQUAD_MULTILIB): Likewise.
+	* config/rs6000/t-ldouble-linux64le-ibm: Delete, no longer used.
+	* config/rs6000/t-ldouble-linux64le-ieee: Delete, no longer used.
+
+2018-06-25  Alexander Monakov  <amonakov@ispras.ru>
+
+	PR middle-end/86311
+	* sort.cc (REORDER_23): Avoid memcpy with same destination and source.
+	(REORDER_45): Likewise.
+
+2018-06-25  Jeff Law  <law@redhat.com>
+
+	* config/v850/v850.md (divmodhi4): Make sure to sign extend the
+	dividend to 32 bits.  Adjust length.
+	(udivmodhi4): Cleanup output template.  Fix length.
+
+2018-06-25  Carl Love  <cel@us.ibm.com>
+
+	* config/rs6000/vsx.md: Change word selector to prefered location.
+
+2018-06-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/86304
+	* tree-vectorizer.c (vectorize_loops): Walk over new possibly
+	epilogue-if-converted loops as well.
+
+2018-06-25  Jan Hubicka  <hubicka@ucw.cz>
+
+	* lto-section-out.c (lto_begin_section): Do not print section
+	name for noaddr and unnumbered dumps.
+
+2018-06-25  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (struct vec_info_shared): New structure
+	with parts split out from struct vec_info and loop_nest from
+	struct _loop_vec_info.
+	(struct vec_info): Adjust accordingly.
+	(struct _loop_vec_info): Likewise.
+	(LOOP_VINFO_LOOP_NEST): Adjust.
+	(LOOP_VINFO_DATAREFS): Likewise.
+	(LOOP_VINFO_DDRS): Likewise.
+	(struct _bb_vec_info): Likewise.
+	(BB_VINFO_DATAREFS): Likewise.
+	(BB_VINFO_DDRS): Likewise.
+	(struct _stmt_vec_info): Add dr_aux member.
+	(DR_VECT_AUX): Adjust to refer to member of DR_STMTs vinfo.
+	(DR_MISALIGNMENT_UNINITIALIZED): New.
+	(set_dr_misalignment): Adjust.
+	(dr_misalignment): Assert misalign isn't DR_MISALIGNMENT_UNINITIALIZED.
+	(vect_analyze_loop): Adjust prototype.
+	(vect_analyze_loop_form): Likewise.
+	* tree-vect-data-refs.c (vect_analyze_data_ref_dependences):
+	Compute dependences lazily.
+	(vect_record_base_alignments): Use shared datarefs/ddrs.
+	(vect_verify_datarefs_alignment): Likewise.
+	(vect_analyze_data_refs_alignment): Likewise.
+	(vect_analyze_data_ref_accesses): Likewise.
+	(vect_analyze_data_refs): Likewise.
+	* tree-vect-loop.c (_loop_vec_info::_loop_vec_info): Add
+	constructor parameter for shared part.
+	(vect_analyze_loop_form): Pass in shared part and adjust.
+	(vect_analyze_loop_2): Pass in storage for the number of
+	stmts.  Move loop nest finding to the caller.  Compute
+	datarefs lazily.
+	(vect_analyze_loop): Pass in shared part.
+	(vect_transform_loop): Verify shared datarefs are unchanged.
+	* tree-vect-slp.c (_bb_vec_info::_bb_vec_info): Add
+	constructor parameter for shared part.
+	(vect_slp_analyze_bb_1): Pass in shared part and adjust.
+	(vect_slp_bb): Verify shared datarefs are unchanged before
+	transform.
+	* tree-vect-stmts.c (ensure_base_align): Adjust for DR_AUX
+	change.
+	(new_stmt_vec_info): Initialize DR_AUX misalignment to
+	DR_MISALIGNMENT_UNINITIALIZED.
+	* tree-vectorizer.c (vec_info::vec_info): Add constructor
+	parameter for shared part.
+	(vec_info::~vec_info): Adjust.
+	(vec_info_shared::vec_info_shared): New.
+	(vec_info_shared::~vec_info_shared): Likewise.
+	(vec_info_shared::save_datarefs): Likewise.
+	(vec_info_shared::check_datarefs): Likewise.
+	(try_vectorize_loop_1): Construct shared part live for analyses
+	of a single loop for multiple vector sizes.
+	* tree-parloops.c (gather_scalar_reductions): Adjust.
+
+2018-06-25  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-data-refs.c (vect_find_stmt_data_reference): Modify
+	DR for SIMD lane accesses here and mark DR with (void *)-1 aux.
+	(vect_analyze_data_refs): Remove similar code from here and
+	simplify accordingly.
+
+2018-06-25  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-data-refs.c (vect_check_gather_scatter): Fail
+	for reverse storage order accesses rather than asserting
+	they cannot happen here.
+
+2018-06-25  Tom de Vries  <tdevries@suse.de>
+
+	PR debug/86257
+	* config/i386/i386.md (define_insn "*tls_global_dynamic_64_<mode>"):
+	Use data16 instead of .byte for insn prefix.
+
+2018-06-25  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	PR C++/86082
+	* parser.c (make_char_string_pack): Pass this literal chars
+	through cpp_interpret_string.
+	(cp_parser_userdef_numeric_literal): Check the result of
+	make_char_string_pack.
+
 2018-06-24  Maya Rashish  <coypu@sdf.org>
 
 	* ginclude/stddef.h: Simplify conditions around avoiding

@@ -60,11 +60,60 @@ vect_pattern_detected (const char *name, gimple *stmt)
     }
 }
 
-static inline void
-append_pattern_def_seq (stmt_vec_info stmt_info, gimple *stmt)
+/* Associate pattern statement PATTERN_STMT with ORIG_STMT_INFO.
+   Set its vector type to VECTYPE if it doesn't have one already.  */
+
+static void
+vect_init_pattern_stmt (gimple *pattern_stmt, stmt_vec_info orig_stmt_info,
+			tree vectype)
 {
+  stmt_vec_info pattern_stmt_info = vinfo_for_stmt (pattern_stmt);
+  if (pattern_stmt_info == NULL)
+    {
+      pattern_stmt_info = new_stmt_vec_info (pattern_stmt,
+					     orig_stmt_info->vinfo);
+      set_vinfo_for_stmt (pattern_stmt, pattern_stmt_info);
+    }
+  gimple_set_bb (pattern_stmt, gimple_bb (orig_stmt_info->stmt));
+
+  STMT_VINFO_RELATED_STMT (pattern_stmt_info) = orig_stmt_info->stmt;
+  STMT_VINFO_DEF_TYPE (pattern_stmt_info)
+    = STMT_VINFO_DEF_TYPE (orig_stmt_info);
+  if (!STMT_VINFO_VECTYPE (pattern_stmt_info))
+    STMT_VINFO_VECTYPE (pattern_stmt_info) = vectype;
+}
+
+/* Set the pattern statement of ORIG_STMT_INFO to PATTERN_STMT.
+   Also set the vector type of PATTERN_STMT to VECTYPE, if it doesn't
+   have one already.  */
+
+static void
+vect_set_pattern_stmt (gimple *pattern_stmt, stmt_vec_info orig_stmt_info,
+		       tree vectype)
+{
+  STMT_VINFO_IN_PATTERN_P (orig_stmt_info) = true;
+  STMT_VINFO_RELATED_STMT (orig_stmt_info) = pattern_stmt;
+  vect_init_pattern_stmt (pattern_stmt, orig_stmt_info, vectype);
+}
+
+/* Add NEW_STMT to STMT_INFO's pattern definition statements.  If VECTYPE
+   is nonnull, record that NEW_STMT's vector type is VECTYPE, which might
+   be different from the vector type of the final pattern statement.  */
+
+static inline void
+append_pattern_def_seq (stmt_vec_info stmt_info, gimple *new_stmt,
+			tree vectype = NULL_TREE)
+{
+  vec_info *vinfo = stmt_info->vinfo;
+  if (vectype)
+    {
+      gcc_assert (!vinfo_for_stmt (new_stmt));
+      stmt_vec_info new_stmt_info = new_stmt_vec_info (new_stmt, vinfo);
+      set_vinfo_for_stmt (new_stmt, new_stmt_info);
+      STMT_VINFO_VECTYPE (new_stmt_info) = vectype;
+    }
   gimple_seq_add_stmt_without_update (&STMT_VINFO_PATTERN_DEF_SEQ (stmt_info),
-				      stmt);
+				      new_stmt);
 }
 
 static inline void
@@ -72,6 +121,30 @@ new_pattern_def_seq (stmt_vec_info stmt_info, gimple *stmt)
 {
   STMT_VINFO_PATTERN_DEF_SEQ (stmt_info) = NULL;
   append_pattern_def_seq (stmt_info, stmt);
+}
+
+/* The caller wants to perform new operations on vect_external variable
+   VAR, so that the result of the operations would also be vect_external.
+   Return the edge on which the operations can be performed, if one exists.
+   Return null if the operations should instead be treated as part of
+   the pattern that needs them.  */
+
+static edge
+vect_get_external_def_edge (vec_info *vinfo, tree var)
+{
+  edge e = NULL;
+  if (loop_vec_info loop_vinfo = dyn_cast <loop_vec_info> (vinfo))
+    {
+      e = loop_preheader_edge (loop_vinfo->loop);
+      if (!SSA_NAME_IS_DEFAULT_DEF (var))
+	{
+	  basic_block bb = gimple_bb (SSA_NAME_DEF_STMT (var));
+	  if (bb == NULL
+	      || !dominated_by_p (CDI_DOMINATORS, e->dest, bb))
+	    e = NULL;
+	}
+    }
+  return e;
 }
 
 /* Return true if the target supports a vector version of CODE,
@@ -151,6 +224,15 @@ vect_single_imm_use (gimple *def_stmt)
   return use_stmt;
 }
 
+/* Round bit precision PRECISION up to a full element.  */
+
+static unsigned int
+vect_element_precision (unsigned int precision)
+{
+  precision = 1 << ceil_log2 (precision);
+  return MAX (precision, BITS_PER_UNIT);
+}
+
 /* If OP is defined by a statement that's being considered for vectorization,
    return information about that statement, otherwise return NULL.  */
 
@@ -160,7 +242,7 @@ vect_get_internal_def (vec_info *vinfo, tree op)
   vect_def_type dt;
   gimple *def_stmt;
   if (TREE_CODE (op) != SSA_NAME
-      || !vect_is_simple_use (op, vinfo, &def_stmt, &dt)
+      || !vect_is_simple_use (op, vinfo, &dt, &def_stmt)
       || dt != vect_internal_def)
     return NULL;
 
@@ -177,14 +259,13 @@ static bool
 type_conversion_p (tree name, gimple *use_stmt, bool check_sign,
 		   tree *orig_type, gimple **def_stmt, bool *promotion)
 {
-  gimple *dummy_gimple;
   stmt_vec_info stmt_vinfo;
   tree type = TREE_TYPE (name);
   tree oprnd0;
   enum vect_def_type dt;
 
   stmt_vinfo = vinfo_for_stmt (use_stmt);
-  if (!vect_is_simple_use (name, stmt_vinfo->vinfo, def_stmt, &dt))
+  if (!vect_is_simple_use (name, stmt_vinfo->vinfo, &dt, def_stmt))
     return false;
 
   if (dt != vect_internal_def
@@ -193,13 +274,6 @@ type_conversion_p (tree name, gimple *use_stmt, bool check_sign,
 
   if (!*def_stmt)
     return false;
-
-  if (dt == vect_internal_def)
-    {
-      stmt_vec_info def_vinfo = vinfo_for_stmt (*def_stmt);
-      if (STMT_VINFO_IN_PATTERN_P (def_vinfo))
-	return false;
-    }
 
   if (!is_gimple_assign (*def_stmt))
     return false;
@@ -219,10 +293,326 @@ type_conversion_p (tree name, gimple *use_stmt, bool check_sign,
   else
     *promotion = false;
 
-  if (!vect_is_simple_use (oprnd0, stmt_vinfo->vinfo, &dummy_gimple, &dt))
+  if (!vect_is_simple_use (oprnd0, stmt_vinfo->vinfo, &dt))
     return false;
 
   return true;
+}
+
+/* Holds information about an input operand after some sign changes
+   and type promotions have been peeled away.  */
+struct vect_unpromoted_value {
+  vect_unpromoted_value ();
+
+  void set_op (tree, vect_def_type, stmt_vec_info = NULL);
+
+  /* The value obtained after peeling away zero or more casts.  */
+  tree op;
+
+  /* The type of OP.  */
+  tree type;
+
+  /* The definition type of OP.  */
+  vect_def_type dt;
+
+  /* If OP is the result of peeling at least one cast, and if the cast
+     of OP itself is a vectorizable statement, CASTER identifies that
+     statement, otherwise it is null.  */
+  stmt_vec_info caster;
+};
+
+inline vect_unpromoted_value::vect_unpromoted_value ()
+  : op (NULL_TREE),
+    type (NULL_TREE),
+    dt (vect_uninitialized_def),
+    caster (NULL)
+{
+}
+
+/* Set the operand to OP_IN, its definition type to DT_IN, and the
+   statement that casts it to CASTER_IN.  */
+
+inline void
+vect_unpromoted_value::set_op (tree op_in, vect_def_type dt_in,
+			       stmt_vec_info caster_in)
+{
+  op = op_in;
+  type = TREE_TYPE (op);
+  dt = dt_in;
+  caster = caster_in;
+}
+
+/* If OP is a vectorizable SSA name, strip a sequence of integer conversions
+   to reach some vectorizable inner operand OP', continuing as long as it
+   is possible to convert OP' back to OP using a possible sign change
+   followed by a possible promotion P.  Return this OP', or null if OP is
+   not a vectorizable SSA name.  If there is a promotion P, describe its
+   input in UNPROM, otherwise describe OP' in UNPROM.
+
+   A successful return means that it is possible to go from OP' to OP
+   via UNPROM.  The cast from OP' to UNPROM is at most a sign change,
+   whereas the cast from UNPROM to OP might be a promotion, a sign
+   change, or a nop.
+
+   E.g. say we have:
+
+       signed short *ptr = ...;
+       signed short C = *ptr;
+       unsigned short B = (unsigned short) C;    // sign change
+       signed int A = (signed int) B;            // unsigned promotion
+       ...possible other uses of A...
+       unsigned int OP = (unsigned int) A;       // sign change
+
+   In this case it's possible to go directly from C to OP using:
+
+       OP = (unsigned int) (unsigned short) C;
+	    +------------+ +--------------+
+	       promotion      sign change
+
+   so OP' would be C.  The input to the promotion is B, so UNPROM
+   would describe B.  */
+
+static tree
+vect_look_through_possible_promotion (vec_info *vinfo, tree op,
+				      vect_unpromoted_value *unprom)
+{
+  tree res = NULL_TREE;
+  tree op_type = TREE_TYPE (op);
+  unsigned int orig_precision = TYPE_PRECISION (op_type);
+  stmt_vec_info caster = NULL;
+  while (TREE_CODE (op) == SSA_NAME && INTEGRAL_TYPE_P (op_type))
+    {
+      /* See whether OP is simple enough to vectorize.  */
+      gimple *def_stmt;
+      vect_def_type dt;
+      if (!vect_is_simple_use (op, vinfo, &dt, &def_stmt))
+	break;
+
+      /* If OP is the input of a demotion, skip over it to see whether
+	 OP is itself the result of a promotion.  If so, the combined
+	 effect of the promotion and the demotion might fit the required
+	 pattern, otherwise neither operation fits.
+
+	 This copes with cases such as the result of an arithmetic
+	 operation being truncated before being stored, and where that
+	 arithmetic operation has been recognized as an over-widened one.  */
+      if (TYPE_PRECISION (op_type) <= orig_precision)
+	{
+	  /* Use OP as the UNPROM described above if we haven't yet
+	     found a promotion, or if using the new input preserves the
+	     sign of the previous promotion.  */
+	  if (!res
+	      || TYPE_PRECISION (unprom->type) == orig_precision
+	      || TYPE_SIGN (unprom->type) == TYPE_SIGN (op_type))
+	    unprom->set_op (op, dt, caster);
+	  /* Stop if we've already seen a promotion and if this
+	     conversion does more than change the sign.  */
+	  else if (TYPE_PRECISION (op_type)
+		   != TYPE_PRECISION (unprom->type))
+	    break;
+
+	  /* The sequence now extends to OP.  */
+	  res = op;
+	}
+
+      /* See whether OP is defined by a cast.  Record it as CASTER if
+	 the cast is potentially vectorizable.  */
+      if (!def_stmt)
+	break;
+      if (dt == vect_internal_def)
+	caster = vinfo_for_stmt (def_stmt);
+      else
+	caster = NULL;
+      gassign *assign = dyn_cast <gassign *> (def_stmt);
+      if (!assign || !CONVERT_EXPR_CODE_P (gimple_assign_rhs_code (def_stmt)))
+	break;
+
+      /* Continue with the input to the cast.  */
+      op = gimple_assign_rhs1 (def_stmt);
+      op_type = TREE_TYPE (op);
+    }
+  return res;
+}
+
+/* OP is an integer operand to an operation that returns TYPE, and we
+   want to treat the operation as a widening one.  So far we can treat
+   it as widening from *COMMON_TYPE.
+
+   Return true if OP is suitable for such a widening operation,
+   either widening from *COMMON_TYPE or from some supertype of it.
+   Update *COMMON_TYPE to the supertype in the latter case.
+
+   SHIFT_P is true if OP is a shift amount.  */
+
+static bool
+vect_joust_widened_integer (tree type, bool shift_p, tree op,
+			    tree *common_type)
+{
+  /* Calculate the minimum precision required by OP, without changing
+     the sign of either operand.  */
+  unsigned int precision;
+  if (shift_p)
+    {
+      if (!wi::leu_p (wi::to_widest (op), TYPE_PRECISION (type) / 2))
+	return false;
+      precision = TREE_INT_CST_LOW (op);
+    }
+  else
+    {
+      precision = wi::min_precision (wi::to_widest (op),
+				     TYPE_SIGN (*common_type));
+      if (precision * 2 > TYPE_PRECISION (type))
+	return false;
+    }
+
+  /* If OP requires a wider type, switch to that type.  The checks
+     above ensure that this is still narrower than the result.  */
+  precision = vect_element_precision (precision);
+  if (TYPE_PRECISION (*common_type) < precision)
+    *common_type = build_nonstandard_integer_type
+      (precision, TYPE_UNSIGNED (*common_type));
+  return true;
+}
+
+/* Return true if the common supertype of NEW_TYPE and *COMMON_TYPE
+   is narrower than type, storing the supertype in *COMMON_TYPE if so.  */
+
+static bool
+vect_joust_widened_type (tree type, tree new_type, tree *common_type)
+{
+  if (types_compatible_p (*common_type, new_type))
+    return true;
+
+  /* See if *COMMON_TYPE can hold all values of NEW_TYPE.  */
+  if ((TYPE_PRECISION (new_type) < TYPE_PRECISION (*common_type))
+      && (TYPE_UNSIGNED (new_type) || !TYPE_UNSIGNED (*common_type)))
+    return true;
+
+  /* See if NEW_TYPE can hold all values of *COMMON_TYPE.  */
+  if (TYPE_PRECISION (*common_type) < TYPE_PRECISION (new_type)
+      && (TYPE_UNSIGNED (*common_type) || !TYPE_UNSIGNED (new_type)))
+    {
+      *common_type = new_type;
+      return true;
+    }
+
+  /* We have mismatched signs, with the signed type being
+     no wider than the unsigned type.  In this case we need
+     a wider signed type.  */
+  unsigned int precision = MAX (TYPE_PRECISION (*common_type),
+				TYPE_PRECISION (new_type));
+  precision *= 2;
+  if (precision * 2 > TYPE_PRECISION (type))
+    return false;
+
+  *common_type = build_nonstandard_integer_type (precision, false);
+  return true;
+}
+
+/* Check whether STMT_INFO can be viewed as a tree of integer operations
+   in which each node either performs CODE or WIDENED_CODE, and where
+   each leaf operand is narrower than the result of STMT_INFO.  MAX_NOPS
+   specifies the maximum number of leaf operands.  SHIFT_P says whether
+   CODE and WIDENED_CODE are some sort of shift.
+
+   If STMT_INFO is such a tree, return the number of leaf operands
+   and describe them in UNPROM[0] onwards.  Also set *COMMON_TYPE
+   to a type that (a) is narrower than the result of STMT_INFO and
+   (b) can hold all leaf operand values.
+
+   Return 0 if STMT_INFO isn't such a tree, or if no such COMMON_TYPE
+   exists.  */
+
+static unsigned int
+vect_widened_op_tree (stmt_vec_info stmt_info, tree_code code,
+		      tree_code widened_code, bool shift_p,
+		      unsigned int max_nops,
+		      vect_unpromoted_value *unprom, tree *common_type)
+{
+  /* Check for an integer operation with the right code.  */
+  gassign *assign = dyn_cast <gassign *> (stmt_info->stmt);
+  if (!assign)
+    return 0;
+
+  tree_code rhs_code = gimple_assign_rhs_code (assign);
+  if (rhs_code != code && rhs_code != widened_code)
+    return 0;
+
+  tree type = gimple_expr_type (assign);
+  if (!INTEGRAL_TYPE_P (type))
+    return 0;
+
+  /* Assume that both operands will be leaf operands.  */
+  max_nops -= 2;
+
+  /* Check the operands.  */
+  unsigned int next_op = 0;
+  for (unsigned int i = 0; i < 2; ++i)
+    {
+      vect_unpromoted_value *this_unprom = &unprom[next_op];
+      unsigned int nops = 1;
+      tree op = gimple_op (assign, i + 1);
+      if (i == 1 && TREE_CODE (op) == INTEGER_CST)
+	{
+	  /* We already have a common type from earlier operands.
+	     Update it to account for OP.  */
+	  this_unprom->set_op (op, vect_constant_def);
+	  if (!vect_joust_widened_integer (type, shift_p, op, common_type))
+	    return 0;
+	}
+      else
+	{
+	  /* Only allow shifts by constants.  */
+	  if (shift_p && i == 1)
+	    return 0;
+
+	  if (!vect_look_through_possible_promotion (stmt_info->vinfo, op,
+						     this_unprom))
+	    return 0;
+
+	  if (TYPE_PRECISION (this_unprom->type) == TYPE_PRECISION (type))
+	    {
+	      /* The operand isn't widened.  If STMT_INFO has the code
+		 for an unwidened operation, recursively check whether
+		 this operand is a node of the tree.  */
+	      if (rhs_code != code
+		  || max_nops == 0
+		  || this_unprom->dt != vect_internal_def)
+		return 0;
+
+	      /* Give back the leaf slot allocated above now that we're
+		 not treating this as a leaf operand.  */
+	      max_nops += 1;
+
+	      /* Recursively process the definition of the operand.  */
+	      stmt_vec_info def_stmt_info
+		= vinfo_for_stmt (SSA_NAME_DEF_STMT (this_unprom->op));
+	      nops = vect_widened_op_tree (def_stmt_info, code, widened_code,
+					   shift_p, max_nops, this_unprom,
+					   common_type);
+	      if (nops == 0)
+		return 0;
+
+	      max_nops -= nops;
+	    }
+	  else
+	    {
+	      /* Make sure that the operand is narrower than the result.  */
+	      if (TYPE_PRECISION (this_unprom->type) * 2
+		  > TYPE_PRECISION (type))
+		return 0;
+
+	      /* Update COMMON_TYPE for the new operand.  */
+	      if (i == 0)
+		*common_type = this_unprom->type;
+	      else if (!vect_joust_widened_type (type, this_unprom->type,
+						 common_type))
+		return 0;
+	    }
+	}
+      next_op += nops;
+    }
+  return next_op;
 }
 
 /* Helper to return a new temporary for pattern of TYPE for STMT.  If STMT
@@ -232,6 +622,91 @@ static tree
 vect_recog_temp_ssa_var (tree type, gimple *stmt)
 {
   return make_temp_ssa_name (type, stmt, "patt");
+}
+
+/* Convert UNPROM to TYPE and return the result, adding new statements
+   to STMT_INFO's pattern definition statements if no better way is
+   available.  VECTYPE is the vector form of TYPE.  */
+
+static tree
+vect_convert_input (stmt_vec_info stmt_info, tree type,
+		    vect_unpromoted_value *unprom, tree vectype)
+{
+  /* Check for a no-op conversion.  */
+  if (types_compatible_p (type, TREE_TYPE (unprom->op)))
+    return unprom->op;
+
+  /* Allow the caller to create constant vect_unpromoted_values.  */
+  if (TREE_CODE (unprom->op) == INTEGER_CST)
+    return wide_int_to_tree (type, wi::to_widest (unprom->op));
+
+  /* See if we can reuse an existing result.  */
+  if (unprom->caster)
+    {
+      tree lhs = gimple_get_lhs (unprom->caster->stmt);
+      if (types_compatible_p (TREE_TYPE (lhs), type))
+	return lhs;
+    }
+
+  /* We need a new conversion statement.  */
+  tree new_op = vect_recog_temp_ssa_var (type, NULL);
+  gassign *new_stmt = gimple_build_assign (new_op, NOP_EXPR, unprom->op);
+
+  /* If OP is an external value, see if we can insert the new statement
+     on an incoming edge.  */
+  if (unprom->dt == vect_external_def)
+    if (edge e = vect_get_external_def_edge (stmt_info->vinfo, unprom->op))
+      {
+	basic_block new_bb = gsi_insert_on_edge_immediate (e, new_stmt);
+	gcc_assert (!new_bb);
+	return new_op;
+      }
+
+  /* As a (common) last resort, add the statement to the pattern itself.  */
+  append_pattern_def_seq (stmt_info, new_stmt, vectype);
+  return new_op;
+}
+
+/* Invoke vect_convert_input for N elements of UNPROM and store the
+   result in the corresponding elements of RESULT.  */
+
+static void
+vect_convert_inputs (stmt_vec_info stmt_info, unsigned int n,
+		     tree *result, tree type, vect_unpromoted_value *unprom,
+		     tree vectype)
+{
+  for (unsigned int i = 0; i < n; ++i)
+    {
+      unsigned int j;
+      for (j = 0; j < i; ++j)
+	if (unprom[j].op == unprom[i].op)
+	  break;
+      if (j < i)
+	result[i] = result[j];
+      else
+	result[i] = vect_convert_input (stmt_info, type, &unprom[i], vectype);
+    }
+}
+
+/* The caller has created a (possibly empty) sequence of pattern definition
+   statements followed by a single statement PATTERN_STMT.  Cast the result
+   of this final statement to TYPE.  If a new statement is needed, add
+   PATTERN_STMT to the end of STMT_INFO's pattern definition statements
+   and return the new statement, otherwise return PATTERN_STMT as-is.
+   VECITYPE is the vector form of PATTERN_STMT's result type.  */
+
+static gimple *
+vect_convert_output (stmt_vec_info stmt_info, tree type, gimple *pattern_stmt,
+		     tree vecitype)
+{
+  tree lhs = gimple_get_lhs (pattern_stmt);
+  if (!types_compatible_p (type, TREE_TYPE (lhs)))
+    {
+      append_pattern_def_seq (stmt_info, pattern_stmt, vecitype);
+      tree cast_var = vect_recog_temp_ssa_var (type, NULL);
+      pattern_stmt = gimple_build_assign (cast_var, NOP_EXPR, lhs);
+    }
+  return pattern_stmt;
 }
 
 /* Return true if STMT_VINFO describes a reduction for which reassociation
@@ -245,6 +720,36 @@ vect_reassociating_reduction_p (stmt_vec_info stmt_vinfo)
   return (STMT_VINFO_DEF_TYPE (stmt_vinfo) == vect_reduction_def
 	  ? STMT_VINFO_REDUC_TYPE (stmt_vinfo) != FOLD_LEFT_REDUCTION
 	  : REDUC_GROUP_FIRST_ELEMENT (stmt_vinfo) != NULL);
+}
+
+/* As above, but also require it to have code CODE and to be a reduction
+   in the outermost loop.  When returning true, store the operands in
+   *OP0_OUT and *OP1_OUT.  */
+
+static bool
+vect_reassociating_reduction_p (stmt_vec_info stmt_info, tree_code code,
+				tree *op0_out, tree *op1_out)
+{
+  loop_vec_info loop_info = STMT_VINFO_LOOP_VINFO (stmt_info);
+  if (!loop_info)
+    return false;
+
+  gassign *assign = dyn_cast <gassign *> (stmt_info->stmt);
+  if (!assign || gimple_assign_rhs_code (assign) != code)
+    return false;
+
+  /* We don't allow changing the order of the computation in the inner-loop
+     when doing outer-loop vectorization.  */
+  struct loop *loop = LOOP_VINFO_LOOP (loop_info);
+  if (loop && nested_in_vect_loop_p (loop, assign))
+    return false;
+
+  if (!vect_reassociating_reduction_p (stmt_info))
+    return false;
+
+  *op0_out = gimple_assign_rhs1 (assign);
+  *op1_out = gimple_assign_rhs2 (assign);
+  return true;
 }
 
 /* Function vect_recog_dot_prod_pattern
@@ -293,33 +798,13 @@ vect_reassociating_reduction_p (stmt_vec_info stmt_vinfo)
 static gimple *
 vect_recog_dot_prod_pattern (vec<gimple *> *stmts, tree *type_out)
 {
-  gimple *stmt, *last_stmt = (*stmts)[0];
+  gimple *last_stmt = (*stmts)[0];
   tree oprnd0, oprnd1;
-  tree oprnd00, oprnd01;
   stmt_vec_info stmt_vinfo = vinfo_for_stmt (last_stmt);
   vec_info *vinfo = stmt_vinfo->vinfo;
   tree type, half_type;
   gimple *pattern_stmt;
-  tree prod_type;
-  loop_vec_info loop_info = STMT_VINFO_LOOP_VINFO (stmt_vinfo);
-  struct loop *loop;
   tree var;
-  bool promotion;
-
-  if (!loop_info)
-    return NULL;
-
-  loop = LOOP_VINFO_LOOP (loop_info);
-
-  /* We don't allow changing the order of the computation in the inner-loop
-     when doing outer-loop vectorization.  */
-  if (loop && nested_in_vect_loop_p (loop, last_stmt))
-    return NULL;
-
-  if (!is_gimple_assign (last_stmt))
-    return NULL;
-
-  type = gimple_expr_type (last_stmt);
 
   /* Look for the following pattern
           DX = (TYPE1) X;
@@ -345,96 +830,55 @@ vect_recog_dot_prod_pattern (vec<gimple *> *stmts, tree *type_out)
   /* Starting from LAST_STMT, follow the defs of its uses in search
      of the above pattern.  */
 
-  if (gimple_assign_rhs_code (last_stmt) != PLUS_EXPR)
+  if (!vect_reassociating_reduction_p (stmt_vinfo, PLUS_EXPR,
+				       &oprnd0, &oprnd1))
     return NULL;
 
-  if (STMT_VINFO_IN_PATTERN_P (stmt_vinfo))
-    return NULL;
+  type = gimple_expr_type (last_stmt);
 
-  if (!vect_reassociating_reduction_p (stmt_vinfo))
-    return NULL;
-
-  oprnd0 = gimple_assign_rhs1 (last_stmt);
-  oprnd1 = gimple_assign_rhs2 (last_stmt);
-  stmt = last_stmt;
-
-  gimple *def_stmt;
-  if (type_conversion_p (oprnd0, stmt, true, &half_type, &def_stmt,
-			 &promotion)
-      && promotion)
-    {
-      stmt = def_stmt;
-      oprnd0 = gimple_assign_rhs1 (stmt);
-    }
-  else
-    half_type = type;
+  vect_unpromoted_value unprom_mult;
+  oprnd0 = vect_look_through_possible_promotion (vinfo, oprnd0, &unprom_mult);
 
   /* So far so good.  Since last_stmt was detected as a (summation) reduction,
      we know that oprnd1 is the reduction variable (defined by a loop-header
      phi), and oprnd0 is an ssa-name defined by a stmt in the loop body.
      Left to check that oprnd0 is defined by a (widen_)mult_expr  */
-  if (TREE_CODE (oprnd0) != SSA_NAME)
+  if (!oprnd0)
     return NULL;
 
-  prod_type = half_type;
   stmt_vec_info mult_vinfo = vect_get_internal_def (vinfo, oprnd0);
   if (!mult_vinfo)
     return NULL;
 
   /* FORNOW.  Can continue analyzing the def-use chain when this stmt in a phi
      inside the loop (in case we are analyzing an outer-loop).  */
-  gassign *mult = dyn_cast <gassign *> (mult_vinfo->stmt);
-  if (!mult || gimple_assign_rhs_code (mult) != MULT_EXPR)
+  vect_unpromoted_value unprom0[2];
+  if (!vect_widened_op_tree (mult_vinfo, MULT_EXPR, WIDEN_MULT_EXPR,
+			     false, 2, unprom0, &half_type))
     return NULL;
-  if (STMT_VINFO_IN_PATTERN_P (mult_vinfo))
-    {
-      /* Has been detected as a widening multiplication?  */
 
-      mult = dyn_cast <gassign *> (STMT_VINFO_RELATED_STMT (mult_vinfo));
-      if (!mult || gimple_assign_rhs_code (mult) != WIDEN_MULT_EXPR)
-        return NULL;
-      STMT_VINFO_PATTERN_DEF_SEQ (stmt_vinfo)
-	= STMT_VINFO_PATTERN_DEF_SEQ (mult_vinfo);
-      mult_vinfo = vinfo_for_stmt (mult);
-      gcc_assert (mult_vinfo);
-      gcc_assert (STMT_VINFO_DEF_TYPE (mult_vinfo) == vect_internal_def);
-      oprnd00 = gimple_assign_rhs1 (mult);
-      oprnd01 = gimple_assign_rhs2 (mult);
-    }
-  else
-    {
-      tree half_type0, half_type1;
-      gimple *def_stmt;
-      tree oprnd0, oprnd1;
-
-      oprnd0 = gimple_assign_rhs1 (mult);
-      oprnd1 = gimple_assign_rhs2 (mult);
-      if (!type_conversion_p (oprnd0, mult, true, &half_type0, &def_stmt,
-			      &promotion)
-	  || !promotion)
-        return NULL;
-      oprnd00 = gimple_assign_rhs1 (def_stmt);
-      if (!type_conversion_p (oprnd1, mult, true, &half_type1, &def_stmt,
-			      &promotion)
-	  || !promotion)
-        return NULL;
-      oprnd01 = gimple_assign_rhs1 (def_stmt);
-      if (!types_compatible_p (half_type0, half_type1))
-        return NULL;
-      if (TYPE_PRECISION (prod_type) != TYPE_PRECISION (half_type0) * 2)
-	return NULL;
-    }
+  /* If there are two widening operations, make sure they agree on
+     the sign of the extension.  */
+  if (TYPE_PRECISION (unprom_mult.type) != TYPE_PRECISION (type)
+      && TYPE_SIGN (unprom_mult.type) != TYPE_SIGN (half_type))
+    return NULL;
 
   vect_pattern_detected ("vect_recog_dot_prod_pattern", last_stmt);
 
-  half_type = TREE_TYPE (oprnd00);
+  tree half_vectype;
   if (!vect_supportable_direct_optab_p (type, DOT_PROD_EXPR, half_type,
-					type_out))
+					type_out, &half_vectype))
     return NULL;
+
+  /* Get the inputs in the appropriate types.  */
+  STMT_VINFO_PATTERN_DEF_SEQ (stmt_vinfo) = NULL;
+  tree mult_oprnd[2];
+  vect_convert_inputs (stmt_vinfo, 2, mult_oprnd, half_type,
+		       unprom0, half_vectype);
 
   var = vect_recog_temp_ssa_var (type, NULL);
   pattern_stmt = gimple_build_assign (var, DOT_PROD_EXPR,
-				      oprnd00, oprnd01, oprnd1);
+				      mult_oprnd[0], mult_oprnd[1], oprnd1);
 
   return pattern_stmt;
 }
@@ -481,28 +925,9 @@ static gimple *
 vect_recog_sad_pattern (vec<gimple *> *stmts, tree *type_out)
 {
   gimple *last_stmt = (*stmts)[0];
-  tree sad_oprnd0, sad_oprnd1;
   stmt_vec_info stmt_vinfo = vinfo_for_stmt (last_stmt);
   vec_info *vinfo = stmt_vinfo->vinfo;
   tree half_type;
-  loop_vec_info loop_info = STMT_VINFO_LOOP_VINFO (stmt_vinfo);
-  struct loop *loop;
-  bool promotion;
-
-  if (!loop_info)
-    return NULL;
-
-  loop = LOOP_VINFO_LOOP (loop_info);
-
-  /* We don't allow changing the order of the computation in the inner-loop
-     when doing outer-loop vectorization.  */
-  if (loop && nested_in_vect_loop_p (loop, last_stmt))
-    return NULL;
-
-  if (!is_gimple_assign (last_stmt))
-    return NULL;
-
-  tree sum_type = gimple_expr_type (last_stmt);
 
   /* Look for the following pattern
           DX = (TYPE1) X;
@@ -531,38 +956,30 @@ vect_recog_sad_pattern (vec<gimple *> *stmts, tree *type_out)
   /* Starting from LAST_STMT, follow the defs of its uses in search
      of the above pattern.  */
 
-  if (gimple_assign_rhs_code (last_stmt) != PLUS_EXPR)
-    return NULL;
-
   tree plus_oprnd0, plus_oprnd1;
-
-  if (STMT_VINFO_IN_PATTERN_P (stmt_vinfo))
+  if (!vect_reassociating_reduction_p (stmt_vinfo, PLUS_EXPR,
+				       &plus_oprnd0, &plus_oprnd1))
     return NULL;
 
-  if (!vect_reassociating_reduction_p (stmt_vinfo))
-    return NULL;
+  tree sum_type = gimple_expr_type (last_stmt);
 
-  plus_oprnd0 = gimple_assign_rhs1 (last_stmt);
-  plus_oprnd1 = gimple_assign_rhs2 (last_stmt);
-
-  /* The type conversion could be promotion, demotion,
-     or just signed -> unsigned.  */
-  gimple *def_stmt;
-  if (type_conversion_p (plus_oprnd0, last_stmt, false,
-			 &half_type, &def_stmt, &promotion))
-    plus_oprnd0 = gimple_assign_rhs1 (def_stmt);
-  else
-    half_type = sum_type;
+  /* Any non-truncating sequence of conversions is OK here, since
+     with a successful match, the result of the ABS(U) is known to fit
+     within the nonnegative range of the result type.  (It cannot be the
+     negative of the minimum signed value due to the range of the widening
+     MINUS_EXPR.)  */
+  vect_unpromoted_value unprom_abs;
+  plus_oprnd0 = vect_look_through_possible_promotion (vinfo, plus_oprnd0,
+						      &unprom_abs);
 
   /* So far so good.  Since last_stmt was detected as a (summation) reduction,
      we know that plus_oprnd1 is the reduction variable (defined by a loop-header
      phi), and plus_oprnd0 is an ssa-name defined by a stmt in the loop body.
      Then check that plus_oprnd0 is defined by an abs_expr.  */
 
-  if (TREE_CODE (plus_oprnd0) != SSA_NAME)
+  if (!plus_oprnd0)
     return NULL;
 
-  tree abs_type = half_type;
   stmt_vec_info abs_stmt_vinfo = vect_get_internal_def (vinfo, plus_oprnd0);
   if (!abs_stmt_vinfo)
     return NULL;
@@ -576,334 +993,114 @@ vect_recog_sad_pattern (vec<gimple *> *stmts, tree *type_out)
     return NULL;
 
   tree abs_oprnd = gimple_assign_rhs1 (abs_stmt);
+  tree abs_type = TREE_TYPE (abs_oprnd);
   if (TYPE_UNSIGNED (abs_type))
     return NULL;
 
-  /* We then detect if the operand of abs_expr is defined by a minus_expr.  */
-
-  if (TREE_CODE (abs_oprnd) != SSA_NAME)
+  /* Peel off conversions from the ABS input.  This can involve sign
+     changes (e.g. from an unsigned subtraction to a signed ABS input)
+     or signed promotion, but it can't include unsigned promotion.
+     (Note that ABS of an unsigned promotion should have been folded
+     away before now anyway.)  */
+  vect_unpromoted_value unprom_diff;
+  abs_oprnd = vect_look_through_possible_promotion (vinfo, abs_oprnd,
+						    &unprom_diff);
+  if (!abs_oprnd)
+    return NULL;
+  if (TYPE_PRECISION (unprom_diff.type) != TYPE_PRECISION (abs_type)
+      && TYPE_UNSIGNED (unprom_diff.type))
     return NULL;
 
+  /* We then detect if the operand of abs_expr is defined by a minus_expr.  */
   stmt_vec_info diff_stmt_vinfo = vect_get_internal_def (vinfo, abs_oprnd);
   if (!diff_stmt_vinfo)
     return NULL;
 
   /* FORNOW.  Can continue analyzing the def-use chain when this stmt in a phi
      inside the loop (in case we are analyzing an outer-loop).  */
-  gassign *diff_stmt = dyn_cast <gassign *> (diff_stmt_vinfo->stmt);
-  if (!diff_stmt || gimple_assign_rhs_code (diff_stmt) != MINUS_EXPR)
-    return NULL;
-
-  tree half_type0, half_type1;
-
-  tree minus_oprnd0 = gimple_assign_rhs1 (diff_stmt);
-  tree minus_oprnd1 = gimple_assign_rhs2 (diff_stmt);
-
-  if (!type_conversion_p (minus_oprnd0, diff_stmt, false,
-                          &half_type0, &def_stmt, &promotion)
-      || !promotion)
-    return NULL;
-  sad_oprnd0 = gimple_assign_rhs1 (def_stmt);
-
-  if (!type_conversion_p (minus_oprnd1, diff_stmt, false,
-                          &half_type1, &def_stmt, &promotion)
-      || !promotion)
-    return NULL;
-  sad_oprnd1 = gimple_assign_rhs1 (def_stmt);
-
-  if (!types_compatible_p (half_type0, half_type1))
-    return NULL;
-  if (TYPE_PRECISION (abs_type) < TYPE_PRECISION (half_type0) * 2
-      || TYPE_PRECISION (sum_type) < TYPE_PRECISION (half_type0) * 2)
+  vect_unpromoted_value unprom[2];
+  if (!vect_widened_op_tree (diff_stmt_vinfo, MINUS_EXPR, MINUS_EXPR,
+			     false, 2, unprom, &half_type))
     return NULL;
 
   vect_pattern_detected ("vect_recog_sad_pattern", last_stmt);
 
-  if (!vect_supportable_direct_optab_p (sum_type, SAD_EXPR,
-					TREE_TYPE (sad_oprnd0), type_out))
+  tree half_vectype;
+  if (!vect_supportable_direct_optab_p (sum_type, SAD_EXPR, half_type,
+					type_out, &half_vectype))
     return NULL;
 
+  /* Get the inputs to the SAD_EXPR in the appropriate types.  */
+  STMT_VINFO_PATTERN_DEF_SEQ (stmt_vinfo) = NULL;
+  tree sad_oprnd[2];
+  vect_convert_inputs (stmt_vinfo, 2, sad_oprnd, half_type,
+		       unprom, half_vectype);
+
   tree var = vect_recog_temp_ssa_var (sum_type, NULL);
-  gimple *pattern_stmt = gimple_build_assign (var, SAD_EXPR, sad_oprnd0,
-					      sad_oprnd1, plus_oprnd1);
+  gimple *pattern_stmt = gimple_build_assign (var, SAD_EXPR, sad_oprnd[0],
+					      sad_oprnd[1], plus_oprnd1);
 
   return pattern_stmt;
 }
 
+/* Recognize an operation that performs ORIG_CODE on widened inputs,
+   so that it can be treated as though it had the form:
 
-/* Handle widening operation by a constant.  At the moment we support MULT_EXPR
-   and LSHIFT_EXPR.
+      A_TYPE a;
+      B_TYPE b;
+      HALF_TYPE a_cast = (HALF_TYPE) a;  // possible no-op
+      HALF_TYPE b_cast = (HALF_TYPE) b;  // possible no-op
+    | RES_TYPE a_extend = (RES_TYPE) a_cast;  // promotion from HALF_TYPE
+    | RES_TYPE b_extend = (RES_TYPE) b_cast;  // promotion from HALF_TYPE
+    | RES_TYPE res = a_extend ORIG_CODE b_extend;
 
-   For MULT_EXPR we check that CONST_OPRND fits HALF_TYPE, and for LSHIFT_EXPR
-   we check that CONST_OPRND is less or equal to the size of HALF_TYPE.
+   Try to replace the pattern with:
 
-   Otherwise, if the type of the result (TYPE) is at least 4 times bigger than
-   HALF_TYPE, and there is an intermediate type (2 times smaller than TYPE)
-   that satisfies the above restrictions,  we can perform a widening opeartion
-   from the intermediate type to TYPE and replace a_T = (TYPE) a_t;
-   with a_it = (interm_type) a_t;  Store such operation in *WSTMT.  */
+      A_TYPE a;
+      B_TYPE b;
+      HALF_TYPE a_cast = (HALF_TYPE) a;  // possible no-op
+      HALF_TYPE b_cast = (HALF_TYPE) b;  // possible no-op
+    | EXT_TYPE ext = a_cast WIDE_CODE b_cast;
+    | RES_TYPE res = (EXT_TYPE) ext;  // possible no-op
 
-static bool
-vect_handle_widen_op_by_const (gimple *stmt, enum tree_code code,
-		               tree const_oprnd, tree *oprnd,
-			       gimple **wstmt, tree type,
-			       tree *half_type, gimple *def_stmt)
-{
-  tree new_type, new_oprnd;
+   where EXT_TYPE is wider than HALF_TYPE but has the same signedness.
 
-  if (code != MULT_EXPR && code != LSHIFT_EXPR)
-    return false;
-
-  if (((code == MULT_EXPR && int_fits_type_p (const_oprnd, *half_type))
-        || (code == LSHIFT_EXPR
-            && compare_tree_int (const_oprnd, TYPE_PRECISION (*half_type))
-	    	!= 1))
-      && TYPE_PRECISION (type) == (TYPE_PRECISION (*half_type) * 2))
-    {
-      /* CONST_OPRND is a constant of HALF_TYPE.  */
-      *oprnd = gimple_assign_rhs1 (def_stmt);
-      return true;
-    }
-
-  if (TYPE_PRECISION (type) < (TYPE_PRECISION (*half_type) * 4))
-    return false;
-
-  if (!vect_same_loop_or_bb_p (stmt, def_stmt))
-    return false;
-
-  /* TYPE is 4 times bigger than HALF_TYPE, try widening operation for
-     a type 2 times bigger than HALF_TYPE.  */
-  new_type = build_nonstandard_integer_type (TYPE_PRECISION (type) / 2,
-                                             TYPE_UNSIGNED (type));
-  if ((code == MULT_EXPR && !int_fits_type_p (const_oprnd, new_type))
-      || (code == LSHIFT_EXPR
-          && compare_tree_int (const_oprnd, TYPE_PRECISION (new_type)) == 1))
-    return false;
-
-  /* Use NEW_TYPE for widening operation and create a_T = (NEW_TYPE) a_t;  */
-  *oprnd = gimple_assign_rhs1 (def_stmt);
-  new_oprnd = make_ssa_name (new_type);
-  *wstmt = gimple_build_assign (new_oprnd, NOP_EXPR, *oprnd);
-  *oprnd = new_oprnd;
-
-  *half_type = new_type;
-  return true;
-}
-
-
-/* Function vect_recog_widen_mult_pattern
-
-   Try to find the following pattern:
-
-     type1 a_t;
-     type2 b_t;
-     TYPE a_T, b_T, prod_T;
-
-     S1  a_t = ;
-     S2  b_t = ;
-     S3  a_T = (TYPE) a_t;
-     S4  b_T = (TYPE) b_t;
-     S5  prod_T = a_T * b_T;
-
-   where type 'TYPE' is at least double the size of type 'type1' and 'type2'.
-
-   Also detect unsigned cases:
-
-     unsigned type1 a_t;
-     unsigned type2 b_t;
-     unsigned TYPE u_prod_T;
-     TYPE a_T, b_T, prod_T;
-
-     S1  a_t = ;
-     S2  b_t = ;
-     S3  a_T = (TYPE) a_t;
-     S4  b_T = (TYPE) b_t;
-     S5  prod_T = a_T * b_T;
-     S6  u_prod_T = (unsigned TYPE) prod_T;
-
-   and multiplication by constants:
-
-     type a_t;
-     TYPE a_T, prod_T;
-
-     S1  a_t = ;
-     S3  a_T = (TYPE) a_t;
-     S5  prod_T = a_T * CONST;
-
-   A special case of multiplication by constants is when 'TYPE' is 4 times
-   bigger than 'type', but CONST fits an intermediate type 2 times smaller
-   than 'TYPE'.  In that case we create an additional pattern stmt for S3
-   to create a variable of the intermediate type, and perform widen-mult
-   on the intermediate type as well:
-
-     type a_t;
-     interm_type a_it;
-     TYPE a_T, prod_T,  prod_T';
-
-     S1  a_t = ;
-     S3  a_T = (TYPE) a_t;
-           '--> a_it = (interm_type) a_t;
-     S5  prod_T = a_T * CONST;
-           '--> prod_T' = a_it w* CONST;
-
-   Input/Output:
-
-   * STMTS: Contains a stmt from which the pattern search begins.  In the
-   example, when this function is called with S5, the pattern {S3,S4,S5,(S6)}
-   is detected.  In case of unsigned widen-mult, the original stmt (S5) is
-   replaced with S6 in STMTS.  In case of multiplication by a constant
-   of an intermediate type (the last case above), STMTS also contains S3
-   (inserted before S5).
-
-   Output:
-
-   * TYPE_OUT: The type of the output of this pattern.
-
-   * Return value: A new stmt that will be used to replace the sequence of
-   stmts that constitute the pattern.  In this case it will be:
-        WIDEN_MULT <a_t, b_t>
-   If the result of WIDEN_MULT needs to be converted to a larger type, the
-   returned stmt will be this type conversion stmt.
-*/
+   SHIFT_P is true if ORIG_CODE and WIDE_CODE are shifts.  NAME is the
+   name of the pattern being matched, for dump purposes.  */
 
 static gimple *
-vect_recog_widen_mult_pattern (vec<gimple *> *stmts, tree *type_out)
+vect_recog_widen_op_pattern (vec<gimple *> *stmts, tree *type_out,
+			     tree_code orig_code, tree_code wide_code,
+			     bool shift_p, const char *name)
 {
   gimple *last_stmt = stmts->pop ();
-  gimple *def_stmt0, *def_stmt1;
-  tree oprnd0, oprnd1;
-  tree type, half_type0, half_type1;
-  gimple *new_stmt = NULL, *pattern_stmt = NULL;
-  tree vectype, vecitype;
-  tree var;
-  enum tree_code dummy_code;
-  int dummy_int;
-  vec<tree> dummy_vec;
-  bool op1_ok;
-  bool promotion;
+  stmt_vec_info last_stmt_info = vinfo_for_stmt (last_stmt);
 
-  if (!is_gimple_assign (last_stmt))
+  vect_unpromoted_value unprom[2];
+  tree half_type;
+  if (!vect_widened_op_tree (last_stmt_info, orig_code, orig_code,
+			     shift_p, 2, unprom, &half_type))
     return NULL;
-
-  type = gimple_expr_type (last_stmt);
-
-  /* Starting from LAST_STMT, follow the defs of its uses in search
-     of the above pattern.  */
-
-  if (gimple_assign_rhs_code (last_stmt) != MULT_EXPR)
-    return NULL;
-
-  oprnd0 = gimple_assign_rhs1 (last_stmt);
-  oprnd1 = gimple_assign_rhs2 (last_stmt);
-
-  /* Check argument 0.  */
-  if (!type_conversion_p (oprnd0, last_stmt, false, &half_type0, &def_stmt0,
-                         &promotion)
-      || !promotion)
-     return NULL;
-  /* Check argument 1.  */
-  op1_ok = type_conversion_p (oprnd1, last_stmt, false, &half_type1,
-                              &def_stmt1, &promotion);
-
-  if (op1_ok && promotion)
-    {
-      oprnd0 = gimple_assign_rhs1 (def_stmt0);
-      oprnd1 = gimple_assign_rhs1 (def_stmt1);
-    }	       
-  else
-    {
-      if (TREE_CODE (oprnd1) == INTEGER_CST
-          && TREE_CODE (half_type0) == INTEGER_TYPE
-          && vect_handle_widen_op_by_const (last_stmt, MULT_EXPR, oprnd1,
-		                            &oprnd0, &new_stmt, type,
-					    &half_type0, def_stmt0))
-	{
-	  half_type1 = half_type0;
-	  oprnd1 = fold_convert (half_type1, oprnd1);
-	}
-      else
-        return NULL;
-    }
-
-  /* If the two arguments have different sizes, convert the one with
-     the smaller type into the larger type.  */
-  if (TYPE_PRECISION (half_type0) != TYPE_PRECISION (half_type1))
-    {
-      /* If we already used up the single-stmt slot give up.  */
-      if (new_stmt)
-	return NULL;
-
-      tree* oprnd = NULL;
-      gimple *def_stmt = NULL;
-
-      if (TYPE_PRECISION (half_type0) < TYPE_PRECISION (half_type1))
-	{
-	  def_stmt = def_stmt0;
-	  half_type0 = half_type1;
-	  oprnd = &oprnd0;
-	}
-      else
-	{
-	  def_stmt = def_stmt1;
-	  half_type1 = half_type0;
-	  oprnd = &oprnd1;
-	}
-
-      tree old_oprnd = gimple_assign_rhs1 (def_stmt);
-      tree new_oprnd = make_ssa_name (half_type0);
-      new_stmt = gimple_build_assign (new_oprnd, NOP_EXPR, old_oprnd);
-      *oprnd = new_oprnd;
-    }
-
-  /* Handle unsigned case.  Look for
-     S6  u_prod_T = (unsigned TYPE) prod_T;
-     Use unsigned TYPE as the type for WIDEN_MULT_EXPR.  */
-  if (TYPE_UNSIGNED (type) != TYPE_UNSIGNED (half_type0))
-    {
-      gimple *use_stmt;
-      tree use_lhs;
-      tree use_type;
-
-      if (TYPE_UNSIGNED (type) == TYPE_UNSIGNED (half_type1))
-        return NULL;
-
-      use_stmt = vect_single_imm_use (last_stmt);
-      if (!use_stmt || !is_gimple_assign (use_stmt)
-	  || !CONVERT_EXPR_CODE_P (gimple_assign_rhs_code (use_stmt)))
-        return NULL;
-
-      use_lhs = gimple_assign_lhs (use_stmt);
-      use_type = TREE_TYPE (use_lhs);
-      if (!INTEGRAL_TYPE_P (use_type)
-          || (TYPE_UNSIGNED (type) == TYPE_UNSIGNED (use_type))
-          || (TYPE_PRECISION (type) != TYPE_PRECISION (use_type)))
-        return NULL;
-
-      type = use_type;
-      last_stmt = use_stmt;
-    }
-
-  if (!types_compatible_p (half_type0, half_type1))
-    return NULL;
-
-  /* If TYPE is more than twice larger than HALF_TYPE, we use WIDEN_MULT
-     to get an intermediate result of type ITYPE.  In this case we need
-     to build a statement to convert this intermediate result to type TYPE.  */
-  tree itype = type;
-  if (TYPE_PRECISION (type) > TYPE_PRECISION (half_type0) * 2)
-    itype = build_nonstandard_integer_type
-	      (GET_MODE_BITSIZE (SCALAR_TYPE_MODE (half_type0)) * 2,
-	       TYPE_UNSIGNED (type));
 
   /* Pattern detected.  */
-  vect_pattern_detected ("vect_recog_widen_mult_pattern", last_stmt);
+  vect_pattern_detected (name, last_stmt);
+
+  tree type = gimple_expr_type (last_stmt);
+  tree itype = type;
+  if (TYPE_PRECISION (type) != TYPE_PRECISION (half_type) * 2
+      || TYPE_UNSIGNED (type) != TYPE_UNSIGNED (half_type))
+    itype = build_nonstandard_integer_type (TYPE_PRECISION (half_type) * 2,
+					    TYPE_UNSIGNED (half_type));
 
   /* Check target support  */
-  vectype = get_vectype_for_scalar_type (half_type0);
-  vecitype = get_vectype_for_scalar_type (itype);
+  tree vectype = get_vectype_for_scalar_type (half_type);
+  tree vecitype = get_vectype_for_scalar_type (itype);
+  enum tree_code dummy_code;
+  int dummy_int;
+  auto_vec<tree> dummy_vec;
   if (!vectype
       || !vecitype
-      || !supportable_widening_operation (WIDEN_MULT_EXPR, last_stmt,
+      || !supportable_widening_operation (wide_code, last_stmt,
 					  vecitype, vectype,
 					  &dummy_code, &dummy_code,
 					  &dummy_int, &dummy_vec))
@@ -913,43 +1110,28 @@ vect_recog_widen_mult_pattern (vec<gimple *> *stmts, tree *type_out)
   if (!*type_out)
     return NULL;
 
-  /* Pattern supported. Create a stmt to be used to replace the pattern: */
-  var = vect_recog_temp_ssa_var (itype, NULL);
-  pattern_stmt = gimple_build_assign (var, WIDEN_MULT_EXPR, oprnd0, oprnd1);
+  STMT_VINFO_PATTERN_DEF_SEQ (last_stmt_info) = NULL;
+  tree oprnd[2];
+  vect_convert_inputs (last_stmt_info, 2, oprnd, half_type, unprom, vectype);
 
-  stmt_vec_info stmt_vinfo = vinfo_for_stmt (last_stmt);
-  STMT_VINFO_PATTERN_DEF_SEQ (stmt_vinfo) = NULL;
-
-  /* If the original two operands have different sizes, we may need to convert
-     the smaller one into the larget type.  If this is the case, at this point
-     the new stmt is already built.  */
-  if (new_stmt)
-    {
-      append_pattern_def_seq (stmt_vinfo, new_stmt);
-      stmt_vec_info new_stmt_info
-        = new_stmt_vec_info (new_stmt, stmt_vinfo->vinfo);
-      set_vinfo_for_stmt (new_stmt, new_stmt_info);
-      STMT_VINFO_VECTYPE (new_stmt_info) = vectype;
-    }
-
-  /* If ITYPE is not TYPE, we need to build a type convertion stmt to convert
-     the result of the widen-mult operation into type TYPE.  */
-  if (itype != type)
-    {
-      append_pattern_def_seq (stmt_vinfo, pattern_stmt);
-      stmt_vec_info pattern_stmt_info
-        = new_stmt_vec_info (pattern_stmt, stmt_vinfo->vinfo);
-      set_vinfo_for_stmt (pattern_stmt, pattern_stmt_info);
-      STMT_VINFO_VECTYPE (pattern_stmt_info) = vecitype;
-      pattern_stmt = gimple_build_assign (vect_recog_temp_ssa_var (type, NULL),
-					  NOP_EXPR,
-					  gimple_assign_lhs (pattern_stmt));
-    }
+  tree var = vect_recog_temp_ssa_var (itype, NULL);
+  gimple *pattern_stmt = gimple_build_assign (var, wide_code,
+					      oprnd[0], oprnd[1]);
 
   stmts->safe_push (last_stmt);
-  return pattern_stmt;
+  return vect_convert_output (last_stmt_info, type, pattern_stmt, vecitype);
 }
 
+/* Try to detect multiplication on widened inputs, converting MULT_EXPR
+   to WIDEN_MULT_EXPR.  See vect_recog_widen_op_pattern for details.  */
+
+static gimple *
+vect_recog_widen_mult_pattern (vec<gimple *> *stmts, tree *type_out)
+{
+  return vect_recog_widen_op_pattern (stmts, type_out, MULT_EXPR,
+				      WIDEN_MULT_EXPR, false,
+				      "vect_recog_widen_mult_pattern");
+}
 
 /* Function vect_recog_pow_pattern
 
@@ -1142,30 +1324,13 @@ vect_recog_pow_pattern (vec<gimple *> *stmts, tree *type_out)
 static gimple *
 vect_recog_widen_sum_pattern (vec<gimple *> *stmts, tree *type_out)
 {
-  gimple *stmt, *last_stmt = (*stmts)[0];
+  gimple *last_stmt = (*stmts)[0];
   tree oprnd0, oprnd1;
   stmt_vec_info stmt_vinfo = vinfo_for_stmt (last_stmt);
-  tree type, half_type;
+  vec_info *vinfo = stmt_vinfo->vinfo;
+  tree type;
   gimple *pattern_stmt;
-  loop_vec_info loop_info = STMT_VINFO_LOOP_VINFO (stmt_vinfo);
-  struct loop *loop;
   tree var;
-  bool promotion;
-
-  if (!loop_info)
-    return NULL;
-
-  loop = LOOP_VINFO_LOOP (loop_info);
-
-  /* We don't allow changing the order of the computation in the inner-loop
-     when doing outer-loop vectorization.  */
-  if (loop && nested_in_vect_loop_p (loop, last_stmt))
-    return NULL;
-
-  if (!is_gimple_assign (last_stmt))
-    return NULL;
-
-  type = gimple_expr_type (last_stmt);
 
   /* Look for the following pattern
           DX = (TYPE) X;
@@ -1177,14 +1342,11 @@ vect_recog_widen_sum_pattern (vec<gimple *> *stmts, tree *type_out)
   /* Starting from LAST_STMT, follow the defs of its uses in search
      of the above pattern.  */
 
-  if (gimple_assign_rhs_code (last_stmt) != PLUS_EXPR)
+  if (!vect_reassociating_reduction_p (stmt_vinfo, PLUS_EXPR,
+				       &oprnd0, &oprnd1))
     return NULL;
 
-  if (!vect_reassociating_reduction_p (stmt_vinfo))
-    return NULL;
-
-  oprnd0 = gimple_assign_rhs1 (last_stmt);
-  oprnd1 = gimple_assign_rhs2 (last_stmt);
+  type = gimple_expr_type (last_stmt);
 
   /* So far so good.  Since last_stmt was detected as a (summation) reduction,
      we know that oprnd1 is the reduction variable (defined by a loop-header
@@ -1192,21 +1354,19 @@ vect_recog_widen_sum_pattern (vec<gimple *> *stmts, tree *type_out)
      Left to check that oprnd0 is defined by a cast from type 'type' to type
      'TYPE'.  */
 
-  if (!type_conversion_p (oprnd0, last_stmt, true, &half_type, &stmt,
-                          &promotion)
-      || !promotion)
+  vect_unpromoted_value unprom0;
+  if (!vect_look_through_possible_promotion (vinfo, oprnd0, &unprom0)
+      || TYPE_PRECISION (unprom0.type) * 2 > TYPE_PRECISION (type))
     return NULL;
-
-  oprnd0 = gimple_assign_rhs1 (stmt);
 
   vect_pattern_detected ("vect_recog_widen_sum_pattern", last_stmt);
 
-  if (!vect_supportable_direct_optab_p (type, WIDEN_SUM_EXPR, half_type,
+  if (!vect_supportable_direct_optab_p (type, WIDEN_SUM_EXPR, unprom0.type,
 					type_out))
     return NULL;
 
   var = vect_recog_temp_ssa_var (type, NULL);
-  pattern_stmt = gimple_build_assign (var, WIDEN_SUM_EXPR, oprnd0, oprnd1);
+  pattern_stmt = gimple_build_assign (var, WIDEN_SUM_EXPR, unprom0.op, oprnd1);
 
   return pattern_stmt;
 }
@@ -1571,162 +1731,15 @@ vect_recog_over_widening_pattern (vec<gimple *> *stmts, tree *type_out)
   return pattern_stmt;
 }
 
-/* Detect widening shift pattern:
-
-   type a_t;
-   TYPE a_T, res_T;
-
-   S1 a_t = ;
-   S2 a_T = (TYPE) a_t;
-   S3 res_T = a_T << CONST;
-
-  where type 'TYPE' is at least double the size of type 'type'.
-
-  Also detect cases where the shift result is immediately converted
-  to another type 'result_type' that is no larger in size than 'TYPE'.
-  In those cases we perform a widen-shift that directly results in
-  'result_type', to avoid a possible over-widening situation:
-
-  type a_t;
-  TYPE a_T, res_T;
-  result_type res_result;
-
-  S1 a_t = ;
-  S2 a_T = (TYPE) a_t;
-  S3 res_T = a_T << CONST;
-  S4 res_result = (result_type) res_T;
-      '--> res_result' = a_t w<< CONST;
-
-  And a case when 'TYPE' is 4 times bigger than 'type'.  In that case we
-  create an additional pattern stmt for S2 to create a variable of an
-  intermediate type, and perform widen-shift on the intermediate type:
-
-  type a_t;
-  interm_type a_it;
-  TYPE a_T, res_T, res_T';
-
-  S1 a_t = ;
-  S2 a_T = (TYPE) a_t;
-      '--> a_it = (interm_type) a_t;
-  S3 res_T = a_T << CONST;
-      '--> res_T' = a_it <<* CONST;
-
-  Input/Output:
-
-  * STMTS: Contains a stmt from which the pattern search begins.
-    In case of unsigned widen-shift, the original stmt (S3) is replaced with S4
-    in STMTS.  When an intermediate type is used and a pattern statement is
-    created for S2, we also put S2 here (before S3).
-
-  Output:
-
-  * TYPE_OUT: The type of the output of this pattern.
-
-  * Return value: A new stmt that will be used to replace the sequence of
-    stmts that constitute the pattern.  In this case it will be:
-    WIDEN_LSHIFT_EXPR <a_t, CONST>.  */
+/* Try to detect a shift left of a widened input, converting LSHIFT_EXPR
+   to WIDEN_LSHIFT_EXPR.  See vect_recog_widen_op_pattern for details.  */
 
 static gimple *
 vect_recog_widen_shift_pattern (vec<gimple *> *stmts, tree *type_out)
 {
-  gimple *last_stmt = stmts->pop ();
-  gimple *def_stmt0;
-  tree oprnd0, oprnd1;
-  tree type, half_type0;
-  gimple *pattern_stmt;
-  tree vectype, vectype_out = NULL_TREE;
-  tree var;
-  enum tree_code dummy_code;
-  int dummy_int;
-  vec<tree>  dummy_vec;
-  gimple *use_stmt;
-  bool promotion;
-
-  if (!is_gimple_assign (last_stmt) || !vinfo_for_stmt (last_stmt))
-    return NULL;
-
-  if (STMT_VINFO_IN_PATTERN_P (vinfo_for_stmt (last_stmt)))
-    return NULL;
-
-  if (gimple_assign_rhs_code (last_stmt) != LSHIFT_EXPR)
-    return NULL;
-
-  oprnd0 = gimple_assign_rhs1 (last_stmt);
-  oprnd1 = gimple_assign_rhs2 (last_stmt);
-  if (TREE_CODE (oprnd0) != SSA_NAME || TREE_CODE (oprnd1) != INTEGER_CST)
-    return NULL;
-
-  /* Check operand 0: it has to be defined by a type promotion.  */
-  if (!type_conversion_p (oprnd0, last_stmt, false, &half_type0, &def_stmt0,
-			  &promotion)
-      || !promotion)
-     return NULL;
-
-  /* Check operand 1: has to be positive.  We check that it fits the type
-     in vect_handle_widen_op_by_const ().  */
-  if (tree_int_cst_compare (oprnd1, size_zero_node) <= 0)
-    return NULL;
-
-  oprnd0 = gimple_assign_rhs1 (def_stmt0);
-  type = gimple_expr_type (last_stmt);
-
-  /* Check for subsequent conversion to another type.  */
-  use_stmt = vect_single_imm_use (last_stmt);
-  if (use_stmt && is_gimple_assign (use_stmt)
-      && CONVERT_EXPR_CODE_P (gimple_assign_rhs_code (use_stmt))
-      && !STMT_VINFO_IN_PATTERN_P (vinfo_for_stmt (use_stmt)))
-    {
-      tree use_lhs = gimple_assign_lhs (use_stmt);
-      tree use_type = TREE_TYPE (use_lhs);
-
-      if (INTEGRAL_TYPE_P (use_type)
-	  && TYPE_PRECISION (use_type) <= TYPE_PRECISION (type))
-	{
-	  last_stmt = use_stmt;
-	  type = use_type;
-	}
-    }
-
-  /* Check if this a widening operation.  */
-  gimple *wstmt = NULL;
-  if (!vect_handle_widen_op_by_const (last_stmt, LSHIFT_EXPR, oprnd1,
-       				      &oprnd0, &wstmt,
-	                              type, &half_type0, def_stmt0))
-    return NULL;
-
-  /* Pattern detected.  */
-  vect_pattern_detected ("vect_recog_widen_shift_pattern", last_stmt);
-
-  /* Check target support.  */
-  vectype = get_vectype_for_scalar_type (half_type0);
-  vectype_out = get_vectype_for_scalar_type (type);
-
-  if (!vectype
-      || !vectype_out
-      || !supportable_widening_operation (WIDEN_LSHIFT_EXPR, last_stmt,
-					  vectype_out, vectype,
-					  &dummy_code, &dummy_code,
-					  &dummy_int, &dummy_vec))
-    return NULL;
-
-  *type_out = vectype_out;
-
-  /* Pattern supported.  Create a stmt to be used to replace the pattern.  */
-  var = vect_recog_temp_ssa_var (type, NULL);
-  pattern_stmt
-    = gimple_build_assign (var, WIDEN_LSHIFT_EXPR, oprnd0, oprnd1);
-  if (wstmt)
-    {
-      stmt_vec_info stmt_vinfo = vinfo_for_stmt (last_stmt);
-      new_pattern_def_seq (stmt_vinfo, wstmt);
-      stmt_vec_info new_stmt_info
-	= new_stmt_vec_info (wstmt, stmt_vinfo->vinfo);
-      set_vinfo_for_stmt (wstmt, new_stmt_info);
-      STMT_VINFO_VECTYPE (new_stmt_info) = vectype;
-    }
-
-  stmts->safe_push (last_stmt);
-  return pattern_stmt;
+  return vect_recog_widen_op_pattern (stmts, type_out, LSHIFT_EXPR,
+				      WIDEN_LSHIFT_EXPR, true,
+				      "vect_widen_shift_pattern");
 }
 
 /* Detect a rotate pattern wouldn't be otherwise vectorized:
@@ -1782,9 +1795,6 @@ vect_recog_rotate_pattern (vec<gimple *> *stmts, tree *type_out)
       return NULL;
     }
 
-  if (STMT_VINFO_IN_PATTERN_P (stmt_vinfo))
-    return NULL;
-
   lhs = gimple_assign_lhs (last_stmt);
   oprnd0 = gimple_assign_rhs1 (last_stmt);
   type = TREE_TYPE (oprnd0);
@@ -1795,7 +1805,7 @@ vect_recog_rotate_pattern (vec<gimple *> *stmts, tree *type_out)
       || !TYPE_UNSIGNED (type))
     return NULL;
 
-  if (!vect_is_simple_use (oprnd1, vinfo, &def_stmt, &dt))
+  if (!vect_is_simple_use (oprnd1, vinfo, &dt, &def_stmt))
     return NULL;
 
   if (dt != vect_internal_def
@@ -1845,19 +1855,8 @@ vect_recog_rotate_pattern (vec<gimple *> *stmts, tree *type_out)
   *type_out = vectype;
 
   if (dt == vect_external_def
-      && TREE_CODE (oprnd1) == SSA_NAME
-      && is_a <loop_vec_info> (vinfo))
-    {
-      struct loop *loop = as_a <loop_vec_info> (vinfo)->loop;
-      ext_def = loop_preheader_edge (loop);
-      if (!SSA_NAME_IS_DEFAULT_DEF (oprnd1))
-	{
-	  basic_block bb = gimple_bb (SSA_NAME_DEF_STMT (oprnd1));
-	  if (bb == NULL
-	      || !dominated_by_p (CDI_DOMINATORS, ext_def->dest, bb))
-	    ext_def = NULL;
-	}
-    }
+      && TREE_CODE (oprnd1) == SSA_NAME)
+    ext_def = vect_get_external_def_edge (vinfo, oprnd1);
 
   def = NULL_TREE;
   scalar_int_mode mode = SCALAR_INT_TYPE_MODE (type);
@@ -2027,9 +2026,6 @@ vect_recog_vector_vector_shift_pattern (vec<gimple *> *stmts, tree *type_out)
       return NULL;
     }
 
-  if (STMT_VINFO_IN_PATTERN_P (stmt_vinfo))
-    return NULL;
-
   lhs = gimple_assign_lhs (last_stmt);
   oprnd0 = gimple_assign_rhs1 (last_stmt);
   oprnd1 = gimple_assign_rhs2 (last_stmt);
@@ -2051,9 +2047,7 @@ vect_recog_vector_vector_shift_pattern (vec<gimple *> *stmts, tree *type_out)
 
   tree def = NULL_TREE;
   gassign *def_stmt = dyn_cast <gassign *> (def_vinfo->stmt);
-  if (!STMT_VINFO_IN_PATTERN_P (def_vinfo)
-      && def_stmt
-      && gimple_assign_cast_p (def_stmt))
+  if (def_stmt && gimple_assign_cast_p (def_stmt))
     {
       tree rhs1 = gimple_assign_rhs1 (def_stmt);
       if (TYPE_MODE (TREE_TYPE (rhs1)) == TYPE_MODE (TREE_TYPE (oprnd0))
@@ -2529,9 +2523,6 @@ vect_recog_divmod_pattern (vec<gimple *> *stmts, tree *type_out)
     default:
       return NULL;
     }
-
-  if (STMT_VINFO_IN_PATTERN_P (stmt_vinfo))
-    return NULL;
 
   oprnd0 = gimple_assign_rhs1 (last_stmt);
   oprnd1 = gimple_assign_rhs2 (last_stmt);
@@ -3869,11 +3860,6 @@ vect_recog_mask_conversion_pattern (vec<gimple *> *stmts, tree *type_out)
   /* Check for cond expression requiring mask conversion.  */
   if (rhs_code == COND_EXPR)
     {
-      /* vect_recog_mixed_size_cond_pattern could apply.
-	 Do nothing then.  */
-      if (STMT_VINFO_IN_PATTERN_P (stmt_vinfo))
-	return NULL;
-
       vectype1 = get_vectype_for_scalar_type (TREE_TYPE (lhs));
 
       if (TREE_CODE (rhs1) == SSA_NAME)
@@ -3930,13 +3916,10 @@ vect_recog_mask_conversion_pattern (vec<gimple *> *stmts, tree *type_out)
 	  && known_le (TYPE_VECTOR_SUBPARTS (vectype1),
 		       TYPE_VECTOR_SUBPARTS (vectype2)))
 	{
-	  gimple *dummy;
 	  enum vect_def_type dt;
-	  if (vect_is_simple_use (TREE_OPERAND (rhs1, 0), stmt_vinfo->vinfo,
-				  &dummy, &dt)
+	  if (vect_is_simple_use (TREE_OPERAND (rhs1, 0), vinfo, &dt)
 	      && dt == vect_external_def
-	      && vect_is_simple_use (TREE_OPERAND (rhs1, 1), stmt_vinfo->vinfo,
-				     &dummy, &dt)
+	      && vect_is_simple_use (TREE_OPERAND (rhs1, 1), vinfo, &dt)
 	      && (dt == vect_external_def
 		  || dt == vect_constant_def))
 	    {
@@ -4262,42 +4245,59 @@ static inline void
 vect_mark_pattern_stmts (gimple *orig_stmt, gimple *pattern_stmt,
                          tree pattern_vectype)
 {
-  stmt_vec_info pattern_stmt_info, def_stmt_info;
   stmt_vec_info orig_stmt_info = vinfo_for_stmt (orig_stmt);
-  vec_info *vinfo = orig_stmt_info->vinfo;
-  gimple *def_stmt;
+  gimple *def_seq = STMT_VINFO_PATTERN_DEF_SEQ (orig_stmt_info);
 
-  pattern_stmt_info = vinfo_for_stmt (pattern_stmt);
-  if (pattern_stmt_info == NULL)
+  bool old_pattern_p = is_pattern_stmt_p (orig_stmt_info);
+  if (old_pattern_p)
     {
-      pattern_stmt_info = new_stmt_vec_info (pattern_stmt, vinfo);
-      set_vinfo_for_stmt (pattern_stmt, pattern_stmt_info);
-    }
-  gimple_set_bb (pattern_stmt, gimple_bb (orig_stmt));
+      /* We're replacing a statement in an existing pattern definition
+	 sequence.  */
+      if (dump_enabled_p ())
+	{
+	  dump_printf_loc (MSG_NOTE, vect_location,
+			   "replacing earlier pattern ");
+	  dump_gimple_stmt (MSG_NOTE, TDF_SLIM, orig_stmt, 0);
+	}
 
-  STMT_VINFO_RELATED_STMT (pattern_stmt_info) = orig_stmt;
-  STMT_VINFO_DEF_TYPE (pattern_stmt_info)
-    = STMT_VINFO_DEF_TYPE (orig_stmt_info);
-  STMT_VINFO_VECTYPE (pattern_stmt_info) = pattern_vectype;
-  STMT_VINFO_IN_PATTERN_P (orig_stmt_info) = true;
-  STMT_VINFO_RELATED_STMT (orig_stmt_info) = pattern_stmt;
-  if (gimple *def_seq = STMT_VINFO_PATTERN_DEF_SEQ (orig_stmt_info))
+      /* To keep the book-keeping simple, just swap the lhs of the
+	 old and new statements, so that the old one has a valid but
+	 unused lhs.  */
+      tree old_lhs = gimple_get_lhs (orig_stmt);
+      gimple_set_lhs (orig_stmt, gimple_get_lhs (pattern_stmt));
+      gimple_set_lhs (pattern_stmt, old_lhs);
+
+      if (dump_enabled_p ())
+	{
+	  dump_printf_loc (MSG_NOTE, vect_location, "with ");
+	  dump_gimple_stmt (MSG_NOTE, TDF_SLIM, pattern_stmt, 0);
+	}
+
+      /* Switch to the statement that ORIG replaces.  */
+      orig_stmt_info
+	= vinfo_for_stmt (STMT_VINFO_RELATED_STMT (orig_stmt_info));
+
+      /* We shouldn't be replacing the main pattern statement.  */
+      gcc_assert (STMT_VINFO_RELATED_STMT (orig_stmt_info) != orig_stmt);
+    }
+
+  if (def_seq)
     for (gimple_stmt_iterator si = gsi_start (def_seq);
 	 !gsi_end_p (si); gsi_next (&si))
-      {
-	def_stmt = gsi_stmt (si);
-	def_stmt_info = vinfo_for_stmt (def_stmt);
-	if (def_stmt_info == NULL)
-	  {
-	    def_stmt_info = new_stmt_vec_info (def_stmt, vinfo);
-	    set_vinfo_for_stmt (def_stmt, def_stmt_info);
-	  }
-	gimple_set_bb (def_stmt, gimple_bb (orig_stmt));
-	STMT_VINFO_RELATED_STMT (def_stmt_info) = orig_stmt;
-	STMT_VINFO_DEF_TYPE (def_stmt_info) = vect_internal_def;
-	if (STMT_VINFO_VECTYPE (def_stmt_info) == NULL_TREE)
-	  STMT_VINFO_VECTYPE (def_stmt_info) = pattern_vectype;
-      }
+      vect_init_pattern_stmt (gsi_stmt (si), orig_stmt_info, pattern_vectype);
+
+  if (old_pattern_p)
+    {
+      vect_init_pattern_stmt (pattern_stmt, orig_stmt_info, pattern_vectype);
+
+      /* Insert all the new pattern statements before the original one.  */
+      gimple_seq *orig_def_seq = &STMT_VINFO_PATTERN_DEF_SEQ (orig_stmt_info);
+      gimple_stmt_iterator gsi = gsi_for_stmt (orig_stmt, orig_def_seq);
+      gsi_insert_seq_before_without_update (&gsi, def_seq, GSI_SAME_STMT);
+      gsi_insert_before_without_update (&gsi, pattern_stmt, GSI_SAME_STMT);
+    }
+  else
+    vect_set_pattern_stmt (pattern_stmt, orig_stmt_info, pattern_vectype);
 }
 
 /* Function vect_pattern_recog_1
@@ -4318,7 +4318,7 @@ vect_mark_pattern_stmts (gimple *orig_stmt, gimple *pattern_stmt,
    This function also does some bookkeeping, as explained in the documentation
    for vect_recog_pattern.  */
 
-static bool
+static void
 vect_pattern_recog_1 (vect_recog_func *recog_func,
 		      gimple_stmt_iterator si,
 		      vec<gimple *> *stmts_to_replace)
@@ -4328,6 +4328,20 @@ vect_pattern_recog_1 (vect_recog_func *recog_func,
   loop_vec_info loop_vinfo;
   tree pattern_vectype;
   int i;
+
+  /* If this statement has already been replaced with pattern statements,
+     leave the original statement alone, since the first match wins.
+     Instead try to match against the definition statements that feed
+     the main pattern statement.  */
+  stmt_info = vinfo_for_stmt (stmt);
+  if (STMT_VINFO_IN_PATTERN_P (stmt_info))
+    {
+      gimple_stmt_iterator gsi;
+      for (gsi = gsi_start (STMT_VINFO_PATTERN_DEF_SEQ (stmt_info));
+	   !gsi_end_p (gsi); gsi_next (&gsi))
+	vect_pattern_recog_1 (recog_func, gsi, stmts_to_replace);
+      return;
+    }
 
   stmts_to_replace->truncate (0);
   stmts_to_replace->quick_push (stmt);
@@ -4341,9 +4355,10 @@ vect_pattern_recog_1 (vect_recog_func *recog_func,
 	   i++)
 	{
 	  stmt_info = vinfo_for_stmt (stmt);
-	  STMT_VINFO_RELATED_STMT (stmt_info) = NULL;
+	  if (!is_pattern_stmt_p (stmt_info))
+	    STMT_VINFO_RELATED_STMT (stmt_info) = NULL;
 	}
-      return false;
+      return;
     }
 
   stmt = stmts_to_replace->last ();
@@ -4391,7 +4406,7 @@ vect_pattern_recog_1 (vect_recog_func *recog_func,
       vect_mark_pattern_stmts (stmt, pattern_stmt, NULL_TREE);
     }
 
-  return true;
+  return;
 }
 
 
@@ -4496,17 +4511,10 @@ vect_pattern_recog (vec_info *vinfo)
 	{
 	  basic_block bb = bbs[i];
 	  for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
-	    {
-	      gimple *stmt = gsi_stmt (si);
-	      stmt_vec_info stmt_info = vinfo_for_stmt (stmt);
-	      if (stmt_info && STMT_VINFO_IN_PATTERN_P (stmt_info))
-		continue;
-	      /* Scan over all generic vect_recog_xxx_pattern functions.  */
-	      for (j = 0; j < NUM_PATTERNS; j++)
-		if (vect_pattern_recog_1 (&vect_vect_recog_func_ptrs[j], si,
-					  &stmts_to_replace))
-		  break;
-	    }
+	    /* Scan over all generic vect_recog_xxx_pattern functions.  */
+	    for (j = 0; j < NUM_PATTERNS; j++)
+	      vect_pattern_recog_1 (&vect_vect_recog_func_ptrs[j], si,
+				    &stmts_to_replace);
 	}
     }
   else
@@ -4517,16 +4525,13 @@ vect_pattern_recog (vec_info *vinfo)
 	{
 	  gimple *stmt = gsi_stmt (si);
 	  stmt_vec_info stmt_info = vinfo_for_stmt (stmt);
-	  if (stmt_info
-	      && (!STMT_VINFO_VECTORIZABLE (stmt_info)
-		  || STMT_VINFO_IN_PATTERN_P (stmt_info)))
+	  if (stmt_info && !STMT_VINFO_VECTORIZABLE (stmt_info))
 	    continue;
 
 	  /* Scan over all generic vect_recog_xxx_pattern functions.  */
 	  for (j = 0; j < NUM_PATTERNS; j++)
-	    if (vect_pattern_recog_1 (&vect_vect_recog_func_ptrs[j], si,
-				      &stmts_to_replace))
-	      break;
+	    vect_pattern_recog_1 (&vect_vect_recog_func_ptrs[j], si,
+				  &stmts_to_replace);
 	}
     }
 }

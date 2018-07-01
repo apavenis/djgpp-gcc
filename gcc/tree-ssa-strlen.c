@@ -1270,8 +1270,20 @@ handle_builtin_strlen (gimple_stmt_iterator *gsi)
 	  rhs = unshare_expr (rhs);
 	  if (!useless_type_conversion_p (TREE_TYPE (lhs), TREE_TYPE (rhs)))
 	    rhs = fold_convert_loc (loc, TREE_TYPE (lhs), rhs);
+
+	  /* Set for strnlen() calls with a non-constant bound.  */
+	  bool noncst_bound = false;
 	  if (bound)
-	    rhs = fold_build2_loc (loc, MIN_EXPR, TREE_TYPE (rhs), rhs, bound);
+	    {
+	      tree new_rhs
+		= fold_build2_loc (loc, MIN_EXPR, TREE_TYPE (rhs), rhs, bound);
+
+	      noncst_bound = (TREE_CODE (new_rhs) != INTEGER_CST
+			      || tree_int_cst_lt (new_rhs, rhs));
+
+	      rhs = new_rhs;
+	    }
+
 	  if (!update_call_from_tree (gsi, rhs))
 	    gimplify_and_update_call_from_tree (gsi, rhs);
 	  stmt = gsi_stmt (*gsi);
@@ -1281,6 +1293,12 @@ handle_builtin_strlen (gimple_stmt_iterator *gsi)
 	      fprintf (dump_file, "into: ");
 	      print_gimple_stmt (dump_file, stmt, 0, TDF_SLIM);
 	    }
+
+	  /* Avoid storing the length for calls to strnlen() with
+	     a non-constant bound.  */
+	  if (noncst_bound)
+	    return;
+
 	  if (si != NULL
 	      && TREE_CODE (si->nonzero_chars) != SSA_NAME
 	      && TREE_CODE (si->nonzero_chars) != INTEGER_CST
@@ -1299,6 +1317,7 @@ handle_builtin_strlen (gimple_stmt_iterator *gsi)
     }
   if (SSA_NAME_OCCURS_IN_ABNORMAL_PHI (lhs))
     return;
+
   if (idx == 0)
     idx = new_stridx (src);
   else
@@ -1333,9 +1352,14 @@ handle_builtin_strlen (gimple_stmt_iterator *gsi)
     }
   if (idx)
     {
-      strinfo *si = new_strinfo (src, idx, lhs, true);
-      set_strinfo (idx, si);
-      find_equal_ptrs (src, idx);
+      if (!bound)
+	{
+	  /* Only store the new length information for calls to strlen(),
+	     not for those to strnlen().  */
+	  strinfo *si = new_strinfo (src, idx, lhs, true);
+	  set_strinfo (idx, si);
+	  find_equal_ptrs (src, idx);
+	}
 
       /* For SRC that is an array of N elements, set LHS's range
 	 to [0, min (N, BOUND)].  A constant return value means
@@ -1362,7 +1386,7 @@ handle_builtin_strlen (gimple_stmt_iterator *gsi)
 	      }
 	  }
 
-      if (strlen_to_stridx)
+      if (strlen_to_stridx && !bound)
 	strlen_to_stridx->put (lhs, stridx_strlenloc (idx, loc));
     }
 }
@@ -2014,6 +2038,12 @@ maybe_diag_stxncpy_trunc (gimple_stmt_iterator gsi, tree src, tree cnt)
 
       gcall *call = as_a <gcall *> (stmt);
 
+      /* Set to true for strncat whose bound is derived from the length
+	 of the destination (the expected usage pattern).  */
+      bool cat_dstlen_bounded = false;
+      if (DECL_FUNCTION_CODE (func) == BUILT_IN_STRNCAT)
+	cat_dstlen_bounded = is_strlen_related_p (dst, cnt);
+
       if (lenrange[0] == cntrange[1] && cntrange[0] == cntrange[1])
 	return warning_n (callloc, OPT_Wstringop_truncation,
 			  cntrange[0].to_uhwi (),
@@ -2024,46 +2054,50 @@ maybe_diag_stxncpy_trunc (gimple_stmt_iterator gsi, tree src, tree cnt)
 			  "copying %E bytes from a string of the same "
 			  "length",
 			  call, func, cnt);
-      else if (wi::geu_p (lenrange[0], cntrange[1]))
+      else if (!cat_dstlen_bounded)
 	{
-	  /* The shortest string is longer than the upper bound of
-	     the count so the truncation is certain.  */
-	  if (cntrange[0] == cntrange[1])
-	    return warning_n (callloc, OPT_Wstringop_truncation,
-			      cntrange[0].to_uhwi (),
-			      "%G%qD output truncated copying %E byte "
-			      "from a string of length %wu",
-			      "%G%qD output truncated copying %E bytes "
-			      "from a string of length %wu",
-			      call, func, cnt, lenrange[0].to_uhwi ());
+	  if (wi::geu_p (lenrange[0], cntrange[1]))
+	    {
+	      /* The shortest string is longer than the upper bound of
+		 the count so the truncation is certain.  */
+	      if (cntrange[0] == cntrange[1])
+		return warning_n (callloc, OPT_Wstringop_truncation,
+				  cntrange[0].to_uhwi (),
+				  "%G%qD output truncated copying %E byte "
+				  "from a string of length %wu",
+				  "%G%qD output truncated copying %E bytes "
+				  "from a string of length %wu",
+				  call, func, cnt, lenrange[0].to_uhwi ());
 
-	  return warning_at (callloc, OPT_Wstringop_truncation,
-			     "%G%qD output truncated copying between %wu "
-			     "and %wu bytes from a string of length %wu",
-			     call, func, cntrange[0].to_uhwi (),
-			     cntrange[1].to_uhwi (), lenrange[0].to_uhwi ());
+	      return warning_at (callloc, OPT_Wstringop_truncation,
+				 "%G%qD output truncated copying between %wu "
+				 "and %wu bytes from a string of length %wu",
+				 call, func, cntrange[0].to_uhwi (),
+				 cntrange[1].to_uhwi (), lenrange[0].to_uhwi ());
+	    }
+	  else if (wi::geu_p (lenrange[1], cntrange[1]))
+	    {
+	      /* The longest string is longer than the upper bound of
+		 the count so the truncation is possible.  */
+	      if (cntrange[0] == cntrange[1])
+		return warning_n (callloc, OPT_Wstringop_truncation,
+				  cntrange[0].to_uhwi (),
+				  "%G%qD output may be truncated copying %E "
+				  "byte from a string of length %wu",
+				  "%G%qD output may be truncated copying %E "
+				  "bytes from a string of length %wu",
+				  call, func, cnt, lenrange[1].to_uhwi ());
+
+	      return warning_at (callloc, OPT_Wstringop_truncation,
+				 "%G%qD output may be truncated copying between "
+				 "%wu and %wu bytes from a string of length %wu",
+				 call, func, cntrange[0].to_uhwi (),
+				 cntrange[1].to_uhwi (), lenrange[1].to_uhwi ());
+	    }
 	}
-      else if (wi::geu_p (lenrange[1], cntrange[1]))
-	{
-	  /* The longest string is longer than the upper bound of
-	     the count so the truncation is possible.  */
-	  if (cntrange[0] == cntrange[1])
-	    return warning_n (callloc, OPT_Wstringop_truncation,
-			      cntrange[0].to_uhwi (),
-			      "%G%qD output may be truncated copying %E "
-			      "byte from a string of length %wu",
-			      "%G%qD output may be truncated copying %E "
-			      "bytes from a string of length %wu",
-			      call, func, cnt, lenrange[1].to_uhwi ());
 
-	  return warning_at (callloc, OPT_Wstringop_truncation,
-			     "%G%qD output may be truncated copying between %wu "
-			     "and %wu bytes from a string of length %wu",
-			     call, func, cntrange[0].to_uhwi (),
-			     cntrange[1].to_uhwi (), lenrange[1].to_uhwi ());
-	}
-
-      if (cntrange[0] != cntrange[1]
+      if (!cat_dstlen_bounded
+	  && cntrange[0] != cntrange[1]
 	  && wi::leu_p (cntrange[0], lenrange[0])
 	  && wi::leu_p (cntrange[1], lenrange[0] + 1))
 	{
