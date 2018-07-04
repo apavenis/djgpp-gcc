@@ -425,15 +425,22 @@ extern void dump_printf_loc (dump_flags_t, const dump_location_t &,
 			     const char *, ...) ATTRIBUTE_PRINTF_3;
 extern void dump_function (int phase, tree fn);
 extern void dump_basic_block (dump_flags_t, basic_block, int);
+extern void dump_generic_expr_loc (dump_flags_t, const dump_location_t &,
+				   dump_flags_t, tree);
 extern void dump_generic_expr (dump_flags_t, dump_flags_t, tree);
 extern void dump_gimple_stmt_loc (dump_flags_t, const dump_location_t &,
 				  dump_flags_t, gimple *, int);
 extern void dump_gimple_stmt (dump_flags_t, dump_flags_t, gimple *, int);
+extern void dump_gimple_expr_loc (dump_flags_t, const dump_location_t &,
+				  dump_flags_t, gimple *, int);
+extern void dump_gimple_expr (dump_flags_t, dump_flags_t, gimple *, int);
 extern void print_combine_total_stats (void);
 extern bool enable_rtl_dump_file (void);
 
 template<unsigned int N, typename C>
 void dump_dec (dump_flags_t, const poly_int<N, C> &);
+extern void dump_dec (dump_flags_t, const poly_wide_int &, signop);
+extern void dump_hex (dump_flags_t, const poly_wide_int &);
 
 /* In tree-dump.c  */
 extern void dump_node (const_tree, dump_flags_t, FILE *);

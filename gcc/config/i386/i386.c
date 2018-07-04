@@ -834,53 +834,58 @@ struct ptt
 {
   const char *const name;			/* processor name  */
   const struct processor_costs *cost;		/* Processor costs */
-  const int align_loop;				/* Default alignments.  */
-  const int align_loop_max_skip;
-  const int align_jump;
-  const int align_jump_max_skip;
-  const int align_func;
+
+  /* Default alignments.  */
+  const char *const align_loop;
+  const char *const align_jump;
+  const char *const align_label;
+  const char *const align_func;
 };
 
 /* This table must be in sync with enum processor_type in i386.h.  */ 
 static const struct ptt processor_target_table[PROCESSOR_max] =
 {
-  {"generic", &generic_cost, 16, 10, 16, 10, 16},
-  {"i386", &i386_cost, 4, 3, 4, 3, 4},
-  {"i486", &i486_cost, 16, 15, 16, 15, 16},
-  {"pentium", &pentium_cost, 16, 7, 16, 7, 16},
-  {"lakemont", &lakemont_cost, 16, 7, 16, 7, 16},
-  {"pentiumpro", &pentiumpro_cost, 16, 15, 16, 10, 16},
-  {"pentium4", &pentium4_cost, 0, 0, 0, 0, 0},
-  {"nocona", &nocona_cost, 0, 0, 0, 0, 0},
-  {"core2", &core_cost, 16, 10, 16, 10, 16},
-  {"nehalem", &core_cost, 16, 10, 16, 10, 16},
-  {"sandybridge", &core_cost, 16, 10, 16, 10, 16},
-  {"haswell", &core_cost, 16, 10, 16, 10, 16},
-  {"bonnell", &atom_cost, 16, 15, 16, 7, 16},
-  {"silvermont", &slm_cost, 16, 15, 16, 7, 16},
-  {"goldmont", &slm_cost, 16, 15, 16, 7, 16},
-  {"goldmont-plus", &slm_cost, 16, 15, 16, 7, 16},
-  {"tremont", &slm_cost, 16, 15, 16, 7, 16},
-  {"knl", &slm_cost, 16, 15, 16, 7, 16},
-  {"knm", &slm_cost, 16, 15, 16, 7, 16},
-  {"skylake", &skylake_cost, 16, 10, 16, 10, 16},
-  {"skylake-avx512", &skylake_cost, 16, 10, 16, 10, 16},
-  {"cannonlake", &skylake_cost, 16, 10, 16, 10, 16},
-  {"icelake-client", &skylake_cost, 16, 10, 16, 10, 16},
-  {"icelake-server", &skylake_cost, 16, 10, 16, 10, 16},
-  {"intel", &intel_cost, 16, 15, 16, 7, 16},
-  {"geode", &geode_cost, 0, 0, 0, 0, 0},
-  {"k6", &k6_cost, 32, 7, 32, 7, 32},
-  {"athlon", &athlon_cost, 16, 7, 16, 7, 16},
-  {"k8", &k8_cost, 16, 7, 16, 7, 16},
-  {"amdfam10", &amdfam10_cost, 32, 24, 32, 7, 32},
-  {"bdver1", &bdver1_cost, 16, 10, 16, 7, 11},
-  {"bdver2", &bdver2_cost, 16, 10, 16, 7, 11},
-  {"bdver3", &bdver3_cost, 16, 10, 16, 7, 11},
-  {"bdver4", &bdver4_cost, 16, 10, 16, 7, 11},
-  {"btver1", &btver1_cost, 16, 10, 16, 7, 11},
-  {"btver2", &btver2_cost, 16, 10, 16, 7, 11},
-  {"znver1", &znver1_cost, 16, 15, 16, 15, 16}
+/* The "0:0:8" label alignment specified for some processors generates
+   secondary 8-byte alignment only for those label/jump/loop targets
+   which have primary alignment.  */
+
+  {"generic",        &generic_cost,    "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"i386",           &i386_cost,       "4",       "4",       NULL,    "4" },
+  {"i486",           &i486_cost,       "16",      "16",      "0:0:8", "16"},
+  {"pentium",        &pentium_cost,    "16:8:8",  "16:8:8",  "0:0:8", "16"},
+  {"lakemont",       &lakemont_cost,   "16:8:8",  "16:8:8",  "0:0:8", "16"},
+  {"pentiumpro",     &pentiumpro_cost, "16",      "16:11:8", "0:0:8", "16"},
+  {"pentium4",       &pentium4_cost,   NULL,      NULL,      NULL,    NULL},
+  {"nocona",         &nocona_cost,     NULL,      NULL,      NULL,    NULL},
+  {"core2",          &core_cost,       "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"nehalem",        &core_cost,       "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"sandybridge",    &core_cost,       "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"haswell",        &core_cost,       "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"bonnell",        &atom_cost,       "16",      "16:8:8",  "0:0:8", "16"},
+  {"silvermont",     &slm_cost,        "16",      "16:8:8",  "0:0:8", "16"},
+  {"goldmont",       &slm_cost,        "16",      "16:8:8",  "0:0:8", "16"},
+  {"goldmont-plus",  &slm_cost,        "16",      "16:8:8",  "0:0:8", "16"},
+  {"tremont",	     &slm_cost,	       "16",	  "16:8:8",  "0:0:8", "16"},
+  {"knl",            &slm_cost,        "16",      "16:8:8",  "0:0:8", "16"},
+  {"knm",            &slm_cost,        "16",      "16:8:8",  "0:0:8", "16"},
+  {"skylake",        &skylake_cost,    "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"skylake-avx512", &skylake_cost,    "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"cannonlake",     &skylake_cost,    "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"icelake-client", &skylake_cost,    "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"icelake-server", &skylake_cost,    "16:11:8", "16:11:8", "0:0:8", "16"},
+  {"intel",          &intel_cost,      "16",      "16:8:8",  "0:0:8", "16"},
+  {"geode",          &geode_cost,      NULL,      NULL,      NULL,    NULL},
+  {"k6",             &k6_cost,         "32:8:8",  "32:8:8",  "0:0:8", "32"},
+  {"athlon",         &athlon_cost,     "16:8:8",  "16:8:8",  "0:0:8", "16"},
+  {"k8",             &k8_cost,         "16:8:8",  "16:8:8",  "0:0:8", "16"},
+  {"amdfam10",       &amdfam10_cost,   "32:25:8", "32:8:8",  "0:0:8", "32"},
+  {"bdver1",         &bdver1_cost,     "16:11:8", "16:8:8",  "0:0:8", "11"},
+  {"bdver2",         &bdver2_cost,     "16:11:8", "16:8:8",  "0:0:8", "11"},
+  {"bdver3",         &bdver3_cost,     "16:11:8", "16:8:8",  "0:0:8", "11"},
+  {"bdver4",         &bdver4_cost,     "16:11:8", "16:8:8",  "0:0:8", "11"},
+  {"btver1",         &btver1_cost,     "16:11:8", "16:8:8",  "0:0:8", "11"},
+  {"btver2",         &btver2_cost,     "16:11:8", "16:8:8",  "0:0:8", "11"},
+  {"znver1",         &znver1_cost,     "16",      "16",      "0:0:8", "16"}
 };
 
 static unsigned int
@@ -2621,7 +2626,26 @@ rest_of_insert_endbranch (void)
 	{
 	  if (CALL_P (insn))
 	    {
-	      if (find_reg_note (insn, REG_SETJMP, NULL) == NULL)
+	      bool need_endbr;
+	      need_endbr = find_reg_note (insn, REG_SETJMP, NULL) != NULL;
+	      if (!need_endbr && !SIBLING_CALL_P (insn))
+		{
+		  rtx call = get_call_rtx_from (insn);
+		  rtx fnaddr = XEXP (call, 0);
+
+		  /* Also generate ENDBRANCH for non-tail call which
+		     may return via indirect branch.  */
+		  if (MEM_P (fnaddr)
+		      && GET_CODE (XEXP (fnaddr, 0)) == SYMBOL_REF)
+		    {
+		      tree fndecl = SYMBOL_REF_DECL (XEXP (fnaddr, 0));
+		      if (fndecl
+			  && lookup_attribute ("indirect_return",
+					       DECL_ATTRIBUTES (fndecl)))
+			need_endbr = true;
+		    }
+		}
+	      if (!need_endbr)
 		continue;
 	      /* Generate ENDBRANCH after CALL, which can return more than
 		 twice, setjmp-like functions.  */
@@ -3346,20 +3370,15 @@ set_ix86_tune_features (enum processor_type ix86_tune, bool dump)
 static void
 ix86_default_align (struct gcc_options *opts)
 {
-  if (opts->x_align_loops == 0)
-    {
-      opts->x_align_loops = processor_target_table[ix86_tune].align_loop;
-      align_loops_max_skip = processor_target_table[ix86_tune].align_loop_max_skip;
-    }
-  if (opts->x_align_jumps == 0)
-    {
-      opts->x_align_jumps = processor_target_table[ix86_tune].align_jump;
-      align_jumps_max_skip = processor_target_table[ix86_tune].align_jump_max_skip;
-    }
-  if (opts->x_align_functions == 0)
-    {
-      opts->x_align_functions = processor_target_table[ix86_tune].align_func;
-    }
+  /* -falign-foo without argument: supply one.  */
+  if (opts->x_flag_align_loops && !opts->x_str_align_loops)
+    opts->x_str_align_loops = processor_target_table[ix86_tune].align_loop;
+  if (opts->x_flag_align_jumps && !opts->x_str_align_jumps)
+    opts->x_str_align_jumps = processor_target_table[ix86_tune].align_jump;
+  if (opts->x_flag_align_labels && !opts->x_str_align_labels)
+    opts->x_str_align_labels = processor_target_table[ix86_tune].align_label;
+  if (opts->x_flag_align_functions && !opts->x_str_align_functions)
+    opts->x_str_align_functions = processor_target_table[ix86_tune].align_func;
 }
 
 /* Implement TARGET_OVERRIDE_OPTIONS_AFTER_CHANGE hook.  */
@@ -13145,7 +13164,7 @@ ix86_finalize_stack_frame_flags (void)
      is used, but in the end nothing that needed the stack alignment had
      been spilled nor stack access, clear frame_pointer_needed and say we
      don't need stack realignment.  */
-  if ((stack_realign || !flag_omit_frame_pointer)
+  if ((stack_realign || (!flag_omit_frame_pointer && optimize))
       && frame_pointer_needed
       && crtl->is_leaf
       && crtl->sp_is_unchanging
@@ -45896,6 +45915,8 @@ static const struct attribute_spec ix86_attribute_table[] =
   { "indirect_branch", 1, 1, true, false, false, false,
     ix86_handle_fndecl_attribute, NULL },
   { "function_return", 1, 1, true, false, false, false,
+    ix86_handle_fndecl_attribute, NULL },
+  { "indirect_return", 0, 0, true, false, false, false,
     ix86_handle_fndecl_attribute, NULL },
 
   /* End element.  */

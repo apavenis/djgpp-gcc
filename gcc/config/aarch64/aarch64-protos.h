@@ -250,9 +250,9 @@ struct tune_params
   int memmov_cost;
   int issue_rate;
   unsigned int fusible_ops;
-  int function_align;
-  int jump_align;
-  int loop_align;
+  const char *function_align;
+  const char *jump_align;
+  const char *loop_align;
   int int_reassoc_width;
   int fp_reassoc_width;
   int vec_reassoc_width;
@@ -513,7 +513,6 @@ bool aarch64_gen_adjusted_ldpstp (rtx *, bool, scalar_mode, RTX_CODE);
 void aarch64_expand_sve_vec_cmp_int (rtx, rtx_code, rtx, rtx);
 bool aarch64_expand_sve_vec_cmp_float (rtx, rtx_code, rtx, rtx, bool);
 void aarch64_expand_sve_vcond (machine_mode, machine_mode, rtx *);
-void aarch64_sve_prepare_conditional_op (rtx *, unsigned int, bool);
 #endif /* RTX_CODE */
 
 void aarch64_init_builtins (void);

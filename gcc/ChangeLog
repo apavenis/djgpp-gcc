@@ -1,3 +1,545 @@
+2018-07-04  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR middle-end/86380
+	* expmed.c (choose_multiplier): Fix incorrect comparison with mask.
+
+2018-07-04  Aldy Hernandez  <aldyh@redhat.com>
+
+	* tree-vrp.c (extract_range_from_binary_expr_1): Initialize
+	neg_*_op* variables.
+
+2018-07-04  Martin Liska  <mliska@suse.cz>
+
+	* tree-switch-conversion.c: Define
+        max_ratio_for_speed and max_ratio_for_size constants.
+
+2018-07-04  Denys Vlasenko  <dvlasenk@redhat.com>
+	    Martin Liska  <mliska@suse.cz>
+
+	PR middle-end/66240
+	PR target/45996
+	PR c/84100
+	* common.opt: Rename align options with 'str_' prefix.
+	* common/config/i386/i386-common.c (set_malign_value): New
+	function.
+	(ix86_handle_option): Use it to set -falign-* options/
+	* config/aarch64/aarch64-protos.h (struct tune_params): Change
+	type from int to string.
+	* config/aarch64/aarch64.c: Update default values from int
+	to string.
+	* config/alpha/alpha.c (alpha_override_options_after_change):
+	Likewise.
+	* config/arm/arm.c (arm_override_options_after_change_1): Likewise.
+	* config/i386/dragonfly.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Print
+	max skip conditionally.
+	* config/i386/freebsd.h (SUBALIGN_LOG): New.
+	(ASM_OUTPUT_MAX_SKIP_ALIGN): Print
+	max skip conditionally.
+	* config/i386/gas.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Print
+	max skip conditionally.
+	* config/i386/gnu-user.h (SUBALIGN_LOG): New.
+	(ASM_OUTPUT_MAX_SKIP_ALIGN): Print
+	max skip conditionally.
+	* config/i386/i386.c (struct ptt): Change type from int to
+	string.
+	(ix86_default_align): Set default values.
+	* config/i386/i386.h (ASM_OUTPUT_MAX_SKIP_PAD): Print
+	max skip conditionally.
+	* config/i386/iamcu.h (SUBALIGN_LOG): New.
+	(ASM_OUTPUT_MAX_SKIP_ALIGN):
+	* config/i386/lynx.h (ASM_OUTPUT_MAX_SKIP_ALIGN):
+	* config/i386/netbsd-elf.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Print
+	max skip conditionally.
+	* config/i386/openbsdelf.h (SUBALIGN_LOG): New.
+	(ASM_OUTPUT_MAX_SKIP_ALIGN) Print max skip conditionally.:
+	* config/i386/x86-64.h (SUBALIGN_LOG): New.
+	(ASM_OUTPUT_MAX_SKIP_ALIGN): Print
+	max skip conditionally.
+	(ASM_OUTPUT_MAX_SKIP_PAD): Likewise.
+	* config/ia64/ia64.c (ia64_option_override): Set default values
+        for alignment options.
+	* config/m68k/m68k.c: Handle new str_align_* options.
+	* config/mips/mips.c (mips_set_compression_mode): Change
+	type of constants.
+	(mips_option_override): Set default values for options.
+	* config/powerpcspe/powerpcspe.c (rs6000_option_override_internal):
+        Likewise.
+	* config/rs6000/rs6000.c (rs6000_option_override_internal):
+	Likewise.
+	* config/rx/rx.c (rx_option_override): Likewise.
+	* config/rx/rx.h (JUMP_ALIGN): Use align_jumps_log.
+	(LABEL_ALIGN): Use align_labels_log.
+	(LOOP_ALIGN): Use align_loops_align.
+	* config/s390/s390.c (s390_asm_output_function_label): Use new
+        macros.
+	* config/sh/sh.c (sh_override_options_after_change):
+	Change type of constants.
+	* config/spu/spu.c (spu_sched_init): Likewise.
+	* config/sparc/sparc.c (sparc_option_override): Set default
+        values for options.
+	* config/visium/visium.c (visium_option_override): Likewise.
+	* config/visium/visium.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Do not
+        emit p2align format with last argument if it's not needed.
+	* doc/invoke.texi: Document extended format of -falign-*.
+	* final.c: Use align_labels alignment.
+	* flags.h (struct target_flag_state): Change type to use
+	align_flags.
+	(struct align_flags_tuple): New.
+	(struct align_flags): Likewise.
+	(align_loops_log): Redefine macro to use new types.
+	(align_loops_max_skip): Redefine macro to use new types.
+	(align_jumps_log): Redefine macro to use new types.
+	(align_jumps_max_skip): Redefine macro to use new types.
+	(align_labels_log): Redefine macro to use new types.
+	(align_labels_max_skip): Redefine macro to use new types.
+	(align_functions_log): Redefine macro to use new types.
+	(align_loops): Redefine macro to use new types.
+	(align_jumps): Redefine macro to use new types.
+	(align_labels): Redefine macro to use new types.
+	(align_functions): Redefine macro to use new types.
+	(align_functions_max_skip): Redefine macro to use new types.
+	(align_loops_value): New macro.
+	(align_jumps_value): New macro.
+	(align_labels_value): New macro.
+	(align_functions_value): New macro.
+	* function.c (invoke_set_current_function_hook): Propagate
+	alignment values from flags to global variables default in
+	topleev.h.
+	* ipa-icf.c (sem_function::equals_wpa): Use
+	cl_optimization_option_eq instead of memcmp.
+	* lto-streamer.h (cl_optimization_stream_out): Support streaming
+	of string types.
+	(cl_optimization_stream_in): Likewise.
+	* optc-save-gen.awk: Support strings in cl_optimization.
+	* opth-gen.awk: Likewise.
+	* opts.c (finish_options): Remove error checking of invalid
+	value ranges.
+	(MAX_CODE_ALIGN): Remove.
+	(MAX_CODE_ALIGN_VALUE): Likewise.
+	(parse_and_check_align_values): New function.
+	(check_alignment_argument): Likewise.
+	(common_handle_option): Use check_alignment_argument.
+	* opts.h (parse_and_check_align_values): Declare.
+	* toplev.c (init_alignments): Remove.
+	(read_log_maxskip): New.
+	(parse_N_M): Likewise.
+	(parse_alignment_opts): Likewise.
+	(backend_init_target): Remove usage of init_alignments.
+	* toplev.h (parse_alignment_opts): Declare.
+	* tree-streamer-in.c (streamer_read_tree_bitfields): Add new
+	argument.
+	* tree-streamer-out.c (streamer_write_tree_bitfields): Likewise.
+	* tree.c (cl_option_hasher::equal): New.
+	* varasm.c: Use new global macros.
+
+2018-07-04  Denys Vlasenko  <dvlasenk@redhat.com>
+
+	* config/i386/dragonfly.h: (ASM_OUTPUT_MAX_SKIP_ALIGN):
+	Use a simpler align directive also if MAXSKIP = ALIGN-1.
+	* config/i386/gas.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+	* config/i386/lynx.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+	* config/i386/netbsd-elf.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+	* config/i386/i386.h (ASM_OUTPUT_MAX_SKIP_PAD): Likewise.
+	* config/i386/freebsd.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Remove "If N
+	is large, do at least 8 byte alignment" code. Add SUBALIGN_LOG
+	define. Use a simpler align directive also if MAXSKIP = ALIGN-1.
+	* config/i386/gnu-user.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+	* config/i386/iamcu.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+	* config/i386/openbsdelf.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+	* config/i386/x86-64.h (ASM_OUTPUT_MAX_SKIP_ALIGN): Likewise.
+
+2018-07-04  Martin Liska  <mliska@suse.cz>
+            Jonathan Wakely  <jwakely@redhat.com>
+
+	* coverage.c: Use correct type.
+	* doc/invoke.texi: Language correction.
+
+2018-07-03  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85620
+	* config/i386/i386.c (rest_of_insert_endbranch): Also generate
+	ENDBRANCH for non-tail call which may return via indirect branch.
+	* doc/extend.texi: Document indirect_return attribute.
+
+2018-07-03  Martin Sebor  <msebor@redhat.com>
+
+	PR tree-optimization/86274
+	* gimple-ssa-sprintf.c (fmtresult::type_max_digits): Verify
+	precondition.
+	(format_floating): Correct handling of infinities and NaNs.
+
+2018-07-03  Martin Sebor  <msebor@redhat.com>
+
+	* print-tree.c (print_real_cst): New function.
+	(print_node_brief): Call it.
+	(print_node): Ditto.
+
+2018-07-03  Jeff Law  <law@redhat.com>
+
+	* config/h8300/h8300.md (logical<mode>3_sn, logical<mode>3): Merge
+	into a single pattern.
+
+	* config/h8300/h8300.md (ors code_iterator): New.
+	(bsetqi_msx, bnotqi_msx patterns and splitters): Consolidate into
+	a single pattern and single splitter.
+	(bsethi_msx, bnothi_msx patterns): Consolidate into a single pattern.
+	(iorqi3_1, xorqi3_1): Likewise.
+	(iorqi3, xorqi3 expanders): Similarly.
+
+	* config/h8300/h8300.md (movmd_internal_normal): Consolidated with
+	(movmd_internal) into a single pattern using the P mode iterator.
+	(movmd splitters): Similarly.
+	(stpcpy_internal_normal, stpcpy_internal): Similarly for thes patterns.
+	(movsd splitters): Similarly.
+
+	* config/h8300/h8300.c (h8300_insn_length_from_table): Consolidate
+	ADDB, ADDW and ADDL into a single ADD attribute which selects the
+	right table based on the size of the operand.
+	* config/h8300/h8300.md (length_table): Corresponding changes. All
+	references to "addb", "addw" and "addl" changed to "add".
+	(btst patterns): Merge two variants into a single pattern.
+	(tstqi, tsthi): Likewise.
+	(addhi3_incdec, addsi3_incdec): Likewise.
+	(subhi3_h8300hs, subsi3_h8300hs): Likewise.
+	(mulhi3, mulsi3): Likewise.
+	(udivhi3, udivsi3): Likewise.
+	(divhi3, divsi3): Likewise.
+	(andorqi3, andorhi3, andorsi3): Likewise.
+
+2018-07-03  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/85694
+	* config/i386/sse.md (uavg<mode>3_ceil): New expander.
+	(<sse2_avx2>_uavg<mode>3<mask_name>): Simplify expander.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/85694
+	* config/aarch64/iterators.md (HADD, RHADD): New int iterators.
+	(u): Handle UNSPEC_SHADD, UNSPEC_UHADD, UNSPEC_SRHADD and
+	UNSPEC_URHADD.
+	* config/aarch64/aarch64-simd.md (<u>avg<mode>3_floor)
+	(<u>avg<mode>3_ceil): New patterns.
+
+2018-07-03  David Malcolm  <dmalcolm@redhat.com>
+
+	* gcc.dg/vect/slp-perm-1.c: Remove "note: " prefix from
+	scan-tree-dump directive.
+	* gcc.dg/vect/slp-perm-2.c: Likewise.
+	* gcc.dg/vect/slp-perm-3.c: Likewise.
+	* gcc.dg/vect/slp-perm-5.c: Likewise.
+	* gcc.dg/vect/slp-perm-6.c: Likewise.
+	* gcc.dg/vect/slp-perm-7.c: Likewise.
+	* gcc.dg/vect/slp-perm-8.c: Likewise.
+
+2018-07-03  Marek Polacek  <polacek@redhat.com>
+
+	PR middle-end/86202
+	* gimple-fold.c (size_must_be_zero_p): Check the type of the size.
+
+2018-07-03  Richard Biener  <rguenther@suse.de>
+
+	PR ipa/86389
+	* tree-ssa-structalias.c (find_func_clobbers): Properly
+	handle indirect calls.
+
+2018-07-03  Jeff Law  <law@redhat.com>
+
+	* config/h8300/h8300.md (HSI, QHSI, QHSIF): New mode iterators.
+	(shifts): New code iterator.
+	(movqi, movhi, movsi, movsf expanders): Consolidate into a single
+	expander.  Fix HImode handling on H8/SX.
+	(addqi3, addhi3, addsi3 expanders): Consolidate into a single expander.
+	(subqi3, subhi3, subsi3 expanders): Likewise.
+	(andqi3, andhi3, andsi3 expanders): Likewise.
+	(iorqi3, iorhi3, iorsi3 expanders): Likewise.
+	(xorqi3, xorhi3, xorsi3 expanders): Likewise.
+	(negqi2, neghi2, negsi2, negsf2 expanders): Likewise.
+	(one_cmplqi2, one_cmplhi2, one_cmplsi2): Likewise.
+	(zero_extendqihi2, zero_extendqisi2): Likewise.
+	(extendqihi2, extendqisi2): Likewise.
+	(rotlqi3, rotlhi3, rotlsi3): Likewise.
+	(neghi2_h8300, negsi2_h8300): Likewise for these patterns.
+	(rotlqi3_1, rotlhi3_1): Likewise.
+	(logicalhi3_sn, logicalsi3_sn): Likewise.
+	(logicalhi3, logicalsi3): Likewise.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (vect_recog_rotate_pattern)
+	(vect_recog_vector_vector_shift_pattern, vect_recog_divmod_pattern)
+	(vect_recog_mixed_size_cond_pattern, adjust_bool_pattern_cast)
+	(adjust_bool_pattern, vect_recog_bool_pattern): Pass the vector
+	type to append_pattern_def_seq instead of creating a stmt_vec_info
+	directly.
+	(build_mask_conversion): Likewise.  Remove vinfo argument.
+	(vect_add_conversion_to_patterm): Likewise, renaming to...
+	(vect_add_conversion_to_pattern): ...this.
+	(vect_recog_mask_conversion_pattern): Update call to
+	build_mask_conversion.  Pass the vector type to
+	append_pattern_def_seq here too.
+	(vect_recog_gather_scatter_pattern): Update call to
+	vect_add_conversion_to_pattern.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (new_pattern_def_seq): Delete.
+	(vect_recog_dot_prod_pattern, vect_recog_sad_pattern)
+	(vect_recog_widen_op_pattern, vect_recog_over_widening_pattern)
+	(vect_recog_rotate_pattern, vect_synth_mult_by_constant): Don't set
+	STMT_VINFO_PATTERN_DEF_SEQ to null here.
+	(vect_recog_pow_pattern, vect_recog_vector_vector_shift_pattern)
+	(vect_recog_mixed_size_cond_pattern, vect_recog_bool_pattern): Use
+	append_pattern_def_seq instead of new_pattern_def_seq.
+	(vect_recog_divmod_pattern): Do both of the above.
+	(vect_pattern_recog_1): Assert that STMT_VINO_PATTERN_DEF_SEQ
+	is null.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (vect_recog_dot_prod_pattern):
+	(vect_recog_sad_pattern, vect_recog_widen_op_pattern)
+	(vect_recog_widen_mult_pattern, vect_recog_pow_pattern):
+	(vect_recog_widen_sum_pattern, vect_recog_over_widening_pattern)
+	(vect_recog_average_pattern, vect_recog_cast_forwprop_pattern)
+	(vect_recog_widen_shift_pattern, vect_recog_rotate_pattern)
+	(vect_recog_vector_vector_shift_pattern, vect_synth_mult_by_constant)
+	(vect_recog_mult_pattern, vect_recog_divmod_pattern)
+	(vect_recog_mixed_size_cond_pattern, vect_recog_bool_pattern)
+	(vect_recog_mask_conversion_pattern): Replace vec<gimple *>
+	parameter with a single stmt_vec_info.
+	(vect_recog_func_ptr): Likewise.
+	(vect_recog_gather_scatter_pattern): Likewise, folding in...
+	(vect_try_gather_scatter_pattern): ...this.
+	(vect_pattern_recog_1): Remove stmts_to_replace and just pass
+	the stmt_vec_info of the statement to be matched.  Don't clear
+	STMT_VINFO_RELATED_STMT.
+	(vect_pattern_recog): Update call accordingly.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/85694
+	* doc/md.texi (avgM3_floor, uavgM3_floor, avgM3_ceil)
+	(uavgM3_ceil): Document new optabs.
+	* doc/sourcebuild.texi (vect_avg_qi): Document new target selector.
+	* internal-fn.def (IFN_AVG_FLOOR, IFN_AVG_CEIL): New internal
+	functions.
+	* optabs.def (savg_floor_optab, uavg_floor_optab, savg_ceil_optab)
+	(savg_ceil_optab): New optabs.
+	* tree-vect-patterns.c (vect_recog_average_pattern): New function.
+	(vect_vect_recog_func_ptrs): Add it.
+	* tree-vect-stmts.c (vectorizable_call): Get the type of the zero
+	constant directly from the associated lhs.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (vect_split_statement): New function.
+	(vect_convert_input): Use it to try to split an existing cast.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* poly-int.h (print_hex): New function.
+	* dumpfile.h (dump_dec, dump_hex): Declare.
+	* dumpfile.c (dump_dec, dump_hex): New poly_wide_int functions.
+	* tree-vectorizer.h (_stmt_vec_info): Add min_output_precision,
+	min_input_precision, operation_precision and operation_sign.
+	* tree-vect-patterns.c (vect_get_range_info): New function.
+	(vect_same_loop_or_bb_p, vect_single_imm_use)
+	(vect_operation_fits_smaller_type): Delete.
+	(vect_look_through_possible_promotion): Add an optional
+	single_use_p parameter.
+	(vect_recog_over_widening_pattern): Rewrite to use new
+	stmt_vec_info infomration.  Handle one operation at a time.
+	(vect_recog_cast_forwprop_pattern, vect_narrowable_type_p)
+	(vect_truncatable_operation_p, vect_set_operation_type)
+	(vect_set_min_input_precision): New functions.
+	(vect_determine_min_output_precision_1): Likewise.
+	(vect_determine_min_output_precision): Likewise.
+	(vect_determine_precisions_from_range): Likewise.
+	(vect_determine_precisions_from_users): Likewise.
+	(vect_determine_stmt_precisions, vect_determine_precisions): Likewise.
+	(vect_vect_recog_func_ptrs): Put over_widening first.
+	Add cast_forwprop.
+	(vect_pattern_recog): Call vect_determine_precisions.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (vect_mark_pattern_stmts): Remove pattern
+	statements that have been replaced by further pattern statements.
+	(vect_pattern_recog_1): Clear STMT_VINFO_PATTERN_DEF_SEQ on failure.
+
+2018-07-03  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-stmts.c (vect_is_simple_use): Consolidate dumping,
+	always set *dt.  Dump vectype in vectype overload.
+	* dumpfile.h (dump_gimple_expr): New function.
+	(dump_gimple_expr_loc): Likewise.
+	* dumpfile.c (dump_gimple_expr): New function.
+	(dump_gimple_expr_loc): Likewise.
+
+2018-07-02  Jeff Law  <law@redhat.com>
+
+	* config/h8300/h8300.md (movqi_h8300, movqi_h8300hs): Consolidate
+	the H8/300, H8/300H and H8/S variants into a single pattern.
+	(movhi_h8300, movqi_h8300hs): Similarly.
+	(pushqi_h8300hs, pushhi_h8300hs): Consolidate into a single pattern.
+	(QHI mode iterator): New.
+
+	* config/h8300/h8300.md: Remove trailing whitespace.
+
+2018-07-02  Jim Wilson  <jimw@sifive.com>
+
+	* config/riscv/riscv.c (riscv_expand_epilogue): Use emit_jump_insn
+	instead of emit_insn for interrupt returns.
+	* config/riscv/riscv.md (riscv_met): Add (return) to rtl.
+	(riscv_sret, riscv_uret): Likewise.
+
+2018-07-02  David Malcolm  <dmalcolm@redhat.com>
+
+	* pretty-print.c (selftest::test_pp_format): Move save and restore
+	of quotes to class auto_fix_quotes, and add an instance.
+	* selftest.c: Include "intl.h".
+	(selftest::auto_fix_quotes::auto_fix_quotes): New ctor.
+	(selftest::auto_fix_quotes::~auto_fix_quotes): New dtor.
+	* selftest.h (selftest::auto_fix_quotes): New class.
+
+2018-07-02  Richard Henderson  <richard.henderson@linaro.org>
+
+	* config/aarch64/aarch64-protos.h, config/aarch64/aarch64.c
+	(aarch64_sve_prepare_conditional_op): Remove.
+	* config/aarch64/aarch64-sve.md (cond_<SVE_INT_BINARY><SVE_I>):
+	Allow aarch64_simd_reg_or_zero as select operand; remove
+	the aarch64_sve_prepare_conditional_op call.
+	(cond_<SVE_INT_BINARY_SD><SVE_SDI>): Likewise.
+	(cond_<SVE_COND_FP_BINARY><SVE_F>): Likewise.
+	(*cond_<SVE_INT_BINARY><SVE_I>_z): New pattern.
+	(*cond_<SVE_INT_BINARY_SD><SVE_SDI>_z): New pattern.
+	(*cond_<SVE_COND_FP_BINARY><SVE_F>_z): New pattern.
+	(*cond_<SVE_INT_BINARY><SVE_I>_any): New pattern.
+	(*cond_<SVE_INT_BINARY_SD><SVE_SDI>_any): New pattern.
+	(*cond_<SVE_COND_FP_BINARY><SVE_F>_any): New pattern
+	and a splitters to match all of the *_any patterns.
+	* config/aarch64/predicates.md (aarch64_sve_any_binary_operator): New.
+
+	* config/aarch64/iterators.md (SVE_INT_BINARY_REV): Remove.
+	(SVE_COND_FP_BINARY_REV): Remove.
+	(sve_int_op_rev, sve_fp_op_rev): New.
+	* config/aarch64/aarch64-sve.md (*cond_<SVE_INT_BINARY><SVE_I>_0): New.
+	(*cond_<SVE_INT_BINARY_SD><SVE_SDI>_0): New.
+	(*cond_<SVE_COND_FP_BINARY><SVE_F>_0): New.
+	(*cond_<SVE_INT_BINARY><SVE_I>_2): Rename, add movprfx alternative.
+	(*cond_<SVE_INT_BINARY_SD><SVE_SDI>_2): Similarly.
+	(*cond_<SVE_COND_FP_BINARY><SVE_F>_2): Similarly.
+	(*cond_<SVE_INT_BINARY><SVE_I>_3): Similarly; use sve_int_op_rev.
+	(*cond_<SVE_INT_BINARY_SD><SVE_SDI>_3): Similarly.
+	(*cond_<SVE_COND_FP_BINARY><SVE_F>_3): Similarly; use sve_fp_op_rev.
+
+	* config/aarch64/aarch64-sve.md (cond_<SVE_COND_FP_BINARY><SVE_F>):
+	Remove match_dup 1 from the inner unspec.
+	(*cond_<SVE_COND_FP_BINARY><SVE_F>): Likewise.
+
+	* config/aarch64/aarch64.md (movprfx): New attr.
+	(length): Default movprfx to 8.
+	* config/aarch64/aarch64-sve.md (*mul<SVE_I>3): Add movprfx alt.
+	(*madd<SVE_I>, *msub<SVE_I): Likewise.
+	(*<su>mul<SVE_I>3_highpart): Likewise.
+	(*<SVE_INT_BINARY_SD><SVE_SDI>3): Likewise.
+	(*v<ASHIFT><SVE_I>3): Likewise.
+	(*<su><MAXMIN><SVE_I>3): Likewise.
+	(*<su><MAXMIN><SVE_F>3): Likewise.
+	(*fma<SVE_F>4, *fnma<SVE_F>4): Likewise.
+	(*fms<SVE_F>4, *fnms<SVE_F>4): Likewise.
+	(*div<SVE_F>4): Likewise.
+
+2018-07-02  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-patterns.c (vect_recog_widen_shift_pattern): Fix typo
+	in dump string.
+
+2018-07-02  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/86363
+	* tree-ssa-sccvn.c (vn_reference_lookup_3): Check the
+	memset argument refers to a non-variable address.
+
+2018-07-02  Aldy Hernandez  <aldyh@redhat.com>
+
+	* tree-vrp.c (extract_range_from_binary_expr_1): Abstract a lot of the
+	{PLUS,MINUS}_EXPR code to...
+	(adjust_symbolic_bound): ...here,
+	(combine_bound): ...here,
+	(set_value_range_with_overflow): ...and here.
+
+2018-07-02  Aldy Hernandez  <aldyh@redhat.com>
+
+	* tree-vrp.c (extract_range_from_unary_expr): Abstract ABS_EXPR
+	code...
+	(extract_range_from_abs_expr): ...here.
+
+2018-07-02  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/i386/i386.c (ix86_finalize_stack_frame_flags): Do not overrule
+	-fno-omit-frame-pointer when not optimizing.
+
+2018-07-02  Martin Liska  <mliska@suse.cz>
+
+        PR ipa/86279
+	* ipa-pure-const.c (malloc_candidate_p): Revert usage of ::get.
+	(propagate_nothrow): Likewise.
+
+2018-07-02  Martin Liska  <mliska@suse.cz>
+
+        PR ipa/86323
+	* ipa-inline.c (early_inliner): Revert wrongly added ::get call.
+
+2018-07-02  David Malcolm  <dmalcolm@redhat.com>
+
+	* dumpfile.c (dump_generic_expr_loc): Undo removal of this
+	function in r262149, changing "loc" param from source_location to
+	const dump_location_t &.
+	* dumpfile.h (dump_generic_expr_loc): Undo removal of this
+	declaration, as above.
+
+2018-07-01  Paul Koning  <ni1d@arrl.net>
+
+	* common/config/pdp11/pdp11-common.c (pdp11_handle_option): Handle
+	-munit-asm, -mgnu-asm, -mdec-asm.
+	* config/pdp11/pdp11-protos.h (pdp11_gen_int_label): New.
+	(pdp11_output_labelref): New.
+	(pdp11_output_def): New.
+	(pdp11_output_addr_vec_elt): New.
+	* config/pdp11/pdp11.c: Use tab between opcode and operands.  Use
+	%# and %@ format codes.
+	(pdp11_option_override): New.
+	(TARGET_ASM_FILE_START_FILE_DIRECTIVE): Define.
+	(pdp11_output_ident): New.
+	(pdp11_asm_named_section): New.
+	(pdp11_asm_init_sections): New.
+	(pdp11_file_start): New.
+	(pdp11_file_end): New.
+	(output_ascii): Use .ascii/.asciz for -mdec-asm.
+	(pdp11_asm_print_operand): Update %# and %$ for -mdec-asm.  Add
+	%o, like %c but octal.
+	(pdp11_option_override): New.
+	* config/pdp11/pdp11.h (TEXT_SECTION_ASM_OP): Update for
+	-mdec-asm.
+	(DATA_SECTION_ASM_OP): Ditto.
+	(READONLY_DATA_SECTION_ASM_OP): New.
+	(IS_ASM_LOGICAL_LINE_SEPARATOR): New.
+	(ASM_GENERATE_INTERNAL_LABEL): Use new function.
+	(ASM_OUTPUT_LABELREF): Ditto.
+	(ASM_OUTPUT_DEF): Ditto.
+	(ASM_OUTPUT_EXTERNAL): New.
+	(ASM_OUTPUT_SOURCE_FILENAME): New.
+	(ASM_OUTPUT_ADDR_VEC_ELT): Use new function.
+	(ASM_OUTPUT_SKIP): Update for -mdec-asm.
+	* config/pdp11/pdp11.md: Use tab between opcode and operands.  Use
+	%# and %@ format codes.
+	* config/pdp11/pdp11.opt (mgnu-asm): New.
+	(mdec-asm): Conflicts with -mgnu-asm and -munix-asm.
+	(munix-asm): Conflicts with -mdec-asm and -mgnu-asm.
+	* doc/invoke.txt (PDP-11 Options): Add -mgnu-asm.
+
 2018-07-01  Aldy Hernandez  <aldyh@redhat.com>
 
 	* tree-ssa-threadupdate.c (mark_threaded_blocks): Avoid
@@ -335,6 +877,8 @@
 
 2018-06-28  Eric Botcazou  <ebotcazou@adacore.com>
 
+	* tree-inline.h (struct copy_body_data): Move remapping_type_depth and
+	prevent_decl_creation_for_types fields up and add reset_location field.
 	* tree-inline.c (remap_gimple_stmt): Force input_location on the new
 	statement if id->reset_location is true.
 	(copy_edges_for_bb): Do not set goto_locus on the new edges if
@@ -343,8 +887,6 @@
 	id->reset_location is true.
 	(expand_call_inline): Set id->reset_location if DECL_IGNORED_P
 	is set on the function to be inlined.
-	* tree-inline.h (struct copy_body_data): Move remapping_type_depth and
-	prevent_decl_creation_for_types fields up and add reset_location field.
 
 2018-06-27  Stephan Bergmann  <sbergman@redhat.com>
 

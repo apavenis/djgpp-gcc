@@ -1,3 +1,27 @@
+2018-07-03  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* decl.c (min_location): New.
+	(smallest_type_quals_location): Use the latter.
+	(check_concept_fn): Use DECL_SOURCE_LOCATION.
+	(grokdeclarator): Use accurate locations in a number of error
+	messages involving ds_thread, ds_storage_class, ds_virtual,
+	ds_constexpr, ds_typedef and ds_friend; exploit min_location.
+
+2018-07-03  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/86201
+	* typeck.c (cp_build_binary_op): Check c_inhibit_evaluation_warnings.
+
+2018-07-03  Jason Merrill  <jason@redhat.com>
+
+	PR c++/86378 - functional cast in noexcept-specifier.
+	* tree.c (strip_typedefs_expr) [TREE_LIST]: Fix iteration.
+
+2018-07-02  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* parser.c (set_and_check_decl_spec_loc): Use rich_location::add_range
+	in error message about __thread and thread_local at the same time.
+
 2018-06-29  Marek Polacek  <polacek@redhat.com>
 
 	PR c++/86184

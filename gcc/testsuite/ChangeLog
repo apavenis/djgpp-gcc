@@ -1,3 +1,257 @@
+2018-07-04  Aldy Hernandez  <aldyh@redhat.com>
+
+	* gcc.dg/tree-ssa/ssa-dom-thread-7.c: Adjust test because aarch64
+	has a slightly different IL that provides more threading
+	opportunities.
+
+2018-07-04  Martin Liska  <mliska@suse.cz>
+
+	PR middle-end/66240
+	PR target/45996
+	PR c/84100
+	* gcc.dg/pr84100.c (foo):
+	* gcc.target/i386/falign-functions-2.c: New test.
+	* gcc.target/i386/falign-functions.c: New test.
+
+2018-07-04  Martin Liska  <mliska@suse.cz>
+
+	* gcc.dg/pr47793.c: Remove.
+
+2018-07-04  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/bb-slp-over-widen-1.c: Fix name of dump file for
+	final scan test.
+	* gcc.dg/vect/bb-slp-over-widen-2.c: Likewise.
+
+2018-07-03  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/85620
+	* gcc.target/i386/pr85620-1.c: New test.
+	* gcc.target/i386/pr85620-2.c: Likewise.
+	* gcc.target/i386/pr85620-3.c: Likewise.
+	* gcc.target/i386/pr85620-4.c: Likewise.
+
+2018-07-03  Martin Sebor  <msebor@redhat.com>
+
+	PR tree-optimization/86274
+	* gcc.dg/tree-ssa/builtin-sprintf-9.c: New test.
+	* gcc.dg/tree-ssa/builtin-sprintf-warn-1.c: Adjust.
+	* gcc.dg/tree-ssa/builtin-sprintf-warn-10.c: Same.
+	* gcc.dg/tree-ssa/builtin-sprintf-warn-15.c: Same.
+	* gcc.dg/tree-ssa/builtin-sprintf-warn-7.c: Same.
+	* gcc.dg/tree-ssa/builtin-sprintf.c: Same.
+	* gcc.dg/tree-ssa/pr83198.c: Same.
+
+2018-07-03  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* g++.dg/other/locations1.C: New.
+	* g++.dg/tls/locations1.C: Likewise.
+	* g++.dg/diagnostic/virtual-constexpr.C: Likewise.
+	* g++.dg/diagnostic/virtual-static.C: Likewise.
+	* g++.dg/concepts/fn-concept2.C: Test the locations too.
+	* g++.dg/cpp0x/constexpr-virtual5.C: Likewise.
+	* g++.dg/cpp0x/pr51463.C: Likewise.
+	* g++.dg/other/typedef1.C: Likewise.
+	* g++.dg/parse/dtor13.C: Likewise.
+	* g++.dg/template/error44.C: Likewise.
+	* g++.dg/template/typedef4.C: Likewise.
+	* g++.dg/template/typedef5.C: Likewise.
+	* g++.dg/tls/diag-2.C: Likewise.
+	* g++.old-deja/g++.brendan/crash11.C: Likewise.
+
+2018-07-03  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/86201
+	* g++.dg/diagnostic/pr86201.C: New test.
+
+2018-07-03  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/85694
+	* gcc.target/i386/pr85694.c: New test.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/85694
+	* lib/target-supports.exp (check_effective_target_vect_avg_qi):
+	Return true for AArch64 without SVE.
+	* gcc.target/aarch64/vect_hadd_1.h: New file.
+	* gcc.target/aarch64/vect_shadd_1.c: New test.
+	* gcc.target/aarch64/vect_srhadd_1.c: Likewise.
+	* gcc.target/aarch64/vect_uhadd_1.c: Likewise.
+	* gcc.target/aarch64/vect_urhadd_1.c: Likewise.
+
+2018-07-03  Marek Polacek  <polacek@redhat.com>
+
+	PR middle-end/86202
+	* gcc.dg/Wint-conversion-2.c: New test.
+
+	PR c++/84306
+	* g++.dg/overload/conv-op3.C: New test.
+
+2018-07-03  Richard Biener  <rguenther@suse.de>
+
+	PR ipa/86389
+	* gcc.dg/torture/pr86389.c: New testcase.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/85694
+	* lib/target-supports.exp (check_effective_target_vect_avg_qi): New
+	proc.
+	* gcc.dg/vect/vect-avg-1.c: New test.
+	* gcc.dg/vect/vect-avg-2.c: Likewise.
+	* gcc.dg/vect/vect-avg-3.c: Likewise.
+	* gcc.dg/vect/vect-avg-4.c: Likewise.
+	* gcc.dg/vect/vect-avg-5.c: Likewise.
+	* gcc.dg/vect/vect-avg-6.c: Likewise.
+	* gcc.dg/vect/vect-avg-7.c: Likewise.
+	* gcc.dg/vect/vect-avg-8.c: Likewise.
+	* gcc.dg/vect/vect-avg-9.c: Likewise.
+	* gcc.dg/vect/vect-avg-10.c: Likewise.
+	* gcc.dg/vect/vect-avg-11.c: Likewise.
+	* gcc.dg/vect/vect-avg-12.c: Likewise.
+	* gcc.dg/vect/vect-avg-13.c: Likewise.
+	* gcc.dg/vect/vect-avg-14.c: Likewise.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-over-widen-5.c: Test that the extensions
+	get split into two for use by the over-widening pattern.
+	* gcc.dg/vect/vect-over-widen-6.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-7.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-8.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-9.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-10.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-11.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-12.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-13.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-14.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-15.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-16.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-22.c: New test.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-widen-mult-u8-u32.c: Check specifically for a
+	widen_mult pattern.
+	* gcc.dg/vect/vect-over-widen-1.c: Update the scan tests for new
+	over-widening messages.
+	* gcc.dg/vect/vect-over-widen-1-big-array.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-2.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-2-big-array.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-3.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-3-big-array.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-4.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-4-big-array.c: Likewise.
+	* gcc.dg/vect/bb-slp-over-widen-1.c: New test.
+	* gcc.dg/vect/bb-slp-over-widen-2.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-5.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-6.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-7.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-8.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-9.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-10.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-11.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-12.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-13.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-14.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-15.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-16.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-17.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-18.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-19.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-20.c: Likewise.
+	* gcc.dg/vect/vect-over-widen-21.c: Likewise.
+
+2018-07-03  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-mixed-size-cond-1.c: New test.
+
+2018-07-02  Jim Wilson  <jimw@sifive.com>
+
+	* gcc.target/riscv/interrupt-debug.c: New.
+
+2018-07-02  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* g++.dg/diagnostic/thread-thread_local.C: New.
+
+2018-07-02  Martin Liska  <mliska@suse.cz>
+
+        PR testsuite/86366
+	* gcc.dg/profile-dir-1.c: Fix scanned pattern.
+	* gcc.dg/profile-dir-2.c: Likewise.
+	* gcc.dg/profile-dir-3.c: Likewise.
+
+2018-07-02  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* gcc.target/arm/arm-soft-strd-even.c: Skip if -mfloat-abi is
+	overriden.
+
+2018-07-02  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/86363
+	* gcc.dg/torture/pr86363.c: New testcase.
+
+2018-07-02  Martin Liska  <mliska@suse.cz>
+
+	* gcc.dg/completion-1.c: New test.
+	* gcc.dg/completion-2.c: New test.
+	* gcc.dg/completion-3.c: New test.
+
+2018-07-02  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/82969
+	PR fortran/86242
+	* gfortran.dg/proc_ptr_50.f90: New test.
+
+2018-07-02  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/45305
+	* gfortran.dg/scalarize_parameter_array_2.f90: New test.
+
+2018-07-02  Martin Liska  <mliska@suse.cz>
+
+        PR ipa/86279
+	* gcc.dg/ipa/pr86279.c: New test.
+
+2018-07-02  Martin Liska  <mliska@suse.cz>
+
+        PR ipa/86323
+	* g++.dg/ipa/pr86323.C: New test.
+
+2018-07-01  Tom de Vries  <tdevries@suse.de>
+
+	revert:
+	2018-07-01  Tom de Vries  <tdevries@suse.de>
+
+	* gcc.dg/guality/prevent-optimization.h (VOLATILE): Define.
+	* gcc.dg/guality/vla-1.c (f1): Mark local vla a as VOLATILE.
+
+2018-07-01  Tom de Vries  <tdevries@suse.de>
+
+	* lib/gcc-gdb-test.exp (gdb-test): Handle '@' prefix in line number
+	argument.
+	* gcc.dg/guality/const-volatile.c: Replace gdb-test line nrs 50 and 58
+	with @main.
+
+2018-07-01  Tom de Vries  <tdevries@suse.de>
+
+	* gcc.dg/guality/prevent-optimization.h (VOLATILE): Define.
+	* gcc.dg/guality/vla-1.c (f1): Mark local vla a as VOLATILE.
+
+2018-07-01  Tom de Vries  <tdevries@suse.de>
+
+	* lib/gcc-dg.exp (get-absolute-line): Handle '.'.
+	* gcc.dg/guality/vla-1.c: Use relative line numbers.
+
+2018-07-01  Tom de Vries  <tdevries@suse.de>
+
+	* gcc.dg-selftests/dg-final.exp (verify_call_1): Factor out of ...
+	(verify_call): ... here.  Move to toplevel.
+	(verify_call_np, dg_final_directive_check_utils): New proc.
+	(toplevel): Call dg_final_directive_check_utils.
+	* lib/gcc-dg.exp (get-absolute-line): Fix typo in variable reference.
+
 2018-06-30  Jim Wilson  <jimw@sifive.com>
 
 	* gcc.target/riscv/shift-shift-1.c: New.

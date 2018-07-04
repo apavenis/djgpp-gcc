@@ -637,9 +637,9 @@ static const struct tune_params generic_tunings =
   4, /* memmov_cost  */
   2, /* issue_rate  */
   (AARCH64_FUSE_AES_AESMC), /* fusible_ops  */
-  8,	/* function_align.  */
-  4,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "8",	/* function_align.  */
+  "4",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -663,9 +663,9 @@ static const struct tune_params cortexa35_tunings =
   1, /* issue_rate  */
   (AARCH64_FUSE_AES_AESMC | AARCH64_FUSE_MOV_MOVK | AARCH64_FUSE_ADRP_ADD
    | AARCH64_FUSE_MOVK_MOVK | AARCH64_FUSE_ADRP_LDR), /* fusible_ops  */
-  16,	/* function_align.  */
-  4,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "4",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -689,9 +689,9 @@ static const struct tune_params cortexa53_tunings =
   2, /* issue_rate  */
   (AARCH64_FUSE_AES_AESMC | AARCH64_FUSE_MOV_MOVK | AARCH64_FUSE_ADRP_ADD
    | AARCH64_FUSE_MOVK_MOVK | AARCH64_FUSE_ADRP_LDR), /* fusible_ops  */
-  16,	/* function_align.  */
-  4,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "4",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -715,9 +715,9 @@ static const struct tune_params cortexa57_tunings =
   3, /* issue_rate  */
   (AARCH64_FUSE_AES_AESMC | AARCH64_FUSE_MOV_MOVK | AARCH64_FUSE_ADRP_ADD
    | AARCH64_FUSE_MOVK_MOVK), /* fusible_ops  */
-  16,	/* function_align.  */
-  4,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "4",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -741,9 +741,9 @@ static const struct tune_params cortexa72_tunings =
   3, /* issue_rate  */
   (AARCH64_FUSE_AES_AESMC | AARCH64_FUSE_MOV_MOVK | AARCH64_FUSE_ADRP_ADD
    | AARCH64_FUSE_MOVK_MOVK), /* fusible_ops  */
-  16,	/* function_align.  */
-  4,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "4",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -767,9 +767,9 @@ static const struct tune_params cortexa73_tunings =
   2, /* issue_rate.  */
   (AARCH64_FUSE_AES_AESMC | AARCH64_FUSE_MOV_MOVK | AARCH64_FUSE_ADRP_ADD
    | AARCH64_FUSE_MOVK_MOVK | AARCH64_FUSE_ADRP_LDR), /* fusible_ops  */
-  16,	/* function_align.  */
-  4,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "4",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -794,9 +794,9 @@ static const struct tune_params exynosm1_tunings =
   4,	/* memmov_cost  */
   3,	/* issue_rate  */
   (AARCH64_FUSE_AES_AESMC), /* fusible_ops  */
-  4,	/* function_align.  */
-  4,	/* jump_align.  */
-  4,	/* loop_align.  */
+  "4",	/* function_align.  */
+  "4",	/* jump_align.  */
+  "4",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -819,9 +819,9 @@ static const struct tune_params thunderxt88_tunings =
   6, /* memmov_cost  */
   2, /* issue_rate  */
   AARCH64_FUSE_CMP_BRANCH, /* fusible_ops  */
-  8,	/* function_align.  */
-  8,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "8",	/* function_align.  */
+  "8",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -844,9 +844,9 @@ static const struct tune_params thunderx_tunings =
   6, /* memmov_cost  */
   2, /* issue_rate  */
   AARCH64_FUSE_CMP_BRANCH, /* fusible_ops  */
-  8,	/* function_align.  */
-  8,	/* jump_align.  */
-  8,	/* loop_align.  */
+  "8",	/* function_align.  */
+  "8",	/* jump_align.  */
+  "8",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -870,9 +870,9 @@ static const struct tune_params xgene1_tunings =
   6, /* memmov_cost  */
   4, /* issue_rate  */
   AARCH64_FUSE_NOTHING, /* fusible_ops  */
-  16,	/* function_align.  */
-  8,	/* jump_align.  */
-  16,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "8",	/* jump_align.  */
+  "16",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -896,9 +896,9 @@ static const struct tune_params qdf24xx_tunings =
   4, /* issue_rate  */
   (AARCH64_FUSE_MOV_MOVK | AARCH64_FUSE_ADRP_ADD
    | AARCH64_FUSE_MOVK_MOVK), /* fuseable_ops  */
-  16,	/* function_align.  */
-  8,	/* jump_align.  */
-  16,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "8",	/* jump_align.  */
+  "16",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -924,9 +924,9 @@ static const struct tune_params saphira_tunings =
   4, /* issue_rate  */
   (AARCH64_FUSE_MOV_MOVK | AARCH64_FUSE_ADRP_ADD
    | AARCH64_FUSE_MOVK_MOVK), /* fuseable_ops  */
-  16,	/* function_align.  */
-  8,	/* jump_align.  */
-  16,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "8",	/* jump_align.  */
+  "16",	/* loop_align.  */
   2,	/* int_reassoc_width.  */
   4,	/* fp_reassoc_width.  */
   1,	/* vec_reassoc_width.  */
@@ -950,9 +950,9 @@ static const struct tune_params thunderx2t99_tunings =
   4, /* issue_rate.  */
   (AARCH64_FUSE_CMP_BRANCH | AARCH64_FUSE_AES_AESMC
    | AARCH64_FUSE_ALU_BRANCH), /* fusible_ops  */
-  16,	/* function_align.  */
-  8,	/* jump_align.  */
-  16,	/* loop_align.  */
+  "16",	/* function_align.  */
+  "8",	/* jump_align.  */
+  "16",	/* loop_align.  */
   3,	/* int_reassoc_width.  */
   2,	/* fp_reassoc_width.  */
   2,	/* vec_reassoc_width.  */
@@ -10572,12 +10572,12 @@ aarch64_override_options_after_change_1 (struct gcc_options *opts)
      alignment to what the target wants.  */
   if (!opts->x_optimize_size)
     {
-      if (opts->x_align_loops <= 0)
-	opts->x_align_loops = aarch64_tune_params.loop_align;
-      if (opts->x_align_jumps <= 0)
-	opts->x_align_jumps = aarch64_tune_params.jump_align;
-      if (opts->x_align_functions <= 0)
-	opts->x_align_functions = aarch64_tune_params.function_align;
+      if (opts->x_flag_align_loops && !opts->x_str_align_loops)
+	opts->x_str_align_loops = aarch64_tune_params.loop_align;
+      if (opts->x_flag_align_jumps && !opts->x_str_align_jumps)
+	opts->x_str_align_jumps = aarch64_tune_params.jump_align;
+      if (opts->x_flag_align_functions && !opts->x_str_align_functions)
+	opts->x_str_align_functions = aarch64_tune_params.function_align;
     }
 
   /* We default to no pc-relative literal loads.  */
@@ -16056,54 +16056,6 @@ aarch64_expand_sve_vcond (machine_mode data_mode, machine_mode cmp_mode,
 
   rtvec vec = gen_rtvec (3, pred, ops[1], ops[2]);
   emit_set_insn (ops[0], gen_rtx_UNSPEC (data_mode, vec, UNSPEC_SEL));
-}
-
-/* Prepare a cond_<optab><mode> operation that has the operands
-   given by OPERANDS, where:
-
-   - operand 0 is the destination
-   - operand 1 is a predicate
-   - operands 2 to NOPS - 2 are the operands to an operation that is
-     performed for active lanes
-   - operand NOPS - 1 specifies the values to use for inactive lanes.
-
-   COMMUTATIVE_P is true if operands 2 and 3 are commutative.  In that case,
-   no pattern is provided for a tie between operands 3 and NOPS - 1.  */
-
-void
-aarch64_sve_prepare_conditional_op (rtx *operands, unsigned int nops,
-				    bool commutative_p)
-{
-  /* We can do the operation directly if the "else" value matches one
-     of the other inputs.  */
-  for (unsigned int i = 2; i < nops - 1; ++i)
-    if (rtx_equal_p (operands[i], operands[nops - 1]))
-      {
-	if (i == 3 && commutative_p)
-	  std::swap (operands[2], operands[3]);
-	return;
-      }
-
-  /* If the "else" value is different from the other operands, we have
-     the choice of doing a SEL on the output or a SEL on an input.
-     Neither choice is better in all cases, but one advantage of
-     selecting the input is that it can avoid a move when the output
-     needs to be distinct from the inputs.  E.g. if operand N maps to
-     register N, selecting the output would give:
-
-	MOVPRFX Z0.S, Z2.S
-	ADD Z0.S, P1/M, Z0.S, Z3.S
-	SEL Z0.S, P1, Z0.S, Z4.S
-
-     whereas selecting the input avoids the MOVPRFX:
-
-	SEL Z0.S, P1, Z2.S, Z4.S
-	ADD Z0.S, P1/M, Z0.S, Z3.S.  */
-  machine_mode mode = GET_MODE (operands[0]);
-  rtx temp = gen_reg_rtx (mode);
-  rtvec vec = gen_rtvec (3, operands[1], operands[2], operands[nops - 1]);
-  emit_set_insn (temp, gen_rtx_UNSPEC (mode, vec, UNSPEC_SEL));
-  operands[2] = operands[nops - 1] = temp;
 }
 
 /* Implement TARGET_MODES_TIEABLE_P.  In principle we should always return

@@ -1,3 +1,30 @@
+2018-07-02  Richard Biener  <rguenther@suse.de>
+
+	PR lto/86321
+	* trans-types.c (gfc_get_array_type_bounds): Unshare TYPE_FIELDs
+	for the distinct type copy.
+
+2018-07-02  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/82969
+	PR fortran/86242
+	* trans-array.c (structure_alloc_comps): Do not explicitly copy
+	procedure pointer components.
+
+2018-07-02  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/45305
+	* expr.c : Add a prototype for scalarize_intrinsic_call.
+	(gfc_simplify_expr): Use scalarize_intrinsic_call for elemental
+	intrinsic function calls.
+	(scalarize_intrinsic_call): Add 'init_flag' argument. Check if
+	the expression or any of the actual argument expressions are
+	NULL. Before calling gfc_check_init_expr, check 'init_flag'.
+	Only simplify the scalarized expressions if there are no errors
+	on the stack.
+	(gfc_check_init_expr): Set 'init_flag' true in the call to
+	scalarize_intrinsic_call.
+
 2018-06-28  Fritz Reese  <fritzoreese@gmail.com>
 
 	PR fortran/82865
