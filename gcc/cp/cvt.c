@@ -607,6 +607,10 @@ cp_fold_convert (tree type, tree expr)
       conv = copy_node (expr);
       TREE_TYPE (conv) = type;
     }
+  else if (TREE_CODE (expr) == CONSTRUCTOR
+	   && TYPE_PTRMEMFUNC_P (type))
+    conv = build_ptrmemfunc (TYPE_PTRMEMFUNC_FN_TYPE (type), expr,
+			     true, false, tf_warning_or_error);
   else
     {
       conv = fold_convert (type, expr);
@@ -1934,7 +1938,8 @@ can_convert_qual (tree type, tree expr)
 
 /* Attempt to perform qualification conversions on EXPR to convert it
    to TYPE.  Return the resulting expression, or error_mark_node if
-   the conversion was impossible.  */
+   the conversion was impossible.  Since this is only used by
+   convert_nontype_argument, we fold the conversion.  */
 
 tree
 perform_qualification_conversions (tree type, tree expr)
@@ -1946,7 +1951,7 @@ perform_qualification_conversions (tree type, tree expr)
   if (same_type_p (type, expr_type))
     return expr;
   else if (can_convert_qual (type, expr))
-    return build_nop (type, expr);
+    return cp_fold_convert (type, expr);
   else
     return error_mark_node;
 }
