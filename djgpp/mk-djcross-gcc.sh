@@ -37,10 +37,20 @@ case "x$devphase" in
         ;;
 
     x)
-        ver1=${basever}
-        ver2=${basever}
-        snapshot_spec=""
-        source_name=${basever}
+        case "${basever}" in
+            [5-9].[1-9].0)
+                ver1=${basever}
+                ver2=${basever}
+                snapshot_spec=""
+                source_name=${basever}
+                ;;
+            *)
+                ver1=${basever}_${datestamp}
+                ver2=${basever}_${datestamp}
+                snapshot_spec="%define snapshot $datestamp"
+                source_name=${basever}-${datestamp}
+                ;;
+        esac
         ;;
     *)
         ver1=${basever}_${datestamp}
