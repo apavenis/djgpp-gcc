@@ -462,6 +462,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Thu Jul 26 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-8.2.0
+
 * Tue May 15 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Fix value of macros __DATE__ and __TIME__ for DJGPP host.
 
