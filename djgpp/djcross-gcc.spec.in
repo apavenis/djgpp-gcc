@@ -462,6 +462,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Jul 28 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- LTO fix (https://gcc.gnu.org/ml/gcc-patches/2018-07/msg01696.html)
+
 * Thu Jul 26 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-8.2.0
 
