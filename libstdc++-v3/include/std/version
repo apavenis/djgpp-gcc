@@ -126,6 +126,7 @@
 
 #if __cplusplus > 201703L
 // c++2a
+#define __cpp_lib_list_remove_return_type 201806L
 #endif // C++2a
 #endif // C++17
 #endif // C++14

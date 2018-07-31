@@ -1517,8 +1517,7 @@ check_abi_tags (tree t, tree subob, bool just_checking = false)
 	TREE_VALUE (attr) = chainon (data.tags, TREE_VALUE (attr));
       else
 	DECL_ATTRIBUTES (t)
-	  = tree_cons (get_identifier ("abi_tag"), data.tags,
-		       DECL_ATTRIBUTES (t));
+	  = tree_cons (abi_tag_identifier, data.tags, DECL_ATTRIBUTES (t));
     }
 
   mark_abi_tags (t, false);
@@ -1590,8 +1589,7 @@ inherit_targ_abi_tags (tree t)
 	TREE_VALUE (attr) = chainon (data.tags, TREE_VALUE (attr));
       else
 	TYPE_ATTRIBUTES (t)
-	  = tree_cons (get_identifier ("abi_tag"), data.tags,
-		       TYPE_ATTRIBUTES (t));
+	  = tree_cons (abi_tag_identifier, data.tags, TYPE_ATTRIBUTES (t));
     }
 
   mark_abi_tags (t, false);
@@ -5573,7 +5571,9 @@ check_bases_and_members (tree t)
      Again, other conditions for being an aggregate are checked
      elsewhere.  */
   CLASSTYPE_NON_AGGREGATE (t)
-    |= (type_has_user_provided_or_explicit_constructor (t)
+    |= ((cxx_dialect < cxx2a
+	 ? type_has_user_provided_or_explicit_constructor (t)
+	 : TYPE_HAS_USER_CONSTRUCTOR (t))
 	|| TYPE_POLYMORPHIC_P (t));
   /* This is the C++98/03 definition of POD; it changed in C++0x, but we
      retain the old definition internally for ABI reasons.  */
@@ -7919,10 +7919,11 @@ resolve_address_of_overloaded_function (tree target_type,
       if (!(complain & tf_error))
 	return error_mark_node;
 
-      permerror (input_location, "assuming pointer to member %qD", fn);
-      if (!explained)
+      if (permerror (input_location, "assuming pointer to member %qD", fn)
+	  && !explained)
 	{
-	  inform (input_location, "(a pointer to member can only be formed with %<&%E%>)", fn);
+	  inform (input_location, "(a pointer to member can only be "
+		  "formed with %<&%E%>)", fn);
 	  explained = 1;
 	}
     }
@@ -8284,10 +8285,12 @@ note_name_declared_in_class (tree name, tree decl)
 	 A name N used in a class S shall refer to the same declaration
 	 in its context and when re-evaluated in the completed scope of
 	 S.  */
-      permerror (input_location, "declaration of %q#D", decl);
-      permerror (location_of ((tree) n->value),
-		 "changes meaning of %qD from %q#D",
-		 OVL_NAME (decl), (tree) n->value);
+      if (permerror (DECL_SOURCE_LOCATION (decl),
+		     "declaration of %q#D changes meaning of %qD",
+		     decl, OVL_NAME (decl)))
+	inform (location_of ((tree) n->value),
+		"%qD declared here as %q#D",
+		OVL_NAME (decl), (tree) n->value);
     }
 }
 

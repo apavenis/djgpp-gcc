@@ -146,7 +146,10 @@ enum dump_flag
 	     | MSG_NOTE),
 
   /* Dumping for -fcompare-debug.  */
-  TDF_COMPARE_DEBUG = (1 << 25)
+  TDF_COMPARE_DEBUG = (1 << 25),
+
+  /* All values.  */
+  TDF_ALL_VALUES = (1 << 26) - 1
 };
 
 /* Dump flags type.  */
@@ -416,39 +419,11 @@ class dump_location_t
 };
 
 /* In dumpfile.c */
-extern FILE *dump_begin (int, dump_flags_t *);
+extern FILE *dump_begin (int, dump_flags_t *, int part=-1);
 extern void dump_end (int, FILE *);
 extern int opt_info_switch_p (const char *);
 extern const char *dump_flag_name (int);
-extern void dump_printf (dump_flags_t, const char *, ...) ATTRIBUTE_PRINTF_2;
-extern void dump_printf_loc (dump_flags_t, const dump_location_t &,
-			     const char *, ...) ATTRIBUTE_PRINTF_3;
-extern void dump_function (int phase, tree fn);
-extern void dump_basic_block (dump_flags_t, basic_block, int);
-extern void dump_generic_expr_loc (dump_flags_t, const dump_location_t &,
-				   dump_flags_t, tree);
-extern void dump_generic_expr (dump_flags_t, dump_flags_t, tree);
-extern void dump_gimple_stmt_loc (dump_flags_t, const dump_location_t &,
-				  dump_flags_t, gimple *, int);
-extern void dump_gimple_stmt (dump_flags_t, dump_flags_t, gimple *, int);
-extern void dump_gimple_expr_loc (dump_flags_t, const dump_location_t &,
-				  dump_flags_t, gimple *, int);
-extern void dump_gimple_expr (dump_flags_t, dump_flags_t, gimple *, int);
-extern void print_combine_total_stats (void);
-extern bool enable_rtl_dump_file (void);
-
-template<unsigned int N, typename C>
-void dump_dec (dump_flags_t, const poly_int<N, C> &);
-extern void dump_dec (dump_flags_t, const poly_wide_int &, signop);
-extern void dump_hex (dump_flags_t, const poly_wide_int &);
-
-/* In tree-dump.c  */
-extern void dump_node (const_tree, dump_flags_t, FILE *);
-
-/* In combine.c  */
-extern void dump_combine_total_stats (FILE *);
-/* In cfghooks.c  */
-extern void dump_bb (FILE *, basic_block, int, dump_flags_t);
+extern const kv_pair<optgroup_flags_t> optgroup_options[];
 
 /* Global variables used to communicate with passes.  */
 extern FILE *dump_file;
@@ -465,6 +440,56 @@ dump_enabled_p (void)
 {
   return dumps_are_enabled;
 }
+
+/* The following API calls (which *don't* take a "FILE *")
+   write the output to zero or more locations:
+   (a) the active dump_file, if any
+   (b) the -fopt-info destination, if any
+   (c) to the "optinfo" destinations, if any:
+       (c.1) as optimization records
+
+   dump_* (MSG_*) --> dumpfile.c --+--> (a) dump_file
+                                   |
+                                   +--> (b) alt_dump_file
+                                   |
+                                   `--> (c) optinfo
+                                            `---> optinfo destinations
+                                                  (c.1) optimization records
+
+   For optinfos, the dump_*_loc mark the beginning of an optinfo
+   instance: all subsequent dump_* calls are consolidated into
+   that optinfo, until the next dump_*_loc call (or a change in
+   dump scope, or a call to dumpfile_ensure_any_optinfo_are_flushed).
+
+   A group of dump_* calls should be guarded by:
+
+     if (dump_enabled_p ())
+
+   to minimize the work done for the common case where dumps
+   are disabled.  */
+
+extern void dump_printf (dump_flags_t, const char *, ...) ATTRIBUTE_PRINTF_2;
+extern void dump_printf_loc (dump_flags_t, const dump_location_t &,
+			     const char *, ...) ATTRIBUTE_PRINTF_3;
+extern void dump_function (int phase, tree fn);
+extern void dump_basic_block (dump_flags_t, basic_block, int);
+extern void dump_generic_expr_loc (dump_flags_t, const dump_location_t &,
+				   dump_flags_t, tree);
+extern void dump_generic_expr (dump_flags_t, dump_flags_t, tree);
+extern void dump_gimple_stmt_loc (dump_flags_t, const dump_location_t &,
+				  dump_flags_t, gimple *, int);
+extern void dump_gimple_stmt (dump_flags_t, dump_flags_t, gimple *, int);
+extern void dump_gimple_expr_loc (dump_flags_t, const dump_location_t &,
+				  dump_flags_t, gimple *, int);
+extern void dump_gimple_expr (dump_flags_t, dump_flags_t, gimple *, int);
+extern void dump_symtab_node (dump_flags_t, symtab_node *);
+
+template<unsigned int N, typename C>
+void dump_dec (dump_flags_t, const poly_int<N, C> &);
+extern void dump_dec (dump_flags_t, const poly_wide_int &, signop);
+extern void dump_hex (dump_flags_t, const poly_wide_int &);
+
+extern void dumpfile_ensure_any_optinfo_are_flushed ();
 
 /* Managing nested scopes, so that dumps can express the call chain
    leading to a dump message.  */
@@ -505,7 +530,22 @@ class auto_dump_scope
 #define AUTO_DUMP_SCOPE(NAME, LOC) \
   auto_dump_scope scope (NAME, LOC)
 
+extern void dump_function (int phase, tree fn);
+extern void print_combine_total_stats (void);
+extern bool enable_rtl_dump_file (void);
+
+/* In tree-dump.c  */
+extern void dump_node (const_tree, dump_flags_t, FILE *);
+
+/* In combine.c  */
+extern void dump_combine_total_stats (FILE *);
+/* In cfghooks.c  */
+extern void dump_bb (FILE *, basic_block, int, dump_flags_t);
+
 namespace gcc {
+
+/* A class for managing all of the various dump files used by the
+   optimization passes.  */
 
 class dump_manager
 {
@@ -538,10 +578,10 @@ public:
   /* Return the name of the dump file for the given phase.
      If the dump is not enabled, returns NULL.  */
   char *
-  get_dump_file_name (int phase) const;
+  get_dump_file_name (int phase, int part = -1) const;
 
   char *
-  get_dump_file_name (struct dump_file_info *dfi) const;
+  get_dump_file_name (struct dump_file_info *dfi, int part = -1) const;
 
   int
   dump_switch_p (const char *arg);
@@ -560,7 +600,7 @@ public:
   dump_finish (int phase);
 
   FILE *
-  dump_begin (int phase, dump_flags_t *flag_ptr);
+  dump_begin (int phase, dump_flags_t *flag_ptr, int part);
 
   /* Returns nonzero if tree dump PHASE has been initialized.  */
   int
