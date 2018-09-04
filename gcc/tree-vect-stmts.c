@@ -2191,14 +2191,14 @@ get_group_load_store_type (stmt_vec_info stmt_info, tree vectype, bool slp,
 
   /* There can only be a gap at the end of the group if the stride is
      known at compile time.  */
-  gcc_assert (!STMT_VINFO_STRIDED_P (stmt_info) || gap == 0);
+  gcc_assert (!STMT_VINFO_STRIDED_P (first_stmt_info) || gap == 0);
 
   /* Stores can't yet have gaps.  */
   gcc_assert (slp || vls_type == VLS_LOAD || gap == 0);
 
   if (slp)
     {
-      if (STMT_VINFO_STRIDED_P (stmt_info))
+      if (STMT_VINFO_STRIDED_P (first_stmt_info))
 	{
 	  /* Try to use consecutive accesses of DR_GROUP_SIZE elements,
 	     separated by the stride, until we have a complete vector.
@@ -2255,7 +2255,7 @@ get_group_load_store_type (stmt_vec_info stmt_info, tree vectype, bool slp,
 		    / vect_get_scalar_dr_size (first_dr_info)))
 	would_overrun_p = false;
 
-      if (!STMT_VINFO_STRIDED_P (stmt_info)
+      if (!STMT_VINFO_STRIDED_P (first_stmt_info)
 	  && (can_overrun_p || !would_overrun_p)
 	  && compare_step_with_zero (stmt_info) > 0)
 	{
@@ -2466,8 +2466,11 @@ get_load_store_type (stmt_vec_info stmt_info, tree vectype, bool slp,
   /* FIXME: At the moment the cost model seems to underestimate the
      cost of using elementwise accesses.  This check preserves the
      traditional behavior until that can be fixed.  */
+  stmt_vec_info first_stmt_info = DR_GROUP_FIRST_ELEMENT (stmt_info);
+  if (!first_stmt_info)
+    first_stmt_info = stmt_info;
   if (*memory_access_type == VMAT_ELEMENTWISE
-      && !STMT_VINFO_STRIDED_P (stmt_info)
+      && !STMT_VINFO_STRIDED_P (first_stmt_info)
       && !(stmt_info == DR_GROUP_FIRST_ELEMENT (stmt_info)
 	   && !DR_GROUP_NEXT_ELEMENT (stmt_info)
 	   && !pow2p_hwi (DR_GROUP_SIZE (stmt_info))))
@@ -2958,13 +2961,10 @@ vectorizable_bswap (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
   vec_info *vinfo = stmt_info->vinfo;
   loop_vec_info loop_vinfo = STMT_VINFO_LOOP_VINFO (stmt_info);
   unsigned ncopies;
-  unsigned HOST_WIDE_INT nunits, num_bytes;
 
   op = gimple_call_arg (stmt, 0);
   vectype = STMT_VINFO_VECTYPE (stmt_info);
-
-  if (!TYPE_VECTOR_SUBPARTS (vectype).is_constant (&nunits))
-    return false;
+  poly_uint64 nunits = TYPE_VECTOR_SUBPARTS (vectype);
 
   /* Multiple types in SLP are handled by creating the appropriate number of
      vectorized stmts for each SLP node.  Hence, NCOPIES is always 1 in
@@ -2980,10 +2980,10 @@ vectorizable_bswap (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
   if (! char_vectype)
     return false;
 
-  if (!TYPE_VECTOR_SUBPARTS (char_vectype).is_constant (&num_bytes))
+  poly_uint64 num_bytes = TYPE_VECTOR_SUBPARTS (char_vectype);
+  unsigned word_bytes;
+  if (!constant_multiple_p (num_bytes, nunits, &word_bytes))
     return false;
-
-  unsigned word_bytes = num_bytes / nunits;
 
   /* The encoding uses one stepped pattern for each byte in the word.  */
   vec_perm_builder elts (num_bytes, word_bytes, 3);
@@ -3628,8 +3628,7 @@ vectorizable_call (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
   if (slp_node)
     return true;
 
-  if (is_pattern_stmt_p (stmt_info))
-    stmt_info = STMT_VINFO_RELATED_STMT (stmt_info);
+  stmt_info = vect_orig_stmt (stmt_info);
   lhs = gimple_get_lhs (stmt_info->stmt);
 
   gassign *new_stmt
@@ -4364,15 +4363,12 @@ vectorizable_simd_clone_call (stmt_vec_info stmt_info,
   if (scalar_dest)
     {
       type = TREE_TYPE (scalar_dest);
-      if (is_pattern_stmt_p (stmt_info))
-	lhs = gimple_call_lhs (STMT_VINFO_RELATED_STMT (stmt_info)->stmt);
-      else
-	lhs = gimple_call_lhs (stmt);
+      lhs = gimple_call_lhs (vect_orig_stmt (stmt_info)->stmt);
       new_stmt = gimple_build_assign (lhs, build_zero_cst (type));
     }
   else
     new_stmt = gimple_build_nop ();
-  vinfo->replace_stmt (gsi, stmt_info, new_stmt);
+  vinfo->replace_stmt (gsi, vect_orig_stmt (stmt_info), new_stmt);
   unlink_stmt_vdef (stmt);
 
   return true;
@@ -6258,7 +6254,6 @@ vectorizable_store (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
   unsigned int group_size, i;
   vec<tree> oprnds = vNULL;
   vec<tree> result_chain = vNULL;
-  bool inv_p;
   tree offset = NULL_TREE;
   vec<tree> vec_oprnds = vNULL;
   bool slp = (slp_node != NULL);
@@ -7022,22 +7017,16 @@ vectorizable_store (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
 	    {
 	      dataref_ptr = unshare_expr (DR_BASE_ADDRESS (first_dr_info->dr));
 	      dataref_offset = build_int_cst (ref_type, 0);
-	      inv_p = false;
 	    }
 	  else if (STMT_VINFO_GATHER_SCATTER_P (stmt_info))
-	    {
-	      vect_get_gather_scatter_ops (loop, stmt_info, &gs_info,
-					   &dataref_ptr, &vec_offset);
-	      inv_p = false;
-	    }
+	    vect_get_gather_scatter_ops (loop, stmt_info, &gs_info,
+					 &dataref_ptr, &vec_offset);
 	  else
 	    dataref_ptr
 	      = vect_create_data_ref_ptr (first_stmt_info, aggr_type,
 					  simd_lane_access_p ? loop : NULL,
 					  offset, &dummy, gsi, &ptr_incr,
-					  simd_lane_access_p, &inv_p,
-					  NULL_TREE, bump);
-	  gcc_assert (bb_vinfo || !inv_p);
+					  simd_lane_access_p, NULL_TREE, bump);
 	}
       else
 	{
@@ -7423,7 +7412,6 @@ vectorizable_load (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
   bool grouped_load = false;
   stmt_vec_info first_stmt_info;
   stmt_vec_info first_stmt_info_for_drptr = NULL;
-  bool inv_p;
   bool compute_in_loop = false;
   struct loop *at_loop;
   int vec_num;
@@ -7670,6 +7658,63 @@ vectorizable_load (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
   if (memory_access_type == VMAT_GATHER_SCATTER && gs_info.decl)
     {
       vect_build_gather_load_calls (stmt_info, gsi, vec_stmt, &gs_info, mask);
+      return true;
+    }
+
+  if (memory_access_type == VMAT_INVARIANT)
+    {
+      gcc_assert (!grouped_load && !mask && !bb_vinfo);
+      /* If we have versioned for aliasing or the loop doesn't
+	 have any data dependencies that would preclude this,
+	 then we are sure this is a loop invariant load and
+	 thus we can insert it on the preheader edge.  */
+      bool hoist_p = (LOOP_VINFO_NO_DATA_DEPENDENCIES (loop_vinfo)
+		      && !nested_in_vect_loop
+		      && hoist_defs_of_uses (stmt_info, loop));
+      if (hoist_p)
+	{
+	  gassign *stmt = as_a <gassign *> (stmt_info->stmt);
+	  if (dump_enabled_p ())
+	    {
+	      dump_printf_loc (MSG_NOTE, vect_location,
+			       "hoisting out of the vectorized loop: ");
+	      dump_gimple_stmt (MSG_NOTE, TDF_SLIM, stmt, 0);
+	    }
+	  scalar_dest = copy_ssa_name (scalar_dest);
+	  tree rhs = unshare_expr (gimple_assign_rhs1 (stmt));
+	  gsi_insert_on_edge_immediate
+	    (loop_preheader_edge (loop),
+	     gimple_build_assign (scalar_dest, rhs));
+	}
+      /* These copies are all equivalent, but currently the representation
+	 requires a separate STMT_VINFO_VEC_STMT for each one.  */
+      prev_stmt_info = NULL;
+      gimple_stmt_iterator gsi2 = *gsi;
+      gsi_next (&gsi2);
+      for (j = 0; j < ncopies; j++)
+	{
+	  stmt_vec_info new_stmt_info;
+	  if (hoist_p)
+	    {
+	      new_temp = vect_init_vector (stmt_info, scalar_dest,
+					   vectype, NULL);
+	      gimple *new_stmt = SSA_NAME_DEF_STMT (new_temp);
+	      new_stmt_info = vinfo->add_stmt (new_stmt);
+	    }
+	  else
+	    {
+	      new_temp = vect_init_vector (stmt_info, scalar_dest,
+					   vectype, &gsi2);
+	      new_stmt_info = vinfo->lookup_def (new_temp);
+	    }
+	  if (slp)
+	    SLP_TREE_VEC_STMTS (slp_node).quick_push (new_stmt_info);
+	  else if (j == 0)
+	    STMT_VINFO_VEC_STMT (stmt_info) = *vec_stmt = new_stmt_info;
+	  else
+	    STMT_VINFO_RELATED_STMT (prev_stmt_info) = new_stmt_info;
+	  prev_stmt_info = new_stmt_info;
+	}
       return true;
     }
 
@@ -7955,13 +8000,18 @@ vectorizable_load (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
       if (slp)
 	{
 	  grouped_load = false;
-	  /* For SLP permutation support we need to load the whole group,
-	     not only the number of vector stmts the permutation result
-	     fits in.  */
-	  if (slp_perm)
+	  /* If an SLP permutation is from N elements to N elements,
+	     and if one vector holds a whole number of N, we can load
+	     the inputs to the permutation in the same way as an
+	     unpermuted sequence.  In other cases we need to load the
+	     whole group, not only the number of vector stmts the
+	     permutation result fits in.  */
+	  if (slp_perm
+	      && (group_size != SLP_INSTANCE_GROUP_SIZE (slp_node_instance)
+		  || !multiple_p (nunits, group_size)))
 	    {
-	      /* We don't yet generate SLP_TREE_LOAD_PERMUTATIONs for
-		 variable VF.  */
+	      /* We don't yet generate such SLP_TREE_LOAD_PERMUTATIONs for
+		 variable VF; see vect_transform_slp_perm_load.  */
 	      unsigned int const_vf = vf.to_constant ();
 	      unsigned int const_nunits = nunits.to_constant ();
 	      vec_num = CEIL (group_size * const_vf, const_nunits);
@@ -8181,7 +8231,6 @@ vectorizable_load (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
 	    {
 	      dataref_ptr = unshare_expr (DR_BASE_ADDRESS (first_dr_info->dr));
 	      dataref_offset = build_int_cst (ref_type, 0);
-	      inv_p = false;
 	    }
 	  else if (first_stmt_info_for_drptr
 		   && first_stmt_info != first_stmt_info_for_drptr)
@@ -8190,7 +8239,7 @@ vectorizable_load (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
 		= vect_create_data_ref_ptr (first_stmt_info_for_drptr,
 					    aggr_type, at_loop, offset, &dummy,
 					    gsi, &ptr_incr, simd_lane_access_p,
-					    &inv_p, byte_offset, bump);
+					    byte_offset, bump);
 	      /* Adjust the pointer by the difference to first_stmt.  */
 	      data_reference_p ptrdr
 		= STMT_VINFO_DATA_REF (first_stmt_info_for_drptr);
@@ -8203,16 +8252,13 @@ vectorizable_load (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
 					     stmt_info, diff);
 	    }
 	  else if (STMT_VINFO_GATHER_SCATTER_P (stmt_info))
-	    {
-	      vect_get_gather_scatter_ops (loop, stmt_info, &gs_info,
-					   &dataref_ptr, &vec_offset);
-	      inv_p = false;
-	    }
+	    vect_get_gather_scatter_ops (loop, stmt_info, &gs_info,
+					 &dataref_ptr, &vec_offset);
 	  else
 	    dataref_ptr
 	      = vect_create_data_ref_ptr (first_stmt_info, aggr_type, at_loop,
 					  offset, &dummy, gsi, &ptr_incr,
-					  simd_lane_access_p, &inv_p,
+					  simd_lane_access_p,
 					  byte_offset, bump);
 	  if (mask)
 	    vec_mask = vect_get_vec_def_for_operand (mask, stmt_info,
@@ -8493,47 +8539,6 @@ vectorizable_load (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
 				     loop_latch_edge (containing_loop),
 				     UNKNOWN_LOCATION);
 		      msq = lsq;
-		    }
-		}
-
-	      /* 4. Handle invariant-load.  */
-	      if (inv_p && !bb_vinfo)
-		{
-		  gcc_assert (!grouped_load);
-		  /* If we have versioned for aliasing or the loop doesn't
-		     have any data dependencies that would preclude this,
-		     then we are sure this is a loop invariant load and
-		     thus we can insert it on the preheader edge.  */
-		  if (LOOP_VINFO_NO_DATA_DEPENDENCIES (loop_vinfo)
-		      && !nested_in_vect_loop
-		      && hoist_defs_of_uses (stmt_info, loop))
-		    {
-		      gassign *stmt = as_a <gassign *> (stmt_info->stmt);
-		      if (dump_enabled_p ())
-			{
-			  dump_printf_loc (MSG_NOTE, vect_location,
-					   "hoisting out of the vectorized "
-					   "loop: ");
-			  dump_gimple_stmt (MSG_NOTE, TDF_SLIM, stmt, 0);
-			}
-		      tree tem = copy_ssa_name (scalar_dest);
-		      gsi_insert_on_edge_immediate
-			(loop_preheader_edge (loop),
-			 gimple_build_assign (tem,
-					      unshare_expr
-					        (gimple_assign_rhs1 (stmt))));
-		      new_temp = vect_init_vector (stmt_info, tem,
-						   vectype, NULL);
-		      new_stmt = SSA_NAME_DEF_STMT (new_temp);
-		      new_stmt_info = vinfo->add_stmt (new_stmt);
-		    }
-		  else
-		    {
-		      gimple_stmt_iterator gsi2 = *gsi;
-		      gsi_next (&gsi2);
-		      new_temp = vect_init_vector (stmt_info, scalar_dest,
-						   vectype, &gsi2);
-		      new_stmt_info = vinfo->lookup_def (new_temp);
 		    }
 		}
 
@@ -9662,8 +9667,7 @@ vect_analyze_stmt (stmt_vec_info stmt_info, bool *need_to_vectorize,
 
 bool
 vect_transform_stmt (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
-		     bool *grouped_store, slp_tree slp_node,
-                     slp_instance slp_node_instance)
+		     slp_tree slp_node, slp_instance slp_node_instance)
 {
   vec_info *vinfo = stmt_info->vinfo;
   bool is_store = false;
@@ -9727,7 +9731,6 @@ vect_transform_stmt (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
 	     last store in the chain is reached.  Store stmts before the last
 	     one are skipped, and there vec_stmt_info shouldn't be freed
 	     meanwhile.  */
-	  *grouped_store = true;
 	  stmt_vec_info group_info = DR_GROUP_FIRST_ELEMENT (stmt_info);
 	  if (DR_GROUP_STORE_COUNT (group_info) == DR_GROUP_SIZE (group_info))
 	    is_store = true;
@@ -9806,7 +9809,7 @@ vect_transform_stmt (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
       if (gimple_code (stmt) == GIMPLE_PHI)
         scalar_dest = PHI_RESULT (stmt);
       else
-        scalar_dest = gimple_assign_lhs (stmt);
+        scalar_dest = gimple_get_lhs (stmt);
 
       FOR_EACH_IMM_USE_FAST (use_p, imm_iter, scalar_dest)
 	if (!flow_bb_inside_loop_p (innerloop, gimple_bb (USE_STMT (use_p))))
@@ -9845,8 +9848,7 @@ vect_remove_stores (stmt_vec_info first_stmt_info)
   while (next_stmt_info)
     {
       stmt_vec_info tmp = DR_GROUP_NEXT_ELEMENT (next_stmt_info);
-      if (is_pattern_stmt_p (next_stmt_info))
-	next_stmt_info = STMT_VINFO_RELATED_STMT (next_stmt_info);
+      next_stmt_info = vect_orig_stmt (next_stmt_info);
       /* Free the attached stmt_vec_info and remove the stmt.  */
       vinfo->remove_stmt (next_stmt_info);
       next_stmt_info = tmp;
@@ -10038,11 +10040,8 @@ vect_is_simple_use (tree operand, vec_info *vinfo, enum vect_def_type *dt,
 	*dt = vect_external_def;
       else
 	{
-	  if (STMT_VINFO_IN_PATTERN_P (stmt_vinfo))
-	    {
-	      stmt_vinfo = STMT_VINFO_RELATED_STMT (stmt_vinfo);
-	      def_stmt = stmt_vinfo->stmt;
-	    }
+	  stmt_vinfo = vect_stmt_to_vectorize (stmt_vinfo);
+	  def_stmt = stmt_vinfo->stmt;
 	  switch (gimple_code (def_stmt))
 	    {
 	    case GIMPLE_PHI:

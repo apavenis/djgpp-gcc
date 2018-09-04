@@ -49,60 +49,41 @@
 #include <assert.h>
 #include <errno.h>
 
+#if CUDA_VERSION < 6000
+extern CUresult cuGetErrorString (CUresult, const char **);
+#define CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR 82
+#endif
+
+#if CUDA_VERSION >= 6050
+#undef cuLinkCreate
+#undef cuLinkAddData
+CUresult cuLinkAddData (CUlinkState, CUjitInputType, void *, size_t,
+			const char *, unsigned, CUjit_option *, void **);
+CUresult cuLinkCreate (unsigned, CUjit_option *, void **, CUlinkState *);
+#else
+typedef size_t (*CUoccupancyB2DSize)(int);
+CUresult cuLinkAddData_v2 (CUlinkState, CUjitInputType, void *, size_t,
+			   const char *, unsigned, CUjit_option *, void **);
+CUresult cuLinkCreate_v2 (unsigned, CUjit_option *, void **, CUlinkState *);
+CUresult cuOccupancyMaxPotentialBlockSize(int *, int *, CUfunction,
+					  CUoccupancyB2DSize, size_t, int);
+#endif
+
+#define DO_PRAGMA(x) _Pragma (#x)
+
 #if PLUGIN_NVPTX_DYNAMIC
 # include <dlfcn.h>
 
-# define CUDA_CALLS \
-CUDA_ONE_CALL (cuCtxCreate)		\
-CUDA_ONE_CALL (cuCtxDestroy)		\
-CUDA_ONE_CALL (cuCtxGetCurrent)		\
-CUDA_ONE_CALL (cuCtxGetDevice)		\
-CUDA_ONE_CALL (cuCtxPopCurrent)		\
-CUDA_ONE_CALL (cuCtxPushCurrent)	\
-CUDA_ONE_CALL (cuCtxSynchronize)	\
-CUDA_ONE_CALL (cuDeviceGet)		\
-CUDA_ONE_CALL (cuDeviceGetAttribute)	\
-CUDA_ONE_CALL (cuDeviceGetCount)	\
-CUDA_ONE_CALL (cuEventCreate)		\
-CUDA_ONE_CALL (cuEventDestroy)		\
-CUDA_ONE_CALL (cuEventElapsedTime)	\
-CUDA_ONE_CALL (cuEventQuery)		\
-CUDA_ONE_CALL (cuEventRecord)		\
-CUDA_ONE_CALL (cuEventSynchronize)	\
-CUDA_ONE_CALL (cuFuncGetAttribute)	\
-CUDA_ONE_CALL (cuGetErrorString)	\
-CUDA_ONE_CALL (cuInit)			\
-CUDA_ONE_CALL (cuLaunchKernel)		\
-CUDA_ONE_CALL (cuLinkAddData)		\
-CUDA_ONE_CALL (cuLinkComplete)		\
-CUDA_ONE_CALL (cuLinkCreate)		\
-CUDA_ONE_CALL (cuLinkDestroy)		\
-CUDA_ONE_CALL (cuMemAlloc)		\
-CUDA_ONE_CALL (cuMemAllocHost)		\
-CUDA_ONE_CALL (cuMemcpy)		\
-CUDA_ONE_CALL (cuMemcpyDtoDAsync)	\
-CUDA_ONE_CALL (cuMemcpyDtoH)		\
-CUDA_ONE_CALL (cuMemcpyDtoHAsync)	\
-CUDA_ONE_CALL (cuMemcpyHtoD)		\
-CUDA_ONE_CALL (cuMemcpyHtoDAsync)	\
-CUDA_ONE_CALL (cuMemFree)		\
-CUDA_ONE_CALL (cuMemFreeHost)		\
-CUDA_ONE_CALL (cuMemGetAddressRange)	\
-CUDA_ONE_CALL (cuMemHostGetDevicePointer)\
-CUDA_ONE_CALL (cuModuleGetFunction)	\
-CUDA_ONE_CALL (cuModuleGetGlobal)	\
-CUDA_ONE_CALL (cuModuleLoad)		\
-CUDA_ONE_CALL (cuModuleLoadData)	\
-CUDA_ONE_CALL (cuModuleUnload)		\
-CUDA_ONE_CALL (cuStreamCreate)		\
-CUDA_ONE_CALL (cuStreamDestroy)		\
-CUDA_ONE_CALL (cuStreamQuery)		\
-CUDA_ONE_CALL (cuStreamSynchronize)	\
-CUDA_ONE_CALL (cuStreamWaitEvent)
-# define CUDA_ONE_CALL(call) \
-  __typeof (call) *call;
 struct cuda_lib_s {
-  CUDA_CALLS
+
+# define CUDA_ONE_CALL(call)			\
+  __typeof (call) *call;
+# define CUDA_ONE_CALL_MAYBE_NULL(call)		\
+  CUDA_ONE_CALL (call)
+#include "cuda-lib.def"
+# undef CUDA_ONE_CALL
+# undef CUDA_ONE_CALL_MAYBE_NULL
+
 } cuda_lib;
 
 /* -1 if init_cuda_lib has not been called yet, false
@@ -121,20 +102,30 @@ init_cuda_lib (void)
   cuda_lib_inited = false;
   if (h == NULL)
     return false;
-# undef CUDA_ONE_CALL
-# define CUDA_ONE_CALL(call) CUDA_ONE_CALL_1 (call)
-# define CUDA_ONE_CALL_1(call) \
+
+# define CUDA_ONE_CALL(call) CUDA_ONE_CALL_1 (call, false)
+# define CUDA_ONE_CALL_MAYBE_NULL(call) CUDA_ONE_CALL_1 (call, true)
+# define CUDA_ONE_CALL_1(call, allow_null)		\
   cuda_lib.call = dlsym (h, #call);	\
-  if (cuda_lib.call == NULL)		\
+  if (!allow_null && cuda_lib.call == NULL)		\
     return false;
-  CUDA_CALLS
+#include "cuda-lib.def"
+# undef CUDA_ONE_CALL
+# undef CUDA_ONE_CALL_1
+# undef CUDA_ONE_CALL_MAYBE_NULL
+
   cuda_lib_inited = true;
   return true;
 }
-# undef CUDA_ONE_CALL
-# undef CUDA_ONE_CALL_1
 # define CUDA_CALL_PREFIX cuda_lib.
 #else
+
+# define CUDA_ONE_CALL(call)
+# define CUDA_ONE_CALL_MAYBE_NULL(call) DO_PRAGMA (weak call)
+#include "cuda-lib.def"
+#undef CUDA_ONE_CALL_MAYBE_NULL
+#undef CUDA_ONE_CALL
+
 # define CUDA_CALL_PREFIX
 # define init_cuda_lib() true
 #endif
@@ -179,21 +170,23 @@ init_cuda_lib (void)
 #define CUDA_CALL_NOCHECK(FN, ...)		\
   CUDA_CALL_PREFIX FN (__VA_ARGS__)
 
+#define CUDA_CALL_EXISTS(FN)			\
+  CUDA_CALL_PREFIX FN
+
 static const char *
 cuda_error (CUresult r)
 {
-#if CUDA_VERSION < 7000
-  /* Specified in documentation and present in library from at least
-     5.5.  Not declared in header file prior to 7.0.  */
-  extern CUresult cuGetErrorString (CUresult, const char **);
-#endif
+  const char *fallback = "unknown cuda error";
   const char *desc;
 
-  r = CUDA_CALL_NOCHECK (cuGetErrorString, r, &desc);
-  if (r != CUDA_SUCCESS)
-    desc = "unknown cuda error";
+  if (!CUDA_CALL_EXISTS (cuGetErrorString))
+    return fallback;
 
-  return desc;
+  r = CUDA_CALL_NOCHECK (cuGetErrorString, r, &desc);
+  if (r == CUDA_SUCCESS)
+    return desc;
+
+  return fallback;
 }
 
 static unsigned int instantiated_devices = 0;
@@ -222,13 +215,6 @@ struct nvptx_thread
 {
   struct ptx_stream *current_stream;
   struct ptx_device *ptx_dev;
-};
-
-struct map
-{
-  int     async;
-  size_t  size;
-  char    mappings[0];
 };
 
 static bool
@@ -264,16 +250,12 @@ map_fini (struct ptx_stream *s)
 static void
 map_pop (struct ptx_stream *s)
 {
-  struct map *m;
-
   assert (s != NULL);
   assert (s->h_next);
   assert (s->h_prev);
   assert (s->h_tail);
 
-  m = s->h_tail;
-
-  s->h_tail += m->size;
+  s->h_tail = s->h_next;
 
   if (s->h_tail >= s->h_end)
     s->h_tail = s->h_begin + (int) (s->h_tail - s->h_end);
@@ -291,37 +273,27 @@ map_pop (struct ptx_stream *s)
 }
 
 static void
-map_push (struct ptx_stream *s, int async, size_t size, void **h, void **d)
+map_push (struct ptx_stream *s, size_t size, void **h, void **d)
 {
   int left;
   int offset;
-  struct map *m;
 
   assert (s != NULL);
 
   left = s->h_end - s->h_next;
-  size += sizeof (struct map);
 
   assert (s->h_prev);
   assert (s->h_next);
 
   if (size >= left)
     {
-      m = s->h_prev;
-      m->size += left;
-      s->h_next = s->h_begin;
-
-      if (s->h_next + size > s->h_end)
-	GOMP_PLUGIN_fatal ("unable to push map");
+      assert (s->h_next == s->h_prev);
+      s->h_next = s->h_prev = s->h_tail = s->h_begin;
     }
 
   assert (s->h_next);
 
-  m = s->h_next;
-  m->async = async;
-  m->size = size;
-
-  offset = (void *)&m->mappings[0] - s->h;
+  offset = s->h_next - s->h;
 
   *d = (void *)(s->d + offset);
   *h = (void *)(s->h + offset);
@@ -789,9 +761,11 @@ nvptx_open_device (int n)
 		  &pi, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK, dev);
   ptx_dev->regs_per_block = pi;
 
-  /* CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR = 82 is defined only
+  /* CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR is defined only
      in CUDA 6.0 and newer.  */
-  r = CUDA_CALL_NOCHECK (cuDeviceGetAttribute, &pi, 82, dev);
+  r = CUDA_CALL_NOCHECK (cuDeviceGetAttribute, &pi,
+			 CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR,
+			 dev);
   /* Fallback: use limit of registers per block, which is usually equal.  */
   if (r == CUDA_ERROR_INVALID_VALUE)
     pi = ptx_dev->regs_per_block;
@@ -979,16 +953,24 @@ link_ptx (CUmodule *module, const struct targ_ptx_obj *ptx_objs,
       nopts++;
     }
 
-  CUDA_CALL (cuLinkCreate, nopts, opts, optvals, &linkstate);
+  if (CUDA_CALL_EXISTS (cuLinkCreate_v2))
+    CUDA_CALL (cuLinkCreate_v2, nopts, opts, optvals, &linkstate);
+  else
+    CUDA_CALL (cuLinkCreate, nopts, opts, optvals, &linkstate);
 
   for (; num_objs--; ptx_objs++)
     {
       /* cuLinkAddData's 'data' argument erroneously omits the const
 	 qualifier.  */
       GOMP_PLUGIN_debug (0, "Loading:\n---\n%s\n---\n", ptx_objs->code);
-      r = CUDA_CALL_NOCHECK (cuLinkAddData, linkstate, CU_JIT_INPUT_PTX,
-			     (char *) ptx_objs->code, ptx_objs->size,
-			     0, 0, 0, 0);
+      if (CUDA_CALL_EXISTS (cuLinkAddData_v2))
+	r = CUDA_CALL_NOCHECK (cuLinkAddData_v2, linkstate, CU_JIT_INPUT_PTX,
+			       (char *) ptx_objs->code, ptx_objs->size,
+			       0, 0, 0, 0);
+      else
+	r = CUDA_CALL_NOCHECK (cuLinkAddData, linkstate, CU_JIT_INPUT_PTX,
+			       (char *) ptx_objs->code, ptx_objs->size,
+			       0, 0, 0, 0);
       if (r != CUDA_SUCCESS)
 	{
 	  GOMP_PLUGIN_error ("Link error log %s\n", &elog[0]);
@@ -1221,21 +1203,77 @@ nvptx_exec (void (*fn), size_t mapnum, void **hostaddrs, void **devaddrs,
       {
 	bool default_dim_p[GOMP_DIM_MAX];
 	for (i = 0; i != GOMP_DIM_MAX; i++)
+	  default_dim_p[i] = !dims[i];
+
+	if (!CUDA_CALL_EXISTS (cuOccupancyMaxPotentialBlockSize))
 	  {
-	    default_dim_p[i] = !dims[i];
-	    if (default_dim_p[i])
-	      dims[i] = nvthd->ptx_dev->default_dims[i];
+	    for (i = 0; i != GOMP_DIM_MAX; i++)
+	      if (default_dim_p[i])
+		dims[i] = nvthd->ptx_dev->default_dims[i];
+
+	    if (default_dim_p[GOMP_DIM_VECTOR])
+	      dims[GOMP_DIM_VECTOR]
+		= MIN (dims[GOMP_DIM_VECTOR],
+		       (targ_fn->max_threads_per_block / warp_size
+			* warp_size));
+
+	    if (default_dim_p[GOMP_DIM_WORKER])
+	      dims[GOMP_DIM_WORKER]
+		= MIN (dims[GOMP_DIM_WORKER],
+		       targ_fn->max_threads_per_block / dims[GOMP_DIM_VECTOR]);
 	  }
+	else
+	  {
+	    /* Handle the case that the compiler allows the runtime to choose
+	       the vector-length conservatively, by ignoring
+	       gomp_openacc_dims[GOMP_DIM_VECTOR].  TODO: actually handle
+	       it.  */
+	    int vectors = 0;
+	    /* TODO: limit gomp_openacc_dims[GOMP_DIM_WORKER] such that that
+	       gomp_openacc_dims[GOMP_DIM_WORKER] * actual_vectors does not
+	       exceed targ_fn->max_threads_per_block. */
+	    int workers = gomp_openacc_dims[GOMP_DIM_WORKER];
+	    int gangs = gomp_openacc_dims[GOMP_DIM_GANG];
+	    int grids, blocks;
 
-	if (default_dim_p[GOMP_DIM_VECTOR])
-	  dims[GOMP_DIM_VECTOR]
-	    = MIN (dims[GOMP_DIM_VECTOR],
-		   (targ_fn->max_threads_per_block / warp_size * warp_size));
+	    CUDA_CALL_ASSERT (cuOccupancyMaxPotentialBlockSize, &grids,
+			      &blocks, function, NULL, 0,
+			      dims[GOMP_DIM_WORKER] * dims[GOMP_DIM_VECTOR]);
+	    GOMP_PLUGIN_debug (0, "cuOccupancyMaxPotentialBlockSize: "
+			       "grid = %d, block = %d\n", grids, blocks);
 
-	if (default_dim_p[GOMP_DIM_WORKER])
-	  dims[GOMP_DIM_WORKER]
-	    = MIN (dims[GOMP_DIM_WORKER],
-		   targ_fn->max_threads_per_block / dims[GOMP_DIM_VECTOR]);
+	    /* Keep the num_gangs proportional to the block size.  In
+	       the case were a block size is limited by shared-memory
+	       or the register file capacity, the runtime will not
+	       excessively over assign gangs to the multiprocessor
+	       units if their state is going to be swapped out even
+	       more than necessary. The constant factor 2 is there to
+	       prevent threads from idling when there is insufficient
+	       work for them.  */
+	    if (gangs == 0)
+	      gangs = 2 * grids * (blocks / warp_size);
+
+	    if (vectors == 0)
+	      vectors = warp_size;
+
+	    if (workers == 0)
+	      {
+		int actual_vectors = (default_dim_p[GOMP_DIM_VECTOR]
+				      ? vectors
+				      : dims[GOMP_DIM_VECTOR]);
+		workers = blocks / actual_vectors;
+	      }
+
+	    for (i = 0; i != GOMP_DIM_MAX; i++)
+	      if (default_dim_p[i])
+		switch (i)
+		  {
+		  case GOMP_DIM_GANG: dims[i] = gangs; break;
+		  case GOMP_DIM_WORKER: dims[i] = workers; break;
+		  case GOMP_DIM_VECTOR: dims[i] = vectors; break;
+		  default: GOMP_PLUGIN_fatal ("invalid dim");
+		  }
+	  }
       }
     }
 
@@ -1257,7 +1295,7 @@ nvptx_exec (void (*fn), size_t mapnum, void **hostaddrs, void **devaddrs,
   /* This reserves a chunk of a pre-allocated page of memory mapped on both
      the host and the device. HP is a host pointer to the new chunk, and DP is
      the corresponding device pointer.  */
-  map_push (dev_str, async, mapnum * sizeof (void *), &hp, &dp);
+  map_push (dev_str, mapnum * sizeof (void *), &hp, &dp);
 
   GOMP_PLUGIN_debug (0, "  %s: prepare mappings\n", __FUNCTION__);
 

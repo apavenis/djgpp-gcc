@@ -1120,6 +1120,28 @@ is_pattern_stmt_p (stmt_vec_info stmt_info)
   return stmt_info->pattern_stmt_p;
 }
 
+/* If STMT_INFO is a pattern statement, return the statement that it
+   replaces, otherwise return STMT_INFO itself.  */
+
+inline stmt_vec_info
+vect_orig_stmt (stmt_vec_info stmt_info)
+{
+  if (is_pattern_stmt_p (stmt_info))
+    return STMT_VINFO_RELATED_STMT (stmt_info);
+  return stmt_info;
+}
+
+/* If STMT_INFO has been replaced by a pattern statement, return the
+   replacement statement, otherwise return STMT_INFO itself.  */
+
+inline stmt_vec_info
+vect_stmt_to_vectorize (stmt_vec_info stmt_info)
+{
+  if (STMT_VINFO_IN_PATTERN_P (stmt_info))
+    return STMT_VINFO_RELATED_STMT (stmt_info);
+  return stmt_info;
+}
+
 /* Return true if BB is a loop header.  */
 
 static inline bool
@@ -1459,7 +1481,7 @@ extern tree vect_init_vector (stmt_vec_info, tree, tree,
                               gimple_stmt_iterator *);
 extern tree vect_get_vec_def_for_stmt_copy (vec_info *, tree);
 extern bool vect_transform_stmt (stmt_vec_info, gimple_stmt_iterator *,
-                                 bool *, slp_tree, slp_instance);
+				 slp_tree, slp_instance);
 extern void vect_remove_stores (stmt_vec_info);
 extern bool vect_analyze_stmt (stmt_vec_info, bool *, slp_tree, slp_instance,
 			       stmt_vector_for_cost *);
@@ -1505,7 +1527,7 @@ extern bool vect_analyze_data_refs (vec_info *, poly_uint64 *);
 extern void vect_record_base_alignments (vec_info *);
 extern tree vect_create_data_ref_ptr (stmt_vec_info, tree, struct loop *, tree,
 				      tree *, gimple_stmt_iterator *,
-				      gimple **, bool, bool *,
+				      gimple **, bool,
 				      tree = NULL_TREE, tree = NULL_TREE);
 extern tree bump_vector_ptr (tree, gimple *, gimple_stmt_iterator *,
 			     stmt_vec_info, tree);
@@ -1575,7 +1597,7 @@ extern bool vect_transform_slp_perm_load (slp_tree, vec<tree> ,
 					  gimple_stmt_iterator *, poly_uint64,
 					  slp_instance, bool, unsigned *);
 extern bool vect_slp_analyze_operations (vec_info *);
-extern bool vect_schedule_slp (vec_info *);
+extern void vect_schedule_slp (vec_info *);
 extern bool vect_analyze_slp (vec_info *, unsigned);
 extern bool vect_make_slp_decision (loop_vec_info);
 extern void vect_detect_hybrid_slp (loop_vec_info);

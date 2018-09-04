@@ -408,6 +408,10 @@ static vector<source_info> sources;
 /* Mapping of file names to sources */
 static vector<name_map> names;
 
+/* Record all processed files in order to warn about
+   a file being read multiple times.  */
+static vector<char *> processed_files;
+
 /* This holds data summary information.  */
 
 static unsigned object_runs;
@@ -543,6 +547,7 @@ static int process_args (int, char **);
 static void print_usage (int) ATTRIBUTE_NORETURN;
 static void print_version (void) ATTRIBUTE_NORETURN;
 static void process_file (const char *);
+static void process_all_functions (void);
 static void generate_results (const char *);
 static void create_file_names (const char *);
 static char *canonicalize_name (const char *);
@@ -798,6 +803,7 @@ main (int argc, char **argv)
 
       if (flag_intermediate_format || argno == argc - 1)
 	{
+	  process_all_functions ();
 	  generate_results (argv[argno]);
 	  release_structures ();
 	}
@@ -1144,12 +1150,26 @@ static void
 process_file (const char *file_name)
 {
   create_file_names (file_name);
+
+  for (unsigned i = 0; i < processed_files.size (); i++)
+    if (strcmp (da_file_name, processed_files[i]) == 0)
+      {
+	fnotice (stderr, "'%s' file is already processed\n",
+		 file_name);
+	return;
+      }
+
+  processed_files.push_back (xstrdup (da_file_name));
+
   read_graph_file ();
-  if (functions.empty ())
-    return;
-
   read_count_file ();
+}
 
+/* Process all functions in all files.  */
+
+static void
+process_all_functions (void)
+{
   hash_map<function_start_pair_hash, function_info *> fn_map;
 
   /* Identify group functions.  */
@@ -1225,7 +1245,6 @@ process_file (const char *file_name)
 	     and end_line information of the function.  */
 	  if (fn->is_group)
 	    fn->lines.resize (fn->end_line - fn->start_line + 1);
-
 
 	  solve_flow_graph (fn);
 	  if (fn->has_catch)

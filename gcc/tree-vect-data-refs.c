@@ -74,8 +74,7 @@ vect_lanes_optab_supported_p (const char *name, convert_optab optab,
 	{
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-			     "no array mode for %s["
-			     HOST_WIDE_INT_PRINT_DEC "]\n",
+			     "no array mode for %s[%wu]\n",
 			     GET_MODE_NAME (mode), count);
 	  return false;
 	}
@@ -214,10 +213,8 @@ vect_preserves_scalar_order_p (dr_vec_info *dr_info_a, dr_vec_info *dr_info_b)
      (but could happen later) while reads will happen no later than their
      current position (but could happen earlier).  Reordering is therefore
      only possible if the first access is a write.  */
-  if (is_pattern_stmt_p (stmtinfo_a))
-    stmtinfo_a = STMT_VINFO_RELATED_STMT (stmtinfo_a);
-  if (is_pattern_stmt_p (stmtinfo_b))
-    stmtinfo_b = STMT_VINFO_RELATED_STMT (stmtinfo_b);
+  stmtinfo_a = vect_orig_stmt (stmtinfo_a);
+  stmtinfo_b = vect_orig_stmt (stmtinfo_b);
   stmt_vec_info earlier_stmt_info = get_earlier_stmt (stmtinfo_a, stmtinfo_b);
   return !DR_IS_WRITE (STMT_VINFO_DATA_REF (earlier_stmt_info));
 }
@@ -1251,9 +1248,8 @@ vector_alignment_reachable_p (dr_vec_info *dr_info)
       if (dump_enabled_p ())
 	{
 	  dump_printf_loc (MSG_NOTE, vect_location,
-	                   "data size =" HOST_WIDE_INT_PRINT_DEC, elmsize);
-	  dump_printf (MSG_NOTE,
-	               ". misalignment = %d.\n", DR_MISALIGNMENT (dr_info));
+	                   "data size = %wd. misalignment = %d.\n", elmsize,
+			   DR_MISALIGNMENT (dr_info));
 	}
       if (DR_MISALIGNMENT (dr_info) % elmsize)
 	{
@@ -2637,10 +2633,8 @@ vect_analyze_group_access_1 (dr_vec_info *dr_info)
       if (groupsize != count
 	  && !DR_IS_READ (dr))
         {
-	  if (dump_enabled_p ())
-	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-			     "interleaved store with gaps\n");
-	  return false;
+	  groupsize = count;
+	  STMT_VINFO_STRIDED_P (stmt_info) = true;
 	}
 
       /* If there is a gap after the last load in the group it is the
@@ -2656,6 +2650,8 @@ vect_analyze_group_access_1 (dr_vec_info *dr_info)
 			   "Detected interleaving ");
 	  if (DR_IS_READ (dr))
 	    dump_printf (MSG_NOTE, "load ");
+	  else if (STMT_VINFO_STRIDED_P (stmt_info))
+	    dump_printf (MSG_NOTE, "strided store ");
 	  else
 	    dump_printf (MSG_NOTE, "store ");
 	  dump_printf (MSG_NOTE, "of size %u starting with ",
@@ -4676,16 +4672,13 @@ vect_create_addr_base_for_vector_ref (stmt_vec_info stmt_info,
 
       Return the increment stmt that updates the pointer in PTR_INCR.
 
-   3. Set INV_P to true if the access pattern of the data reference in the
-      vectorized loop is invariant.  Set it to false otherwise.
-
-   4. Return the pointer.  */
+   3. Return the pointer.  */
 
 tree
 vect_create_data_ref_ptr (stmt_vec_info stmt_info, tree aggr_type,
 			  struct loop *at_loop, tree offset,
 			  tree *initial_address, gimple_stmt_iterator *gsi,
-			  gimple **ptr_incr, bool only_init, bool *inv_p,
+			  gimple **ptr_incr, bool only_init,
 			  tree byte_offset, tree iv_step)
 {
   const char *base_name;
@@ -4707,7 +4700,6 @@ vect_create_data_ref_ptr (stmt_vec_info stmt_info, tree aggr_type,
   bool insert_after;
   tree indx_before_incr, indx_after_incr;
   gimple *incr;
-  tree step;
   bb_vec_info bb_vinfo = STMT_VINFO_BB_VINFO (stmt_info);
 
   gcc_assert (iv_step != NULL_TREE
@@ -4727,14 +4719,6 @@ vect_create_data_ref_ptr (stmt_vec_info stmt_info, tree aggr_type,
       only_init = true;
       *ptr_incr = NULL;
     }
-
-  /* Check the step (evolution) of the load in LOOP, and record
-     whether it's invariant.  */
-  step = vect_dr_behavior (dr_info)->step;
-  if (integer_zerop (step))
-    *inv_p = true;
-  else
-    *inv_p = false;
 
   /* Create an expression for the first address accessed by this load
      in LOOP.  */
@@ -4851,15 +4835,17 @@ vect_create_data_ref_ptr (stmt_vec_info stmt_info, tree aggr_type,
     aptr = aggr_ptr_init;
   else
     {
+      /* Accesses to invariant addresses should be handled specially
+	 by the caller.  */
+      tree step = vect_dr_behavior (dr_info)->step;
+      gcc_assert (!integer_zerop (step));
+
       if (iv_step == NULL_TREE)
 	{
-	  /* The step of the aggregate pointer is the type size.  */
+	  /* The step of the aggregate pointer is the type size,
+	     negated for downward accesses.  */
 	  iv_step = TYPE_SIZE_UNIT (aggr_type);
-	  /* One exception to the above is when the scalar step of the load in
-	     LOOP is zero. In this case the step here is also zero.  */
-	  if (*inv_p)
-	    iv_step = size_zero_node;
-	  else if (tree_int_cst_sgn (step) == -1)
+	  if (tree_int_cst_sgn (step) == -1)
 	    iv_step = fold_build1 (NEGATE_EXPR, TREE_TYPE (iv_step), iv_step);
 	}
 
@@ -5168,7 +5154,7 @@ vect_grouped_store_supported (tree vectype, unsigned HOST_WIDE_INT count)
 
   if (dump_enabled_p ())
     dump_printf (MSG_MISSED_OPTIMIZATION,
-		 "permutaion op not supported by target.\n");
+		 "permutation op not supported by target.\n");
   return false;
 }
 
@@ -5464,7 +5450,6 @@ vect_setup_realignment (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
   gphi *phi_stmt;
   tree msq = NULL_TREE;
   gimple_seq stmts = NULL;
-  bool inv_p;
   bool compute_in_loop = false;
   bool nested_in_vect_loop = false;
   struct loop *containing_loop = (gimple_bb (stmt_info->stmt))->loop_father;
@@ -5558,7 +5543,7 @@ vect_setup_realignment (stmt_vec_info stmt_info, gimple_stmt_iterator *gsi,
       vec_dest = vect_create_destination_var (scalar_dest, vectype);
       ptr = vect_create_data_ref_ptr (stmt_info, vectype,
 				      loop_for_initial_load, NULL_TREE,
-				      &init_addr, NULL, &inc, true, &inv_p);
+				      &init_addr, NULL, &inc, true);
       if (TREE_CODE (ptr) == SSA_NAME)
 	new_temp = copy_ssa_name (ptr);
       else
