@@ -132,7 +132,7 @@ static rtx expand_builtin_mempcpy (tree, rtx);
 static rtx expand_builtin_mempcpy_args (tree, tree, tree, rtx, tree, int);
 static rtx expand_builtin_strcat (tree, rtx);
 static rtx expand_builtin_strcpy (tree, rtx);
-static rtx expand_builtin_strcpy_args (tree, tree, rtx);
+static rtx expand_builtin_strcpy_args (tree, tree, tree, rtx);
 static rtx expand_builtin_stpcpy (tree, rtx, machine_mode);
 static rtx expand_builtin_stpncpy (tree, rtx);
 static rtx expand_builtin_strncat (tree, rtx);
@@ -542,6 +542,58 @@ string_length (const void *ptr, unsigned eltsize, unsigned maxelts)
   return n;
 }
 
+/* For a call at LOC to a function FN that expects a string in the argument
+   ARG, issue a diagnostic due to it being a called with an argument
+   declared at NONSTR that is a character array with no terminating NUL.  */
+
+void
+warn_string_no_nul (location_t loc, const char *fn, tree arg, tree decl)
+{
+  if (TREE_NO_WARNING (arg))
+    return;
+
+  loc = expansion_point_location_if_in_system_header (loc);
+
+  if (warning_at (loc, OPT_Wstringop_overflow_,
+		  "%qs argument missing terminating nul", fn))
+    {
+      inform (DECL_SOURCE_LOCATION (decl),
+	      "referenced argument declared here");
+      TREE_NO_WARNING (arg) = 1;
+    }
+}
+
+/* If EXP refers to an unterminated constant character array return
+   the declaration of the object of which the array is a member or
+   element.  Otherwise return null.  */
+
+tree
+unterminated_array (tree exp)
+{
+  if (TREE_CODE (exp) == SSA_NAME)
+    {
+      gimple *stmt = SSA_NAME_DEF_STMT (exp);
+      if (!is_gimple_assign (stmt))
+	return NULL_TREE;
+
+      tree rhs1 = gimple_assign_rhs1 (stmt);
+      tree_code code = gimple_assign_rhs_code (stmt);
+      if (code == ADDR_EXPR
+	  && TREE_CODE (TREE_OPERAND (rhs1, 0)) == ARRAY_REF)
+	rhs1 = rhs1;
+      else if (code != POINTER_PLUS_EXPR)
+	return NULL_TREE;
+
+      exp = rhs1;
+    }
+
+  tree nonstr = NULL;
+  if (c_strlen (exp, 1, &nonstr, 1) == NULL && nonstr)
+    return nonstr;
+
+  return NULL_TREE;
+}
+
 /* Compute the length of a null-terminated character string or wide
    character string handling character sizes of 1, 2, and 4 bytes.
    TREE_STRING_LENGTH is not the right way because it evaluates to
@@ -559,13 +611,18 @@ string_length (const void *ptr, unsigned eltsize, unsigned maxelts)
    accesses.  Note that this implies the result is not going to be emitted
    into the instruction stream.
 
+   If a not zero-terminated string value is encountered and NONSTR is
+   non-zero, the declaration of the string value is assigned to *NONSTR.
+   *NONSTR is accumulating, thus not cleared on success, therefore it has
+   to be initialized to NULL_TREE by the caller.
+
    ELTSIZE is 1 for normal single byte character strings, and 2 or
    4 for wide characer strings.  ELTSIZE is by default 1.
 
    The value returned is of type `ssizetype'.  */
 
 tree
-c_strlen (tree src, int only_value, unsigned eltsize)
+c_strlen (tree src, int only_value, tree *nonstr, unsigned eltsize)
 {
   gcc_checking_assert (eltsize == 1 || eltsize == 2 || eltsize == 4);
   STRIP_NOPS (src);
@@ -574,22 +631,23 @@ c_strlen (tree src, int only_value, unsigned eltsize)
     {
       tree len1, len2;
 
-      len1 = c_strlen (TREE_OPERAND (src, 1), only_value, eltsize);
-      len2 = c_strlen (TREE_OPERAND (src, 2), only_value, eltsize);
+      len1 = c_strlen (TREE_OPERAND (src, 1), only_value, nonstr, eltsize);
+      len2 = c_strlen (TREE_OPERAND (src, 2), only_value, nonstr, eltsize);
       if (tree_int_cst_equal (len1, len2))
 	return len1;
     }
 
   if (TREE_CODE (src) == COMPOUND_EXPR
       && (only_value || !TREE_SIDE_EFFECTS (TREE_OPERAND (src, 0))))
-    return c_strlen (TREE_OPERAND (src, 1), only_value, eltsize);
+    return c_strlen (TREE_OPERAND (src, 1), only_value, nonstr, eltsize);
 
   location_t loc = EXPR_LOC_OR_LOC (src, input_location);
 
   /* Offset from the beginning of the string in bytes.  */
   tree byteoff;
   tree memsize;
-  src = string_constant (src, &byteoff, &memsize, NULL);
+  tree decl;
+  src = string_constant (src, &byteoff, &memsize, &decl);
   if (src == 0)
     return NULL_TREE;
 
@@ -604,12 +662,12 @@ c_strlen (tree src, int only_value, unsigned eltsize)
      In that case, the elements of the array after the terminating NUL are
      all NUL.  */
   HOST_WIDE_INT strelts = TREE_STRING_LENGTH (src);
-  strelts = strelts / eltsize - 1;
+  strelts = strelts / eltsize;
 
   if (!tree_fits_uhwi_p (memsize))
     return NULL_TREE;
 
-  HOST_WIDE_INT maxelts = tree_to_uhwi (memsize) / eltsize - 1;
+  HOST_WIDE_INT maxelts = tree_to_uhwi (memsize) / eltsize;
 
   /* PTR can point to the byte representation of any string type, including
      char* and wchar_t*.  */
@@ -617,10 +675,6 @@ c_strlen (tree src, int only_value, unsigned eltsize)
 
   if (byteoff && TREE_CODE (byteoff) != INTEGER_CST)
     {
-      /* For empty strings the result should be zero.  */
-      if (maxelts == 0)
-	return ssize_int (0);
-
       /* The code below works only for single byte character types.  */
       if (eltsize != 1)
 	return NULL_TREE;
@@ -632,8 +686,18 @@ c_strlen (tree src, int only_value, unsigned eltsize)
       unsigned len = string_length (ptr, eltsize, strelts);
 
       /* Return when an embedded null character is found or none at all.  */
-      if (len < strelts || len > maxelts)
+      if (len + 1 < strelts)
 	return NULL_TREE;
+      else if (len >= maxelts)
+	{
+	  if (nonstr && decl)
+	    *nonstr = decl;
+	  return NULL_TREE;
+	}
+
+      /* For empty strings the result should be zero.  */
+      if (len == 0)
+	return ssize_int (0);
 
       /* We don't know the starting offset, but we do know that the string
 	 has no internal zero bytes.  If the offset falls within the bounds
@@ -644,7 +708,7 @@ c_strlen (tree src, int only_value, unsigned eltsize)
       offsave = fold_convert (ssizetype, offsave);
       tree condexp = fold_build2_loc (loc, LE_EXPR, boolean_type_node, offsave,
 				      build_int_cst (ssizetype, len));
-      tree lenexp = size_diffop_loc (loc, ssize_int (strelts), offsave);
+      tree lenexp = size_diffop_loc (loc, ssize_int (len), offsave);
       return fold_build3_loc (loc, COND_EXPR, ssizetype, condexp, lenexp,
 			      build_zero_cst (ssizetype));
     }
@@ -663,7 +727,7 @@ c_strlen (tree src, int only_value, unsigned eltsize)
 
   /* If the offset is known to be out of bounds, warn, and call strlen at
      runtime.  */
-  if (eltoff < 0 || eltoff > maxelts)
+  if (eltoff < 0 || eltoff >= maxelts)
     {
      /* Suppress multiple warnings for propagated constant strings.  */
       if (only_value != 2
@@ -691,10 +755,14 @@ c_strlen (tree src, int only_value, unsigned eltsize)
   unsigned len = string_length (ptr + eltoff * eltsize, eltsize,
 				strelts - eltoff);
 
-  /* Don't know what to return if there was no zero termination. 
+  /* Don't know what to return if there was no zero termination.
      Ideally this would turn into a gcc_checking_assert over time.  */
-  if (len > maxelts - eltoff)
-    return NULL_TREE;
+  if (len >= maxelts - eltoff)
+    {
+      if (nonstr && decl)
+	*nonstr = decl;
+      return NULL_TREE;
+    }
 
   return ssize_int (len);
 }
@@ -3842,7 +3910,7 @@ expand_builtin_strcpy (tree exp, rtx target)
 		    src, destsize);
     }
 
-  if (rtx ret = expand_builtin_strcpy_args (dest, src, target))
+  if (rtx ret = expand_builtin_strcpy_args (exp, dest, src, target))
     {
       /* Check to see if the argument was declared attribute nonstring
 	 and if so, issue a warning since at this point it's not known
@@ -3862,8 +3930,17 @@ expand_builtin_strcpy (tree exp, rtx target)
    expand_builtin_strcpy.  */
 
 static rtx
-expand_builtin_strcpy_args (tree dest, tree src, rtx target)
+expand_builtin_strcpy_args (tree exp, tree dest, tree src, rtx target)
 {
+  /* Detect strcpy calls with unterminated arrays..  */
+  if (tree nonstr = unterminated_array (src))
+    {
+      /* NONSTR refers to the non-nul terminated constant array.  */
+      if (!TREE_NO_WARNING (exp))
+	warn_string_no_nul (EXPR_LOCATION (exp), "strcpy", src, nonstr);
+      return NULL_RTX;
+    }
+
   return expand_movstr (dest, src, target, /*endp=*/0);
 }
 
@@ -3907,8 +3984,13 @@ expand_builtin_stpcpy_1 (tree exp, rtx target, machine_mode mode)
 	 compile-time, not an expression containing a string.  This is
 	 because the latter will potentially produce pessimized code
 	 when used to produce the return value.  */
-      if (! c_getstr (src) || ! (len = c_strlen (src, 0)))
+      tree nonstr = NULL_TREE;
+      if (!c_getstr (src, NULL)
+	  || !(len = c_strlen (src, 0, &nonstr, 1)))
 	return expand_movstr (dst, src, target, /*endp=*/2);
+
+      if (nonstr && !TREE_NO_WARNING (exp))
+	warn_string_no_nul (EXPR_LOCATION (exp), "stpcpy", src, nonstr);
 
       lenp1 = size_binop_loc (loc, PLUS_EXPR, len, ssize_int (1));
       ret = expand_builtin_mempcpy_args (dst, src, lenp1,
@@ -3923,7 +4005,7 @@ expand_builtin_stpcpy_1 (tree exp, rtx target, machine_mode mode)
 
 	  if (CONST_INT_P (len_rtx))
 	    {
-	      ret = expand_builtin_strcpy_args (dst, src, target);
+	      ret = expand_builtin_strcpy_args (exp, dst, src, target);
 
 	      if (ret)
 		{
@@ -5781,14 +5863,21 @@ static rtx
 get_builtin_sync_mem (tree loc, machine_mode mode)
 {
   rtx addr, mem;
+  int addr_space = TYPE_ADDR_SPACE (POINTER_TYPE_P (TREE_TYPE (loc))
+				    ? TREE_TYPE (TREE_TYPE (loc))
+				    : TREE_TYPE (loc));
+  scalar_int_mode addr_mode = targetm.addr_space.address_mode (addr_space);
 
-  addr = expand_expr (loc, NULL_RTX, ptr_mode, EXPAND_SUM);
-  addr = convert_memory_address (Pmode, addr);
+  addr = expand_expr (loc, NULL_RTX, addr_mode, EXPAND_SUM);
 
   /* Note that we explicitly do not want any alias information for this
      memory, so that we kill all other live memories.  Otherwise we don't
      satisfy the full barrier semantics of the intrinsic.  */
-  mem = validize_mem (gen_rtx_MEM (mode, addr));
+  mem = gen_rtx_MEM (mode, addr);
+
+  set_mem_addr_space (mem, addr_space);
+
+  mem = validize_mem (mem);
 
   /* The alignment needs to be at least according to that of the mode.  */
   set_mem_align (mem, MAX (GET_MODE_ALIGNMENT (mode),
@@ -8373,10 +8462,23 @@ fold_builtin_strlen (location_t loc, tree type, tree arg)
     return NULL_TREE;
   else
     {
-      tree len = c_strlen (arg, 0);
+      tree nonstr = NULL_TREE;
+      tree len = c_strlen (arg, 0, &nonstr);
 
       if (len)
 	return fold_convert_loc (loc, type, len);
+
+      if (!nonstr)
+	c_strlen (arg, 1, &nonstr);
+
+      if (nonstr)
+	{
+	  if (EXPR_HAS_LOCATION (arg))
+	    loc = EXPR_LOCATION (arg);
+	  else if (loc == UNKNOWN_LOCATION)
+	    loc = input_location;
+	  warn_string_no_nul (loc, "strlen", arg, nonstr);
+	}
 
       return NULL_TREE;
     }

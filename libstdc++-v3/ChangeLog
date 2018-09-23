@@ -1,3 +1,89 @@
+2018-09-23  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* doc/xml/manual/using_exceptions.xml: Move boost.orgs link to
+	https.
+
+2018-09-21  François Dumont  <fdumont@gcc.gnu.org>
+
+	PR libstdc++/87135
+	* src/c++11/hashtable_c++0x.cc (_Prime_rehash_policy::_M_next_bkt):
+	Use __builtin_floor to compute _M_next_resize.
+	* testsuite/23_containers/unordered_set/hash_policy/71181.cc: Adapt.
+	* testsuite/23_containers/unordered_set/hash_policy/prime_rehash.cc:
+	Adapt.
+
+2018-09-21  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/26_numerics/headers/cmath/hypot-long-double.cc: Remove.
+	* testsuite/26_numerics/headers/cmath/hypot.cc: Restore test for
+	long double unconditionally, but use lower tolerance when
+	sizeof(long double) == sizeof(double).
+
+2018-09-20  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* testsuite/26_numerics/headers/cmath/hypot-long-double.cc: Skip
+	on arm*.
+
+2018-09-19  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/regex_automaton.tcc (_StateSeq<_TraitsT>::_M_clone()):
+	Remove __glibcxx_assert statements and use map::find instead of
+	map::operator[].
+
+2018-09-18  François Dumont  <fdumont@gcc.gnu.org>
+
+	PR libstdc++/87135
+	* src/c++11/hashtable_c++0x.cc:
+	(_Prime_rehash_policy::_M_next_bkt): Return a prime no smaller than
+	requested size, but not necessarily greater.
+	(_Prime_rehash_policy::_M_need_rehash): Rehash only if target size is
+	strictly greater than next resize threshold.
+	* testsuite/23_containers/unordered_map/modifiers/reserve.cc: Adapt test
+	to validate that there is no rehash as long as number of insertion is
+	lower or equal to the reserved number of elements.
+
+2018-09-18  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/unique_ptr.h (__uniq_ptr_impl): Remove static assertion
+	checking invocable condition.
+	(unique_ptr::~unique_ptr, unique_ptr::reset): Restore static assertion
+	here, where types must be complete. Pass pointer to deleter as an
+	rvalue.
+	* testsuite/20_util/unique_ptr/requirements/incomplete.cc: New test.
+
+2018-09-13  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/std/variant (variant) [__clang__]: Limit workaround to
+	Clang 7 and older.
+
+2018-09-11  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/87278
+	* include/bits/shared_ptr.h (make_shared): Use remove_cv instead of
+	remove_const.
+	* testsuite/20_util/shared_ptr/creation/87278.cc: New test.
+
+	Implement LWG 2905 changes to constrain unique_ptr constructors
+	* include/bits/unique_ptr.h (__uniq_ptr_impl): Add assertions to
+	check deleter type.
+	(unique_ptr::unique_ptr(pointer, const deleter_type&)): Add copy
+	constructible constraint.
+	(unique_ptr::unique_ptr(pointer, deleter_type&&)): Disable for
+	deleters of reference type and add move constructible constraint.
+	(unique_ptr::unique_ptr(pointer, remove_reference_t<deleter_type>&&)):
+	Disable for deleters of non-reference type. Define as deleted.
+	(unique_ptr<T[], D>): Likewise.
+	* testsuite/20_util/unique_ptr/assign/48635_neg.cc: Replace dg-error
+	directives with unstable line numbers with dg-prune-output.
+	* testsuite/20_util/unique_ptr/cons/cv_qual_neg.cc: Likewise.
+	* testsuite/20_util/unique_ptr/cons/lwg2905.cc: New test.
+	* testsuite/20_util/unique_ptr/specialized_algorithms/swap_cxx17.cc:
+	Make deleter types invocable.
+
+2018-09-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	* libsupc++/cxxabi.h (__cxa_demangle): Clarify doxygen comment.
+
 2018-09-03  Jonathan Wakely  <jwakely@redhat.com>
 
 	PR libstdc++/78179

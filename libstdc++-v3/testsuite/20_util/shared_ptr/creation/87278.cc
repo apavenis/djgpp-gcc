@@ -1,4 +1,4 @@
-// Copyright (C) 2016-2018 Free Software Foundation, Inc.
+// Copyright (C) 2018 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -15,11 +15,12 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-std=gnu++17" }
-// { dg-do run { target c++17 } }
-// { dg-xfail-run-if "PR 78179" { powerpc-ibm-aix* hppa-*-linux* nios2-*-* } }
+// { dg-do compile { target c++11 } }
 
-// Run the long double tests from hypot.cc separately, because they fail on a
-// number of targets. See PR libstdc++/78179 for details.
-#define TEST_HYPOT_LONG_DOUBLE
-#include "hypot.cc"
+#include <memory>
+
+void
+test01()
+{
+  std::make_shared<volatile int>();
+}

@@ -1747,7 +1747,10 @@ changequote(,)dnl
 if test -f configargs.h ; then
 	# Being re-configured.
 	gcc_config_arguments=`grep configuration_arguments configargs.h | sed -e 's/.*"\([^"]*\)".*/\1/'`
-	gcc_config_arguments="$gcc_config_arguments : (reconfigured) $TOPLEVEL_CONFIGURE_ARGUMENTS"
+	gcc_reconf_arguments=`echo "$gcc_config_arguments" | sed -e 's/^.*\( : (reconfigured) .*$\)/\1/'`
+	if [ "$gcc_reconf_arguments" != " : (reconfigured) $TOPLEVEL_CONFIGURE_ARGUMENTS" ]; then
+		gcc_config_arguments="$gcc_config_arguments : (reconfigured) $TOPLEVEL_CONFIGURE_ARGUMENTS"
+	fi
 else
 	gcc_config_arguments="$TOPLEVEL_CONFIGURE_ARGUMENTS"
 fi
@@ -3145,6 +3148,15 @@ case "${target}" in
     [Define 0/1 if your linker supports hidden thunks in linkonce sections.])
   ;;
 esac
+
+gcc_GAS_CHECK_FEATURE([line table is_stmt support],
+ gcc_cv_as_is_stmt,
+ [2,16,92],,
+[	.text
+	.file 1 "conf.c"
+	.loc 1 1 0 is_stmt 1],,
+[AC_DEFINE(HAVE_GAS_LOC_STMT, 1,
+  [Define if your assembler supports the .loc is_stmt sub-directive.])])
 
 gcc_GAS_CHECK_FEATURE([line table discriminator support],
  gcc_cv_as_discriminator,
