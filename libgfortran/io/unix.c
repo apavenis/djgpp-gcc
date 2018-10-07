@@ -1637,7 +1637,7 @@ error_stream (void)
    filename. */
 
 int
-compare_file_filename (gfc_unit *u, const char *name, int len)
+compare_file_filename (gfc_unit *u, const char *name, gfc_charlen_type len)
 {
   struct stat st;
   int ret;
@@ -1933,7 +1933,7 @@ static const char yes[] = "YES", no[] = "NO", unknown[] = "UNKNOWN";
    string. */
 
 const char *
-inquire_sequential (const char *string, int len)
+inquire_sequential (const char *string, gfc_charlen_type len)
 {
   struct stat statbuf;
 
@@ -1962,7 +1962,7 @@ inquire_sequential (const char *string, int len)
    suitable for direct access.  Returns a C-style string. */
 
 const char *
-inquire_direct (const char *string, int len)
+inquire_direct (const char *string, gfc_charlen_type len)
 {
   struct stat statbuf;
 
@@ -1991,7 +1991,7 @@ inquire_direct (const char *string, int len)
    is suitable for formatted form.  Returns a C-style string. */
 
 const char *
-inquire_formatted (const char *string, int len)
+inquire_formatted (const char *string, gfc_charlen_type len)
 {
   struct stat statbuf;
 
@@ -2021,7 +2021,7 @@ inquire_formatted (const char *string, int len)
    is suitable for unformatted form.  Returns a C-style string. */
 
 const char *
-inquire_unformatted (const char *string, int len)
+inquire_unformatted (const char *string, gfc_charlen_type len)
 {
   return inquire_formatted (string, len);
 }
@@ -2031,7 +2031,7 @@ inquire_unformatted (const char *string, int len)
    suitable for access. */
 
 static const char *
-inquire_access (const char *string, int len, int mode)
+inquire_access (const char *string, gfc_charlen_type len, int mode)
 {
   if (string == NULL)
     return no;
@@ -2049,7 +2049,7 @@ inquire_access (const char *string, int len, int mode)
    suitable for READ access. */
 
 const char *
-inquire_read (const char *string, int len)
+inquire_read (const char *string, gfc_charlen_type len)
 {
   return inquire_access (string, len, R_OK);
 }
@@ -2059,7 +2059,7 @@ inquire_read (const char *string, int len)
    suitable for READ access. */
 
 const char *
-inquire_write (const char *string, int len)
+inquire_write (const char *string, gfc_charlen_type len)
 {
   return inquire_access (string, len, W_OK);
 }
@@ -2069,7 +2069,7 @@ inquire_write (const char *string, int len)
    suitable for read and write access. */
 
 const char *
-inquire_readwrite (const char *string, int len)
+inquire_readwrite (const char *string, gfc_charlen_type len)
 {
   return inquire_access (string, len, R_OK | W_OK);
 }

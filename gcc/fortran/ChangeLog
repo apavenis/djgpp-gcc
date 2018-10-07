@@ -1,3 +1,109 @@
+2018-10-06  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/86111
+	* gfortran.h (enum arith): Add ARITH_WRONGCONCAT.
+	* arith.h (gfc_arith_error): Issue error for ARITH_WRONGCONCAT.
+	(gfc_arith_concat):  If the types of op1 and op2 are not
+	character of if their kinds do not match, issue ARITH_WRONGCONCAT.
+
+2018-10-06  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/83999
+	* resolve.c (resolve_fl_procedure): Include class functions in
+	the test that elemental function results be scalar.
+
+2018-10-06  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/84640
+	* simplify.c (gfc_simplify_cshift): Extend size of hs_ex and ss_ex
+	by one. Set extents one past the array boundaries to zero to avoid
+	warning with instrumented compiler.
+	(gfc_simplify_eoshift): Likewise, only for ss_ex.
+
+2018-10-05  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/87487
+	* trans-decl.c (gfc_get_symbol_decl): Make sure that deferred
+	character length pointer initializer has the right type to fix
+	problem with deferred_character_24.f90 on big endian.
+
+2018-10-03  Jeff Law  <law@redhat.comg>
+
+	* trans-types.c (get_typenode_from_name): Moved into gcc/tree.c.
+
+2018-10-01  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/65677
+	* trans-expr.c (gfc_trans_assignment_1): Set the 'identical'
+	flag in the call to gfc_check_dependency.
+
+2018-09-30  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/87359
+	* trans-array.c (gfc_is_reallocatable_lhs): Correct the problem
+	introduced by r264358, which prevented components of associate
+	names from being reallocated on assignment.
+
+2018-09-30  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/70752
+	PR fortran/72709
+	* trans-array.c (gfc_conv_scalarized_array_ref): If this is a
+	deferred type and the info->descriptor is present, use the
+	info->descriptor
+	(gfc_conv_array_ref): Is the se expr is a descriptor type, pass
+	it as 'decl' rather than the symbol backend_decl.
+	(gfc_array_allocate): If the se string_length is a component
+	reference, fix it and use it for the expression string length
+	if the latter is not a variable type. If it is a variable do
+	an assignment. Make use of component ref string lengths to set
+	the descriptor 'span'.
+	(gfc_conv_expr_descriptor): For pointer assignment, do not set
+	the span field if gfc_get_array_span returns zero.
+	* trans.c (get_array_span): If the upper bound a character type
+	is zero, use the descriptor span if available.
+
+2018-09-30  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/70149
+	* trans-decl.c (gfc_get_symbol_decl): A deferred character
+	length pointer that is initialized needs the string length to
+	be initialized as well.
+
+2018-09-29  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/65677
+	* trans-expr.c (gfc_trans_assignment_1): If there is dependency
+	fix the rse stringlength.
+
+2018-09-25  Martin Liska  <mliska@suse.cz>
+
+	PR fortran/87394
+	* decl.c (add_hidden_procptr_result): Simplify condition
+	as we are in branch witch 'case1 || case2'.
+
+2018-09-25  Martin Liska  <mliska@suse.cz>
+
+	* trans.c (remove_suffix): Remove
+	unused function.
+
+2018-09-24  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/87397
+	* gfc_conv_procedure_call: Do not add clobber on INTENT(OUT)
+	for variables in an associate statement.
+
+2018-09-24  Bernhard Reuther-Fischer  <aldot@gcc.gnu.org>
+	    Cesar Philippidis  <cesar@codesourcery.com>
+
+	* openmp.c (resolve_oacc_loop_blocks):
+
+2018-09-23  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/87397
+	* gfc_conv_procedure_call: Do not add clobber on INTENT(OUT)
+	for variables having the dimension attribute.
+
 2018-09-23  Janne Blomqvist  <jb@gcc.gnu.org>
 
 	* trans-expr.c (gfc_caf_get_image_index): Do array index
