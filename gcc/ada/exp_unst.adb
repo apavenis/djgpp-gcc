@@ -227,6 +227,12 @@ package body Exp_Unst is
       while Present (S) and then S /= Standard_Standard loop
          if Is_Concurrent_Type (S) then
             return True;
+
+         elsif Is_Private_Type (S)
+           and then Present (Full_View (S))
+           and then Is_Concurrent_Type (Full_View (S))
+         then
+            return True;
          end if;
 
          S := Scope (S);
@@ -747,19 +753,15 @@ package body Exp_Unst is
                L : constant Nat := Get_Level (Subp, E);
 
             begin
-               --  Subprograms declared in tasks and protected types cannot
-               --  be eliminated because calls to them may be in other units,
-               --  so they must be treated as reachable.
+               --  Subprograms declared in tasks and protected types cannot be
+               --  eliminated because calls to them may be in other units, so
+               --  they must be treated as reachable.
 
                Subps.Append
                  ((Ent           => E,
                    Bod           => Bod,
                    Lev           => L,
                    Reachable     => In_Synchronized_Unit (E),
-
-                   --  Subprograms declared in tasks and protected types are
-                   --  reachable and cannot be eliminated.
-
                    Uplevel_Ref   => L,
                    Declares_AREC => False,
                    Uents         => No_Elist,
@@ -1148,9 +1150,9 @@ package body Exp_Unst is
                      return Skip;
                   end if;
 
-               --  Pragmas and component declarations can be ignored
-               --  Quantified expressions are expanded into explicit loops
-               --  and the original epression must be ignored.
+               --  Pragmas and component declarations are ignored. Quantified
+               --  expressions are expanded into explicit loops and the
+               --  original epression must be ignored.
 
                when N_Component_Declaration
                   | N_Pragma
@@ -1402,9 +1404,9 @@ package body Exp_Unst is
                   --  We do not add types to this list, only actual references
                   --  to objects that will be referenced uplevel, and we use
                   --  the flag Is_Uplevel_Referenced_Entity to avoid making
-                  --  duplicate entries in the list.
-                  --  Discriminants are also excluded, only the enclosing
-                  --  object can appear in the list.
+                  --  duplicate entries in the list. Discriminants are also
+                  --  excluded, only the enclosing object can appear in the
+                  --  list.
 
                   if not Is_Uplevel_Referenced_Entity (URJ.Ent)
                     and then Ekind (URJ.Ent) /= E_Discriminant
@@ -1627,7 +1629,7 @@ package body Exp_Unst is
       --  Loop through subprograms
 
       Subp_Loop : declare
-         Addr : constant Entity_Id := RTE (RE_Address);
+         Addr : Entity_Id := Empty;
 
       begin
          for J in Subps_First .. Subps.Last loop
@@ -1744,9 +1746,14 @@ package body Exp_Unst is
                      --  Declaration nodes for the AREC entities we build
 
                   begin
-                     --  Build list of component declarations for ARECnT
+                     --  Build list of component declarations for ARECnT and
+                     --  load System.Address.
 
                      Clist := Empty_List;
+
+                     if No (Addr) then
+                        Addr := RTE (RE_Address);
+                     end if;
 
                      --  If we are in a subprogram that has a static link that
                      --  is passed in (as indicated by ARECnF being defined),
@@ -1961,7 +1968,9 @@ package body Exp_Unst is
 
                                  Asn  : Node_Id;
                                  Attr : Name_Id;
+                                 Comp : Entity_Id;
                                  Ins  : Node_Id;
+                                 Rhs  : Node_Id;
 
                               begin
                                  --  For parameters, we insert the assignment
@@ -1996,6 +2005,33 @@ package body Exp_Unst is
                                     Attr := Name_Address;
                                  end if;
 
+                                 Rhs :=
+                                  Make_Attribute_Reference (Loc,
+                                    Prefix         =>
+                                      New_Occurrence_Of (Ent, Loc),
+                                    Attribute_Name => Attr);
+
+                                 --  If the entity is an unconstrained formal
+                                 --  we wrap the attribute reference in an
+                                 --  unchecked conversion to the type of the
+                                 --  activation record component, to prevent
+                                 --  spurious subtype conformance errors within
+                                 --  instances.
+
+                                 if Is_Formal (Ent)
+                                   and then not Is_Constrained (Etype (Ent))
+                                 then
+                                    --  Find target component and its type
+
+                                    Comp := First_Component (STJ.ARECnT);
+                                    while Chars (Comp) /= Chars (Ent) loop
+                                       Comp := Next_Component (Comp);
+                                    end loop;
+
+                                    Rhs :=
+                                      Unchecked_Convert_To (Etype (Comp), Rhs);
+                                 end if;
+
                                  Asn :=
                                    Make_Assignment_Statement (Loc,
                                      Name       =>
@@ -2007,12 +2043,7 @@ package body Exp_Unst is
                                              (Activation_Record_Component
                                                 (Ent),
                                               Loc)),
-
-                                     Expression =>
-                                       Make_Attribute_Reference (Loc,
-                                         Prefix         =>
-                                           New_Occurrence_Of (Ent, Loc),
-                                         Attribute_Name => Attr));
+                                     Expression => Rhs);
 
                                  --  If we have a loop parameter, we have
                                  --  to insert before the first statement

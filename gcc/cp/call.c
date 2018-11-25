@@ -3251,6 +3251,12 @@ add_template_candidate_real (struct z_candidate **candidates, tree tmpl,
       goto fail;
     }
 
+  /* Now the explicit specifier might have been deduced; check if this
+     declaration is explicit.  If it is and we're ignoring non-converting
+     constructors, don't add this function to the set of candidates.  */
+  if ((flags & LOOKUP_ONLYCONVERTING) && DECL_NONCONVERTING_P (fn))
+    return NULL;
+
   if (DECL_CONSTRUCTOR_P (fn) && nargs == 2)
     {
       tree arg_types = FUNCTION_FIRST_USER_PARMTYPE (fn);
@@ -6184,6 +6190,31 @@ aligned_allocation_fn_p (tree t)
   return (a && same_type_p (TREE_VALUE (a), align_type_node));
 }
 
+/* True if T is std::destroying_delete_t.  */
+
+static bool
+std_destroying_delete_t_p (tree t)
+{
+  return (TYPE_CONTEXT (t) == std_node
+	  && id_equal (TYPE_IDENTIFIER (t), "destroying_delete_t"));
+}
+
+/* A deallocation function with at least two parameters whose second parameter
+   type is of type std::destroying_delete_t is a destroying operator delete. A
+   destroying operator delete shall be a class member function named operator
+   delete. [ Note: Array deletion cannot use a destroying operator
+   delete. --end note ] */
+
+tree
+destroying_delete_p (tree t)
+{
+  tree a = TYPE_ARG_TYPES (TREE_TYPE (t));
+  if (!a || !TREE_CHAIN (a))
+    return NULL_TREE;
+  tree type = TREE_VALUE (TREE_CHAIN (a));
+  return std_destroying_delete_t_p (type) ? type : NULL_TREE;
+}
+
 /* Returns true iff T, an element of an OVERLOAD chain, is a usual deallocation
    function (3.7.4.2 [basic.stc.dynamic.deallocation]) with a parameter of
    std::align_val_t.  */
@@ -6201,6 +6232,8 @@ aligned_deallocation_fn_p (tree t)
     return false;
 
   tree a = FUNCTION_ARG_CHAIN (t);
+  if (destroying_delete_p (t))
+    a = TREE_CHAIN (a);
   if (same_type_p (TREE_VALUE (a), align_type_node)
       && TREE_CHAIN (a) == void_list_node)
     return true;
@@ -6236,6 +6269,8 @@ usual_deallocation_fn_p (tree t)
   tree chain = FUNCTION_ARG_CHAIN (t);
   if (!chain)
     return false;
+  if (destroying_delete_p (t))
+    chain = TREE_CHAIN (chain);
   if (chain == void_list_node
       || ((!global || flag_sized_deallocation)
 	  && second_parm_is_size_t (t)))
@@ -6301,6 +6336,7 @@ build_op_delete_call (enum tree_code code, tree addr, tree size,
     fns = lookup_name_nonclass (fnname);
 
   /* Strip const and volatile from addr.  */
+  tree oaddr = addr;
   addr = cp_convert (ptr_type_node, addr, complain);
 
   if (placement)
@@ -6478,9 +6514,24 @@ build_op_delete_call (enum tree_code code, tree addr, tree size,
 	}
       else
 	{
+	  tree destroying = destroying_delete_p (fn);
+	  if (destroying)
+	    {
+	      /* Strip const and volatile from addr but retain the type of the
+		 object.  */
+	      tree rtype = TREE_TYPE (TREE_TYPE (oaddr));
+	      rtype = cv_unqualified (rtype);
+	      rtype = TYPE_POINTER_TO (rtype);
+	      addr = cp_convert (rtype, oaddr, complain);
+	      destroying = build_functional_cast (destroying, NULL_TREE,
+						  complain);
+	    }
+
 	  tree ret;
 	  vec<tree, va_gc> *args = make_tree_vector ();
 	  args->quick_push (addr);
+	  if (destroying)
+	    args->quick_push (destroying);
 	  if (second_parm_is_size_t (fn))
 	    args->quick_push (size);
 	  if (aligned_deallocation_fn_p (fn))
@@ -6514,6 +6565,38 @@ build_op_delete_call (enum tree_code code, tree addr, tree size,
   return error_mark_node;
 }
 
+/* Issue diagnostics about a disallowed access of DECL, using DIAG_DECL
+   in the diagnostics.
+
+   If ISSUE_ERROR is true, then issue an error about the
+   access, followed by a note showing the declaration.
+   Otherwise, just show the note.  */
+
+void
+complain_about_access (tree decl, tree diag_decl, bool issue_error)
+{
+  if (TREE_PRIVATE (decl))
+    {
+      if (issue_error)
+	error ("%q#D is private within this context", diag_decl);
+      inform (DECL_SOURCE_LOCATION (diag_decl),
+	      "declared private here");
+    }
+  else if (TREE_PROTECTED (decl))
+    {
+      if (issue_error)
+	error ("%q#D is protected within this context", diag_decl);
+      inform (DECL_SOURCE_LOCATION (diag_decl),
+	      "declared protected here");
+    }
+  else
+    {
+      if (issue_error)
+	error ("%q#D is inaccessible within this context", diag_decl);
+      inform (DECL_SOURCE_LOCATION (diag_decl), "declared here");
+    }
+}
+
 /* If the current scope isn't allowed to access DECL along
    BASETYPE_PATH, give an error.  The most derived class in
    BASETYPE_PATH is the one used to qualify DECL. DIAG_DECL is
@@ -6538,34 +6621,12 @@ enforce_access (tree basetype_path, tree decl, tree diag_decl,
 
   if (!accessible_p (basetype_path, decl, true))
     {
+      if (flag_new_inheriting_ctors)
+	diag_decl = strip_inheriting_ctors (diag_decl);
       if (complain & tf_error)
-	{
-	  if (flag_new_inheriting_ctors)
-	    diag_decl = strip_inheriting_ctors (diag_decl);
-	  if (TREE_PRIVATE (decl))
-	    {
-	      error ("%q#D is private within this context", diag_decl);
-	      inform (DECL_SOURCE_LOCATION (diag_decl),
-		      "declared private here");
-	      if (afi)
-		afi->record_access_failure (basetype_path, diag_decl);
-	    }
-	  else if (TREE_PROTECTED (decl))
-	    {
-	      error ("%q#D is protected within this context", diag_decl);
-	      inform (DECL_SOURCE_LOCATION (diag_decl),
-		      "declared protected here");
-	      if (afi)
-		afi->record_access_failure (basetype_path, diag_decl);
-	    }
-	  else
-	    {
-	      error ("%q#D is inaccessible within this context", diag_decl);
-	      inform (DECL_SOURCE_LOCATION (diag_decl), "declared here");
-	      if (afi)
-		afi->record_access_failure (basetype_path, diag_decl);
-	    }
-	}
+	complain_about_access (decl, diag_decl, true);
+      if (afi)
+	afi->record_access_failure (basetype_path, decl, diag_decl);
       return false;
     }
 
@@ -6620,7 +6681,7 @@ conversion_null_warnings (tree totype, tree expr, tree fn, int argnum)
   if (null_node_p (expr) && TREE_CODE (totype) != BOOLEAN_TYPE
       && ARITHMETIC_TYPE_P (totype))
     {
-      source_location loc =
+      location_t loc =
 	expansion_point_location_if_in_system_header (input_location);
 
       if (fn)
@@ -6649,7 +6710,7 @@ conversion_null_warnings (tree totype, tree expr, tree fn, int argnum)
   else if (null_ptr_cst_p (expr) &&
 	   (TYPE_PTR_OR_PTRMEM_P (totype) || NULLPTR_TYPE_P (totype)))
     {
-      source_location loc =
+      location_t loc =
        expansion_point_location_if_in_system_header (input_location);
       maybe_warn_zero_as_null_pointer_constant (expr, loc);
     }
@@ -7325,7 +7386,7 @@ convert_arg_to_ellipsis (tree arg, tsubst_flags_t complain)
 /* va_arg (EXPR, TYPE) is a builtin. Make sure it is not abused.  */
 
 tree
-build_x_va_arg (source_location loc, tree expr, tree type)
+build_x_va_arg (location_t loc, tree expr, tree type)
 {
   if (processing_template_decl)
     {
@@ -8188,7 +8249,6 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
     {
       tree *fargs = (!nargs ? argarray
 			    : (tree *) alloca (nargs * sizeof (tree)));
-      auto_vec<location_t> arglocs (nargs);
       for (j = 0; j < nargs; j++)
 	{
 	  /* For -Wformat undo the implicit passing by hidden reference
@@ -8197,12 +8257,11 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 	      && TYPE_REF_P (TREE_TYPE (argarray[j])))
 	    fargs[j] = TREE_OPERAND (argarray[j], 0);
 	  else
-	    fargs[j] = maybe_constant_value (argarray[j]);
-	  arglocs.quick_push (EXPR_LOC_OR_LOC (argarray[j], input_location));
+	    fargs[j] = argarray[j];
 	}
 
       warned_p = check_function_arguments (input_location, fn, TREE_TYPE (fn),
-					   nargs, fargs, &arglocs);
+					   nargs, fargs, NULL);
     }
 
   if (DECL_INHERITED_CTOR (fn))
@@ -8654,15 +8713,6 @@ maybe_warn_class_memaccess (location_t loc, tree fndecl,
       tree ctx = DECL_CONTEXT (current_function_decl);
       bool special = same_type_ignoring_top_level_qualifiers_p (ctx, desttype);
       tree binfo = TYPE_BINFO (ctx);
-
-      /* FIXME: The following if statement is overly permissive (see
-	 bug 84851).  Remove it in GCC 9.  */
-      if (special
-	  && !BINFO_VTABLE (binfo)
-	  && !BINFO_N_BASE_BINFOS (binfo)
-	  && (DECL_CONSTRUCTOR_P (current_function_decl)
-	      || DECL_DESTRUCTOR_P (current_function_decl)))
-	return;
 
       if (special
 	  && !BINFO_VTABLE (binfo)

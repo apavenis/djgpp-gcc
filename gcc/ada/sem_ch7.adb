@@ -441,7 +441,13 @@ package body Sem_Ch7 is
                      Discard : Boolean;
                      pragma Unreferenced (Discard);
                   begin
-                     --  Inspect the actions to find references to subprograms
+                     --  Inspect the actions to find references to subprograms.
+                     --  We assume that the actions do not contain other kinds
+                     --  of references and, therefore, we do not stop the scan
+                     --  or set Has_Referencer_Of_Non_Subprograms here. Doing
+                     --  it would pessimize common cases for which the actions
+                     --  contain the declaration of an init procedure, since
+                     --  such a procedure is automatically marked inline.
 
                      Discard :=
                        Has_Referencer (Actions (Decl),
@@ -470,7 +476,8 @@ package body Sem_Ch7 is
                     and then not Is_Exported (Decl_Id)
                     and then No (Interface_Name (Decl_Id))
                     and then
-                      (not Has_Referencer_Of_Non_Subprograms
+                      ((Nkind (Decl) /= N_Subprogram_Declaration
+                         and then not Has_Referencer_Of_Non_Subprograms)
                         or else (Nkind (Decl) = N_Subprogram_Declaration
                                   and then not Subprogram_Table.Get (Decl_Id)))
                   then
@@ -2813,8 +2820,9 @@ package body Sem_Ch7 is
          --  a) If the entity is an operator, it may be a primitive operator of
          --  a type for which there is a visible use-type clause.
 
-         --  b) for other entities, their use-visibility is determined by a
-         --  visible use clause for the package itself. For a generic instance,
+         --  b) For other entities, their use-visibility is determined by a
+         --  visible use clause for the package itself or a use-all-type clause
+         --  applied directly to the entity's type. For a generic instance,
          --  the instantiation of the formals appears in the visible part,
          --  but the formals are private and remain so.
 
@@ -2846,6 +2854,16 @@ package body Sem_Ch7 is
                else
                   Set_Is_Potentially_Use_Visible (Id);
                end if;
+
+            --  We need to avoid incorrectly marking enumeration literals as
+            --  non-visible when a visible use-all-type clause is in effect.
+
+            elsif Type_In_Use (Etype (Id))
+              and then Nkind (Current_Use_Clause (Etype (Id))) =
+                         N_Use_Type_Clause
+              and then All_Present (Current_Use_Clause (Etype (Id)))
+            then
+               null;
 
             else
                Set_Is_Potentially_Use_Visible (Id, False);

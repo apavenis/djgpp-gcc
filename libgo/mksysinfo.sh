@@ -202,6 +202,11 @@ if ! grep '^const AF_LOCAL ' ${OUT} >/dev/null 2>&1; then
   fi
 fi
 
+# The syscall package requires _AT_FDCWD, but doesn't export it.
+if ! grep '^const _AT_FDCWD = ' ${OUT} >/dev/null 2>&1; then
+  echo "const _AT_FDCWD = -100" >> ${OUT}
+fi
+
 # sysconf constants.
 grep '^const __SC' gen-sysinfo.go |
   sed -e 's/^\(const \)__\(SC[^= ]*\)\(.*\)$/\1\2 = __\2/' >> ${OUT}
@@ -668,6 +673,14 @@ grep '^type _ip6_mtuinfo ' gen-sysinfo.go | \
       -e 's/_sockaddr_in6/RawSockaddrInet6/' \
       -e 's/ip6m_mtu/Mtu/' \
     >> ${OUT}
+
+# We need IPv6MTUInfo to compile the syscall package.
+if ! grep 'type IPv6MTUInfo ' ${OUT} >/dev/null 2>&1; then
+  echo 'type IPv6MTUInfo struct { Addr RawSockaddrInet6; Mtu uint32; }' >> ${OUT}
+fi
+if ! grep 'const _sizeof_ip6_mtuinfo = ' ${OUT} >/dev/null 2>&1; then
+  echo 'const SizeofIPv6MTUInfo = 32' >> ${OUT}
+fi
 
 # Try to guess the type to use for fd_set.
 fd_set=`grep '^type _fd_set ' gen-sysinfo.go || true`
@@ -1152,10 +1165,17 @@ grep '^const _RLIMIT_' gen-sysinfo.go |
 grep '^const _RLIM_' gen-sysinfo.go |
     grep -v '^const _RLIM_INFINITY ' |
     sed -e 's/^\(const \)_\(RLIM_[^= ]*\)\(.*\)$/\1\2 = _\2/' >> ${OUT}
+rliminf=""
 if test "${rlimit}" = "_rlimit64" && grep '^const _RLIM64_INFINITY ' gen-sysinfo.go > /dev/null 2>&1; then
-  echo 'const RLIM_INFINITY = _RLIM64_INFINITY' >> ${OUT}
-elif grep '^const _RLIM_INFINITY ' gen-sysinfo.go > /dev/null 2>&1; then
-  echo 'const RLIM_INFINITY = _RLIM_INFINITY' >> ${OUT}
+  rliminf=`grep '^const _RLIM64_INFINITY ' gen-sysinfo.go | sed -e 's/.* //'`
+else
+  rliminf=`grep '^const _RLIM_INFINITY ' gen-sysinfo.go | sed -e 's/.* //'`
+fi
+# For compatibility with the gc syscall package, treat 0xffffffffffffffff as -1.
+if test "$rliminf" = "0xffffffffffffffff"; then
+  echo "const RLIM_INFINITY = -1" >> ${OUT}
+elif test -n "$rliminf"; then
+  echo "const RLIM_INFINITY = $rliminf" >> ${OUT}
 fi
 
 # The sysinfo struct.

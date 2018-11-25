@@ -1064,7 +1064,7 @@ adjust_last_stmt (strinfo *si, gimple *stmt, bool is_strcat)
 
       if (!integer_zerop (gimple_assign_rhs1 (last.stmt)))
 	return;
-      if (stmt_could_throw_p (last.stmt))
+      if (stmt_could_throw_p (cfun, last.stmt))
 	return;
       gsi = gsi_for_stmt (last.stmt);
       unlink_stmt_vdef (last.stmt);
@@ -1200,7 +1200,7 @@ maybe_set_strlen_range (tree lhs, tree src, tree bound)
       else if (TREE_CODE (bound) == SSA_NAME)
 	{
 	  wide_int minbound, maxbound;
-	  value_range_type rng = get_range_info (bound, &minbound, &maxbound);
+	  value_range_kind rng = get_range_info (bound, &minbound, &maxbound);
 	  if (rng == VR_RANGE)
 	    {
 	      /* For a bound in a known range, adjust the range determined
@@ -1856,7 +1856,7 @@ maybe_diag_stxncpy_trunc (gimple_stmt_iterator gsi, tree src, tree cnt)
     cntrange[0] = cntrange[1] = wi::to_wide (cnt);
   else if (TREE_CODE (cnt) == SSA_NAME)
     {
-      enum value_range_type rng = get_range_info (cnt, cntrange, cntrange + 1);
+      enum value_range_kind rng = get_range_info (cnt, cntrange, cntrange + 1);
       if (rng == VR_RANGE)
 	;
       else if (rng == VR_ANTI_RANGE)
@@ -2605,12 +2605,19 @@ handle_builtin_strcat (enum built_in_function bcode, gimple_stmt_iterator *gsi)
   if (endptr)
     dst = fold_convert_loc (loc, TREE_TYPE (dst), unshare_expr (endptr));
   else
-    dst = fold_build2_loc (loc, POINTER_PLUS_EXPR,
-			   TREE_TYPE (dst), unshare_expr (dst),
+    dst = fold_build2_loc (loc, POINTER_PLUS_EXPR, TREE_TYPE (dst), dst,
 			   fold_convert_loc (loc, sizetype,
 					     unshare_expr (dstlen)));
   dst = force_gimple_operand_gsi (gsi, dst, true, NULL_TREE, true,
 				  GSI_SAME_STMT);
+  if (objsz)
+    {
+      objsz = fold_build2_loc (loc, MINUS_EXPR, TREE_TYPE (objsz), objsz,
+			       fold_convert_loc (loc, TREE_TYPE (objsz),
+						 unshare_expr (dstlen)));
+      objsz = force_gimple_operand_gsi (gsi, objsz, true, NULL_TREE, true,
+					GSI_SAME_STMT);
+    }
   if (dump_file && (dump_flags & TDF_DETAILS) != 0)
     {
       fprintf (dump_file, "Optimizing: ");
@@ -3253,7 +3260,7 @@ handle_char_store (gimple_stmt_iterator *gsi)
 	{
 	  /* When overwriting a '\0' with a '\0', the store can be removed
 	     if we know it has been stored in the current function.  */
-	  if (!stmt_could_throw_p (stmt) && si->writable)
+	  if (!stmt_could_throw_p (cfun, stmt) && si->writable)
 	    {
 	      unlink_stmt_vdef (stmt);
 	      release_defs (stmt);
@@ -3682,7 +3689,7 @@ strlen_check_and_optimize_stmt (gimple_stmt_iterator *gsi, bool *cleanup_eh)
 			   if we don't have anything better.  */
 			wide_int min, max;
 			tree type = TREE_TYPE (lhs);
-			enum value_range_type vr
+			enum value_range_kind vr
 			  = get_range_info (lhs, &min, &max);
 			if (vr == VR_VARYING
 			    || (vr == VR_RANGE

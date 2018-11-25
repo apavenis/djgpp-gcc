@@ -53,7 +53,7 @@ along with GCC; see the file COPYING3.  If not see
 static bool
 vect_get_range_info (tree var, wide_int *min_value, wide_int *max_value)
 {
-  value_range_type vr_type = get_range_info (var, min_value, max_value);
+  value_range_kind vr_type = get_range_info (var, min_value, max_value);
   wide_int nonzero = get_nonzero_bits (var);
   signop sgn = TYPE_SIGN (TREE_TYPE (var));
   if (intersect_range_with_nonzero_bits (vr_type, min_value, max_value,
@@ -367,6 +367,7 @@ vect_look_through_possible_promotion (vec_info *vinfo, tree op,
   tree res = NULL_TREE;
   tree op_type = TREE_TYPE (op);
   unsigned int orig_precision = TYPE_PRECISION (op_type);
+  unsigned int min_precision = orig_precision;
   stmt_vec_info caster = NULL;
   while (TREE_CODE (op) == SSA_NAME && INTEGRAL_TYPE_P (op_type))
     {
@@ -385,7 +386,7 @@ vect_look_through_possible_promotion (vec_info *vinfo, tree op,
 	 This copes with cases such as the result of an arithmetic
 	 operation being truncated before being stored, and where that
 	 arithmetic operation has been recognized as an over-widened one.  */
-      if (TYPE_PRECISION (op_type) <= orig_precision)
+      if (TYPE_PRECISION (op_type) <= min_precision)
 	{
 	  /* Use OP as the UNPROM described above if we haven't yet
 	     found a promotion, or if using the new input preserves the
@@ -393,7 +394,10 @@ vect_look_through_possible_promotion (vec_info *vinfo, tree op,
 	  if (!res
 	      || TYPE_PRECISION (unprom->type) == orig_precision
 	      || TYPE_SIGN (unprom->type) == TYPE_SIGN (op_type))
-	    unprom->set_op (op, dt, caster);
+	    {
+	      unprom->set_op (op, dt, caster);
+	      min_precision = TYPE_PRECISION (op_type);
+	    }
 	  /* Stop if we've already seen a promotion and if this
 	     conversion does more than change the sign.  */
 	  else if (TYPE_PRECISION (op_type)
@@ -3235,7 +3239,7 @@ check_bool_pattern (tree var, vec_info *vinfo, hash_set<gimple *> &stmts)
 
 	  /* If the comparison can throw, then is_gimple_condexpr will be
 	     false and we can't make a COND_EXPR/VEC_COND_EXPR out of it.  */
-	  if (stmt_could_throw_p (def_stmt))
+	  if (stmt_could_throw_p (cfun, def_stmt))
 	    return false;
 
 	  comp_vectype = get_vectype_for_scalar_type (TREE_TYPE (rhs1));

@@ -1364,7 +1364,7 @@ maybe_diag_incompatible_alias (tree alias, tree target)
 
 	  auto_diagnostic_group d;
 	  if (warning_at (DECL_SOURCE_LOCATION (target),
-			  OPT_Wattribute_alias,
+			  OPT_Wattribute_alias_,
 			  "%<ifunc%> resolver for %qD should return %qT",
 			  alias, funcptr))
 	    inform (DECL_SOURCE_LOCATION (alias),
@@ -1374,11 +1374,11 @@ maybe_diag_incompatible_alias (tree alias, tree target)
 	{
 	  auto_diagnostic_group d;
 	  if (warning_at (DECL_SOURCE_LOCATION (alias),
-			    OPT_Wattribute_alias,
+			    OPT_Wattribute_alias_,
 			    "%qD alias between functions of incompatible "
 			    "types %qT and %qT", alias, altype, targtype))
 	    inform (DECL_SOURCE_LOCATION (target),
-		      "aliased declaration here");
+		    "aliased declaration here");
 	}
     }
 }
@@ -1440,6 +1440,8 @@ handle_alias_pairs (void)
           && target_node && is_a <cgraph_node *> (target_node))
 	{
 	  maybe_diag_incompatible_alias (p->decl, target_node->decl);
+
+	  maybe_diag_alias_attributes (p->decl, target_node->decl);
 
 	  cgraph_node *src_node = cgraph_node::get (p->decl);
 	  if (src_node && src_node->definition)
@@ -1862,6 +1864,12 @@ cgraph_node::expand_thunk (bool output_asm_thunks, bool force_gimple_thunk)
 	 DECL_ARGUMENTS.  In this case force_gimple_thunk is true.  */
       if (in_lto_p && !force_gimple_thunk)
 	get_untransformed_body ();
+
+      /* We need to force DECL_IGNORED_P when the thunk is created
+	 after early debug was run.  */
+      if (force_gimple_thunk)
+	DECL_IGNORED_P (thunk_fndecl) = 1;
+
       a = DECL_ARGUMENTS (thunk_fndecl);
 
       current_function_decl = thunk_fndecl;
@@ -1870,7 +1878,6 @@ cgraph_node::expand_thunk (bool output_asm_thunks, bool force_gimple_thunk)
       resolve_unique_section (thunk_fndecl, 0,
 			      flag_function_sections);
 
-      DECL_IGNORED_P (thunk_fndecl) = 1;
       bitmap_obstack_initialize (NULL);
 
       if (thunk.virtual_offset_p)

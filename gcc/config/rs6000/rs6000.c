@@ -1981,6 +1981,9 @@ static const struct attribute_spec rs6000_attribute_table[] =
 
 #undef TARGET_SETJMP_PRESERVES_NONVOLATILE_REGS_P
 #define TARGET_SETJMP_PRESERVES_NONVOLATILE_REGS_P hook_bool_void_true
+
+#undef TARGET_MANGLE_DECL_ASSEMBLER_NAME
+#define TARGET_MANGLE_DECL_ASSEMBLER_NAME rs6000_mangle_decl_assembler_name
 
 
 /* Processor table.  */
@@ -2784,7 +2787,7 @@ rs6000_debug_reg_global (void)
     {
       char options[80];
 
-      strcpy (options, (TARGET_P9_FUSION) ? "power9" : "power8");
+      strcpy (options, "power8");
       if (TARGET_P8_FUSION_SIGN)
 	strcat (options, ", sign");
 
@@ -4160,10 +4163,15 @@ rs6000_option_override_internal (bool global_init_p)
     rs6000_isa_flags |= OPTION_MASK_SAVE_TOC_INDIRECT;
 
   /* Enable power8 fusion if we are tuning for power8, even if we aren't
-     generating power8 instructions.  */
+     generating power8 instructions.  Power9 does not optimize power8 fusion
+     cases.  */
   if (!(rs6000_isa_flags_explicit & OPTION_MASK_P8_FUSION))
-    rs6000_isa_flags |= (processor_target_table[tune_index].target_enable
-			 & OPTION_MASK_P8_FUSION);
+    {
+      if (processor_target_table[tune_index].processor == PROCESSOR_POWER8)
+	rs6000_isa_flags |= OPTION_MASK_P8_FUSION;
+      else
+	rs6000_isa_flags &= ~OPTION_MASK_P8_FUSION;
+    }
 
   /* Setting additional fusion flags turns on base fusion.  */
   if (!TARGET_P8_FUSION && TARGET_P8_FUSION_SIGN)
@@ -4179,28 +4187,6 @@ rs6000_option_override_internal (bool global_init_p)
       else
 	rs6000_isa_flags |= OPTION_MASK_P8_FUSION;
     }
-
-  /* Power9 fusion is a superset over power8 fusion.  */
-  if (TARGET_P9_FUSION && !TARGET_P8_FUSION)
-    {
-      if (rs6000_isa_flags_explicit & OPTION_MASK_P8_FUSION)
-	{
-	  /* We prefer to not mention undocumented options in
-	     error messages.  However, if users have managed to select
-	     power9-fusion without selecting power8-fusion, they
-	     already know about undocumented flags.  */
-	  error ("%qs requires %qs", "-mpower9-fusion", "-mpower8-fusion");
-	  rs6000_isa_flags &= ~OPTION_MASK_P9_FUSION;
-	}
-      else
-	rs6000_isa_flags |= OPTION_MASK_P8_FUSION;
-    }
-
-  /* Enable power9 fusion if we are tuning for power9, even if we aren't
-     generating power9 instructions.  */
-  if (!(rs6000_isa_flags_explicit & OPTION_MASK_P9_FUSION))
-    rs6000_isa_flags |= (processor_target_table[tune_index].target_enable
-			 & OPTION_MASK_P9_FUSION);
 
   /* Power8 does not fuse sign extended loads with the addis.  If we are
      optimizing at high levels for speed, convert a sign extended load into a
@@ -6557,7 +6543,7 @@ rs6000_expand_vector_init (rtx target, rtx vals)
 	{
 	  rtx element0 = XVECEXP (vals, 0, 0);
 	  if (MEM_P (element0))
-	    element0 = rs6000_address_for_fpconvert (element0);
+	    element0 = rs6000_force_indexed_or_indirect_mem (element0);
 	  else
 	    element0 = force_reg (SImode, element0);
 
@@ -6598,7 +6584,7 @@ rs6000_expand_vector_init (rtx target, rtx vals)
 	  if (TARGET_P9_VECTOR)
 	    {
 	      if (MEM_P (element0))
-		element0 = rs6000_address_for_fpconvert (element0);
+		element0 = rs6000_force_indexed_or_indirect_mem (element0);
 
 	      emit_insn (gen_vsx_splat_v4sf (target, element0));
 	    }
@@ -8419,7 +8405,6 @@ rs6000_const_not_ok_for_debug_p (rtx x)
 
   return false;
 }
-
 
 /* Implement the TARGET_LEGITIMATE_COMBINED_INSN hook.  */
 
@@ -15238,6 +15223,25 @@ fold_compare_helper (gimple_stmt_iterator *gsi, tree_code code, gimple *stmt)
   gsi_replace (gsi, g, true);
 }
 
+/* Helper function to map V2DF and V4SF types to their
+ integral equivalents (V2DI and V4SI).  */
+tree map_to_integral_tree_type (tree input_tree_type)
+{
+  if (INTEGRAL_TYPE_P (TREE_TYPE (input_tree_type)))
+    return input_tree_type;
+  else
+    {
+      if (types_compatible_p (TREE_TYPE (input_tree_type),
+			      TREE_TYPE (V2DF_type_node)))
+	return V2DI_type_node;
+      else if (types_compatible_p (TREE_TYPE (input_tree_type),
+				   TREE_TYPE (V4SF_type_node)))
+	return V4SI_type_node;
+      else
+	gcc_unreachable ();
+    }
+}
+
 /* Helper function to handle the vector merge[hl] built-ins.  The
    implementation difference between h and l versions for this code are in
    the values used when building of the permute vector for high word versus
@@ -15260,19 +15264,7 @@ fold_mergehl_helper (gimple_stmt_iterator *gsi, gimple *stmt, int use_high)
      float types, the permute type needs to map to the V2 or V4 type that
      matches size.  */
   tree permute_type;
-  if (INTEGRAL_TYPE_P (TREE_TYPE (lhs_type)))
-    permute_type = lhs_type;
-  else
-    {
-      if (types_compatible_p (TREE_TYPE (lhs_type),
-			      TREE_TYPE (V2DF_type_node)))
-	permute_type = V2DI_type_node;
-      else if (types_compatible_p (TREE_TYPE (lhs_type),
-				   TREE_TYPE (V4SF_type_node)))
-	permute_type = V4SI_type_node;
-      else
-	gcc_unreachable ();
-    }
+  permute_type = map_to_integral_tree_type (lhs_type);
   tree_vector_builder elts (permute_type, VECTOR_CST_NELTS (arg0), 1);
 
   for (int i = 0; i < midpoint; i++)
@@ -15281,6 +15273,40 @@ fold_mergehl_helper (gimple_stmt_iterator *gsi, gimple *stmt, int use_high)
 				     offset + i));
       elts.safe_push (build_int_cst (TREE_TYPE (permute_type),
 				     offset + n_elts + i));
+    }
+
+  tree permute = elts.build ();
+
+  gimple *g = gimple_build_assign (lhs, VEC_PERM_EXPR, arg0, arg1, permute);
+  gimple_set_location (g, gimple_location (stmt));
+  gsi_replace (gsi, g, true);
+}
+
+/* Helper function to handle the vector merge[eo] built-ins.  */
+static void
+fold_mergeeo_helper (gimple_stmt_iterator *gsi, gimple *stmt, int use_odd)
+{
+  tree arg0 = gimple_call_arg (stmt, 0);
+  tree arg1 = gimple_call_arg (stmt, 1);
+  tree lhs = gimple_call_lhs (stmt);
+  tree lhs_type = TREE_TYPE (lhs);
+  int n_elts = TYPE_VECTOR_SUBPARTS (lhs_type);
+
+  /* The permute_type will match the lhs for integral types.  For double and
+     float types, the permute type needs to map to the V2 or V4 type that
+     matches size.  */
+  tree permute_type;
+  permute_type = map_to_integral_tree_type (lhs_type);
+
+  tree_vector_builder elts (permute_type, VECTOR_CST_NELTS (arg0), 1);
+
+ /* Build the permute vector.  */
+  for (int i = 0; i < n_elts / 2; i++)
+    {
+      elts.safe_push (build_int_cst (TREE_TYPE (permute_type),
+				     2*i + use_odd));
+      elts.safe_push (build_int_cst (TREE_TYPE (permute_type),
+				     2*i + use_odd + n_elts));
     }
 
   tree permute = elts.build ();
@@ -15765,34 +15791,34 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
     case VSX_BUILTIN_LXVD2X_V2DF:
     case VSX_BUILTIN_LXVD2X_V2DI:
       {
-	 arg0 = gimple_call_arg (stmt, 0);  // offset
-	 arg1 = gimple_call_arg (stmt, 1);  // address
-	 lhs = gimple_call_lhs (stmt);
-	 location_t loc = gimple_location (stmt);
-	 /* Since arg1 may be cast to a different type, just use ptr_type_node
-	    here instead of trying to enforce TBAA on pointer types.  */
-	 tree arg1_type = ptr_type_node;
-	 tree lhs_type = TREE_TYPE (lhs);
-	 /* In GIMPLE the type of the MEM_REF specifies the alignment.  The
-	   required alignment (power) is 4 bytes regardless of data type.  */
-	 tree align_ltype = build_aligned_type (lhs_type, 4);
-	 /* POINTER_PLUS_EXPR wants the offset to be of type 'sizetype'.  Create
-	    the tree using the value from arg0.  The resulting type will match
-	    the type of arg1.  */
-	 gimple_seq stmts = NULL;
-	 tree temp_offset = gimple_convert (&stmts, loc, sizetype, arg0);
-	 tree temp_addr = gimple_build (&stmts, loc, POINTER_PLUS_EXPR,
+	arg0 = gimple_call_arg (stmt, 0);  // offset
+	arg1 = gimple_call_arg (stmt, 1);  // address
+	lhs = gimple_call_lhs (stmt);
+	location_t loc = gimple_location (stmt);
+	/* Since arg1 may be cast to a different type, just use ptr_type_node
+	   here instead of trying to enforce TBAA on pointer types.  */
+	tree arg1_type = ptr_type_node;
+	tree lhs_type = TREE_TYPE (lhs);
+	/* In GIMPLE the type of the MEM_REF specifies the alignment.  The
+	  required alignment (power) is 4 bytes regardless of data type.  */
+	tree align_ltype = build_aligned_type (lhs_type, 4);
+	/* POINTER_PLUS_EXPR wants the offset to be of type 'sizetype'.  Create
+	   the tree using the value from arg0.  The resulting type will match
+	   the type of arg1.  */
+	gimple_seq stmts = NULL;
+	tree temp_offset = gimple_convert (&stmts, loc, sizetype, arg0);
+	tree temp_addr = gimple_build (&stmts, loc, POINTER_PLUS_EXPR,
 				       arg1_type, arg1, temp_offset);
-	 gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
-	 /* Use the build2 helper to set up the mem_ref.  The MEM_REF could also
-	    take an offset, but since we've already incorporated the offset
-	    above, here we just pass in a zero.  */
-	 gimple *g;
-	 g = gimple_build_assign (lhs, build2 (MEM_REF, align_ltype, temp_addr,
-						build_int_cst (arg1_type, 0)));
-	 gimple_set_location (g, loc);
-	 gsi_replace (gsi, g, true);
-	 return true;
+	gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
+	/* Use the build2 helper to set up the mem_ref.  The MEM_REF could also
+	   take an offset, but since we've already incorporated the offset
+	   above, here we just pass in a zero.  */
+	gimple *g;
+	g = gimple_build_assign (lhs, build2 (MEM_REF, align_ltype, temp_addr,
+					      build_int_cst (arg1_type, 0)));
+	gimple_set_location (g, loc);
+	gsi_replace (gsi, g, true);
+	return true;
       }
 
     /* unaligned Vector stores.  */
@@ -15803,29 +15829,29 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
     case VSX_BUILTIN_STXVD2X_V2DF:
     case VSX_BUILTIN_STXVD2X_V2DI:
       {
-	 arg0 = gimple_call_arg (stmt, 0); /* Value to be stored.  */
-	 arg1 = gimple_call_arg (stmt, 1); /* Offset.  */
-	 tree arg2 = gimple_call_arg (stmt, 2); /* Store-to address.  */
-	 location_t loc = gimple_location (stmt);
-	 tree arg0_type = TREE_TYPE (arg0);
-	 /* Use ptr_type_node (no TBAA) for the arg2_type.  */
-	 tree arg2_type = ptr_type_node;
-	 /* In GIMPLE the type of the MEM_REF specifies the alignment.  The
-	    required alignment (power) is 4 bytes regardless of data type.  */
-	 tree align_stype = build_aligned_type (arg0_type, 4);
-	 /* POINTER_PLUS_EXPR wants the offset to be of type 'sizetype'.  Create
-	    the tree using the value from arg1.  */
-	 gimple_seq stmts = NULL;
-	 tree temp_offset = gimple_convert (&stmts, loc, sizetype, arg1);
-	 tree temp_addr = gimple_build (&stmts, loc, POINTER_PLUS_EXPR,
+	arg0 = gimple_call_arg (stmt, 0); /* Value to be stored.  */
+	arg1 = gimple_call_arg (stmt, 1); /* Offset.  */
+	tree arg2 = gimple_call_arg (stmt, 2); /* Store-to address.  */
+	location_t loc = gimple_location (stmt);
+	tree arg0_type = TREE_TYPE (arg0);
+	/* Use ptr_type_node (no TBAA) for the arg2_type.  */
+	tree arg2_type = ptr_type_node;
+	/* In GIMPLE the type of the MEM_REF specifies the alignment.  The
+	   required alignment (power) is 4 bytes regardless of data type.  */
+	tree align_stype = build_aligned_type (arg0_type, 4);
+	/* POINTER_PLUS_EXPR wants the offset to be of type 'sizetype'.  Create
+	   the tree using the value from arg1.  */
+	gimple_seq stmts = NULL;
+	tree temp_offset = gimple_convert (&stmts, loc, sizetype, arg1);
+	tree temp_addr = gimple_build (&stmts, loc, POINTER_PLUS_EXPR,
 				       arg2_type, arg2, temp_offset);
-	 gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
-	 gimple *g;
-	 g = gimple_build_assign (build2 (MEM_REF, align_stype, temp_addr,
-					   build_int_cst (arg2_type, 0)), arg0);
-	 gimple_set_location (g, loc);
-	 gsi_replace (gsi, g, true);
-	 return true;
+	gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
+	gimple *g;
+	g = gimple_build_assign (build2 (MEM_REF, align_stype, temp_addr,
+					 build_int_cst (arg2_type, 0)), arg0);
+	gimple_set_location (g, loc);
+	gsi_replace (gsi, g, true);
+	return true;
       }
 
     /* Vector Fused multiply-add (fma).  */
@@ -15897,35 +15923,34 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
     case ALTIVEC_BUILTIN_VSPLTISH:
     case ALTIVEC_BUILTIN_VSPLTISW:
       {
-	 int size;
+	int size;
+	if (fn_code == ALTIVEC_BUILTIN_VSPLTISB)
+	  size = 8;
+	else if (fn_code == ALTIVEC_BUILTIN_VSPLTISH)
+	  size = 16;
+	else
+	  size = 32;
 
-         if (fn_code == ALTIVEC_BUILTIN_VSPLTISB)
-           size = 8;
-         else if (fn_code == ALTIVEC_BUILTIN_VSPLTISH)
-           size = 16;
-         else
-           size = 32;
+	arg0 = gimple_call_arg (stmt, 0);
+	lhs = gimple_call_lhs (stmt);
 
-	 arg0 = gimple_call_arg (stmt, 0);
-	 lhs = gimple_call_lhs (stmt);
-
-	 /* Only fold the vec_splat_*() if the lower bits of arg 0 is a
-	    5-bit signed constant in range -16 to +15.  */
-	 if (TREE_CODE (arg0) != INTEGER_CST
-	     || !IN_RANGE (sext_hwi(TREE_INT_CST_LOW (arg0), size),
-			   -16, 15))
-	   return false;
-	 gimple_seq stmts = NULL;
-	 location_t loc = gimple_location (stmt);
-	 tree splat_value = gimple_convert (&stmts, loc,
-					    TREE_TYPE (TREE_TYPE (lhs)), arg0);
-	 gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
-	 tree splat_tree = build_vector_from_val (TREE_TYPE (lhs), splat_value);
-	 g = gimple_build_assign (lhs, splat_tree);
-	 gimple_set_location (g, gimple_location (stmt));
-	 gsi_replace (gsi, g, true);
-	 return true;
-	}
+	/* Only fold the vec_splat_*() if the lower bits of arg 0 is a
+	   5-bit signed constant in range -16 to +15.  */
+	if (TREE_CODE (arg0) != INTEGER_CST
+	    || !IN_RANGE (sext_hwi (TREE_INT_CST_LOW (arg0), size),
+			  -16, 15))
+	  return false;
+	gimple_seq stmts = NULL;
+	location_t loc = gimple_location (stmt);
+	tree splat_value = gimple_convert (&stmts, loc,
+					   TREE_TYPE (TREE_TYPE (lhs)), arg0);
+	gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
+	tree splat_tree = build_vector_from_val (TREE_TYPE (lhs), splat_value);
+	g = gimple_build_assign (lhs, splat_tree);
+	gimple_set_location (g, gimple_location (stmt));
+	gsi_replace (gsi, g, true);
+	return true;
+      }
 
     /* Flavors of vec_splat.  */
     /* a = vec_splat (b, 0x3) becomes a = { b[3],b[3],b[3],...};  */
@@ -15977,8 +16002,8 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
     case VSX_BUILTIN_VEC_MERGEL_V2DI:
     case VSX_BUILTIN_XXMRGLW_4SF:
     case VSX_BUILTIN_VEC_MERGEL_V2DF:
-	fold_mergehl_helper (gsi, stmt, 1);
-	return true;
+      fold_mergehl_helper (gsi, stmt, 1);
+      return true;
     /* vec_mergeh (integrals).  */
     case ALTIVEC_BUILTIN_VMRGHH:
     case ALTIVEC_BUILTIN_VMRGHW:
@@ -15987,55 +16012,70 @@ rs6000_gimple_fold_builtin (gimple_stmt_iterator *gsi)
     case VSX_BUILTIN_VEC_MERGEH_V2DI:
     case VSX_BUILTIN_XXMRGHW_4SF:
     case VSX_BUILTIN_VEC_MERGEH_V2DF:
-	fold_mergehl_helper (gsi, stmt, 0);
-	return true;
+      fold_mergehl_helper (gsi, stmt, 0);
+      return true;
+
+    /* Flavors of vec_mergee.  */
+    case P8V_BUILTIN_VMRGEW_V4SI:
+    case P8V_BUILTIN_VMRGEW_V2DI:
+    case P8V_BUILTIN_VMRGEW_V4SF:
+    case P8V_BUILTIN_VMRGEW_V2DF:
+      fold_mergeeo_helper (gsi, stmt, 0);
+      return true;
+    /* Flavors of vec_mergeo.  */
+    case P8V_BUILTIN_VMRGOW_V4SI:
+    case P8V_BUILTIN_VMRGOW_V2DI:
+    case P8V_BUILTIN_VMRGOW_V4SF:
+    case P8V_BUILTIN_VMRGOW_V2DF:
+      fold_mergeeo_helper (gsi, stmt, 1);
+      return true;
 
     /* d = vec_pack (a, b) */
     case P8V_BUILTIN_VPKUDUM:
     case ALTIVEC_BUILTIN_VPKUHUM:
     case ALTIVEC_BUILTIN_VPKUWUM:
       {
-       arg0 = gimple_call_arg (stmt, 0);
-       arg1 = gimple_call_arg (stmt, 1);
-       lhs = gimple_call_lhs (stmt);
-       gimple *g = gimple_build_assign (lhs, VEC_PACK_TRUNC_EXPR, arg0, arg1);
-       gimple_set_location (g, gimple_location (stmt));
-       gsi_replace (gsi, g, true);
-       return true;
+	arg0 = gimple_call_arg (stmt, 0);
+	arg1 = gimple_call_arg (stmt, 1);
+	lhs = gimple_call_lhs (stmt);
+	gimple *g = gimple_build_assign (lhs, VEC_PACK_TRUNC_EXPR, arg0, arg1);
+	gimple_set_location (g, gimple_location (stmt));
+	gsi_replace (gsi, g, true);
+	return true;
       }
 
-   /* d = vec_unpackh (a) */
-   /* Note that the UNPACK_{HI,LO}_EXPR used in the gimple_build_assign call
-      in this code is sensitive to endian-ness, and needs to be inverted to
-      handle both LE and BE targets.  */
+    /* d = vec_unpackh (a) */
+    /* Note that the UNPACK_{HI,LO}_EXPR used in the gimple_build_assign call
+       in this code is sensitive to endian-ness, and needs to be inverted to
+       handle both LE and BE targets.  */
     case ALTIVEC_BUILTIN_VUPKHSB:
     case ALTIVEC_BUILTIN_VUPKHSH:
     case P8V_BUILTIN_VUPKHSW:
       {
-       arg0 = gimple_call_arg (stmt, 0);
-       lhs = gimple_call_lhs (stmt);
-       if (BYTES_BIG_ENDIAN)
-	 g = gimple_build_assign (lhs, VEC_UNPACK_HI_EXPR, arg0);
-       else
-	 g = gimple_build_assign (lhs, VEC_UNPACK_LO_EXPR, arg0);
-       gimple_set_location (g, gimple_location (stmt));
-       gsi_replace (gsi, g, true);
-       return true;
+	arg0 = gimple_call_arg (stmt, 0);
+	lhs = gimple_call_lhs (stmt);
+	if (BYTES_BIG_ENDIAN)
+	  g = gimple_build_assign (lhs, VEC_UNPACK_HI_EXPR, arg0);
+	else
+	  g = gimple_build_assign (lhs, VEC_UNPACK_LO_EXPR, arg0);
+	gimple_set_location (g, gimple_location (stmt));
+	gsi_replace (gsi, g, true);
+	return true;
       }
-   /* d = vec_unpackl (a) */
+    /* d = vec_unpackl (a) */
     case ALTIVEC_BUILTIN_VUPKLSB:
     case ALTIVEC_BUILTIN_VUPKLSH:
     case P8V_BUILTIN_VUPKLSW:
       {
-       arg0 = gimple_call_arg (stmt, 0);
-       lhs = gimple_call_lhs (stmt);
-       if (BYTES_BIG_ENDIAN)
-	 g = gimple_build_assign (lhs, VEC_UNPACK_LO_EXPR, arg0);
-       else
-	 g = gimple_build_assign (lhs, VEC_UNPACK_HI_EXPR, arg0);
-       gimple_set_location (g, gimple_location (stmt));
-       gsi_replace (gsi, g, true);
-       return true;
+	arg0 = gimple_call_arg (stmt, 0);
+	lhs = gimple_call_lhs (stmt);
+	if (BYTES_BIG_ENDIAN)
+	  g = gimple_build_assign (lhs, VEC_UNPACK_LO_EXPR, arg0);
+	else
+	  g = gimple_build_assign (lhs, VEC_UNPACK_HI_EXPR, arg0);
+	gimple_set_location (g, gimple_location (stmt));
+	gsi_replace (gsi, g, true);
+	return true;
       }
     /* There is no gimple type corresponding with pixel, so just return.  */
     case ALTIVEC_BUILTIN_VUPKHPX:
@@ -19644,7 +19684,10 @@ rs6000_secondary_reload_inner (rtx reg, rtx mem, rtx scratch, bool store_p)
 
       if ((addr_mask & RELOAD_REG_PRE_INCDEC) == 0)
 	{
-	  emit_insn (gen_add2_insn (op_reg, GEN_INT (GET_MODE_SIZE (mode))));
+	  int delta = GET_MODE_SIZE (mode);
+	  if (GET_CODE (addr) == PRE_DEC)
+	    delta = -delta;
+	  emit_insn (gen_add2_insn (op_reg, GEN_INT (delta)));
 	  new_addr = op_reg;
 	}
       break;
@@ -19844,17 +19887,6 @@ rs6000_secondary_reload_gpr (rtx reg, rtx mem, rtx scratch, bool store_p)
 		  && GET_CODE (XEXP (addr, 1)) == PLUS
 		  && XEXP (XEXP (addr, 1), 0) == XEXP (addr, 0));
       scratch_or_premodify = XEXP (addr, 0);
-      if (!HARD_REGISTER_P (scratch_or_premodify))
-	/* If we have a pseudo here then reload will have arranged
-	   to have it replaced, but only in the original insn.
-	   Use the replacement here too.  */
-	scratch_or_premodify = find_replacement (&XEXP (addr, 0));
-
-      /* RTL emitted by rs6000_secondary_reload_gpr uses RTL
-	 expressions from the original insn, without unsharing them.
-	 Any RTL that points into the original insn will of course
-	 have register replacements applied.  That is why we don't
-	 need to look for replacements under the PLUS.  */
       addr = XEXP (addr, 1);
     }
   gcc_assert (GET_CODE (addr) == PLUS || GET_CODE (addr) == LO_SUM);
@@ -21218,7 +21250,7 @@ print_operand_address (FILE *file, rtx x)
 	fprintf (file, "(%s)", reg_names[REGNO (XVECEXP (tocrel_base_oac, 0, 1))]);
     }
   else
-    gcc_unreachable ();
+    output_addr_const (file, x);
 }
 
 /* Implement TARGET_ASM_OUTPUT_ADDR_CONST_EXTRA.  */
@@ -26667,7 +26699,7 @@ rs6000_emit_prologue (void)
     }
 
   /* If we need to save CR, put it into r12 or r11.  Choose r12 except when
-     r12 will be needed by out-of-line gpr restore.  */
+     r12 will be needed by out-of-line gpr save.  */
   cr_save_regno = ((DEFAULT_ABI == ABI_AIX || DEFAULT_ABI == ABI_ELFv2)
 		   && !(strategy & (SAVE_INLINE_GPRS
 				    | SAVE_NOINLINE_GPRS_SAVES_LR))
@@ -28575,11 +28607,12 @@ rs6000_output_function_epilogue (FILE *file)
 	 use language_string.
 	 C is 0.  Fortran is 1.  Ada is 3.  C++ is 9.
 	 Java is 13.  Objective-C is 14.  Objective-C++ isn't assigned
-	 a number, so for now use 9.  LTO, Go and JIT aren't assigned numbers
-	 either, so for now use 0.  */
+	 a number, so for now use 9.  LTO, Go, D, and JIT aren't assigned
+	 numbers either, so for now use 0.  */
       if (lang_GNU_C ()
 	  || ! strcmp (language_string, "GNU GIMPLE")
 	  || ! strcmp (language_string, "GNU Go")
+	  || ! strcmp (language_string, "GNU D")
 	  || ! strcmp (language_string, "libgccjit"))
 	i = 0;
       else if (! strcmp (language_string, "GNU F77")
@@ -35952,7 +35985,6 @@ static struct rs6000_opt_mask const rs6000_opt_masks[] =
   { "power8-fusion",		OPTION_MASK_P8_FUSION,		false, true  },
   { "power8-fusion-sign",	OPTION_MASK_P8_FUSION_SIGN,	false, true  },
   { "power8-vector",		OPTION_MASK_P8_VECTOR,		false, true  },
-  { "power9-fusion",		OPTION_MASK_P9_FUSION,		false, true  },
   { "power9-minmax",		OPTION_MASK_P9_MINMAX,		false, true  },
   { "power9-misc",		OPTION_MASK_P9_MISC,		false, true  },
   { "power9-vector",		OPTION_MASK_P9_VECTOR,		false, true  },
@@ -36938,7 +36970,7 @@ make_resolver_func (const tree default_decl,
 {
   /* Make the resolver function static.  The resolver function returns
      void *.  */
-  tree decl_name = clone_function_name (default_decl, "resolver");
+  tree decl_name = clone_function_name_numbered (default_decl, "resolver");
   const char *resolver_name = IDENTIFIER_POINTER (decl_name);
   tree type = build_function_type_list (ptr_type_node, NULL_TREE);
   tree decl = build_fn_decl (resolver_name, type);
@@ -37237,21 +37269,19 @@ rs6000_allocate_stack_temp (machine_mode mode,
   return stack;
 }
 
-/* Given a memory reference, if it is not a reg or reg+reg addressing, convert
-   to such a form to deal with memory reference instructions like STFIWX that
-   only take reg+reg addressing.  */
+/* Given a memory reference, if it is not a reg or reg+reg addressing,
+   convert to such a form to deal with memory reference instructions
+   like STFIWX and LDBRX that only take reg+reg addressing.  */
 
 rtx
-rs6000_address_for_fpconvert (rtx x)
+rs6000_force_indexed_or_indirect_mem (rtx x)
 {
-  rtx addr;
+  machine_mode mode = GET_MODE (x);
 
   gcc_assert (MEM_P (x));
-  addr = XEXP (x, 0);
-  if (can_create_pseudo_p ()
-      && ! legitimate_indirect_address_p (addr, reload_completed)
-      && ! legitimate_indexed_address_p (addr, reload_completed))
+  if (can_create_pseudo_p () && !indexed_or_indirect_operand (x, mode))
     {
+      rtx addr = XEXP (x, 0);
       if (GET_CODE (addr) == PRE_INC || GET_CODE (addr) == PRE_DEC)
 	{
 	  rtx reg = XEXP (addr, 0);
@@ -37271,7 +37301,7 @@ rs6000_address_for_fpconvert (rtx x)
 	  addr = reg;
 	}
 
-      x = replace_equiv_address (x, copy_addr_to_reg (addr));
+      x = replace_equiv_address (x, force_reg (Pmode, addr));
     }
 
   return x;
@@ -38058,14 +38088,13 @@ emit_fusion_addis (rtx target, rtx addis_value)
 /* Emit a D-form load or store instruction that is the second instruction
    of a fusion sequence.  */
 
-void
-emit_fusion_load_store (rtx load_store_reg, rtx addis_reg, rtx offset,
-			const char *insn_str)
+static void
+emit_fusion_load (rtx load_reg, rtx addis_reg, rtx offset, const char *insn_str)
 {
   rtx fuse_ops[10];
   char insn_template[80];
 
-  fuse_ops[0] = load_store_reg;
+  fuse_ops[0] = load_reg;
   fuse_ops[1] = addis_reg;
 
   if (CONST_INT_P (offset) && satisfies_constraint_I (offset))
@@ -38203,366 +38232,11 @@ emit_fusion_gpr_load (rtx target, rtx mem)
   emit_fusion_addis (target, addis_value);
 
   /* Emit the D-form load instruction.  */
-  emit_fusion_load_store (target, target, load_offset, load_str);
+  emit_fusion_load (target, target, load_offset, load_str);
 
   return "";
 }
 
-
-/* Return true if the peephole2 can combine a load/store involving a
-   combination of an addis instruction and the memory operation.  This was
-   added to the ISA 3.0 (power9) hardware.  */
-
-bool
-fusion_p9_p (rtx addis_reg,		/* register set via addis.  */
-	     rtx addis_value,		/* addis value.  */
-	     rtx dest,			/* destination (memory or register). */
-	     rtx src)			/* source (register or memory).  */
-{
-  rtx addr, mem, offset;
-  machine_mode mode = GET_MODE (src);
-
-  /* Validate arguments.  */
-  if (!base_reg_operand (addis_reg, GET_MODE (addis_reg)))
-    return false;
-
-  if (!fusion_gpr_addis (addis_value, GET_MODE (addis_value)))
-    return false;
-
-  /* Ignore extend operations that are part of the load.  */
-  if (GET_CODE (src) == FLOAT_EXTEND || GET_CODE (src) == ZERO_EXTEND)
-    src = XEXP (src, 0);
-
-  /* Test for memory<-register or register<-memory.  */
-  if (fpr_reg_operand (src, mode) || int_reg_operand (src, mode))
-    {
-      if (!MEM_P (dest))
-	return false;
-
-      mem = dest;
-    }
-
-  else if (MEM_P (src))
-    {
-      if (!fpr_reg_operand (dest, mode) && !int_reg_operand (dest, mode))
-	return false;
-
-      mem = src;
-    }
-
-  else
-    return false;
-
-  addr = XEXP (mem, 0);			/* either PLUS or LO_SUM.  */
-  if (GET_CODE (addr) == PLUS)
-    {
-      if (!rtx_equal_p (addis_reg, XEXP (addr, 0)))
-	return false;
-
-      return satisfies_constraint_I (XEXP (addr, 1));
-    }
-
-  else if (GET_CODE (addr) == LO_SUM)
-    {
-      if (!rtx_equal_p (addis_reg, XEXP (addr, 0)))
-	return false;
-
-      offset = XEXP (addr, 1);
-      if (TARGET_XCOFF || (TARGET_ELF && TARGET_POWERPC64))
-	return small_toc_ref (offset, GET_MODE (offset));
-
-      else if (TARGET_ELF && !TARGET_POWERPC64)
-	return CONSTANT_P (offset);
-    }
-
-  return false;
-}
-
-/* During the peephole2 pass, adjust and expand the insns for an extended fusion
-   load sequence.
-
-   The operands are:
-	operands[0]	register set with addis
-	operands[1]	value set via addis
-	operands[2]	target register being loaded
-	operands[3]	D-form memory reference using operands[0].
-
-  This is similar to the fusion introduced with power8, except it scales to
-  both loads/stores and does not require the result register to be the same as
-  the base register.  At the moment, we only do this if register set with addis
-  is dead.  */
-
-void
-expand_fusion_p9_load (rtx *operands)
-{
-  rtx tmp_reg = operands[0];
-  rtx addis_value = operands[1];
-  rtx target = operands[2];
-  rtx orig_mem = operands[3];
-  rtx  new_addr, new_mem, orig_addr, offset, set, clobber, insn;
-  enum rtx_code plus_or_lo_sum;
-  machine_mode target_mode = GET_MODE (target);
-  machine_mode extend_mode = target_mode;
-  machine_mode ptr_mode = Pmode;
-  enum rtx_code extend = UNKNOWN;
-
-  if (GET_CODE (orig_mem) == FLOAT_EXTEND || GET_CODE (orig_mem) == ZERO_EXTEND)
-    {
-      extend = GET_CODE (orig_mem);
-      orig_mem = XEXP (orig_mem, 0);
-      target_mode = GET_MODE (orig_mem);
-    }
-
-  gcc_assert (MEM_P (orig_mem));
-
-  orig_addr = XEXP (orig_mem, 0);
-  plus_or_lo_sum = GET_CODE (orig_addr);
-  gcc_assert (plus_or_lo_sum == PLUS || plus_or_lo_sum == LO_SUM);
-
-  offset = XEXP (orig_addr, 1);
-  new_addr = gen_rtx_fmt_ee (plus_or_lo_sum, ptr_mode, addis_value, offset);
-  new_mem = replace_equiv_address_nv (orig_mem, new_addr, false);
-
-  if (extend != UNKNOWN)
-    new_mem = gen_rtx_fmt_e (extend, extend_mode, new_mem);
-
-  new_mem = gen_rtx_UNSPEC (extend_mode, gen_rtvec (1, new_mem),
-			    UNSPEC_FUSION_P9);
-
-  set = gen_rtx_SET (target, new_mem);
-  clobber = gen_rtx_CLOBBER (VOIDmode, tmp_reg);
-  insn = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2, set, clobber));
-  emit_insn (insn);
-
-  return;
-}
-
-/* During the peephole2 pass, adjust and expand the insns for an extended fusion
-   store sequence.
-
-   The operands are:
-	operands[0]	register set with addis
-	operands[1]	value set via addis
-	operands[2]	target D-form memory being stored to
-	operands[3]	register being stored
-
-  This is similar to the fusion introduced with power8, except it scales to
-  both loads/stores and does not require the result register to be the same as
-  the base register.  At the moment, we only do this if register set with addis
-  is dead.  */
-
-void
-expand_fusion_p9_store (rtx *operands)
-{
-  rtx tmp_reg = operands[0];
-  rtx addis_value = operands[1];
-  rtx orig_mem = operands[2];
-  rtx src = operands[3];
-  rtx  new_addr, new_mem, orig_addr, offset, set, clobber, insn, new_src;
-  enum rtx_code plus_or_lo_sum;
-  machine_mode target_mode = GET_MODE (orig_mem);
-  machine_mode ptr_mode = Pmode;
-
-  gcc_assert (MEM_P (orig_mem));
-
-  orig_addr = XEXP (orig_mem, 0);
-  plus_or_lo_sum = GET_CODE (orig_addr);
-  gcc_assert (plus_or_lo_sum == PLUS || plus_or_lo_sum == LO_SUM);
-
-  offset = XEXP (orig_addr, 1);
-  new_addr = gen_rtx_fmt_ee (plus_or_lo_sum, ptr_mode, addis_value, offset);
-  new_mem = replace_equiv_address_nv (orig_mem, new_addr, false);
-
-  new_src = gen_rtx_UNSPEC (target_mode, gen_rtvec (1, src),
-			    UNSPEC_FUSION_P9);
-
-  set = gen_rtx_SET (new_mem, new_src);
-  clobber = gen_rtx_CLOBBER (VOIDmode, tmp_reg);
-  insn = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2, set, clobber));
-  emit_insn (insn);
-
-  return;
-}
-
-/* Return a string to fuse an addis instruction with a load using extended
-   fusion.  The address that is used is the logical address that was formed
-   during peephole2: (lo_sum (high) (low-part))
-
-   The code is complicated, so we call output_asm_insn directly, and just
-   return "".  */
-
-const char *
-emit_fusion_p9_load (rtx reg, rtx mem, rtx tmp_reg)
-{
-  machine_mode mode = GET_MODE (reg);
-  rtx hi;
-  rtx lo;
-  rtx addr;
-  const char *load_string;
-  int r;
-
-  if (GET_CODE (mem) == FLOAT_EXTEND || GET_CODE (mem) == ZERO_EXTEND)
-    {
-      mem = XEXP (mem, 0);
-      mode = GET_MODE (mem);
-    }
-
-  if (GET_CODE (reg) == SUBREG)
-    {
-      gcc_assert (SUBREG_BYTE (reg) == 0);
-      reg = SUBREG_REG (reg);
-    }
-
-  if (!REG_P (reg))
-    fatal_insn ("emit_fusion_p9_load, bad reg #1", reg);
-
-  r = REGNO (reg);
-  if (FP_REGNO_P (r))
-    {
-      if (mode == SFmode)
-	load_string = "lfs";
-      else if (mode == DFmode || mode == DImode)
-	load_string = "lfd";
-      else
-	gcc_unreachable ();
-    }
-  else if (ALTIVEC_REGNO_P (r) && TARGET_P9_VECTOR)
-    {
-      if (mode == SFmode)
-	load_string = "lxssp";
-      else if (mode == DFmode || mode == DImode)
-	load_string = "lxsd";
-      else
-	gcc_unreachable ();
-    }
-  else if (INT_REGNO_P (r))
-    {
-      switch (mode)
-	{
-	case E_QImode:
-	  load_string = "lbz";
-	  break;
-	case E_HImode:
-	  load_string = "lhz";
-	  break;
-	case E_SImode:
-	case E_SFmode:
-	  load_string = "lwz";
-	  break;
-	case E_DImode:
-	case E_DFmode:
-	  if (!TARGET_POWERPC64)
-	    gcc_unreachable ();
-	  load_string = "ld";
-	  break;
-	default:
-	  gcc_unreachable ();
-	}
-    }
-  else
-    fatal_insn ("emit_fusion_p9_load, bad reg #2", reg);
-
-  if (!MEM_P (mem))
-    fatal_insn ("emit_fusion_p9_load not MEM", mem);
-
-  addr = XEXP (mem, 0);
-  fusion_split_address (addr, &hi, &lo);
-
-  /* Emit the addis instruction.  */
-  emit_fusion_addis (tmp_reg, hi);
-
-  /* Emit the D-form load instruction.  */
-  emit_fusion_load_store (reg, tmp_reg, lo, load_string);
-
-  return "";
-}
-
-/* Return a string to fuse an addis instruction with a store using extended
-   fusion.  The address that is used is the logical address that was formed
-   during peephole2: (lo_sum (high) (low-part))
-
-   The code is complicated, so we call output_asm_insn directly, and just
-   return "".  */
-
-const char *
-emit_fusion_p9_store (rtx mem, rtx reg, rtx tmp_reg)
-{
-  machine_mode mode = GET_MODE (reg);
-  rtx hi;
-  rtx lo;
-  rtx addr;
-  const char *store_string;
-  int r;
-
-  if (GET_CODE (reg) == SUBREG)
-    {
-      gcc_assert (SUBREG_BYTE (reg) == 0);
-      reg = SUBREG_REG (reg);
-    }
-
-  if (!REG_P (reg))
-    fatal_insn ("emit_fusion_p9_store, bad reg #1", reg);
-
-  r = REGNO (reg);
-  if (FP_REGNO_P (r))
-    {
-      if (mode == SFmode)
-	store_string = "stfs";
-      else if (mode == DFmode)
-	store_string = "stfd";
-      else
-	gcc_unreachable ();
-    }
-  else if (ALTIVEC_REGNO_P (r) && TARGET_P9_VECTOR)
-    {
-      if (mode == SFmode)
-	store_string = "stxssp";
-      else if (mode == DFmode || mode == DImode)
-	store_string = "stxsd";
-      else
-	gcc_unreachable ();
-    }
-  else if (INT_REGNO_P (r))
-    {
-      switch (mode)
-	{
-	case E_QImode:
-	  store_string = "stb";
-	  break;
-	case E_HImode:
-	  store_string = "sth";
-	  break;
-	case E_SImode:
-	case E_SFmode:
-	  store_string = "stw";
-	  break;
-	case E_DImode:
-	case E_DFmode:
-	  if (!TARGET_POWERPC64)
-	    gcc_unreachable ();
-	  store_string = "std";
-	  break;
-	default:
-	  gcc_unreachable ();
-	}
-    }
-  else
-    fatal_insn ("emit_fusion_p9_store, bad reg #2", reg);
-
-  if (!MEM_P (mem))
-    fatal_insn ("emit_fusion_p9_store not MEM", mem);
-
-  addr = XEXP (mem, 0);
-  fusion_split_address (addr, &hi, &lo);
-
-  /* Emit the addis instruction.  */
-  emit_fusion_addis (tmp_reg, hi);
-
-  /* Emit the D-form load instruction.  */
-  emit_fusion_load_store (reg, tmp_reg, lo, store_string);
-
-  return "";
-}
 
 #ifdef RS6000_GLIBC_ATOMIC_FENV
 /* Function declarations for rs6000_atomic_assign_expand_fenv.  */
@@ -38908,6 +38582,76 @@ rs6000_globalize_decl_name (FILE * stream, tree decl)
     }
 }
 #endif
+
+
+/* On 64-bit Linux and Freebsd systems, possibly switch the long double library
+   function names from <foo>l to <foo>f128 if the default long double type is
+   IEEE 128-bit.  Typically, with the C and C++ languages, the standard math.h
+   include file switches the names on systems that support long double as IEEE
+   128-bit, but that doesn't work if the user uses __builtin_<foo>l directly.
+   In the future, glibc will export names like __ieee128_sinf128 and we can
+   switch to using those instead of using sinf128, which pollutes the user's
+   namespace.
+
+   This will switch the names for Fortran math functions as well (which doesn't
+   use math.h).  However, Fortran needs other changes to the compiler and
+   library before you can switch the real*16 type at compile time.
+
+   We use the TARGET_MANGLE_DECL_ASSEMBLER_NAME hook to change this name.  We
+   only do this if the default is that long double is IBM extended double, and
+   the user asked for IEEE 128-bit.  */
+
+static tree
+rs6000_mangle_decl_assembler_name (tree decl, tree id)
+{
+  if (!TARGET_IEEEQUAD_DEFAULT && TARGET_IEEEQUAD && TARGET_LONG_DOUBLE_128
+      && TREE_CODE (decl) == FUNCTION_DECL && DECL_IS_BUILTIN (decl) )
+    {
+      size_t len = IDENTIFIER_LENGTH (id);
+      const char *name = IDENTIFIER_POINTER (id);
+
+      if (name[len - 1] == 'l')
+	{
+	  bool uses_ieee128_p = false;
+	  tree type = TREE_TYPE (decl);
+	  machine_mode ret_mode = TYPE_MODE (type);
+
+	  /* See if the function returns a IEEE 128-bit floating point type or
+	     complex type.  */
+	  if (ret_mode == TFmode || ret_mode == TCmode)
+	    uses_ieee128_p = true;
+	  else
+	    {
+	      function_args_iterator args_iter;
+	      tree arg;
+
+	      /* See if the function passes a IEEE 128-bit floating point type
+		 or complex type.  */
+	      FOREACH_FUNCTION_ARGS (type, arg, args_iter)
+		{
+		  machine_mode arg_mode = TYPE_MODE (arg);
+		  if (arg_mode == TFmode || arg_mode == TCmode)
+		    {
+		      uses_ieee128_p = true;
+		      break;
+		    }
+		}
+	    }
+
+	  /* If we passed or returned an IEEE 128-bit floating point type,
+	     change the name.  */
+	  if (uses_ieee128_p)
+	    {
+	      char *name2 = (char *) alloca (len + 4);
+	      memcpy (name2, name, len - 1);
+	      strcpy (name2 + len - 1, "f128");
+	      id = get_identifier (name2);
+	    }
+	}
+    }
+
+  return id;
+}
 
 
 struct gcc_target targetm = TARGET_INITIALIZER;

@@ -68,6 +68,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-cfgcleanup.h"
 #include "tree-ssa-loop.h"
 #include "tree-scalar-evolution.h"
+#include "tree-ssa-loop-niter.h"
 #include "tree-ssa-sccvn.h"
 
 /* This algorithm is based on the SCC algorithm presented by Keith
@@ -1206,11 +1207,11 @@ copy_reference_ops_from_call (gcall *call,
 
   /* Copy the type, opcode, function, static chain and EH region, if any.  */
   memset (&temp, 0, sizeof (temp));
-  temp.type = gimple_call_return_type (call);
+  temp.type = gimple_call_fntype (call);
   temp.opcode = CALL_EXPR;
   temp.op0 = gimple_call_fn (call);
   temp.op1 = gimple_call_chain (call);
-  if (stmt_could_throw_p (call) && (lr = lookup_stmt_eh_lp (call)) > 0)
+  if (stmt_could_throw_p (cfun, call) && (lr = lookup_stmt_eh_lp (call)) > 0)
     temp.op2 = size_int (lr);
   temp.off = -1;
   result->safe_push (temp);
@@ -4194,12 +4195,20 @@ visit_phi (gimple *phi, bool *inserted, bool backedges_varying_p)
      value from the backedge as that confuses the alias-walking code.
      See gcc.dg/torture/pr87176.c.  If the value is the same on a
      non-backedge everything is OK though.  */
-  if (backedge_val
-      && !seen_non_backedge
-      && TREE_CODE (backedge_val) == SSA_NAME
-      && sameval == backedge_val
-      && (SSA_NAME_IS_VIRTUAL_OPERAND (backedge_val)
-	  || SSA_VAL (backedge_val) != backedge_val))
+  bool visited_p;
+  if ((backedge_val
+       && !seen_non_backedge
+       && TREE_CODE (backedge_val) == SSA_NAME
+       && sameval == backedge_val
+       && (SSA_NAME_IS_VIRTUAL_OPERAND (backedge_val)
+	   || SSA_VAL (backedge_val) != backedge_val))
+      /* Do not value-number a virtual operand to sth not visited though
+	 given that allows us to escape a region in alias walking.  */
+      || (sameval
+	  && TREE_CODE (sameval) == SSA_NAME
+	  && !SSA_NAME_IS_DEFAULT_DEF (sameval)
+	  && SSA_NAME_IS_VIRTUAL_OPERAND (sameval)
+	  && (SSA_VAL (sameval, &visited_p), !visited_p)))
     /* Note this just drops to VARYING without inserting the PHI into
        the hashes.  */
     result = PHI_RESULT (phi);
@@ -5896,6 +5905,16 @@ process_bb (rpo_elim &avail, basic_block bb,
 	  break;
 	}
 
+  /* When we visit a loop header substitute into loop info.  */
+  if (!iterate && eliminate && bb->loop_father->header == bb)
+    {
+      /* Keep fields in sync with substitute_in_loop_info.  */
+      if (bb->loop_father->nb_iterations)
+	bb->loop_father->nb_iterations
+	  = simplify_replace_tree (bb->loop_father->nb_iterations,
+				   NULL_TREE, NULL_TREE, vn_valueize);
+    }
+
   /* Value-number all defs in the basic-block.  */
   for (gphi_iterator gsi = gsi_start_phis (bb); !gsi_end_p (gsi);
        gsi_next (&gsi))
@@ -6449,7 +6468,6 @@ do_rpo_vn (function *fn, edge entry, bitmap exit_bbs,
 	      FOR_EACH_EDGE (e, ei, header->preds)
 		if (e->flags & EDGE_DFS_BACK)
 		  {
-		    e->flags |= EDGE_EXECUTABLE;
 		    /* There can be a non-latch backedge into the header
 		       which is part of an outer irreducible region.  We
 		       cannot avoid iterating this block then.  */
@@ -6462,6 +6480,8 @@ do_rpo_vn (function *fn, edge entry, bitmap exit_bbs,
 				   e->src->index, e->dest->index, loop->num);
 			non_latch_backedge = true;
 		      }
+		    else
+		      e->flags |= EDGE_EXECUTABLE;
 		  }
 	      rpo_state[bb_to_rpo[header->index]].iterate = non_latch_backedge;
 	    }
@@ -6691,6 +6711,7 @@ do_rpo_vn (function *fn, edge entry, bitmap exit_bbs,
 
   XDELETEVEC (bb_to_rpo);
   XDELETEVEC (rpo);
+  XDELETEVEC (rpo_state);
 
   return todo;
 }

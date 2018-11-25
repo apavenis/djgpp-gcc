@@ -55,8 +55,7 @@
 #endif
 
 
-/* Define to larger than zero set to the default stack clash protector size as
-   a power of two in bytes. */
+/* Define to larger than zero set the default stack clash protector size. */
 #ifndef USED_FOR_TARGET
 #undef DEFAULT_STK_CLASH_GUARD_SIZE
 #endif
@@ -584,12 +583,6 @@
 #endif
 
 
-/* Define if your assembler supports .register. */
-#ifndef USED_FOR_TARGET
-#undef HAVE_AS_REGISTER_PSEUDO_OP
-#endif
-
-
 /* Define if your assembler supports R_PPC_REL16 relocs. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_REL16
@@ -661,6 +654,13 @@
 /* Define if your assembler supports arg info for __tls_get_addr. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_TLS_MARKERS
+#endif
+
+
+/* Define if your assembler supports vl/vst/vlm/vstm with an optional
+   alignment hint argument. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_VECTOR_LOADSTORE_ALIGNMENT_HINTS
 #endif
 
 
@@ -1430,6 +1430,13 @@
 #endif
 
 
+/* Define 0/1 if your linker supports the SHF_MERGE flag with section
+   alignment > 1. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_LD_ALIGNED_SHF_MERGE
+#endif
+
+
 /* Define if your linker supports --as-needed/--no-as-needed or equivalent
    options. */
 #ifndef USED_FOR_TARGET
@@ -1993,6 +2000,12 @@
 #endif
 
 
+/* Define if we should link mingw executables with --large-address-aware */
+#ifndef USED_FOR_TARGET
+#undef MINGW_DEFAULT_LARGE_ADDR_AWARE
+#endif
+
+
 /* Value to set mingw's _dowildcard to. */
 #ifndef USED_FOR_TARGET
 #undef MINGW_DOWILDCARD
@@ -2226,6 +2239,11 @@
 # ifndef WORDS_BIGENDIAN
 #  undef WORDS_BIGENDIAN
 # endif
+#endif
+
+/* Enable large inode numbers on Mac OS X 10.5.  */
+#ifndef _DARWIN_USE_64_BIT_INODE
+# define _DARWIN_USE_64_BIT_INODE 1
 #endif
 
 /* Number of bits in a file offset, on hosts where this is settable. */

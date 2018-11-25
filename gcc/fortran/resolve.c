@@ -4740,6 +4740,7 @@ find_array_spec (gfc_expr *e)
 	break;
 
       case REF_SUBSTRING:
+      case REF_INQUIRY:
 	break;
       }
 
@@ -4962,13 +4963,13 @@ gfc_resolve_substring_charlen (gfc_expr *e)
 
   for (char_ref = e->ref; char_ref; char_ref = char_ref->next)
     {
-      if (char_ref->type == REF_SUBSTRING)
-      	break;
+      if (char_ref->type == REF_SUBSTRING || char_ref->type == REF_INQUIRY)
+	break;
       if (char_ref->type == REF_COMPONENT)
 	ts = &char_ref->u.c.component->ts;
     }
 
-  if (!char_ref)
+  if (!char_ref || char_ref->type == REF_INQUIRY)
     return;
 
   gcc_assert (char_ref->next == NULL);
@@ -5056,6 +5057,7 @@ resolve_ref (gfc_expr *expr)
 	break;
 
       case REF_COMPONENT:
+      case REF_INQUIRY:
 	break;
 
       case REF_SUBSTRING:
@@ -5129,6 +5131,7 @@ resolve_ref (gfc_expr *expr)
 	  break;
 
 	case REF_SUBSTRING:
+	case REF_INQUIRY:
 	  break;
 	}
 
@@ -5407,7 +5410,7 @@ resolve_variable (gfc_expr *e)
      the ts' type of the component refs is still array valued, which
      can't be translated that way.  */
   if (sym->assoc && e->rank == 0 && e->ref && sym->ts.type == BT_CLASS
-      && sym->assoc->target->ts.type == BT_CLASS
+      && sym->assoc->target && sym->assoc->target->ts.type == BT_CLASS
       && CLASS_DATA (sym->assoc->target)->as)
     {
       gfc_ref *ref = e->ref;
@@ -5436,6 +5439,24 @@ resolve_variable (gfc_expr *e)
 	gfc_fix_class_refs (e);
       if (!sym->attr.dimension && e->ref && e->ref->type == REF_ARRAY)
 	return false;
+      else if (sym->attr.dimension && (!e->ref || e->ref->type != REF_ARRAY))
+	{
+	  /* This can happen because the parser did not detect that the
+	     associate name is an array and the expression had no array
+	     part_ref.  */
+	  gfc_ref *ref = gfc_get_ref ();
+	  ref->type = REF_ARRAY;
+	  ref->u.ar = *gfc_get_array_ref();
+	  ref->u.ar.type = AR_FULL;
+	  if (sym->as)
+	    {
+	      ref->u.ar.as = sym->as;
+	      ref->u.ar.dimen = sym->as->rank;
+	    }
+	  ref->next = e->ref;
+	  e->ref = ref;
+
+	}
     }
 
   if (sym->ts.type == BT_DERIVED && sym->ts.u.derived->attr.generic)
@@ -7215,6 +7236,7 @@ resolve_deallocate_expr (gfc_expr *e)
 	  break;
 
 	case REF_SUBSTRING:
+	case REF_INQUIRY:
 	  allocatable = 0;
 	  break;
 	}
@@ -7507,6 +7529,7 @@ resolve_allocate_expr (gfc_expr *e, gfc_code *code, bool *array_alloc_wo_spec)
 		break;
 
 	      case REF_SUBSTRING:
+	      case REF_INQUIRY:
 		allocatable = 0;
 		pointer = 0;
 		break;
@@ -8675,6 +8698,18 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 	  if (as->corank != 0)
 	    sym->attr.codimension = 1;
 	}
+      else if (sym->ts.type == BT_CLASS && (!CLASS_DATA (sym)->as || sym->assoc->rankguessed))
+	{
+	  if (!CLASS_DATA (sym)->as)
+	    CLASS_DATA (sym)->as = gfc_get_array_spec ();
+	  as = CLASS_DATA (sym)->as;
+	  as->rank = target->rank;
+	  as->type = AS_DEFERRED;
+	  as->corank = gfc_get_corank (target);
+	  CLASS_DATA (sym)->attr.dimension = 1;
+	  if (as->corank != 0)
+	    CLASS_DATA (sym)->attr.codimension = 1;
+	}
     }
   else
     {
@@ -8875,9 +8910,24 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 
   if (code->expr2)
     {
-      if (code->expr1->symtree->n.sym->attr.untyped)
-	code->expr1->symtree->n.sym->ts = code->expr2->ts;
-      selector_type = CLASS_DATA (code->expr2)->ts.u.derived;
+      gfc_ref *ref2 = NULL;
+      for (ref = code->expr2->ref; ref != NULL; ref = ref->next)
+	 if (ref->type == REF_COMPONENT
+	     && ref->u.c.component->ts.type == BT_CLASS)
+	   ref2 = ref;
+
+      if (ref2)
+	{
+	  if (code->expr1->symtree->n.sym->attr.untyped)
+	    code->expr1->symtree->n.sym->ts = ref2->u.c.component->ts;
+	  selector_type = CLASS_DATA (ref2->u.c.component)->ts.u.derived;
+	}
+      else
+	{
+	  if (code->expr1->symtree->n.sym->attr.untyped)
+	    code->expr1->symtree->n.sym->ts = code->expr2->ts;
+	  selector_type = CLASS_DATA (code->expr2)->ts.u.derived;
+	}
 
       if (code->expr2->rank && CLASS_DATA (code->expr1)->as)
 	CLASS_DATA (code->expr1)->as->rank = code->expr2->rank;
@@ -11370,10 +11420,11 @@ start:
 	      t = gfc_check_vardef_context (e, false, false, false,
 					    _("pointer assignment"));
 	    gfc_free_expr (e);
+
+	    t = gfc_check_pointer_assign (code->expr1, code->expr2, !t) && t;
+
 	    if (!t)
 	      break;
-
-	    gfc_check_pointer_assign (code->expr1, code->expr2);
 
 	    /* Assigning a class object always is a regular assign.  */
 	    if (code->expr2->ts.type == BT_CLASS
@@ -12490,6 +12541,9 @@ resolve_fl_procedure (gfc_symbol *sym, int mp_flag)
     {
       gfc_error ("Function %qs at %L cannot have an initializer",
 		 sym->name, &sym->declared_at);
+
+      /* Make sure no second error is issued for this.  */
+      sym->value->error = 1;
       return false;
     }
 

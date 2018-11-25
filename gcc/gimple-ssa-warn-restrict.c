@@ -312,7 +312,7 @@ builtin_memref::extend_offset_range (tree offset)
   if (TREE_CODE (offset) == SSA_NAME)
     {
       wide_int min, max;
-      value_range_type rng = get_range_info (offset, &min, &max);
+      value_range_kind rng = get_range_info (offset, &min, &max);
       if (rng == VR_RANGE)
 	{
 	  offrange[0] += offset_int::from (min, SIGNED);
@@ -1580,6 +1580,9 @@ maybe_diag_offset_bounds (location_t loc, gimple *call, tree func, int strict,
 			  tree expr, const builtin_memref &ref)
 {
   if (!warn_array_bounds)
+    return false;
+
+  if (ref.ref && TREE_NO_WARNING (ref.ref))
     return false;
 
   offset_int ooboff[] = { ref.offrange[0], ref.offrange[1] };

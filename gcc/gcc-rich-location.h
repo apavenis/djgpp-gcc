@@ -28,7 +28,7 @@ class gcc_rich_location : public rich_location
   /* Constructors.  */
 
   /* Constructing from a location.  */
-  gcc_rich_location (source_location loc, const range_label *label = NULL)
+  gcc_rich_location (location_t loc, const range_label *label = NULL)
   : rich_location (line_table, loc, label)
   {
   }
@@ -56,7 +56,7 @@ class gcc_rich_location : public rich_location
 
 	gcc_rich_location richloc (primary_loc);
 	bool added secondary = richloc.add_location_if_nearby (secondary_loc);
-	error_at_rich_loc (&richloc, "main message");
+	error_at (&richloc, "main message");
 	if (!added secondary)
 	  inform (secondary_loc, "message for secondary");
 

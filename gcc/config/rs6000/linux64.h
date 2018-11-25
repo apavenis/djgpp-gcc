@@ -391,6 +391,19 @@ extern int dot_symbols;
     }							\
   while (0)
 
+#define GNU_USER_TARGET_D_OS_VERSIONS()		\
+    do {					\
+	builtin_version ("linux");		\
+	if (OPTION_GLIBC)			\
+	  builtin_version ("CRuntime_Glibc");	\
+	else if (OPTION_UCLIBC)			\
+	  builtin_version ("CRuntime_UClibc");	\
+	else if (OPTION_BIONIC)			\
+	  builtin_version ("CRuntime_Bionic");	\
+	else if (OPTION_MUSL)			\
+	  builtin_version ("CRuntime_Musl");	\
+    } while (0)
+
 #undef  CPP_OS_DEFAULT_SPEC
 #define CPP_OS_DEFAULT_SPEC "%(cpp_os_linux) %(include_extra)"
 
@@ -569,8 +582,10 @@ extern int dot_symbols;
    we also do this for floating-point constants.  We actually can only
    do this if the FP formats of the target and host machines are the
    same, but we can't check that since not every file that uses
-   the macros includes real.h.  We also do this when we can write the
-   entry into the TOC and the entry is not larger than a TOC entry.  */
+   the macros includes real.h.  We also do this when we can write an
+   integer into the TOC and the entry is not larger than a TOC entry,
+   but not for -mcmodel=medium where we'll use a toc-relative load for
+   constants outside the TOC.  */
 
 #undef  ASM_OUTPUT_SPECIAL_POOL_ENTRY_P
 #define ASM_OUTPUT_SPECIAL_POOL_ENTRY_P(X, MODE)			\
@@ -580,6 +595,7 @@ extern int dot_symbols;
 	   && GET_CODE (XEXP (XEXP (X, 0), 0)) == SYMBOL_REF)		\
        || GET_CODE (X) == LABEL_REF					\
        || (GET_CODE (X) == CONST_INT 					\
+	   && TARGET_CMODEL != CMODEL_MEDIUM				\
 	   && GET_MODE_BITSIZE (MODE) <= GET_MODE_BITSIZE (Pmode))	\
        || (GET_CODE (X) == CONST_DOUBLE					\
 	   && ((TARGET_64BIT						\

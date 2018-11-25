@@ -106,43 +106,42 @@ static GTY ((cache)) hash_table<ipa_bit_ggc_hash_traits> *ipa_bits_hash_table;
 /* Traits for a hash table for reusing value_ranges used for IPA.  Note that
    the equiv bitmap is not hashed and is expected to be NULL.  */
 
-struct ipa_vr_ggc_hash_traits : public ggc_cache_remove <value_range *>
+struct ipa_vr_ggc_hash_traits : public ggc_cache_remove <value_range_base *>
 {
-  typedef value_range *value_type;
-  typedef value_range *compare_type;
+  typedef value_range_base *value_type;
+  typedef value_range_base *compare_type;
   static hashval_t
-  hash (const value_range *p)
+  hash (const value_range_base *p)
     {
-      gcc_checking_assert (!p->equiv);
-      inchash::hash hstate (p->type);
-      hstate.add_ptr (p->min);
-      hstate.add_ptr (p->max);
+      inchash::hash hstate (p->kind ());
+      inchash::add_expr (p->min (), hstate);
+      inchash::add_expr (p->max (), hstate);
       return hstate.end ();
     }
   static bool
-  equal (const value_range *a, const value_range *b)
+  equal (const value_range_base *a, const value_range_base *b)
     {
-      return a->type == b->type && a->min == b->min && a->max == b->max;
+      return a->equal_p (*b);
     }
   static void
-  mark_empty (value_range *&p)
+  mark_empty (value_range_base *&p)
     {
       p = NULL;
     }
   static bool
-  is_empty (const value_range *p)
+  is_empty (const value_range_base *p)
     {
       return p == NULL;
     }
   static bool
-  is_deleted (const value_range *p)
+  is_deleted (const value_range_base *p)
     {
-      return p == reinterpret_cast<const value_range *> (1);
+      return p == reinterpret_cast<const value_range_base *> (1);
     }
   static void
-  mark_deleted (value_range *&p)
+  mark_deleted (value_range_base *&p)
     {
-      p = reinterpret_cast<value_range *> (1);
+      p = reinterpret_cast<value_range_base *> (1);
     }
 };
 
@@ -398,10 +397,10 @@ ipa_print_node_jump_functions_for_edge (FILE *f, struct cgraph_edge *cs)
 	{
 	  fprintf (f, "         VR  ");
 	  fprintf (f, "%s[",
-		   (jump_func->m_vr->type == VR_ANTI_RANGE) ? "~" : "");
-	  print_decs (wi::to_wide (jump_func->m_vr->min), f);
+		   (jump_func->m_vr->kind () == VR_ANTI_RANGE) ? "~" : "");
+	  print_decs (wi::to_wide (jump_func->m_vr->min ()), f);
 	  fprintf (f, ", ");
-	  print_decs (wi::to_wide (jump_func->m_vr->max), f);
+	  print_decs (wi::to_wide (jump_func->m_vr->max ()), f);
 	  fprintf (f, "]\n");
 	}
       else
@@ -1770,14 +1769,14 @@ ipa_set_jfunc_bits (ipa_jump_func *jf, const widest_int &value,
 /* Return a pointer to a value_range just like *TMP, but either find it in
    ipa_vr_hash_table or allocate it in GC memory.  TMP->equiv must be NULL.  */
 
-static value_range *
-ipa_get_value_range (value_range *tmp)
+static value_range_base *
+ipa_get_value_range (value_range_base *tmp)
 {
-  value_range **slot = ipa_vr_hash_table->find_slot (tmp, INSERT);
+  value_range_base **slot = ipa_vr_hash_table->find_slot (tmp, INSERT);
   if (*slot)
     return *slot;
 
-  value_range *vr = ggc_alloc<value_range> ();
+  value_range_base *vr = ggc_alloc<value_range_base> ();
   *vr = *tmp;
   *slot = vr;
 
@@ -1788,14 +1787,10 @@ ipa_get_value_range (value_range *tmp)
    equiv set. Use hash table in order to avoid creating multiple same copies of
    value_ranges.  */
 
-static value_range *
-ipa_get_value_range (enum value_range_type type, tree min, tree max)
+static value_range_base *
+ipa_get_value_range (enum value_range_kind type, tree min, tree max)
 {
-  value_range tmp;
-  tmp.type = type;
-  tmp.min = min;
-  tmp.max = max;
-  tmp.equiv = NULL;
+  value_range_base tmp (type, min, max);
   return ipa_get_value_range (&tmp);
 }
 
@@ -1804,7 +1799,7 @@ ipa_get_value_range (enum value_range_type type, tree min, tree max)
    same value_range structures.  */
 
 static void
-ipa_set_jfunc_vr (ipa_jump_func *jf, enum value_range_type type,
+ipa_set_jfunc_vr (ipa_jump_func *jf, enum value_range_kind type,
 		  tree min, tree max)
 {
   jf->m_vr = ipa_get_value_range (type, min, max);
@@ -1814,7 +1809,7 @@ ipa_set_jfunc_vr (ipa_jump_func *jf, enum value_range_type type,
    copy from ipa_vr_hash_table or allocate a new on in GC memory.  */
 
 static void
-ipa_set_jfunc_vr (ipa_jump_func *jf, value_range *tmp)
+ipa_set_jfunc_vr (ipa_jump_func *jf, value_range_base *tmp)
 {
   jf->m_vr = ipa_get_value_range (tmp);
 }
@@ -1884,22 +1879,19 @@ ipa_compute_jump_functions_for_edge (struct ipa_func_body_info *fbi,
       else
 	{
 	  wide_int min, max;
-	  value_range_type type;
+	  value_range_kind type;
 	  if (TREE_CODE (arg) == SSA_NAME
 	      && param_type
 	      && (type = get_range_info (arg, &min, &max))
 	      && (type == VR_RANGE || type == VR_ANTI_RANGE))
 	    {
-	      value_range tmpvr,resvr;
-
-	      tmpvr.type = type;
-	      tmpvr.min = wide_int_to_tree (TREE_TYPE (arg), min);
-	      tmpvr.max = wide_int_to_tree (TREE_TYPE (arg), max);
-	      tmpvr.equiv = NULL;
-	      memset (&resvr, 0, sizeof (resvr));
+	      value_range_base resvr;
+	      value_range_base tmpvr (type,
+				      wide_int_to_tree (TREE_TYPE (arg), min),
+				      wide_int_to_tree (TREE_TYPE (arg), max));
 	      extract_range_from_unary_expr (&resvr, NOP_EXPR, param_type,
 					     &tmpvr, TREE_TYPE (arg));
-	      if (resvr.type == VR_RANGE || resvr.type == VR_ANTI_RANGE)
+	      if (!resvr.undefined_p () && !resvr.varying_p ())
 		ipa_set_jfunc_vr (jfunc, &resvr);
 	      else
 		gcc_assert (!jfunc->m_vr);
@@ -4126,9 +4118,9 @@ ipa_write_jump_function (struct output_block *ob,
   if (jump_func->m_vr)
     {
       streamer_write_enum (ob->main_stream, value_rang_type,
-			   VR_LAST, jump_func->m_vr->type);
-      stream_write_tree (ob, jump_func->m_vr->min, true);
-      stream_write_tree (ob, jump_func->m_vr->max, true);
+			   VR_LAST, jump_func->m_vr->kind ());
+      stream_write_tree (ob, jump_func->m_vr->min (), true);
+      stream_write_tree (ob, jump_func->m_vr->max (), true);
     }
 }
 
@@ -4216,7 +4208,7 @@ ipa_read_jump_function (struct lto_input_block *ib,
   bool vr_known = bp_unpack_value (&vr_bp, 1);
   if (vr_known)
     {
-      enum value_range_type type = streamer_read_enum (ib, value_range_type,
+      enum value_range_kind type = streamer_read_enum (ib, value_range_kind,
 						       VR_LAST);
       tree min = stream_read_tree (ib, data_in);
       tree max = stream_read_tree (ib, data_in);
@@ -4647,7 +4639,7 @@ read_ipcp_transformation_info (lto_input_block *ib, cgraph_node *node,
 	  parm_vr->known = bp_unpack_value (&bp, 1);
 	  if (parm_vr->known)
 	    {
-	      parm_vr->type = streamer_read_enum (ib, value_range_type,
+	      parm_vr->type = streamer_read_enum (ib, value_range_kind,
 						  VR_LAST);
 	      parm_vr->min = streamer_read_wide_int (ib);
 	      parm_vr->max = streamer_read_wide_int (ib);

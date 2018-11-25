@@ -702,7 +702,13 @@ class StdBitsetPrinter:
         return '%s' % (self.typename)
 
     def children (self):
-        words = self.val['_M_w']
+        try:
+            # An empty bitset may not have any members which will
+            # result in an exception being thrown.
+            words = self.val['_M_w']
+        except:
+            return []
+
         wtype = words.type
 
         # The _M_w member can be either an unsigned long, or an
@@ -712,7 +718,7 @@ class StdBitsetPrinter:
             tsize = wtype.target ().sizeof
         else:
             words = [words]
-            tsize = wtype.sizeof 
+            tsize = wtype.sizeof
 
         nwords = wtype.sizeof / tsize
         result = []
@@ -848,7 +854,7 @@ class Tr1HashtableIterator(Iterator):
             self.node = self.buckets[self.bucket]
             if self.node:
                 break
-            self.bucket = self.bucket + 1        
+            self.bucket = self.bucket + 1
 
     def __iter__ (self):
         return self
@@ -951,7 +957,6 @@ class Tr1UnorderedMapPrinter:
         data = self.flatten (imap (self.format_one, StdHashtableIterator (self.hashtable())))
         # Zip the two iterators together.
         return izip (counter, data)
-        
 
     def display_hint (self):
         return 'map'
@@ -1051,7 +1056,7 @@ class StdExpAnyPrinter(SingleObjContainerPrinter):
             func = gdb.block_for_pc(int(mgr.cast(gdb.lookup_type('intptr_t'))))
             if not func:
                 raise ValueError("Invalid function pointer in %s" % self.typename)
-            rx = r"""({0}::_Manager_\w+<.*>)::_S_manage\({0}::_Op, {0} const\*, {0}::_Arg\*\)""".format(typename)
+            rx = r"""({0}::_Manager_\w+<.*>)::_S_manage\((enum )?{0}::_Op, (const {0}|{0} const) ?\*, (union )?{0}::_Arg ?\*\)""".format(typename)
             m = re.match(rx, func.function.name)
             if not m:
                 raise ValueError("Unknown manager function in %s" % self.typename)
@@ -1556,6 +1561,8 @@ def register_type_printers(obj):
     # Add type printers for typedefs std::string, std::wstring etc.
     for ch in ('', 'w', 'u16', 'u32'):
         add_one_type_printer(obj, 'basic_string', ch + 'string')
+        add_one_type_printer(obj, '__cxx11::basic_string', ch + 'string')
+        # Typedefs for __cxx11::basic_string used to be in namespace __cxx11:
         add_one_type_printer(obj, '__cxx11::basic_string',
                              '__cxx11::' + ch + 'string')
         add_one_type_printer(obj, 'basic_string_view', ch + 'string_view')
@@ -1568,7 +1575,7 @@ def register_type_printers(obj):
         for x in ('stringbuf', 'istringstream', 'ostringstream',
                   'stringstream'):
             add_one_type_printer(obj, 'basic_' + x, ch + x)
-            # <sstream> types are in __cxx11 namespace, but typedefs aren'x:
+            # <sstream> types are in __cxx11 namespace, but typedefs aren't:
             add_one_type_printer(obj, '__cxx11::basic_' + x, ch + x)
 
     # Add type printers for typedefs regex, wregex, cmatch, wcmatch etc.

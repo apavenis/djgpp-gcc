@@ -103,6 +103,7 @@ enum rid
   RID_EXTENSION, RID_IMAGPART, RID_REALPART, RID_LABEL,      RID_CHOOSE_EXPR,
   RID_TYPES_COMPATIBLE_P,      RID_BUILTIN_COMPLEX,	     RID_BUILTIN_SHUFFLE,
   RID_BUILTIN_TGMATH,
+  RID_BUILTIN_HAS_ATTRIBUTE,
   RID_DFLOAT32, RID_DFLOAT64, RID_DFLOAT128,
 
   /* TS 18661-3 keywords, in the same sequence as the TI_* values.  */
@@ -498,7 +499,7 @@ extern GTY(()) tree c_global_trees[CTI_MAX];
 
 enum c_language_kind
 {
-  clk_c		= 0,		/* C90, C94, C99 or C11 */
+  clk_c		= 0,		/* C90, C94, C99, C11 or C2X */
   clk_objc	= 1,		/* clk_c with ObjC features.  */
   clk_cxx	= 2,		/* ANSI/ISO C++ */
   clk_objcxx	= 3		/* clk_cxx with ObjC features.  */
@@ -635,13 +636,17 @@ extern int flag_cond_mismatch;
 
 extern int flag_isoc94;
 
-/* Nonzero means use the ISO C99 (or C11) dialect of C.  */
+/* Nonzero means use the ISO C99 (or later) dialect of C.  */
 
 extern int flag_isoc99;
 
-/* Nonzero means use the ISO C11 dialect of C.  */
+/* Nonzero means use the ISO C11 (or later) dialect of C.  */
 
 extern int flag_isoc11;
+
+/* Nonzero means use the ISO C2X dialect of C.  */
+
+extern int flag_isoc2x;
 
 /* Nonzero means that we have builtin functions, and main is an int.  */
 
@@ -794,7 +799,7 @@ extern void finish_fname_decls (void);
 extern const char *fname_as_string (int);
 extern tree fname_decl (location_t, unsigned, tree);
 
-extern int check_user_alignment (const_tree, bool);
+extern int check_user_alignment (const_tree, bool, bool);
 extern bool check_function_arguments (location_t loc, const_tree, const_tree,
 				      int, tree *, vec<location_t> *);
 extern void check_function_arguments_recurse (void (*)
@@ -804,7 +809,8 @@ extern void check_function_arguments_recurse (void (*)
 					      unsigned HOST_WIDE_INT);
 extern bool check_builtin_function_arguments (location_t, vec<location_t>,
 					      tree, int, tree *);
-extern void check_function_format (tree, int, tree *, vec<location_t> *);
+extern void check_function_format (const_tree, tree, int, tree *,
+				   vec<location_t> *);
 extern bool attribute_fallthrough_p (tree);
 extern tree handle_format_attribute (tree *, tree, tree, int, bool *);
 extern tree handle_format_arg_attribute (tree *, tree, tree, int, bool *);
@@ -1000,8 +1006,9 @@ extern void init_c_lex (void);
 
 extern void c_cpp_builtins (cpp_reader *);
 extern void c_cpp_builtins_optimize_pragma (cpp_reader *, tree, tree);
-extern bool c_cpp_error (cpp_reader *, int, int, rich_location *,
-			 const char *, va_list *)
+extern bool c_cpp_diagnostic (cpp_reader *, enum cpp_diagnostic_level,
+			      enum cpp_warning_reason, rich_location *,
+			      const char *, va_list *)
      ATTRIBUTE_GCC_DIAG(5,0);
 extern int c_common_has_attribute (cpp_reader *);
 
@@ -1144,18 +1151,21 @@ enum c_omp_region_type
 };
 
 extern tree c_finish_omp_master (location_t, tree);
-extern tree c_finish_omp_taskgroup (location_t, tree);
+extern tree c_finish_omp_taskgroup (location_t, tree, tree);
 extern tree c_finish_omp_critical (location_t, tree, tree, tree);
 extern tree c_finish_omp_ordered (location_t, tree, tree);
 extern void c_finish_omp_barrier (location_t);
 extern tree c_finish_omp_atomic (location_t, enum tree_code, enum tree_code,
-				 tree, tree, tree, tree, tree, bool, bool,
-				 bool = false);
-extern void c_finish_omp_flush (location_t);
+				 tree, tree, tree, tree, tree, bool,
+				 enum omp_memory_order, bool = false);
+extern bool c_omp_depend_t_p (tree);
+extern void c_finish_omp_depobj (location_t, tree, enum omp_clause_depend_kind,
+				 tree);
+extern void c_finish_omp_flush (location_t, int);
 extern void c_finish_omp_taskwait (location_t);
 extern void c_finish_omp_taskyield (location_t);
 extern tree c_finish_omp_for (location_t, enum tree_code, tree, tree, tree,
-			      tree, tree, tree, tree);
+			      tree, tree, tree, tree, bool);
 extern bool c_omp_check_loop_iv (tree, tree, walk_tree_lh);
 extern bool c_omp_check_loop_iv_exprs (location_t, tree, tree, tree, tree,
 				       walk_tree_lh);
@@ -1321,6 +1331,19 @@ extern int parse_tm_stmt_attr (tree, int);
 extern int tm_attr_to_mask (tree);
 extern tree tm_mask_to_attr (int);
 extern tree find_tm_attribute (tree);
+extern const struct attribute_spec::exclusions attr_cold_hot_exclusions[];
+
+/* A bitmap of flags to positional_argument.  */
+enum posargflags {
+  /* Consider positional attribute argument value zero valid.  */
+  POSARG_ZERO = 1,
+  /* Consider positional attribute argument value valid if it refers
+     to the ellipsis (i.e., beyond the last typed argument).  */
+  POSARG_ELLIPSIS = 2
+};
+
+extern tree positional_argument (const_tree, const_tree, tree, tree_code,
+				 int = 0, int = posargflags ());
 
 extern enum flt_eval_method
 excess_precision_mode_join (enum flt_eval_method, enum flt_eval_method);
@@ -1333,6 +1356,7 @@ extern void maybe_suggest_missing_token_insertion (rich_location *richloc,
 						   enum cpp_ttype token_type,
 						   location_t prev_token_loc);
 extern tree braced_list_to_string (tree, tree);
+extern bool has_attribute (location_t, tree, tree, tree (*)(tree));
 
 #if CHECKING_P
 namespace selftest {

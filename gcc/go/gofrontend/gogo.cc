@@ -256,26 +256,11 @@ Gogo::Gogo(Backend* backend, Linemap* linemap, int, int pointer_size)
   this->globals_->add_function_declaration("delete", NULL, delete_type, loc);
 }
 
-// Convert a pkgpath into a string suitable for a symbol.  Note that
-// this transformation is convenient but imperfect.  A -fgo-pkgpath
-// option of a/b_c will conflict with a -fgo-pkgpath option of a_b/c,
-// possibly leading to link time errors.
-
 std::string
 Gogo::pkgpath_for_symbol(const std::string& pkgpath)
 {
-  std::string s = pkgpath;
-  for (size_t i = 0; i < s.length(); ++i)
-    {
-      char c = s[i];
-      if ((c >= 'a' && c <= 'z')
-	  || (c >= 'A' && c <= 'Z')
-	  || (c >= '0' && c <= '9'))
-	;
-      else
-	s[i] = '_';
-    }
-  return s;
+  go_assert(!pkgpath.empty());
+  return go_encode_id(pkgpath);
 }
 
 // Get the package path to use for type reflection data.  This should
@@ -317,6 +302,32 @@ Gogo::set_prefix(const std::string& arg)
   go_assert(!this->prefix_from_option_);
   this->prefix_ = arg;
   this->prefix_from_option_ = true;
+}
+
+// Given a name which may or may not have been hidden, append the
+// appropriate version of the name to the result string. Take care
+// to avoid creating a sequence that will be rejected by go_encode_id
+// (avoid ..u, ..U, ..z).
+void
+Gogo::append_possibly_hidden_name(std::string *result, const std::string& name)
+{
+  // FIXME: This adds in pkgpath twice for hidden symbols, which is
+  // less than ideal.
+  if (!Gogo::is_hidden_name(name))
+    (*result) += name;
+  else
+    {
+      std::string n = ".";
+      std::string pkgpath = Gogo::hidden_name_pkgpath(name);
+      char lastR = result->at(result->length() - 1);
+      char firstP = pkgpath.at(0);
+      if (lastR == '.' && (firstP == 'u' || firstP == 'U' || firstP == 'z'))
+        n = "_.";
+      n.append(pkgpath);
+      n.append(1, '.');
+      n.append(Gogo::unpack_hidden_name(name));
+      (*result) += n;
+    }
 }
 
 // Munge name for use in an error message.
@@ -708,10 +719,12 @@ Gogo::init_imports(std::vector<Bstatement*>& init_stmts, Bfunction *bfunction)
       const Import_init* ii = *p;
       std::string user_name = ii->package_name() + ".init";
       const std::string& init_name(ii->init_name());
-
+      const unsigned int flags =
+	(Backend::function_is_visible
+	 | Backend::function_is_declaration
+	 | Backend::function_is_inlinable);
       Bfunction* pfunc = this->backend()->function(fntype, user_name, init_name,
-                                                   true, true, true, false,
-                                                   false, false, unknown_loc);
+						   flags, unknown_loc);
       Bexpression* pfunc_code =
           this->backend()->function_code_expression(pfunc, unknown_loc);
       Bexpression* pfunc_call =
@@ -5391,7 +5404,7 @@ Function::export_func_with_type(Export* exp, const std::string& name,
 	  exp->write_c_string(")");
 	}
     }
-  exp->write_c_string(";\n");
+  exp->write_c_string("\n");
 }
 
 // Import a function.
@@ -5498,7 +5511,8 @@ Function::import_func(Import* imp, std::string* pname,
 	  imp->require_c_string(")");
 	}
     }
-  imp->require_c_string(";\n");
+  imp->require_semicolon_if_old_version();
+  imp->require_c_string("\n");
   *presults = results;
 }
 
@@ -5509,7 +5523,7 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
 {
   if (this->fndecl_ == NULL)
     {
-      bool is_visible = false;
+      unsigned int flags = 0;
       bool is_init_fn = false;
       Type* rtype = NULL;
       if (no->package() != NULL)
@@ -5521,12 +5535,12 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
 	;
       else if (no->name() == gogo->get_init_fn_name())
 	{
-	  is_visible = true;
+	  flags |= Backend::function_is_visible;
 	  is_init_fn = true;
 	}
       else if (Gogo::unpack_hidden_name(no->name()) == "main"
                && gogo->is_main_package())
-        is_visible = true;
+	flags |= Backend::function_is_visible;
       // Methods have to be public even if they are hidden because
       // they can be pulled into type descriptors when using
       // anonymous fields.
@@ -5534,7 +5548,7 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
                || this->type_->is_method())
         {
 	  if (!this->is_unnamed_type_stub_method_)
-	    is_visible = true;
+	    flags |= Backend::function_is_visible;
 	  if (this->type_->is_method())
 	    rtype = this->type_->receiver()->type();
         }
@@ -5547,7 +5561,7 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
 	  // If an assembler name is explicitly specified, there must
 	  // be some reason to refer to the symbol from a different
 	  // object file.
-	  is_visible = true;
+	  flags |= Backend::function_is_visible;
 	}
       else if (is_init_fn)
 	{
@@ -5579,6 +5593,9 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
       if ((this->pragmas_ & GOPRAGMA_NOINLINE) != 0)
 	is_inlinable = false;
 
+      if (is_inlinable)
+	flags |= Backend::function_is_inlinable;
+
       // If this is a thunk created to call a function which calls
       // the predeclared recover function, we need to disable
       // stack splitting for the thunk.
@@ -5588,20 +5605,22 @@ Function::get_or_make_decl(Gogo* gogo, Named_object* no)
       if ((this->pragmas_ & GOPRAGMA_NOSPLIT) != 0)
 	disable_split_stack = true;
 
+      if (disable_split_stack)
+	flags |= Backend::function_no_split_stack;
+
       // This should go into a unique section if that has been
       // requested elsewhere, or if this is a nointerface function.
       // We want to put a nointerface function into a unique section
       // because there is a good chance that the linker garbage
       // collection can discard it.
-      bool in_unique_section = (this->in_unique_section_
-				|| (this->is_method() && this->nointerface()));
+      if (this->in_unique_section_
+	  || (this->is_method() && this->nointerface()))
+	flags |= Backend::function_in_unique_section;
 
       Btype* functype = this->type_->get_backend_fntype(gogo);
       this->fndecl_ =
           gogo->backend()->function(functype, no->get_id(gogo), asm_name,
-                                    is_visible, false, is_inlinable,
-                                    disable_split_stack, false,
-				    in_unique_section, this->location());
+				    flags, this->location());
     }
   return this->fndecl_;
 }
@@ -5613,7 +5632,10 @@ Function_declaration::get_or_make_decl(Gogo* gogo, Named_object* no)
 {
   if (this->fndecl_ == NULL)
     {
-      bool does_not_return = false;
+      unsigned int flags =
+	(Backend::function_is_visible
+	 | Backend::function_is_declaration
+	 | Backend::function_is_inlinable);
 
       // Let Go code use an asm declaration to pick up a builtin
       // function.
@@ -5629,7 +5651,7 @@ Function_declaration::get_or_make_decl(Gogo* gogo, Named_object* no)
 
 	  if (this->asm_name_ == "runtime.gopanic"
 	      || this->asm_name_ == "__go_runtime_error")
-	    does_not_return = true;
+	    flags |= Backend::function_does_not_return;
 	}
 
       std::string asm_name;
@@ -5646,8 +5668,7 @@ Function_declaration::get_or_make_decl(Gogo* gogo, Named_object* no)
       Btype* functype = this->fntype_->get_backend_fntype(gogo);
       this->fndecl_ =
           gogo->backend()->function(functype, no->get_id(gogo), asm_name,
-                                    true, true, true, false, does_not_return,
-				    false, this->location());
+				    flags, this->location());
     }
 
   return this->fndecl_;
@@ -6491,7 +6512,8 @@ Variable::flatten_init_expression(Gogo* gogo, Named_object* function,
       // If an interface conversion is needed, we need a temporary
       // variable.
       if (this->type_ != NULL
-	  && !Type::are_identical(this->type_, this->init_->type(), false,
+	  && !Type::are_identical(this->type_, this->init_->type(),
+				  Type::COMPARE_ERRORS | Type::COMPARE_TAGS,
 				  NULL)
 	  && this->init_->type()->interface_type() != NULL
 	  && !this->init_->is_variable())
@@ -6885,7 +6907,7 @@ Variable::export_var(Export* exp, const std::string& name) const
   exp->write_string(name);
   exp->write_c_string(" ");
   exp->write_type(this->type());
-  exp->write_c_string(";\n");
+  exp->write_c_string("\n");
 }
 
 // Import a variable.
@@ -6897,7 +6919,8 @@ Variable::import_var(Import* imp, std::string* pname, Type** ptype)
   *pname = imp->read_identifier();
   imp->require_c_string(" ");
   *ptype = imp->read_type();
-  imp->require_c_string(";\n");
+  imp->require_semicolon_if_old_version();
+  imp->require_c_string("\n");
 }
 
 // Convert a variable to the backend representation.
@@ -7089,7 +7112,7 @@ Named_constant::export_const(Export* exp, const std::string& name) const
     }
   exp->write_c_string("= ");
   this->expr()->export_expression(exp);
-  exp->write_c_string(";\n");
+  exp->write_c_string("\n");
 }
 
 // Import a constant.
@@ -7110,7 +7133,8 @@ Named_constant::import_const(Import* imp, std::string* pname, Type** ptype,
     }
   imp->require_c_string("= ");
   *pexpr = Expression::import_expression(imp);
-  imp->require_c_string(";\n");
+  imp->require_semicolon_if_old_version();
+  imp->require_c_string("\n");
 }
 
 // Get the backend representation.
@@ -7507,8 +7531,8 @@ Named_object::export_named_object(Export* exp) const
       break;
 
     case NAMED_OBJECT_TYPE:
-      this->type_value()->export_named_type(exp, this->name_);
-      break;
+      // Types are handled by export::write_types.
+      go_unreachable();
 
     case NAMED_OBJECT_TYPE_DECLARATION:
       go_error_at(this->type_declaration_value()->location(),

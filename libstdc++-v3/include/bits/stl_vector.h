@@ -125,7 +125,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       struct _Vector_impl
 	: public _Tp_alloc_type, public _Vector_impl_data
       {
-	_Vector_impl() _GLIBCXX_NOEXCEPT_IF( noexcept(_Tp_alloc_type()) )
+	_Vector_impl() _GLIBCXX_NOEXCEPT_IF(
+	    is_nothrow_default_constructible<_Tp_alloc_type>::value)
 	: _Tp_alloc_type()
 	{ }
 
@@ -420,6 +421,15 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       typedef size_t					size_type;
       typedef ptrdiff_t					difference_type;
       typedef _Alloc					allocator_type;
+
+    private:
+#if __cplusplus >= 201103L
+      static constexpr bool __use_relocate =
+	noexcept(std::__relocate_a(std::declval<pointer>(),
+				   std::declval<pointer>(),
+				   std::declval<pointer>(),
+				   std::declval<_Tp_alloc_type&>()));
+#endif
 
     protected:
       using _Base::_M_allocate;
@@ -1726,7 +1736,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       static size_type
       _S_max_size(const _Tp_alloc_type& __a) _GLIBCXX_NOEXCEPT
       {
-	const size_t __diffmax = __gnu_cxx::__numeric_traits<ptrdiff_t>::__max;
+	// std::distance(begin(), end()) cannot be greater than PTRDIFF_MAX,
+	// and realistically we can't store more than PTRDIFF_MAX/sizeof(T)
+	// (even if std::allocator_traits::max_size says we can).
+	const size_t __diffmax
+	  = __gnu_cxx::__numeric_traits<ptrdiff_t>::__max / sizeof(_Tp);
 	const size_t __allocmax = _Alloc_traits::max_size(__a);
 	return (std::min)(__diffmax, __allocmax);
       }
