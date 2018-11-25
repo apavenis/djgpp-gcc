@@ -183,8 +183,8 @@ make all install
 cd $RPM_BUILD_DIR/%{name}-%{version} || exit 1
 tar xzf $RPM_SOURCE_DIR/automake-%{automake_version}.tar.gz || exit 1
 cd $RPM_BUILD_DIR/%{name}-%{version}/automake-%{automake_version}
-./configure --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst
-make all install
+PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" ./configure --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst
+PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" make all install
 
 cd $RPM_BUILD_DIR/%{name}-%{version} || exit 1
 tar xjf $RPM_SOURCE_DIR/gmp-%{gmp_version}.tar.bz2 || exit 1
