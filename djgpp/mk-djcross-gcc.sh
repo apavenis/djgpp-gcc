@@ -4,7 +4,7 @@ gcc_src_ext=xz
 gmp_version=6.1.2
 mpfr_version=4.0.1
 mpc_version=1.1.0
-autoconf_version=2.64
+autoconf_version=2.69
 automake_version=1.11.6
 
 target=i586-pc-msdosdjgpp
