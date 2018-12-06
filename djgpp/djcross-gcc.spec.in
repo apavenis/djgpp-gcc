@@ -461,6 +461,13 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Thu Dec 06 2018 Sun Jan 21 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-7.4.0
+- Use MPFR-4.0.10
+
+* Thu Jan 25 2018 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-7.3.0
+
 * Sun Jan 21 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Use MPFR-4.0.0 and MPC-1.1.0
 
