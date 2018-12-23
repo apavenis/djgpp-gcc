@@ -1250,6 +1250,8 @@ unsafe_conversion_p (location_t loc, tree type, tree expr, tree result,
 
     loc = expansion_point_location_if_in_system_header (loc);
 
+  expr = fold_for_warn (expr);
+
   if (TREE_CODE (expr) == REAL_CST || TREE_CODE (expr) == INTEGER_CST)
     {
       /* If type is complex, we are interested in compatibility with
@@ -1947,6 +1949,13 @@ verify_tree (tree x, struct tlist **pbefore_sp, struct tlist **pno_sp,
       writer = 0;
       goto restart;
 
+    case VIEW_CONVERT_EXPR:
+      if (location_wrapper_p (x))
+	{
+	  x = TREE_OPERAND (x, 0);
+	  goto restart;
+	}
+      gcc_fallthrough ();
     default:
       /* For other expressions, simply recurse on their operands.
 	 Manual tail recursion for unary expressions.
@@ -3241,6 +3250,7 @@ decl_with_nonnull_addr_p (const_tree expr)
 tree
 c_common_truthvalue_conversion (location_t location, tree expr)
 {
+  STRIP_ANY_LOCATION_WRAPPER (expr);
   switch (TREE_CODE (expr))
     {
     case EQ_EXPR:   case NE_EXPR:   case UNEQ_EXPR: case LTGT_EXPR:
@@ -3458,6 +3468,14 @@ c_common_truthvalue_conversion (location_t location, tree expr)
 		      "truth value");
 	  TREE_NO_WARNING (expr) = 1;
 	}
+      break;
+
+    case CONST_DECL:
+      {
+	tree folded_expr = fold_for_warn (expr);
+	if (folded_expr != expr)
+	  return c_common_truthvalue_conversion (location, folded_expr);
+      }
       break;
 
     default:
@@ -5143,11 +5161,11 @@ c_init_attributes (void)
    then reject alignments greater than MAX_OFILE_ALIGNMENT when
    converted to bits.  Otherwise, consider valid only alignments
    that are less than HOST_BITS_PER_INT - LOG2_BITS_PER_UNIT.
-   If ALLOW_ZERO then 0 is valid and should result in
-   a return of -1 with no error.  */
+   Zero is not considered a valid argument (and results in -1 on
+   return) but it only triggers a warning when WARN_ZERO is set.  */
 
 int
-check_user_alignment (const_tree align, bool objfile, bool allow_zero)
+check_user_alignment (const_tree align, bool objfile, bool warn_zero)
 {
   if (error_operand_p (align))
     return -1;
@@ -5159,8 +5177,14 @@ check_user_alignment (const_tree align, bool objfile, bool allow_zero)
       return -1;
     }
 
-  if (allow_zero && integer_zerop (align))
-    return -1;
+  if (integer_zerop (align))
+    {
+      if (warn_zero)
+	warning (OPT_Wattributes,
+		 "requested alignment %qE is not a positive power of 2",
+		 align);
+      return -1;
+    }
 
   int log2bitalign;
   if (tree_int_cst_sgn (align) == -1
@@ -6273,6 +6297,7 @@ fold_offsetof (tree expr, tree type, enum tree_code ctx)
 	return base;
 
       t = TREE_OPERAND (expr, 1);
+      STRIP_ANY_LOCATION_WRAPPER (t);
 
       /* Check if the offset goes beyond the upper bound of the array.  */
       if (TREE_CODE (t) == INTEGER_CST && tree_int_cst_sgn (t) >= 0)
@@ -6351,6 +6376,8 @@ complete_array_type (tree *ptype, tree initial_value, bool do_default)
   maxindex = size_zero_node;
   if (initial_value)
     {
+      STRIP_ANY_LOCATION_WRAPPER (initial_value);
+
       if (TREE_CODE (initial_value) == STRING_CST)
 	{
 	  int eltsize
@@ -7900,6 +7927,7 @@ convert_vector_to_array_for_subscript (location_t loc,
 
       ret = !lvalue_p (*vecp);
 
+      index = fold_for_warn (index);
       if (TREE_CODE (index) == INTEGER_CST)
         if (!tree_fits_uhwi_p (index)
 	    || maybe_ge (tree_to_uhwi (index), TYPE_VECTOR_SUBPARTS (type)))

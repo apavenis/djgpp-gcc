@@ -216,6 +216,7 @@ class test_runner
 extern void attribute_c_tests ();
 extern void bitmap_c_tests ();
 extern void cgraph_c_tests ();
+extern void convert_c_tests ();
 extern void diagnostic_c_tests ();
 extern void diagnostic_show_locus_c_tests ();
 extern void dumpfile_c_tests ();
@@ -433,6 +434,15 @@ extern int num_passes;
 #define ASSERT_STR_CONTAINS(HAYSTACK, NEEDLE)				\
   SELFTEST_BEGIN_STMT							\
   ::selftest::assert_str_contains (SELFTEST_LOCATION, #HAYSTACK, #NEEDLE, \
+				   (HAYSTACK), (NEEDLE));		\
+  SELFTEST_END_STMT
+
+/* Like ASSERT_STR_CONTAINS, but treat LOC as the effective location of the
+   selftest.  */
+
+#define ASSERT_STR_CONTAINS_AT(LOC, HAYSTACK, NEEDLE)			\
+  SELFTEST_BEGIN_STMT							\
+  ::selftest::assert_str_contains (LOC, #HAYSTACK, #NEEDLE,		\
 				   (HAYSTACK), (NEEDLE));		\
   SELFTEST_END_STMT
 

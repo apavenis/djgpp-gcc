@@ -1927,7 +1927,16 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
 	 VN_WALKREWRITE guard).  */
       if (vn_walk_kind == VN_WALKREWRITE
 	  && is_gimple_reg_type (TREE_TYPE (lhs))
-	  && types_compatible_p (TREE_TYPE (lhs), vr->type))
+	  && types_compatible_p (TREE_TYPE (lhs), vr->type)
+	  /* The overlap restriction breaks down when either access
+	     alias-set is zero.  Still for accesses of the size of
+	     an addressable unit there can be no overlaps.  Overlaps
+	     between different union members are not an issue since
+	     activation of a union member via a store makes the
+	     values of untouched bytes unspecified.  */
+	  && (known_eq (ref->size, BITS_PER_UNIT)
+	      || (get_alias_set (lhs) != 0
+		  && ao_ref_alias_set (ref) != 0)))
 	{
 	  tree *saved_last_vuse_ptr = last_vuse_ptr;
 	  /* Do not update last_vuse_ptr in vn_reference_lookup_2.  */
@@ -2115,6 +2124,7 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *vr_,
       base2 = get_ref_base_and_extent (gimple_assign_lhs (def_stmt),
 				       &offset2, &size2, &maxsize2, &reverse);
       if (known_size_p (maxsize2)
+	  && known_eq (maxsize2, size2)
 	  && operand_equal_p (base, base2, 0)
 	  && known_subrange_p (offset, maxsize, offset2, size2))
 	{
@@ -4974,10 +4984,6 @@ eliminate_dom_walker::eliminate_stmt (basic_block b, gimple_stmt_iterator *gsi)
 	    return;
 
 	  /* Else replace its RHS.  */
-	  bool can_make_abnormal_goto
-	      = is_gimple_call (stmt)
-	      && stmt_can_make_abnormal_goto (stmt);
-
 	  if (dump_file && (dump_flags & TDF_DETAILS))
 	    {
 	      fprintf (dump_file, "Replaced ");
@@ -4987,12 +4993,23 @@ eliminate_dom_walker::eliminate_stmt (basic_block b, gimple_stmt_iterator *gsi)
 	      fprintf (dump_file, " in ");
 	      print_gimple_stmt (dump_file, stmt, 0);
 	    }
-
 	  eliminations++;
+
+	  bool can_make_abnormal_goto = (is_gimple_call (stmt)
+					 && stmt_can_make_abnormal_goto (stmt));
 	  gimple *orig_stmt = stmt;
 	  if (!useless_type_conversion_p (TREE_TYPE (lhs),
 					  TREE_TYPE (sprime)))
-	    sprime = fold_convert (TREE_TYPE (lhs), sprime);
+	    {
+	      /* We preserve conversions to but not from function or method
+		 types.  This asymmetry makes it necessary to re-instantiate
+		 conversions here.  */
+	      if (POINTER_TYPE_P (TREE_TYPE (lhs))
+		  && FUNC_OR_METHOD_TYPE_P (TREE_TYPE (TREE_TYPE (lhs))))
+		sprime = fold_convert (TREE_TYPE (lhs), sprime);
+	      else
+		gcc_unreachable ();
+	    }
 	  tree vdef = gimple_vdef (stmt);
 	  tree vuse = gimple_vuse (stmt);
 	  propagate_tree_value_into_stmt (gsi, sprime);

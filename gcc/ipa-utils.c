@@ -402,6 +402,10 @@ ipa_merge_profiles (struct cgraph_node *dst,
   if (src->profile_id && !dst->profile_id)
     dst->profile_id = src->profile_id;
 
+  /* Merging zero profile to dst is no-op.  */
+  if (src->count.ipa () == profile_count::zero ())
+    return;
+
   /* FIXME when we merge in unknown profile, we ought to set counts as
      unsafe.  */
   if (!src->count.initialized_p ()
@@ -639,7 +643,9 @@ ipa_merge_profiles (struct cgraph_node *dst,
 	}
       if (!preserve_body)
         src->release_body ();
-      ipa_update_overall_fn_summary (dst);
+      /* Update summary.  */
+      symtab->call_cgraph_removal_hooks (dst);
+      symtab->call_cgraph_insertion_hooks (dst);
     }
   /* TODO: if there is no match, we can scale up.  */
   src->decl = oldsrcdecl;

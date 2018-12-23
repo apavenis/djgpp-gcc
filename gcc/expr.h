@@ -219,7 +219,7 @@ extern int can_store_by_pieces (unsigned HOST_WIDE_INT,
    MEMSETP is true if this is a real memset/bzero, not a copy.
    Returns TO + LEN.  */
 extern rtx store_by_pieces (rtx, unsigned HOST_WIDE_INT, by_pieces_constfn,
-			    void *, unsigned int, bool, int);
+			    void *, unsigned int, bool, memop_ret);
 
 /* Emit insns to set X from Y.  */
 extern rtx_insn *emit_move_insn (rtx, rtx);
@@ -309,7 +309,8 @@ extern bool can_move_by_pieces (unsigned HOST_WIDE_INT, unsigned int);
 extern unsigned HOST_WIDE_INT highest_pow2_factor (const_tree);
 
 extern bool categorize_ctor_elements (const_tree, HOST_WIDE_INT *,
-				      HOST_WIDE_INT *, bool *);
+				      HOST_WIDE_INT *, HOST_WIDE_INT *,
+				      bool *);
 
 extern void expand_operands (tree, tree, rtx, rtx*, rtx*,
 			     enum expand_modifier);

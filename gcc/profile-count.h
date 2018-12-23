@@ -447,8 +447,12 @@ public:
     {
       profile_probability ret = *this * cprob;
       /* The following is equivalent to:
-         *this = cprob.invert () * *this / ret.invert ();  */
-      *this = (*this - ret) / ret.invert ();
+         *this = cprob.invert () * *this / ret.invert ();
+	 Avoid scaling when overall outcome is supposed to be always.
+	 Without knowing that one is inverse of toher, the result would be
+	 conservative.  */
+      if (!(*this == profile_probability::always ()))
+        *this = (*this - ret) / ret.invert ();
       return ret;
     }
 
@@ -879,7 +883,7 @@ public:
       if (other == profile_count::zero ())
 	return true;
       if (*this == profile_count::zero ())
-	return !(other == profile_count::zero ());
+	return (other == profile_count::zero ());
       gcc_checking_assert (compatible_p (other));
       return m_val >= other.m_val;
     }

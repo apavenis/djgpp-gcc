@@ -6097,7 +6097,8 @@ extern int raw_dump_id;
 extern bool check_dtor_name			(tree, tree);
 int magic_varargs_p				(tree);
 
-extern tree build_conditional_expr		(location_t, tree, tree, tree, 
+extern tree build_conditional_expr		(const op_location_t &,
+						 tree, tree, tree,
                                                  tsubst_flags_t);
 extern tree build_addr_func			(tree, tsubst_flags_t);
 extern void set_flags_from_callee		(tree);
@@ -6122,7 +6123,8 @@ extern tree build_new_method_call		(tree, tree,
 extern tree build_special_member_call		(tree, tree,
 						 vec<tree, va_gc> **,
 						 tree, int, tsubst_flags_t);
-extern tree build_new_op			(location_t, enum tree_code,
+extern tree build_new_op			(const op_location_t &,
+						 enum tree_code,
 						 int, tree, tree, tree, tree *,
 						 tsubst_flags_t);
 extern tree build_op_call			(tree, vec<tree, va_gc> **,
@@ -6145,6 +6147,7 @@ extern location_t get_fndecl_argument_location  (tree, int);
 extern void complain_about_bad_argument	(location_t arg_loc,
 						 tree from_type, tree to_type,
 						 tree fndecl, int parmnum);
+extern void maybe_inform_about_fndecl_for_bogus_argument_init (tree, int);
 
 
 /* A class for recording information about access failures (e.g. private
@@ -6272,7 +6275,7 @@ extern bool type_has_constexpr_default_constructor (tree);
 extern bool type_has_virtual_destructor		(tree);
 extern bool classtype_has_move_assign_or_move_ctor_p (tree, bool user_declared);
 extern bool classtype_has_non_deleted_move_ctor (tree);
-extern tree classtype_has_user_copy_or_dtor	(tree);
+extern tree classtype_has_depr_implicit_copy	(tree);
 extern bool type_build_ctor_call		(tree);
 extern bool type_build_dtor_call		(tree);
 extern void explain_non_literal_class		(tree);
@@ -6996,7 +6999,7 @@ extern tree begin_compound_stmt			(unsigned int);
 
 extern void finish_compound_stmt		(tree);
 extern tree finish_asm_stmt			(int, tree, tree, tree, tree,
-						 tree);
+						 tree, bool);
 extern tree finish_label_stmt			(tree);
 extern void finish_label_decl			(tree);
 extern cp_expr finish_parenthesized_expr	(cp_expr);
@@ -7338,7 +7341,7 @@ extern tree cp_build_function_call_nary         (tree, tsubst_flags_t, ...)
 						ATTRIBUTE_SENTINEL;
 extern tree cp_build_function_call_vec		(tree, vec<tree, va_gc> **,
 						 tsubst_flags_t);
-extern tree build_x_binary_op			(location_t,
+extern tree build_x_binary_op			(const op_location_t &,
 						 enum tree_code, tree,
 						 enum tree_code, tree,
 						 enum tree_code, tree *,
@@ -7405,7 +7408,7 @@ extern tree composite_pointer_type		(tree, tree, tree, tree,
 extern tree merge_types				(tree, tree);
 extern tree strip_array_domain			(tree);
 extern tree check_return_expr			(tree, bool *);
-extern tree cp_build_binary_op                  (location_t,
+extern tree cp_build_binary_op                  (const op_location_t &,
 						 enum tree_code, tree, tree,
 						 tsubst_flags_t);
 extern tree build_x_vec_perm_expr               (location_t,
@@ -7540,7 +7543,10 @@ extern void cxx_omp_finish_clause		(tree, gimple_seq *);
 extern bool cxx_omp_privatize_by_reference	(const_tree);
 extern bool cxx_omp_disregard_value_expr	(tree, bool);
 extern void cp_fold_function			(tree);
+extern tree cp_fold_maybe_rvalue		(tree, bool);
+extern tree cp_fold_rvalue			(tree);
 extern tree cp_fully_fold			(tree);
+extern tree cp_fully_fold_init			(tree);
 extern void clear_fold_cache			(void);
 extern tree lookup_hotness_attribute		(tree);
 extern tree process_stmt_hotness_attribute	(tree);
@@ -7662,9 +7668,11 @@ extern bool require_rvalue_constant_expression (tree);
 extern bool require_potential_rvalue_constant_expression (tree);
 extern tree cxx_constant_value			(tree, tree = NULL_TREE);
 extern tree cxx_constant_init			(tree, tree = NULL_TREE);
-extern tree maybe_constant_value		(tree, tree = NULL_TREE);
+extern tree maybe_constant_value		(tree, tree = NULL_TREE, bool = false);
 extern tree maybe_constant_init			(tree, tree = NULL_TREE, bool = false);
-extern tree fold_non_dependent_expr		(tree, tsubst_flags_t = tf_warning_or_error);
+extern tree fold_non_dependent_expr		(tree,
+						 tsubst_flags_t = tf_warning_or_error,
+						 bool = false);
 extern tree fold_simple				(tree);
 extern bool is_sub_constant_expr                (tree);
 extern bool reduced_constant_expression_p       (tree);

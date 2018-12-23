@@ -2517,6 +2517,23 @@ else
 	AC_MSG_RESULT($gcc_cv_readelf)
 fi
 
+# Figure out what otool we will be using.
+AS_VAR_SET_IF(gcc_cv_otool,, [
+if test -x otool$build_exeext; then
+	gcc_cv_otool=./otool$build_exeext
+elif ( set dummy $OTOOL_FOR_TARGET; test -x $[2] ); then
+        gcc_cv_otool="$OTOOL_FOR_TARGET"
+else
+        AC_PATH_PROG(gcc_cv_otool, $OTOOL_FOR_TARGET)
+fi])
+
+AC_MSG_CHECKING(what otool to use)
+if test x$gcc_cv_otool = x; then
+	AC_MSG_RESULT(not found)
+else
+	AC_MSG_RESULT($gcc_cv_otool)
+fi
+
 # Figure out what assembler alignment features are present.
 gcc_GAS_CHECK_FEATURE([.balign and .p2align], gcc_cv_as_balign_and_p2align,
  [2,6,0],,
@@ -4650,6 +4667,12 @@ LCF0:
       [ .reloc .,R_PPC64_ENTRY; nop],,
       [AC_DEFINE(HAVE_AS_ENTRY_MARKERS, 1,
 	  [Define if your assembler supports the R_PPC64_ENTRY relocation.])])
+
+    gcc_GAS_CHECK_FEATURE([plt sequence marker support],
+      gcc_cv_as_powerpc_pltseq_markers, [2,31,0],-a32 --fatal-warnings,
+      [ .reloc .,R_PPC_PLTSEQ; nop],,
+      [AC_DEFINE(HAVE_AS_PLTSEQ, 1,
+	  [Define if your assembler supports R_PPC*_PLTSEQ relocations.])])
 
     case $target in
       *-*-aix*)

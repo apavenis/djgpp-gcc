@@ -39,6 +39,9 @@
 namespace fs = std::filesystem;
 namespace posix = std::filesystem::__gnu_posix;
 
+template class std::__shared_ptr<fs::_Dir>;
+template class std::__shared_ptr<fs::recursive_directory_iterator::_Dir_stack>;
+
 struct fs::_Dir : _Dir_base
 {
   _Dir(const fs::path& p, bool skip_permission_denied, error_code& ec)
@@ -58,7 +61,9 @@ struct fs::_Dir : _Dir_base
   {
     if (const auto entp = _Dir_base::advance(skip_permission_denied, ec))
       {
-	entry = fs::directory_entry{path / entp->d_name, get_file_type(*entp)};
+	auto name = path;
+	name /= entp->d_name;
+	entry = fs::directory_entry{std::move(name), get_file_type(*entp)};
 	return true;
       }
     else if (!ec)
@@ -125,7 +130,7 @@ directory_iterator(const path& p, directory_options options, error_code* ecptr)
 
   if (dir.dirp)
     {
-      auto sp = std::make_shared<fs::_Dir>(std::move(dir));
+      auto sp = std::__make_shared<fs::_Dir>(std::move(dir));
       if (sp->advance(skip_permission_denied, ec))
 	_M_dir.swap(sp);
     }
@@ -185,7 +190,7 @@ recursive_directory_iterator(const path& p, directory_options options,
     {
       if (ecptr)
 	ecptr->clear();
-      auto sp = std::make_shared<_Dir_stack>();
+      auto sp = std::__make_shared<_Dir_stack>();
       sp->push(_Dir{ dirp, p });
       if (ecptr ? sp->top().advance(*ecptr) : sp->top().advance())
 	_M_dirs.swap(sp);
