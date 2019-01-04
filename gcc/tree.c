@@ -1,5 +1,5 @@
 /* Language-independent node constructors for parse phase of GNU compiler.
-   Copyright (C) 1987-2018 Free Software Foundation, Inc.
+   Copyright (C) 1987-2019 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -5372,7 +5372,8 @@ fld_simplified_type (tree t, struct free_lang_data_d *fld)
     return t;
   if (POINTER_TYPE_P (t))
     return fld_incomplete_type_of (t, fld);
-  if (TREE_CODE (t) == ARRAY_TYPE)
+  /* FIXME: This triggers verification error, see PR88140.  */
+  if (TREE_CODE (t) == ARRAY_TYPE && 0)
     return fld_process_array_type (t, fld_simplified_type (TREE_TYPE (t), fld),
 				   fld_simplified_types, fld);
   return t;
@@ -6190,7 +6191,12 @@ free_lang_data (void)
   /* If we are the LTO frontend we have freed lang-specific data already.  */
   if (in_lto_p
       || (!flag_generate_lto && !flag_generate_offload))
-    return 0;
+    {
+      /* Rebuild type inheritance graph even when not doing LTO to get
+	 consistent profile data.  */
+      rebuild_type_inheritance_graph ();
+      return 0;
+    }
 
   fld_incomplete_types = new hash_map<tree, tree>;
   fld_simplified_types = new hash_map<tree, tree>;
