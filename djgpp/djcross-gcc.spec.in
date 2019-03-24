@@ -421,6 +421,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgfortran.spec
 %{_libdir}/gcc/%{target}/%{gcc_version}/libcaf_single.*
 %{_libdir}/gcc/%{target}/%{gcc_version}/finclude
+%{_libdir}/gcc/%{target}/%{gcc_version}/include/ISO_Fortran_binding.h
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/f951
 %{_mandir}/man1/%{target}-gfortran.1.gz
 %endif
