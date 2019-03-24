@@ -1,4 +1,4 @@
-// { dg-options "-std=gnu++17 -lstdc++fs" }
+// { dg-options "-std=gnu++17" }
 // { dg-do run { target c++17 } }
 // { dg-require-filesystem-ts "" }
 
@@ -67,6 +67,11 @@ test01()
 void
 test02()
 {
+#if defined(__MINGW32__) || defined(__MINGW64__)
+  // No symlink support
+  return;
+#endif
+
   const std::error_code bad_ec = make_error_code(std::errc::invalid_argument);
   auto from = __gnu_test::nonexistent_path();
   auto to = __gnu_test::nonexistent_path();

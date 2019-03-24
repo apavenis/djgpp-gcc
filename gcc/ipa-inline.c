@@ -59,7 +59,7 @@ along with GCC; see the file COPYING3.  If not see
 	 optimization) and thus improve quality of analysis done by real IPA
 	 optimizers.
 
-	 Because of lack of whole unit knowledge, the pass can not really make
+	 Because of lack of whole unit knowledge, the pass cannot really make
 	 good code size/performance tradeoffs.  It however does very simple
 	 speculative inlining allowing code size to grow by
 	 EARLY_INLINING_INSNS when callee is leaf function.  In this case the
@@ -262,6 +262,12 @@ static bool
 sanitize_attrs_match_for_inline_p (const_tree caller, const_tree callee)
 {
   if (!caller || !callee)
+    return true;
+
+  /* Allow inlining always_inline functions into no_sanitize_address
+     functions.  */
+  if (!sanitize_flags_p (SANITIZE_ADDRESS, caller)
+      && lookup_attribute ("always_inline", DECL_ATTRIBUTES (callee)))
     return true;
 
   return ((sanitize_flags_p (SANITIZE_ADDRESS, caller)
@@ -523,7 +529,7 @@ can_inline_edge_by_limits_p (struct cgraph_edge *e, bool report,
 	       > opt_for_fn (caller->decl, optimize_size))
 	{
 	  int growth = estimate_edge_growth (e);
-	  if (growth > 0
+	  if (growth > PARAM_VALUE (PARAM_MAX_INLINE_INSNS_SIZE)
 	      && (!DECL_DECLARED_INLINE_P (callee->decl)
 		  && growth >= MAX (MAX_INLINE_INSNS_SINGLE,
 				    MAX_INLINE_INSNS_AUTO)))
@@ -562,7 +568,7 @@ can_early_inline_edge_p (struct cgraph_edge *e)
 {
   struct cgraph_node *callee = e->callee->ultimate_alias_target ();
   /* Early inliner might get called at WPA stage when IPA pass adds new
-     function.  In this case we can not really do any of early inlining
+     function.  In this case we cannot really do any of early inlining
      because function bodies are missing.  */
   if (cgraph_inline_failed_type (e->inline_failed) == CIF_FINAL_ERROR)
     return false;
@@ -635,10 +641,9 @@ want_early_inline_function_p (struct cgraph_edge *e)
       int growth = estimate_edge_growth (e);
       int n;
 
-      if (growth <= 0)
+      if (growth <= PARAM_VALUE (PARAM_MAX_INLINE_INSNS_SIZE))
 	;
-      else if (!e->maybe_hot_p ()
-	       && growth > 0)
+      else if (!e->maybe_hot_p ())
 	{
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, e->call_stmt,
@@ -791,7 +796,7 @@ want_inline_small_function_p (struct cgraph_edge *e, bool report)
       ipa_hints hints = estimate_edge_hints (e);
       int big_speedup = -1; /* compute this lazily */
 
-      if (growth <= 0)
+      if (growth <= PARAM_VALUE (PARAM_MAX_INLINE_INSNS_SIZE))
 	;
       /* Apply MAX_INLINE_INSNS_SINGLE limit.  Do not do so when
 	 hints suggests that inlining given function is very profitable.  */
@@ -809,7 +814,8 @@ want_inline_small_function_p (struct cgraph_edge *e, bool report)
 	  want_inline = false;
 	}
       else if (!DECL_DECLARED_INLINE_P (callee->decl)
-	       && !opt_for_fn (e->caller->decl, flag_inline_functions))
+	       && !opt_for_fn (e->caller->decl, flag_inline_functions)
+	       && growth >= PARAM_VALUE (PARAM_MAX_INLINE_INSNS_SMALL))
 	{
 	  /* growth_likely_positive is expensive, always test it last.  */
           if (growth >= MAX_INLINE_INSNS_SINGLE
@@ -1173,7 +1179,7 @@ edge_badness (struct cgraph_edge *edge, bool dump)
 	    overall_growth += 256 * 256 - 256;
 	  denominator *= overall_growth;
         }
-      denominator *= inlined_time;
+      denominator *= ipa_fn_summaries->get (caller)->self_size + growth;
 
       badness = - numerator / denominator;
 
@@ -1772,7 +1778,7 @@ inline_small_functions (void)
      metrics.  */
 
   max_count = profile_count::uninitialized ();
-  ipa_reduced_postorder (order, true, true, NULL);
+  ipa_reduced_postorder (order, true, NULL);
   free (order);
 
   FOR_EACH_DEFINED_FUNCTION (node)

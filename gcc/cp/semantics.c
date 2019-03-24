@@ -646,10 +646,10 @@ maybe_convert_cond (tree cond)
     return NULL_TREE;
 
   /* Wait until we instantiate templates before doing conversion.  */
-  if (processing_template_decl)
+  if (type_dependent_expression_p (cond))
     return cond;
 
-  if (warn_sequence_point)
+  if (warn_sequence_point && !processing_template_decl)
     verify_sequence_points (cond);
 
   /* Do the conversion.  */
@@ -657,12 +657,11 @@ maybe_convert_cond (tree cond)
 
   if (TREE_CODE (cond) == MODIFY_EXPR
       && !TREE_NO_WARNING (cond)
-      && warn_parentheses)
-    {
-      warning_at (cp_expr_loc_or_loc (cond, input_location), OPT_Wparentheses,
-		  "suggest parentheses around assignment used as truth value");
-      TREE_NO_WARNING (cond) = 1;
-    }
+      && warn_parentheses
+      && warning_at (cp_expr_loc_or_loc (cond, input_location),
+		     OPT_Wparentheses, "suggest parentheses around "
+				       "assignment used as truth value"))
+    TREE_NO_WARNING (cond) = 1;
 
   return condition_conversion (cond);
 }
@@ -1829,7 +1828,15 @@ finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
     {
       tree scope = qualifying_scope;
       if (scope == NULL_TREE)
-	scope = context_for_name_lookup (decl);
+	{
+	  scope = context_for_name_lookup (decl);
+	  if (!TYPE_P (scope))
+	    {
+	      /* Can happen during error recovery (c++/85014).  */
+	      gcc_assert (seen_error ());
+	      return error_mark_node;
+	    }
+	}
       object = maybe_dummy_object (scope, NULL);
     }
 
@@ -2096,7 +2103,8 @@ finish_qualified_id_expr (tree qualifying_class,
     {
       /* See if any of the functions are non-static members.  */
       /* If so, the expression may be relative to 'this'.  */
-      if (!shared_member_p (expr)
+      if ((type_dependent_expression_p (expr)
+	   || !shared_member_p (expr))
 	  && current_class_ptr
 	  && DERIVED_FROM_P (qualifying_class,
 			     current_nonlambda_class_type ()))
@@ -2111,6 +2119,14 @@ finish_qualified_id_expr (tree qualifying_class,
 	   being taken.  */
 	expr = build_offset_ref (qualifying_class, expr, /*address_p=*/false,
 				 complain);
+    }
+  else if (!template_p
+	   && TREE_CODE (expr) == TEMPLATE_DECL
+	   && !DECL_FUNCTION_TEMPLATE_P (expr))
+    {
+      if (complain & tf_error)
+	error ("%qE missing template arguments", expr);
+      return error_mark_node;
     }
   else
     {
@@ -2127,6 +2143,8 @@ finish_qualified_id_expr (tree qualifying_class,
 	expr = build_qualified_name (TREE_TYPE (expr),
 				     qualifying_class, expr,
 				     template_p);
+      else if (tree wrap = maybe_get_tls_wrapper_call (expr))
+	expr = wrap;
 
       expr = convert_from_reference (expr);
     }
@@ -2795,14 +2813,31 @@ finish_compound_literal (tree type, tree compound_literal,
 	  return error_mark_node;
       }
 
+  /* Used to hold a copy of the compound literal in a template.  */
+  tree orig_cl = NULL_TREE;
+
   if (processing_template_decl)
     {
-      TREE_TYPE (compound_literal) = type;
+      const bool dependent_p
+	= (instantiation_dependent_expression_p (compound_literal)
+	   || dependent_type_p (type));
+      if (dependent_p)
+	/* We're about to return, no need to copy.  */
+	orig_cl = compound_literal;
+      else
+	/* We're going to need a copy.  */
+	orig_cl = unshare_constructor (compound_literal);
+      TREE_TYPE (orig_cl) = type;
       /* Mark the expression as a compound literal.  */
-      TREE_HAS_CONSTRUCTOR (compound_literal) = 1;
+      TREE_HAS_CONSTRUCTOR (orig_cl) = 1;
+      /* And as instantiation-dependent.  */
+      CONSTRUCTOR_IS_DEPENDENT (orig_cl) = dependent_p;
       if (fcl_context == fcl_c99)
-	CONSTRUCTOR_C99_COMPOUND_LITERAL (compound_literal) = 1;
-      return compound_literal;
+	CONSTRUCTOR_C99_COMPOUND_LITERAL (orig_cl) = 1;
+      /* If the compound literal is dependent, we're done for now.  */
+      if (dependent_p)
+	return orig_cl;
+      /* Otherwise, do go on to e.g. check narrowing.  */
     }
 
   type = complete_type (type);
@@ -2823,9 +2858,13 @@ finish_compound_literal (tree type, tree compound_literal,
     return error_mark_node;
   compound_literal = reshape_init (type, compound_literal, complain);
   if (SCALAR_TYPE_P (type)
-      && !BRACE_ENCLOSED_INITIALIZER_P (compound_literal)
-      && !check_narrowing (type, compound_literal, complain))
-    return error_mark_node;
+      && !BRACE_ENCLOSED_INITIALIZER_P (compound_literal))
+    {
+      tree t = instantiate_non_dependent_expr_sfinae (compound_literal,
+						      complain);
+      if (!check_narrowing (type, t, complain))
+	return error_mark_node;
+    }
   if (TREE_CODE (type) == ARRAY_TYPE
       && TYPE_DOMAIN (type) == NULL_TREE)
     {
@@ -2834,8 +2873,21 @@ finish_compound_literal (tree type, tree compound_literal,
       if (type == error_mark_node)
 	return error_mark_node;
     }
-  compound_literal = digest_init_flags (type, compound_literal, LOOKUP_NORMAL,
+  compound_literal = digest_init_flags (type, compound_literal,
+					LOOKUP_NORMAL | LOOKUP_NO_NARROWING,
 					complain);
+  if (compound_literal == error_mark_node)
+    return error_mark_node;
+
+  /* If we're in a template, return the original compound literal.  */
+  if (orig_cl)
+    {
+      if (!VECTOR_TYPE_P (type))
+	return get_target_expr_sfinae (orig_cl, complain);
+      else
+	return orig_cl;
+    }
+
   if (TREE_CODE (compound_literal) == CONSTRUCTOR)
     {
       TREE_HAS_CONSTRUCTOR (compound_literal) = true;
@@ -3437,11 +3489,12 @@ process_outer_var_ref (tree decl, tsubst_flags_t complain, bool odr_use)
 	= decl_function_context (containing_function);
     }
 
-  /* In a lambda within a template, wait until instantiation
-     time to implicitly capture.  */
+  /* In a lambda within a template, wait until instantiation time to implicitly
+     capture a parameter pack.  We want to wait because we don't know if we're
+     capturing the whole pack or a single element, and it's OK to wait because
+     find_parameter_packs_r walks into the lambda body.  */
   if (context == containing_function
-      && DECL_TEMPLATE_INFO (containing_function)
-      && uses_template_parms (DECL_TI_ARGS (containing_function)))
+      && DECL_PACK_P (decl))
     return decl;
 
   if (lambda_expr && VAR_P (decl)
@@ -3737,18 +3790,10 @@ finish_id_expression_1 (tree id_expression,
 	  *non_integral_constant_expression_p = true;
 	}
 
-      tree wrap;
-      if (VAR_P (decl)
-	  && !cp_unevaluated_operand
-	  && !processing_template_decl
-	  && (TREE_STATIC (decl) || DECL_EXTERNAL (decl))
-	  && CP_DECL_THREAD_LOCAL_P (decl)
-	  && (wrap = get_tls_wrapper_fn (decl)))
-	{
-	  /* Replace an evaluated use of the thread_local variable with
-	     a call to its wrapper.  */
-	  decl = build_cxx_call (wrap, 0, NULL, tf_warning_or_error);
-	}
+      if (tree wrap = maybe_get_tls_wrapper_call (decl))
+	/* Replace an evaluated use of the thread_local variable with
+	   a call to its wrapper.  */
+	decl = wrap;
       else if (TREE_CODE (decl) == TEMPLATE_ID_EXPR
 	       && !dependent_p
 	       && variable_template_p (TREE_OPERAND (decl, 0)))
@@ -4321,7 +4366,12 @@ expand_or_defer_fn_1 (tree fn)
   /* There's no reason to do any of the work here if we're only doing
      semantic analysis; this code just generates RTL.  */
   if (flag_syntax_only)
-    return false;
+    {
+      /* Pretend that this function has been written out so that we don't try
+	 to expand it again.  */
+      TREE_ASM_WRITTEN (fn) = 1;
+      return false;
+    }
 
   return true;
 }
@@ -5865,7 +5915,8 @@ finish_omp_declare_simd_methods (tree t)
 
   for (tree x = TYPE_FIELDS (t); x; x = DECL_CHAIN (x))
     {
-      if (TREE_CODE (TREE_TYPE (x)) != METHOD_TYPE)
+      if (TREE_CODE (x) == USING_DECL
+	  || !DECL_NONSTATIC_MEMBER_FUNCTION_P (x))
 	continue;
       tree ods = lookup_attribute ("omp declare simd", DECL_ATTRIBUTES (x));
       if (!ods || !TREE_VALUE (ods))
@@ -9056,11 +9107,26 @@ finish_omp_cancel (tree clauses)
 	  && OMP_CLAUSE_IF_MODIFIER (ifc) != VOID_CST)
 	error_at (OMP_CLAUSE_LOCATION (ifc),
 		  "expected %<cancel%> %<if%> clause modifier");
+      else
+	{
+	  tree ifc2 = omp_find_clause (OMP_CLAUSE_CHAIN (ifc), OMP_CLAUSE_IF);
+	  if (ifc2 != NULL_TREE)
+	    {
+	      gcc_assert (OMP_CLAUSE_IF_MODIFIER (ifc) == VOID_CST
+			  && OMP_CLAUSE_IF_MODIFIER (ifc2) != ERROR_MARK
+			  && OMP_CLAUSE_IF_MODIFIER (ifc2) != VOID_CST);
+	      error_at (OMP_CLAUSE_LOCATION (ifc2),
+			"expected %<cancel%> %<if%> clause modifier");
+	    }
+	}
 
-      tree type = TREE_TYPE (OMP_CLAUSE_IF_EXPR (ifc));
-      ifc = fold_build2_loc (OMP_CLAUSE_LOCATION (ifc), NE_EXPR,
-			     boolean_type_node, OMP_CLAUSE_IF_EXPR (ifc),
-			     build_zero_cst (type));
+      if (!processing_template_decl)
+	ifc = maybe_convert_cond (OMP_CLAUSE_IF_EXPR (ifc));
+      else
+	ifc = build_x_binary_op (OMP_CLAUSE_LOCATION (ifc), NE_EXPR,
+				 OMP_CLAUSE_IF_EXPR (ifc), ERROR_MARK,
+				 integer_zero_node, ERROR_MARK,
+				 NULL, tf_warning_or_error);
     }
   else
     ifc = boolean_true_node;
@@ -9931,6 +9997,28 @@ finish_builtin_launder (location_t loc, tree arg, tsubst_flags_t complain)
     arg = orig_arg;
   return build_call_expr_internal_loc (loc, IFN_LAUNDER,
 				       TREE_TYPE (arg), 1, arg);
+}
+
+/* Finish __builtin_convertvector (arg, type).  */
+
+tree
+cp_build_vec_convert (tree arg, location_t loc, tree type,
+		      tsubst_flags_t complain)
+{
+  if (error_operand_p (type))
+    return error_mark_node;
+  if (error_operand_p (arg))
+    return error_mark_node;
+
+  tree ret = NULL_TREE;
+  if (!type_dependent_expression_p (arg) && !dependent_type_p (type))
+    ret = c_build_vec_convert (cp_expr_loc_or_loc (arg, input_location), arg,
+			       loc, type, (complain & tf_error) != 0);
+
+  if (!processing_template_decl)
+    return ret;
+
+  return build_call_expr_internal_loc (loc, IFN_VEC_CONVERT, type, 1, arg);
 }
 
 #include "gt-cp-semantics.h"

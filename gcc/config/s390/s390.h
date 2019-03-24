@@ -44,7 +44,7 @@ enum processor_flags
 
 /* This is necessary to avoid a warning about comparing different enum
    types.  */
-#define s390_tune_attr ((enum attr_cpu)(s390_tune > PROCESSOR_2964_Z13 ? PROCESSOR_2964_Z13 : s390_tune ))
+#define s390_tune_attr ((enum attr_cpu)(s390_tune > PROCESSOR_3906_Z14 ? PROCESSOR_3906_Z14 : s390_tune ))
 
 /* These flags indicate that the generated code should run on a cpu
    providing the respective hardware facility regardless of the
@@ -1047,7 +1047,7 @@ extern const struct s390_processor processor_table[];
 
 /* Target pragma.  */
 
-/* resolve_overloaded_builtin can not be defined the normal way since
+/* resolve_overloaded_builtin cannot be defined the normal way since
    it is defined in code which technically belongs to the
    front-end.  */
 #define REGISTER_TARGET_PRAGMAS()		\

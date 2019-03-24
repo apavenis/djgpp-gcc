@@ -4347,7 +4347,19 @@ extern int tree_int_cst_sign_bit (const_tree);
 extern unsigned int tree_int_cst_min_precision (tree, signop);
 extern tree strip_array_types (tree);
 extern tree excess_precision_type (tree);
-extern bool valid_constant_size_p (const_tree);
+
+/* Desription of the reason why the argument of valid_constant_size_p
+   is not a valid size.  */
+enum cst_size_error {
+  cst_size_ok,
+  cst_size_not_constant,
+  cst_size_negative,
+  cst_size_too_big,
+  cst_size_overflow
+};
+
+extern bool valid_constant_size_p (const_tree, cst_size_error * = NULL);
+extern tree max_object_size ();
 
 /* Return true if T holds a value that can be represented as a poly_int64
    without loss of precision.  Store the value in *VALUE if so.  */
@@ -4506,6 +4518,7 @@ extern tree first_field (const_tree);
    combinations indicate definitive answers.  */
 
 extern bool initializer_zerop (const_tree, bool * = NULL);
+extern bool initializer_each_zero_or_onep (const_tree);
 
 extern wide_int vector_cst_int_elt (const_tree, unsigned int);
 extern tree vector_cst_elt (const_tree, unsigned int);
@@ -4520,6 +4533,8 @@ extern tree uniform_vector_p (const_tree);
    return NULL_TREE.  */
 
 extern tree uniform_integer_cst_p (tree);
+
+extern int single_nonzero_element (const_tree);
 
 /* Given a CONSTRUCTOR CTOR, return the element values as a vector.  */
 
@@ -5368,8 +5383,7 @@ may_be_aliased (const_tree var)
 	      || DECL_EXTERNAL (var)
 	      || TREE_ADDRESSABLE (var))
 	  && !((TREE_STATIC (var) || TREE_PUBLIC (var) || DECL_EXTERNAL (var))
-	       && ((TREE_READONLY (var)
-		    && !TYPE_NEEDS_CONSTRUCTING (TREE_TYPE (var)))
+	       && (TREE_READONLY (var)
 		   || (TREE_CODE (var) == VAR_DECL
 		       && DECL_NONALIASED (var)))));
 }
@@ -5864,7 +5878,7 @@ type_with_alias_set_p (const_tree t)
   if (COMPLETE_TYPE_P (t))
     return true;
 
-  /* Incomplete types can not be accessed in general except for arrays
+  /* Incomplete types cannot be accessed in general except for arrays
      where we can fetch its element despite we have no array bounds.  */
   if (TREE_CODE (t) == ARRAY_TYPE && COMPLETE_TYPE_P (TREE_TYPE (t)))
     return true;
