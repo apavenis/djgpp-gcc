@@ -2487,6 +2487,7 @@ nds32*-*-*)
 	  nds32*-*-linux*)
 	    tm_file="dbxelf.h elfos.h ${tm_file} gnu-user.h linux.h glibc-stdint.h nds32/linux.h nds32/nds32_intrinsic.h"
 	    tmake_file="${tmake_file} nds32/t-nds32 nds32/t-linux"
+	    gcc_cv_initfini_array=yes
 	    ;;
 	esac
 
@@ -4926,7 +4927,10 @@ case ${target} in
 		;;
 	i[34567]86-*-dragonfly* | x86_64-*-dragonfly*)
 		;;
-	i[34567]86-*-freebsd* | x86_64-*-freebsd*)
+	i[34567]86-*-freebsd*)
+		;;
+	x86_64-*-freebsd*)
+		tmake_file="${tmake_file} i386/t-freebsd64"
 		;;
 	ia64*-*-linux*)
 		;;
