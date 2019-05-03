@@ -13,6 +13,7 @@ export lt_cv_sys_max_cmd_len=12000
 export ac_cv_prog_LN='ln -s'
 export ac_cv_prog_LN_S='ln -s'
 export ac_cv_prog_AWK='awk'
+export LC_NUMERIC=.
 CONFIG_SHELL=`/bin/sh -c 'echo $0'`
 case $CONFIG_SHELL in *.exe) ;; *) CONFIG_SHELL=$CONFIG_SHELL.exe ;; esac
 export CONFIG_SHELL
