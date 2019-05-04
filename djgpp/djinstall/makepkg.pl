@@ -33,8 +33,6 @@ print "fver_find=$fver_find\n";
 
 my @cpp_rename = (
 "bits/c++0x_warning.h:cxx0x_warning.h",
-"bits/c++14_warning.h:cxx14_warning.h",
-"bits/c++17_warning.h:cxx17_warning.h",
 "bits/exception_defines.h:_excptdef.h",
 "bits/exception_ptr.h:_excptptr.h",
 "bits/hashtable.h:_hashtbl.h",
@@ -119,6 +117,16 @@ my @cpp_rename = (
 "profile/unordered_map:_unordmap",
 "profile/unordered_set:_unordset",
 "profile/forward_list:forward.lis",
+
+"pstl/algorithm_impl.h:algorithm_impl.h2",
+"pstl/execution_impl.h:execution_impl.h2",
+"pstl/glue_algorithm_impl.h:glue_algorithm_impl.h2",
+"pstl/glue_memory_impl.h:glue_memory_impl.h2",
+"pstl/glue_numeric_impl.h:glue_numeric_impl.h2",
+"pstl/numeric_impl.h:numeric_impl.h2",
+"pstl/parallel_backend_tbb.h:parallel_backend_tbb.h2",
+"pstl/parallel_backend_utils.h:parallel_backend_utils.h3",
+"pstl/parallel_impl.h:parallel_impl.h4",
 
 "tr1/unordered_map.h:_unordmap.h1",
 "tr1/unordered_set.h:_unordset.h1",
@@ -669,10 +677,11 @@ sub mk_manifest
     );
 
     my @gforfiles = (
-        'bin/gfortran\.exe', 'info/gfortran.info',
+        'bin/gfortran\.exe', 'info/gfortran\.info',
         '/libgf', '/f951\.exe', 'manifest/gfor',
         '/finclude/ieee_',
-	'/libcaf_single.(?:a|la)',
+	'/iso_fortran_binding',
+	'/libcaf_single\.(?:a|la)',
         '/cat1/gfortran'
     );
 
