@@ -1235,21 +1235,30 @@ main (int argc, char **argv)
   *ld1++ = *ld2++ = ld_file_name;
 
   /* Make temp file names.  */
+
+#ifdef __DJGPP__
+#define CDTOR_C_NAME ".ctc"
+#define CDTOR_O_NAME ".cto"
+#else
+#define CDTOR_C_NAME ".cdtor.c"
+#define CDTOR_O_NAME ".cdtor.o"
+#endif
+
   if (save_temps)
     {
       c_file = (char *) xmalloc (strlen (output_file)
-				  + sizeof (".cdtor.c") + 1);
+				  + sizeof (CDTOR_C_NAME) + 1);
       strcpy (c_file, output_file);
-      strcat (c_file, ".cdtor.c");
+      strcat (c_file, CDTOR_C_NAME);
       o_file = (char *) xmalloc (strlen (output_file)
-				  + sizeof (".cdtor.o") + 1);
+				  + sizeof (CDTOR_O_NAME) + 1);
       strcpy (o_file, output_file);
-      strcat (o_file, ".cdtor.o");
+      strcat (o_file, CDTOR_O_NAME);
     }
   else
     {
-      c_file = make_temp_file (".cdtor.c");
-      o_file = make_temp_file (".cdtor.o");
+      c_file = make_temp_file (CDTOR_C_NAME);
+      o_file = make_temp_file (CDTOR_O_NAME);
     }
 #ifdef COLLECT_EXPORT_LIST
   export_file = make_temp_file (".x");
