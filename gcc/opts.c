@@ -1578,7 +1578,8 @@ print_filtered_help (unsigned int include_flags,
   for (unsigned i = 0; i < help_tuples.length (); i++)
     {
       const struct cl_option *option = cl_options + help_tuples[i].m_code;
-      printf ("  Known valid arguments for %s option:\n   ", option->opt_text);
+      printf (_("  Known valid arguments for %s option:\n   "),
+	      option->opt_text);
       for (unsigned j = 0; j < help_tuples[i].m_values.length (); j++)
 	printf (" %s", help_tuples[i].m_values[j]);
       printf ("\n\n");
@@ -2015,14 +2016,7 @@ parse_and_check_align_values (const char *flag,
   free (str);
 
   /* Check that we have a correct number of values.  */
-#ifdef SUBALIGN_LOG
-  unsigned max_valid_values = 4;
-#else
-  unsigned max_valid_values = 2;
-#endif
-
-  if (result_values.is_empty ()
-      || result_values.length () > max_valid_values)
+  if (result_values.is_empty () || result_values.length () > 4)
     {
       if (report_error)
 	error_at (loc, "invalid number of arguments for %<-falign-%s%> "
