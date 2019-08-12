@@ -463,6 +463,12 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Mon Aug 12 2019 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-9.2.0
+
+* Fri May 03 2019 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-9.1.0
+
 * Tue May 15 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Fix value of macros __DATE__ and __TIME__ for DJGPP host.
 
