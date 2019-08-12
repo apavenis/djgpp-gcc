@@ -65,7 +65,7 @@ set_cmdstat (int *cmdstat, int value)
 }
 
 
-#if defined(HAVE_WAITPID) && defined(HAVE_SIGACTION)
+#if defined(HAVE_WAITPID) && defined(HAVE_SIGACTION) && !defined(__DJGPP__)
 static void
 sigchld_handler (int signum __attribute__((unused)))
 {
@@ -85,7 +85,7 @@ execute_command_line (const char *command, bool wait, int *exitstat,
   /* Flush all I/O units before executing the command.  */
   flush_all_units();
 
-#if defined(HAVE_POSIX_SPAWN) || defined(HAVE_FORK)
+#if (defined(HAVE_POSIX_SPAWN) || defined(HAVE_FORK)) && !defined(__DJGPP__)
   if (!wait)
     {
       /* Asynchronous execution.  */
