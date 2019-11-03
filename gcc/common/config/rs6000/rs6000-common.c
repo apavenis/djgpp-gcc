@@ -31,8 +31,11 @@
 /* Implement TARGET_OPTION_OPTIMIZATION_TABLE.  */
 static const struct default_options rs6000_option_optimization_table[] =
   {
+    /* Split multi-word types early.  */
+    { OPT_LEVELS_ALL, OPT_fsplit_wide_types_early, NULL, 1 },
     /* Enable -fsched-pressure for first pass instruction scheduling.  */
     { OPT_LEVELS_1_PLUS, OPT_fsched_pressure, NULL, 1 },
+    { OPT_LEVELS_2_PLUS, OPT_funroll_loops, NULL, 1 },
     { OPT_LEVELS_NONE, 0, NULL, 0 }
   };
 

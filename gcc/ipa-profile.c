@@ -191,17 +191,17 @@ ipa_profile_generate_summary (void)
 		     takes away bad histograms.  */
 		  if (h)
 		    {
-		      /* counter 0 is target, counter 1 is number of execution we called target,
-			 counter 2 is total number of executions.  */
-		      if (h->hvalue.counters[2])
+		      gcov_type val, count, all;
+		      if (get_nth_most_common_value (NULL, "indirect call", h,
+						     &val, &count, &all))
 			{
 			  struct cgraph_edge * e = node->get_edge (stmt);
 			  if (e && !e->indirect_unknown_callee)
 			    continue;
-			  e->indirect_info->common_target_id
-			    = h->hvalue.counters [0];
+
+			  e->indirect_info->common_target_id = val;
 			  e->indirect_info->common_target_probability
-			    = GCOV_COMPUTE_SCALE (h->hvalue.counters [1], h->hvalue.counters [2]);
+			    = GCOV_COMPUTE_SCALE (count, all);
 			  if (e->indirect_info->common_target_probability > REG_BR_PROB_BASE)
 			    {
 			      if (dump_file)
@@ -258,7 +258,7 @@ ipa_profile_read_summary (void)
     {
       const char *data;
       size_t len;
-      struct lto_input_block *ib
+      class lto_input_block *ib
 	= lto_create_simple_input_block (file_data,
 					 LTO_section_ipa_profile,
 					 &data, &len);
@@ -326,8 +326,8 @@ ipa_propagate_frequency_1 (struct cgraph_node *node, void *data)
       if (profile_info
 	  && !(edge->callee->count.ipa () == profile_count::zero ())
 	  && (edge->caller->frequency != NODE_FREQUENCY_UNLIKELY_EXECUTED
-	      || (edge->caller->global.inlined_to
-		  && edge->caller->global.inlined_to->frequency
+	      || (edge->caller->inlined_to
+		  && edge->caller->inlined_to->frequency
 		     != NODE_FREQUENCY_UNLIKELY_EXECUTED)))
 	  d->maybe_unlikely_executed = false;
       if (edge->count.ipa ().initialized_p ()
@@ -393,7 +393,7 @@ ipa_propagate_frequency (struct cgraph_node *node)
 
   /* We cannot propagate anything useful about externally visible functions
      nor about virtuals.  */
-  if (!node->local.local
+  if (!node->local
       || node->alias
       || (opt_for_fn (node->decl, flag_devirtualize)
 	  && DECL_VIRTUAL_P (node->decl)))
@@ -682,12 +682,12 @@ ipa_profile (void)
   order_pos = ipa_reverse_postorder (order);
   for (i = order_pos - 1; i >= 0; i--)
     {
-      if (order[i]->local.local
+      if (order[i]->local
 	  && opt_for_fn (order[i]->decl, flag_ipa_profile)
 	  && ipa_propagate_frequency (order[i]))
 	{
 	  for (e = order[i]->callees; e; e = e->next_callee)
-	    if (e->callee->local.local && !e->callee->aux)
+	    if (e->callee->local && !e->callee->aux)
 	      {
 	        something_changed = true;
 	        e->callee->aux = (void *)1;
@@ -706,7 +706,7 @@ ipa_profile (void)
 	      && ipa_propagate_frequency (order[i]))
 	    {
 	      for (e = order[i]->callees; e; e = e->next_callee)
-		if (e->callee->local.local && !e->callee->aux)
+		if (e->callee->local && !e->callee->aux)
 		  {
 		    something_changed = true;
 		    e->callee->aux = (void *)1;

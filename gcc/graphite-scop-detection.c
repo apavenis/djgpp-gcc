@@ -1105,14 +1105,12 @@ assign_parameter_index_in_region (tree name, sese_info_p region)
   gcc_assert (TREE_CODE (name) == SSA_NAME
 	      && INTEGRAL_TYPE_P (TREE_TYPE (name))
 	      && ! defined_in_sese_p (name, region->region));
-
   int i;
   tree p;
   FOR_EACH_VEC_ELT (region->params, i, p)
     if (p == name)
       return;
 
-  i = region->params.length ();
   region->params.safe_push (name);
 }
 
@@ -1417,9 +1415,13 @@ build_alias_set (scop_p scop)
   int i, j;
   int *all_vertices;
 
+  struct loop *nest
+    = find_common_loop (scop->scop_info->region.entry->dest->loop_father,
+			scop->scop_info->region.exit->src->loop_father);
+
   FOR_EACH_VEC_ELT (scop->drs, i, dr1)
     for (j = i+1; scop->drs.iterate (j, &dr2); j++)
-      if (dr_may_alias_p (dr1->dr, dr2->dr, true))
+      if (dr_may_alias_p (dr1->dr, dr2->dr, nest))
 	{
 	  /* Dependences in the same alias set need to be handled
 	     by just looking at DR_ACCESS_FNs.  */

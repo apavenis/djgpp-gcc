@@ -360,7 +360,7 @@ abstract_virtuals_error_sfinae (tree decl, tree type, abstract_class_use use,
 	     "be used in throw-expression", type);
       break;
     case ACU_CATCH:
-      error ("cannot declare catch parameter to be of abstract "
+      error ("cannot declare %<catch%> parameter to be of abstract "
 	     "class type %qT", type);
       break;
     default:
@@ -380,7 +380,7 @@ abstract_virtuals_error_sfinae (tree decl, tree type, abstract_class_use use,
       FOR_EACH_VEC_ELT (*pure, ix, fn)
 	if (! DECL_CLONED_FUNCTION_P (fn)
 	    || DECL_COMPLETE_DESTRUCTOR_P (fn))
-	  inform (DECL_SOURCE_LOCATION (fn), "\t%#qD", fn);
+	  inform (DECL_SOURCE_LOCATION (fn), "    %#qD", fn);
 
       /* Now truncate the vector.  This leaves it non-null, so we know
 	 there are pure virtuals, but empty so we don't list them out
@@ -603,7 +603,7 @@ cxx_incomplete_type_error (location_t loc, const_tree value, const_tree type)
 static bool
 split_nonconstant_init_1 (tree dest, tree init)
 {
-  unsigned HOST_WIDE_INT idx;
+  unsigned HOST_WIDE_INT idx, tidx = HOST_WIDE_INT_M1U;
   tree field_index, value;
   tree type = TREE_TYPE (dest);
   tree inner_type = NULL;
@@ -657,23 +657,23 @@ split_nonconstant_init_1 (tree dest, tree init)
 	      if (!split_nonconstant_init_1 (sub, value))
 		complete_p = false;
 	      else
-		CONSTRUCTOR_ELTS (init)->ordered_remove (idx--);
-	      num_split_elts++;
+		{
+		  /* Mark element for removal.  */
+		  CONSTRUCTOR_ELT (init, idx)->index = NULL_TREE;
+		  if (idx < tidx)
+		    tidx = idx;
+		  num_split_elts++;
+		}
 	    }
 	  else if (!initializer_constant_valid_p (value, inner_type))
 	    {
 	      tree code;
 	      tree sub;
 
-	      /* FIXME: Ordered removal is O(1) so the whole function is
-		 worst-case quadratic. This could be fixed using an aside
-		 bitmap to record which elements must be removed and remove
-		 them all at the same time. Or by merging
-		 split_non_constant_init into process_init_constructor_array,
-		 that is separating constants from non-constants while building
-		 the vector.  */
-	      CONSTRUCTOR_ELTS (init)->ordered_remove (idx);
-	      --idx;
+	      /* Mark element for removal.  */
+	      CONSTRUCTOR_ELT (init, idx)->index = NULL_TREE;
+	      if (idx < tidx)
+		tidx = idx;
 
 	      if (TREE_CODE (field_index) == RANGE_EXPR)
 		{
@@ -710,6 +710,22 @@ split_nonconstant_init_1 (tree dest, tree init)
 
 	      num_split_elts++;
 	    }
+	}
+      if (num_split_elts == 1)
+	CONSTRUCTOR_ELTS (init)->ordered_remove (tidx);
+      else if (num_split_elts > 1)
+	{
+	  /* Perform the delayed ordered removal of non-constant elements
+	     we split out.  */
+	  for (idx = tidx; idx < CONSTRUCTOR_NELTS (init); ++idx)
+	    if (CONSTRUCTOR_ELT (init, idx)->index == NULL_TREE)
+	      ;
+	    else
+	      {
+		*CONSTRUCTOR_ELT (init, tidx) = *CONSTRUCTOR_ELT (init, idx);
+		++tidx;
+	      }
+	  vec_safe_truncate (CONSTRUCTOR_ELTS (init), tidx);
 	}
       break;
 
@@ -869,15 +885,33 @@ store_init_value (tree decl, tree init, vec<tree, va_gc>** cleanups, int flags)
       if (!TYPE_REF_P (type))
 	TREE_CONSTANT (decl) = const_init && decl_maybe_constant_var_p (decl);
       if (!const_init)
-	value = oldval;
+	{
+	  /* [dcl.constinit]/2 "If a variable declared with the constinit
+	     specifier has dynamic initialization, the program is
+	     ill-formed."  */
+	  if (flags & LOOKUP_CONSTINIT)
+	    {
+	      error_at (location_of (decl),
+			"%<constinit%> variable %qD does not have a constant "
+			"initializer", decl);
+	      if (require_constant_expression (value))
+		cxx_constant_init (value, decl);
+	      value = error_mark_node;
+	    }
+	  else
+	    value = oldval;
+	}
     }
-  value = cp_fully_fold_init (value);
+  /* Don't fold initializers of automatic variables in constexpr functions,
+     that might fold away something that needs to be diagnosed at constexpr
+     evaluation time.  */
+  if (!current_function_decl
+      || !DECL_DECLARED_CONSTEXPR_P (current_function_decl)
+      || TREE_STATIC (decl))
+    value = cp_fully_fold_init (value);
 
   /* Handle aggregate NSDMI in non-constant initializers, too.  */
   value = replace_placeholders (value, decl);
-
-  /* DECL may change value; purge caches.  */
-  clear_cv_and_fold_caches ();
 
   /* If the initializer is not a constant, fill in DECL_INITIAL with
      the bits that are constant, and then return an expression that
@@ -887,6 +921,10 @@ store_init_value (tree decl, tree init, vec<tree, va_gc>** cleanups, int flags)
 	  || vla_type_p (type)
 	  || ! reduced_constant_expression_p (value)))
     return split_nonconstant_init (decl, value);
+
+  /* DECL may change value; purge caches.  */
+  clear_cv_and_fold_caches (TREE_STATIC (decl));
+
   /* If the value is a constant, just put it in DECL_INITIAL.  If DECL
      is an automatic variable, the middle end will turn this into a
      dynamic initialization later.  */
@@ -990,7 +1028,7 @@ check_narrowing (tree type, tree init, tsubst_flags_t complain, bool const_only)
 
   if (!ok)
     {
-      location_t loc = cp_expr_loc_or_loc (init, input_location);
+      location_t loc = cp_expr_loc_or_input_loc (init);
       if (cxx_dialect == cxx98)
 	{
 	  if (complain & tf_warning)
@@ -1069,7 +1107,7 @@ digest_init_r (tree type, tree init, int nested, int flags,
 					complain))
     return error_mark_node;
 
-  location_t loc = cp_expr_loc_or_loc (init, input_location);
+  location_t loc = cp_expr_loc_or_input_loc (init);
 
   tree stripped_init = init;
 
@@ -1164,8 +1202,8 @@ digest_init_r (tree type, tree init, int nested, int flags,
 		 be invalid.  */
 	      if (size < TREE_STRING_LENGTH (stripped_init))
 		{
-		  permerror (loc, "initializer-string for array "
-			     "of chars is too long");
+		  permerror (loc, "initializer-string for %qT is too long",
+			     type);
 
 		  init = build_string (size,
 				       TREE_STRING_POINTER (stripped_init));
@@ -1293,7 +1331,10 @@ digest_nsdmi_init (tree decl, tree init, tsubst_flags_t complain)
   tree type = TREE_TYPE (decl);
   int flags = LOOKUP_IMPLICIT;
   if (DIRECT_LIST_INIT_P (init))
-    flags = LOOKUP_NORMAL;
+    {
+      flags = LOOKUP_NORMAL;
+      complain |= tf_no_cleanup;
+    }
   if (BRACE_ENCLOSED_INITIALIZER_P (init)
       && CP_AGGREGATE_TYPE_P (type))
     init = reshape_init (type, init, complain);
@@ -1383,7 +1424,7 @@ process_init_constructor_array (tree type, tree init, int nested, int flags,
       if (nested == 2 && !domain && !vec_safe_is_empty (v))
 	{
 	  if (complain & tf_error)
-	    error_at (cp_expr_loc_or_loc (init, input_location),
+	    error_at (cp_expr_loc_or_input_loc (init),
 		      "initialization of flexible array member "
 		      "in a nested context");
 	  return PICFLAG_ERRONEOUS;
@@ -2034,11 +2075,11 @@ build_m_component_ref (tree datum, tree component, tsubst_flags_t complain)
   tree binfo;
   tree ctype;
 
-  if (error_operand_p (datum) || error_operand_p (component))
-    return error_mark_node;
-
   datum = mark_lvalue_use (datum);
   component = mark_rvalue_use (component);
+
+  if (error_operand_p (datum) || error_operand_p (component))
+    return error_mark_node;
 
   ptrmem_type = TREE_TYPE (component);
   if (!TYPE_PTRMEM_P (ptrmem_type))
@@ -2173,7 +2214,6 @@ build_functional_cast (tree exp, tree parms, tsubst_flags_t complain)
 
   /* The type to which we are casting.  */
   tree type;
-  vec<tree, va_gc> *parmvec;
 
   if (error_operand_p (exp) || parms == error_mark_node)
     return error_mark_node;
@@ -2202,8 +2242,7 @@ build_functional_cast (tree exp, tree parms, tsubst_flags_t complain)
       if (!CLASS_PLACEHOLDER_TEMPLATE (anode))
 	{
 	  if (complain & tf_error)
-	    error_at (DECL_SOURCE_LOCATION (TEMPLATE_TYPE_DECL (anode)),
-		      "invalid use of %qT", anode);
+	    error ("invalid use of %qT", anode);
 	  return error_mark_node;
 	}
       else if (!parms)
@@ -2216,7 +2255,7 @@ build_functional_cast (tree exp, tree parms, tsubst_flags_t complain)
 	  if (type == error_mark_node)
 	    {
 	      if (complain & tf_error)
-		error ("cannot deduce template arguments for %qT from ()",
+		error ("cannot deduce template arguments for %qT from %<()%>",
 		       anode);
 	      return error_mark_node;
 	    }
@@ -2295,12 +2334,11 @@ build_functional_cast (tree exp, tree parms, tsubst_flags_t complain)
     }
 
   /* Call the constructor.  */
-  parmvec = make_tree_vector ();
+  releasing_vec parmvec;
   for (; parms != NULL_TREE; parms = TREE_CHAIN (parms))
     vec_safe_push (parmvec, TREE_VALUE (parms));
   exp = build_special_member_call (NULL_TREE, complete_ctor_identifier,
 				   &parmvec, type, LOOKUP_NORMAL, complain);
-  release_tree_vector (parmvec);
 
   if (exp == error_mark_node)
     return error_mark_node;

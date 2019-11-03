@@ -171,8 +171,6 @@ AC_HEADER_TIME
 ACX_HEADER_STRING
 AC_CHECK_HEADERS(pthread.h unistd.h semaphore.h sys/loadavg.h sys/sysctl.h sys/time.h)
 
-GCC_HEADER_STDINT(gstdint.h)
-
 XPCFLAGS=""
 case "$host" in
   *-*-rtems*)
@@ -317,6 +315,10 @@ if test $enable_symvers = gnu; then
   AC_DEFINE(LIBGOMP_GNU_SYMBOL_VERSIONING, 1,
 	    [Define to 1 if GNU symbol versioning is used for libgomp.])
 fi
+
+# Determine cpu count to limit testsuite parallelism.
+AX_COUNT_CPUS
+AC_SUBST(CPU_COUNT)
 
 # Get target configury.
 . ${srcdir}/configure.tgt

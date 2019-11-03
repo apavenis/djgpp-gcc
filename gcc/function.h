@@ -183,16 +183,18 @@ struct GTY(()) function_subsections {
 /* Describe an empty area of space in the stack frame.  These can be chained
    into a list; this is used to keep track of space wasted for alignment
    reasons.  */
-struct GTY(()) frame_space
+class GTY(()) frame_space
 {
-  struct frame_space *next;
+public:
+  class frame_space *next;
 
   poly_int64 start;
   poly_int64 length;
 };
 
-struct GTY(()) stack_usage
+class GTY(()) stack_usage
 {
+public:
   /* # of bytes of static stack space allocated by the function.  */
   HOST_WIDE_INT static_stack_size;
 
@@ -241,7 +243,7 @@ struct GTY(()) function {
   char *pass_startwith;
 
   /* The stack usage of this function.  */
-  struct stack_usage *su;
+  class stack_usage *su;
 
   /* Value histograms attached to particular statements.  */
   htab_t GTY((skip)) value_histograms;
@@ -326,6 +328,9 @@ struct GTY(()) function {
   /* Nonzero if function being compiled can call alloca,
      either as a subroutine or builtin.  */
   unsigned int calls_alloca : 1;
+
+  /* Nonzero if function being compiled can call __builtin_eh_return.  */
+  unsigned int calls_eh_return : 1;
 
   /* Nonzero if function being compiled receives nonlocal gotos
      from nested functions.  */

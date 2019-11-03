@@ -340,7 +340,10 @@ symbol_table::process_new_functions (void)
 		 and splitting.  This is redundant for functions added late.
 		 Just throw away whatever it did.  */
 	      if (!summaried_computed)
-		ipa_free_fn_summary ();
+		{
+		  ipa_free_fn_summary ();
+		  ipa_free_size_summary ();
+		}
 	    }
 	  else if (ipa_fn_summaries != NULL)
 	    compute_fn_summary (node, true);
@@ -388,8 +391,7 @@ cgraph_node::reset (void)
   gcc_assert (!process);
 
   /* Reset our data structures so we can analyze the function again.  */
-  memset (&local, 0, sizeof (local));
-  memset (&global, 0, sizeof (global));
+  inlined_to = NULL;
   memset (&rtl, 0, sizeof (rtl));
   analyzed = false;
   definition = false;
@@ -442,7 +444,7 @@ cgraph_node::finalize_function (tree decl, bool no_collect)
       gcc_assert (!DECL_CONTEXT (decl)
 		  || TREE_CODE (DECL_CONTEXT (decl)) !=	FUNCTION_DECL);
       node->reset ();
-      node->local.redefined_extern_inline = true;
+      node->redefined_extern_inline = true;
     }
 
   /* Set definition first before calling notice_global_symbol so that
@@ -550,7 +552,7 @@ cgraph_node::add_new_function (tree fndecl, bool lowered)
 	/* Bring the function into finalized state and enqueue for later
 	   analyzing and compilation.  */
 	node = cgraph_node::get_create (fndecl);
-	node->local.local = false;
+	node->local = false;
 	node->definition = true;
 	node->force_output = true;
 	if (TREE_PUBLIC (fndecl))
@@ -796,8 +798,8 @@ process_function_and_variable_attributes (cgraph_node *first,
 	  /* redefining extern inline function makes it DECL_UNINLINABLE.  */
 	  && !DECL_UNINLINABLE (decl))
 	warning_at (DECL_SOURCE_LOCATION (decl), OPT_Wattributes,
-		    "always_inline function might not be inlinable");
-     
+		    "%<always_inline%> function might not be inlinable");
+
       process_common_attributes (node, decl);
     }
   for (vnode = symtab->first_variable (); vnode != first_var;
@@ -1118,7 +1120,7 @@ analyze_functions (bool first_time)
 		  && !cnode->dispatcher_function)
 		{
 		  cnode->reset ();
-		  cnode->local.redefined_extern_inline = true;
+		  cnode->redefined_extern_inline = true;
 		  continue;
 		}
 
@@ -1504,7 +1506,7 @@ mark_functions_to_output (void)
       if (node->analyzed
 	  && !node->thunk.thunk_p
 	  && !node->alias
-	  && !node->global.inlined_to
+	  && !node->inlined_to
 	  && !TREE_ASM_WRITTEN (decl)
 	  && !DECL_EXTERNAL (decl))
 	{
@@ -1529,7 +1531,7 @@ mark_functions_to_output (void)
 	{
 	  /* We should've reclaimed all functions that are not needed.  */
 	  if (flag_checking
-	      && !node->global.inlined_to
+	      && !node->inlined_to
 	      && gimple_has_body_p (decl)
 	      /* FIXME: in ltrans unit when offline copy is outside partition but inline copies
 		 are inside partition, we can end up not removing the body since we no longer
@@ -1542,7 +1544,7 @@ mark_functions_to_output (void)
 	      node->debug ();
 	      internal_error ("failed to reclaim unneeded function");
 	    }
-	  gcc_assert (node->global.inlined_to
+	  gcc_assert (node->inlined_to
 		      || !gimple_has_body_p (decl)
 		      || node->in_other_partition
 		      || node->clones
@@ -1557,7 +1559,7 @@ mark_functions_to_output (void)
       if (node->same_comdat_group && !node->process)
 	{
 	  tree decl = node->decl;
-	  if (!node->global.inlined_to
+	  if (!node->inlined_to
 	      && gimple_has_body_p (decl)
 	      /* FIXME: in an ltrans unit when the offline copy is outside a
 		 partition but inline copies are inside a partition, we can
@@ -1790,7 +1792,6 @@ cgraph_node::expand_thunk (bool output_asm_thunks, bool force_gimple_thunk)
       && targetm.asm_out.can_output_mi_thunk (thunk_fndecl, fixed_offset,
 					      virtual_value, alias))
     {
-      const char *fnname;
       tree fn_block;
       tree restype = TREE_TYPE (TREE_TYPE (thunk_fndecl));
 
@@ -1814,7 +1815,6 @@ cgraph_node::expand_thunk (bool output_asm_thunks, bool force_gimple_thunk)
 	= build_decl (DECL_SOURCE_LOCATION (thunk_fndecl),
 		      RESULT_DECL, 0, restype);
       DECL_CONTEXT (DECL_RESULT (thunk_fndecl)) = thunk_fndecl;
-      fnname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (thunk_fndecl));
 
       /* The back end expects DECL_INITIAL to contain a BLOCK, so we
 	 create one.  */
@@ -1828,12 +1828,10 @@ cgraph_node::expand_thunk (bool output_asm_thunks, bool force_gimple_thunk)
       insn_locations_init ();
       set_curr_insn_location (DECL_SOURCE_LOCATION (thunk_fndecl));
       prologue_location = curr_insn_location ();
-      assemble_start_function (thunk_fndecl, fnname);
 
       targetm.asm_out.output_mi_thunk (asm_out_file, thunk_fndecl,
 				       fixed_offset, virtual_value, alias);
 
-      assemble_end_function (thunk_fndecl, fnname);
       insn_locations_finalize ();
       init_insn_lengths ();
       free_after_compilation (cfun);
@@ -2118,7 +2116,7 @@ cgraph_node::assemble_thunks_and_aliases (void)
 
   for (e = callers; e;)
     if (e->caller->thunk.thunk_p
-	&& !e->caller->global.inlined_to)
+	&& !e->caller->inlined_to)
       {
 	cgraph_node *thunk = e->caller;
 
@@ -2155,7 +2153,7 @@ cgraph_node::expand (void)
   location_t saved_loc;
 
   /* We ought to not compile any inline clones.  */
-  gcc_assert (!global.inlined_to);
+  gcc_assert (!inlined_to);
 
   /* __RTL functions are compiled as soon as they are parsed, so don't
      do it again.  */
@@ -2188,7 +2186,7 @@ cgraph_node::expand (void)
 
   bitmap_obstack_initialize (&reg_obstack); /* FIXME, only at RTL generation*/
 
-  execute_all_ipa_transforms ();
+  execute_all_ipa_transforms (false);
 
   /* Perform all tree transforms and optimizations.  */
 
@@ -2603,10 +2601,7 @@ symbol_table::compile (void)
 
   timevar_push (TV_CGRAPHOPT);
   if (pre_ipa_mem_report)
-    {
-      fprintf (stderr, "Memory consumption before IPA\n");
-      dump_memory_report (false);
-    }
+    dump_memory_report ("Memory consumption before IPA");
   if (!quiet_flag)
     fprintf (stderr, "Performing interprocedural optimizations\n");
   state = IPA;
@@ -2617,8 +2612,11 @@ symbol_table::compile (void)
 
   /* Don't run the IPA passes if there was any error or sorry messages.  */
   if (!seen_error ())
+  {
+    timevar_start (TV_CGRAPH_IPA_PASSES);
     ipa_passes ();
-
+    timevar_stop (TV_CGRAPH_IPA_PASSES);
+  }
   /* Do nothing else if any IPA pass found errors or if we are just streaming LTO.  */
   if (seen_error ()
       || ((!in_lto_p || flag_incremental_link == INCREMENTAL_LINK_LTO)
@@ -2635,10 +2633,7 @@ symbol_table::compile (void)
       symtab->dump (dump_file);
     }
   if (post_ipa_mem_report)
-    {
-      fprintf (stderr, "Memory consumption after IPA\n");
-      dump_memory_report (false);
-    }
+    dump_memory_report ("Memory consumption after IPA");
   timevar_pop (TV_CGRAPHOPT);
 
   /* Output everything.  */
@@ -2684,7 +2679,11 @@ symbol_table::compile (void)
   /* Output first asm statements and anything ordered. The process
      flag is cleared for these nodes, so we skip them later.  */
   output_in_order ();
+
+  timevar_start (TV_CGRAPH_FUNC_EXPANSION);
   expand_all_functions ();
+  timevar_stop (TV_CGRAPH_FUNC_EXPANSION);
+
   output_variables ();
 
   process_new_functions ();
@@ -2707,7 +2706,7 @@ symbol_table::compile (void)
       bool error_found = false;
 
       FOR_EACH_DEFINED_FUNCTION (node)
-	if (node->global.inlined_to
+	if (node->inlined_to
 	    || gimple_has_body_p (node->decl))
 	  {
 	    error_found = true;

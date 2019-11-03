@@ -32,6 +32,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #include <gthr.h>
 
+#define gcc_unreachable() __builtin_unreachable ()
 
 /* POSIX 2008 specifies that the extended locale stuff is found in
    locale.h, but some systems have them in xlocale.h.  */
@@ -1009,6 +1010,56 @@ memset4 (gfc_char4_t *p, gfc_char4_t c, int k)
   int j;
   for (j = 0; j < k; j++)
     *p++ = c;
+}
+
+/* Used in width fields to indicate that the default should be used */
+#define DEFAULT_WIDTH -1
+
+/* Defaults for certain format field descriptors. These are decided based on
+ * the type of the value being formatted.
+ *
+ * The behaviour here is modelled on the Oracle Fortran compiler. At the time
+ * of writing, the details were available at this URL:
+ *
+ *   https://docs.oracle.com/cd/E19957-01/805-4939/6j4m0vnc3/index.html#z4000743746d
+ */
+
+static inline int
+default_width_for_integer (int kind)
+{
+  switch (kind)
+    {
+    case 1:
+    case 2:  return  7;
+    case 4:  return 12;
+    case 8:  return 23;
+    case 16: return 44;
+    default: return  0;
+    }
+}
+
+static inline int
+default_width_for_float (int kind)
+{
+  switch (kind)
+    {
+    case 4:  return 15;
+    case 8:  return 25;
+    case 16: return 42;
+    default: return  0;
+    }
+}
+
+static inline int
+default_precision_for_float (int kind)
+{
+  switch (kind)
+    {
+    case 4:  return 7;
+    case 8:  return 16;
+    case 16: return 33;
+    default: return 0;
+    }
 }
 
 #endif

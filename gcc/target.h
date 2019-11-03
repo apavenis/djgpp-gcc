@@ -138,20 +138,26 @@ struct _dep;
 struct ddg;
 
 /* This is defined in cfgloop.h .  */
-struct loop;
+class loop;
 
 /* This is defined in ifcvt.h.  */
 struct noce_if_info;
 
 /* This is defined in tree-ssa-alias.h.  */
-struct ao_ref;
+class ao_ref;
 
 /* This is defined in tree-vectorizer.h.  */
-struct _stmt_vec_info;
+class _stmt_vec_info;
+
+/* This is defined in calls.h.  */
+class function_arg_info;
+
+/* This is defined in function-abi.h.  */
+class predefined_function_abi;
 
 /* These are defined in tree-vect-stmts.c.  */
-extern tree stmt_vectype (struct _stmt_vec_info *);
-extern bool stmt_in_inner_loop_p (struct _stmt_vec_info *);
+extern tree stmt_vectype (class _stmt_vec_info *);
+extern bool stmt_in_inner_loop_p (class _stmt_vec_info *);
 
 /* Assembler instructions for creating various kinds of integer object.  */
 
@@ -204,6 +210,13 @@ typedef vec<poly_uint64> vector_sizes;
 /* Same, but can be used to construct local lists that are
    automatically freed.  */
 typedef auto_vec<poly_uint64, 8> auto_vector_sizes;
+
+/* First argument of targetm.omp.device_kind_arch_isa.  */
+enum omp_device_kind_arch_isa {
+  omp_device_kind,
+  omp_device_arch,
+  omp_device_isa
+};
 
 /* The target structure.  This holds all the backend hooks.  */
 #define DEFHOOKPOD(NAME, DOC, TYPE, INIT) TYPE NAME;

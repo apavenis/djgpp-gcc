@@ -317,6 +317,8 @@ struct c_declspecs {
   tree attrs;
   /* The pass to start compiling a __GIMPLE or __RTL function with.  */
   char *gimple_or_rtl_pass;
+  /* ENTRY BB count.  */
+  profile_count entry_bb_count;
   /* The base-2 log of the greatest alignment required by an _Alignas
      specifier, in bytes, or -1 if no such specifiers with nonzero
      alignment.  */
@@ -523,7 +525,7 @@ extern void gen_aux_info_record (tree, int, int, int);
 
 /* in c-decl.c */
 struct c_spot_bindings;
-struct c_struct_parse_info;
+class c_struct_parse_info;
 extern struct obstack parser_obstack;
 extern tree c_break_label;
 extern tree c_cont_label;
@@ -560,7 +562,9 @@ extern void finish_decl (tree, location_t, tree, tree, tree);
 extern tree finish_enum (tree, tree, tree);
 extern void finish_function (void);
 extern tree finish_struct (location_t, tree, tree, tree,
-			   struct c_struct_parse_info *);
+			   class c_struct_parse_info *);
+extern tree c_simulate_enum_decl (location_t, const char *,
+				  vec<string_int_pair>);
 extern struct c_arg_info *build_arg_info (void);
 extern struct c_arg_info *get_parm_info (bool, tree);
 extern tree grokfield (location_t, struct c_declarator *,
@@ -577,6 +581,7 @@ extern struct c_declarator *set_array_declarator_inner (struct c_declarator *,
 							struct c_declarator *);
 extern tree c_builtin_function (tree);
 extern tree c_builtin_function_ext_scope (tree);
+extern tree c_simulate_builtin_function_decl (tree);
 extern void shadow_tag (const struct c_declspecs *);
 extern void shadow_tag_warned (const struct c_declspecs *, int);
 extern tree start_enum (location_t, struct c_enum_contents *, tree);
@@ -584,7 +589,7 @@ extern bool start_function (struct c_declspecs *, struct c_declarator *, tree);
 extern tree start_decl (struct c_declarator *, struct c_declspecs *, bool,
 			tree);
 extern tree start_struct (location_t, enum tree_code, tree,
-			  struct c_struct_parse_info **);
+			  class c_struct_parse_info **);
 extern void store_parm_decls (void);
 extern void store_parm_decls_from (struct c_arg_info *);
 extern void temp_store_parm_decls (tree, tree);
@@ -694,7 +699,8 @@ extern int c_types_compatible_p (tree, tree);
 extern tree c_begin_compound_stmt (bool);
 extern tree c_end_compound_stmt (location_t, tree, bool);
 extern void c_finish_if_stmt (location_t, tree, tree, tree);
-extern void c_finish_loop (location_t, tree, tree, tree, tree, tree, bool);
+extern void c_finish_loop (location_t, location_t, tree, location_t, tree,
+			   tree, tree, tree, bool);
 extern tree c_begin_stmt_expr (void);
 extern tree c_finish_stmt_expr (location_t, tree);
 extern tree c_process_expr_stmt (location_t, tree);

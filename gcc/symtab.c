@@ -808,6 +808,23 @@ symtab_node::dump_referring (FILE *file)
 
 static const char * const symtab_type_names[] = {"symbol", "function", "variable"};
 
+/* Dump the visibility of the symbol.  */
+
+const char *
+symtab_node::get_visibility_string () const
+{
+  static const char * const visibility_types[]
+    = { "default", "protected", "hidden", "internal" };
+  return visibility_types[DECL_VISIBILITY (decl)];
+}
+
+/* Dump the type_name of the symbol.  */
+const char *
+symtab_node::get_symtab_type_string () const
+{
+  return symtab_type_names[type];
+}
+
 /* Dump base fields of symtab nodes to F.  Not to be used directly.  */
 
 void
@@ -939,12 +956,29 @@ symtab_node::dump (FILE *f)
 }
 
 void
+symtab_node::dump_graphviz (FILE *f)
+{
+  if (cgraph_node *cnode = dyn_cast <cgraph_node *> (this))
+    cnode->dump_graphviz (f);
+}
+
+void
 symbol_table::dump (FILE *f)
 {
   symtab_node *node;
   fprintf (f, "Symbol table:\n\n");
   FOR_EACH_SYMBOL (node)
     node->dump (f);
+}
+
+void
+symbol_table::dump_graphviz (FILE *f)
+{
+  symtab_node *node;
+  fprintf (f, "digraph symtab {\n");
+  FOR_EACH_SYMBOL (node)
+    node->dump_graphviz (f);
+  fprintf (f, "}\n");
 }
 
 DEBUG_FUNCTION void
@@ -984,6 +1018,15 @@ symtab_node::debug (void)
 }
 
 /* Verify common part of symtab nodes.  */
+
+#if __GNUC__ >= 10
+/* Disable warnings about missing quoting in GCC diagnostics for
+   the verification errors.  Their format strings don't follow GCC
+   diagnostic conventions and the calls are ultimately followed by
+   one to internal_error.  */
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wformat-diag"
+#endif
 
 DEBUG_FUNCTION bool
 symtab_node::verify_base (void)
@@ -1271,6 +1314,10 @@ symtab_node::verify_symtab_nodes (void)
     }
 }
 
+#if __GNUC__ >= 10
+#  pragma GCC diagnostic pop
+#endif
+
 /* Make DECL local.  FIXME: We shouldn't need to mess with rtl this early,
    but other code such as notice_global_symbol generates rtl.  */
 
@@ -1553,7 +1600,7 @@ symtab_node::set_section (symtab_node *n, void *s)
 void
 symtab_node::set_section (const char *section)
 {
-  gcc_assert (!this->alias);
+  gcc_assert (!this->alias || !this->analyzed);
   call_for_symbol_and_aliases
     (symtab_node::set_section, const_cast<char *>(section), true);
 }
@@ -1874,7 +1921,7 @@ symtab_node::get_partitioning_class (void)
   if (DECL_ABSTRACT_P (decl))
     return SYMBOL_EXTERNAL;
 
-  if (cnode && cnode->global.inlined_to)
+  if (cnode && cnode->inlined_to)
     return SYMBOL_DUPLICATE;
 
   /* Transparent aliases are always duplicated.  */
@@ -2274,7 +2321,7 @@ symtab_node::binds_to_current_def_p (symtab_node *ref)
     return true;
 
   /* Inline clones always binds locally.  */
-  if (cnode && cnode->global.inlined_to)
+  if (cnode && cnode->inlined_to)
     return true;
 
   if (DECL_EXTERNAL (decl))
@@ -2286,7 +2333,7 @@ symtab_node::binds_to_current_def_p (symtab_node *ref)
     {
       cgraph_node *cref = dyn_cast <cgraph_node *> (ref);
       if (cref)
-	ref = cref->global.inlined_to;
+	ref = cref->inlined_to;
     }
 
   /* If this is a reference from symbol itself and there are no aliases, we
@@ -2328,10 +2375,18 @@ symtab_node::output_to_lto_symbol_table_p (void)
      first place.  */
   if (VAR_P (decl) && DECL_HARD_REGISTER (decl))
     return false;
-  /* FIXME: Builtins corresponding to real functions probably should have
-     symbol table entries.  */
-  if (TREE_CODE (decl) == FUNCTION_DECL && fndecl_built_in_p (decl))
-    return false;
+  if (TREE_CODE (decl) == FUNCTION_DECL && !definition
+      && fndecl_built_in_p (decl))
+    {
+      /* Builtins like those for most math functions have actual implementations
+	 in libraries so make sure to output references into the symbol table to
+	 make those libraries referenced.  Note this is incomplete handling for
+	 now and only covers math functions.  */
+      if (builtin_with_linkage_p (decl))
+	return true;
+      else
+	return false;
+    }
 
   /* We have real symbol that should be in symbol table.  However try to trim
      down the refernces to libraries bit more because linker will otherwise

@@ -735,13 +735,9 @@ if ! grep "const EAI_OVERFLOW " ${OUT} >/dev/null 2>&1; then
 fi
 
 # The passwd struct.
-# Force uid and gid from int32 to uint32 for consistency; they are
-# int32 on Solaris 10 but uint32 everywhere else including Solaris 11.
 grep '^type _passwd ' gen-sysinfo.go | \
     sed -e 's/_passwd/Passwd/' \
       -e 's/ pw_/ Pw_/g' \
-      -e 's/ Pw_uid int32/ Pw_uid uint32/' \
-      -e 's/ Pw_gid int32/ Pw_gid uint32/' \
     >> ${OUT}
 
 # The group struct.
@@ -1127,7 +1123,7 @@ grep '^const _FALLOC_' gen-sysinfo.go |
 # Prefer largefile variant if available.
 # CentOS 5 does not have f_flags, so pull from f_spare.
 statfs=`grep '^type _statfs64 ' gen-sysinfo.go || true`
-if test "$statfs" == ""; then
+if test "$statfs" = ""; then
   statfs=`grep '^type _statfs ' gen-sysinfo.go || true`
 fi
 if ! echo "$statfs" | grep f_flags; then
@@ -1396,5 +1392,11 @@ grep '^type _mac_ipaddr_t ' gen-sysinfo.go | \
 grep '^type _mactun_info_t ' gen-sysinfo.go | \
     sed -e 's/_in6_addr_t/[16]byte/g' \
     >> ${OUT}
+
+# Type 'uint128' is needed in a couple of type definitions on arm64,such
+# as _user_fpsimd_struct, _elf_fpregset_t, etc.
+if ! grep '^type uint128' ${OUT} > /dev/null 2>&1; then
+    echo "type uint128 [16]byte" >> ${OUT}
+fi
 
 exit $?

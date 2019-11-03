@@ -61,6 +61,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "opts.h"
 #include "predict.h"
 #include "rtx-vector-builder.h"
+#include "gimple.h"
+#include "gimple-ssa.h"
+#include "gimplify.h"
 
 struct target_rtl default_target_rtl;
 #if SWITCHABLE_TARGET
@@ -348,7 +351,7 @@ const_fixed_hasher::equal (rtx x, rtx y)
 /* Return true if the given memory attributes are equal.  */
 
 bool
-mem_attrs_eq_p (const struct mem_attrs *p, const struct mem_attrs *q)
+mem_attrs_eq_p (const class mem_attrs *p, const class mem_attrs *q)
 {
   if (p == q)
     return true;
@@ -463,6 +466,17 @@ set_mode_and_regno (rtx x, machine_mode mode, unsigned int regno)
   set_regno_raw (x, regno, nregs);
 }
 
+/* Initialize a fresh REG rtx with mode MODE and register REGNO.  */
+
+rtx
+init_raw_REG (rtx x, machine_mode mode, unsigned int regno)
+{
+  set_mode_and_regno (x, mode, regno);
+  REG_ATTRS (x) = NULL;
+  ORIGINAL_REGNO (x) = regno;
+  return x;
+}
+
 /* Generate a new REG rtx.  Make sure ORIGINAL_REGNO is set properly, and
    don't attempt to share with the various global pieces of rtl (such as
    frame_pointer_rtx).  */
@@ -471,9 +485,7 @@ rtx
 gen_raw_REG (machine_mode mode, unsigned int regno)
 {
   rtx x = rtx_alloc (REG MEM_STAT_INFO);
-  set_mode_and_regno (x, mode, regno);
-  REG_ATTRS (x) = NULL;
-  ORIGINAL_REGNO (x) = regno;
+  init_raw_REG (x, mode, regno);
   return x;
 }
 
@@ -1921,7 +1933,7 @@ set_mem_attributes_minus_bitpos (rtx ref, tree t, int objectp,
 {
   poly_int64 apply_bitpos = 0;
   tree type;
-  struct mem_attrs attrs, *defattrs, *refattrs;
+  class mem_attrs attrs, *defattrs, *refattrs;
   addr_space_t as;
 
   /* It can happen that type_for_mode was given a mode for which there
@@ -2128,6 +2140,27 @@ set_mem_attributes_minus_bitpos (rtx ref, tree t, int objectp,
 	  apply_bitpos = bitpos;
 	}
 
+      /* If this is a reference based on a partitioned decl replace the
+	 base with a MEM_REF of the pointer representative we created
+	 during stack slot partitioning.  */
+      if (attrs.expr
+	  && VAR_P (base)
+	  && ! is_global_var (base)
+	  && cfun->gimple_df->decls_to_pointers != NULL)
+	{
+	  tree *namep = cfun->gimple_df->decls_to_pointers->get (base);
+	  if (namep)
+	    {
+	      attrs.expr = unshare_expr (attrs.expr);
+	      tree *orig_base = &attrs.expr;
+	      while (handled_component_p (*orig_base))
+		orig_base = &TREE_OPERAND (*orig_base, 0);
+	      tree aptrt = reference_alias_ptr_type (*orig_base);
+	      *orig_base = build2 (MEM_REF, TREE_TYPE (*orig_base), *namep,
+				   build_int_cst (aptrt, 0));
+	    }
+	}
+
       /* Compute the alignment.  */
       unsigned int obj_align;
       unsigned HOST_WIDE_INT obj_bitpos;
@@ -2310,7 +2343,7 @@ change_address (rtx memref, machine_mode mode, rtx addr)
 {
   rtx new_rtx = change_address_1 (memref, mode, addr, 1, false);
   machine_mode mmode = GET_MODE (new_rtx);
-  struct mem_attrs *defattrs;
+  class mem_attrs *defattrs;
 
   mem_attrs attrs (*get_mem_attrs (memref));
   defattrs = mode_mem_attrs[(int) mmode];
@@ -2354,7 +2387,7 @@ adjust_address_1 (rtx memref, machine_mode mode, poly_int64 offset,
   rtx addr = XEXP (memref, 0);
   rtx new_rtx;
   scalar_int_mode address_mode;
-  struct mem_attrs attrs (*get_mem_attrs (memref)), *defattrs;
+  class mem_attrs attrs (*get_mem_attrs (memref)), *defattrs;
   unsigned HOST_WIDE_INT max_align;
 #ifdef POINTERS_EXTEND_UNSIGNED
   scalar_int_mode pointer_mode
@@ -2500,7 +2533,7 @@ offset_address (rtx memref, rtx offset, unsigned HOST_WIDE_INT pow2)
 {
   rtx new_rtx, addr = XEXP (memref, 0);
   machine_mode address_mode;
-  struct mem_attrs *defattrs;
+  class mem_attrs *defattrs;
 
   mem_attrs attrs (*get_mem_attrs (memref));
   address_mode = get_address_mode (memref);
@@ -2865,7 +2898,6 @@ verify_rtx_sharing (rtx orig, rtx insn)
       /* SCRATCH must be shared because they represent distinct values.  */
       return;
     case CLOBBER:
-    case CLOBBER_HIGH:
       /* Share clobbers of hard registers (like cc0), but do not share pseudo reg
          clobbers or clobbers of hard registers that originated as pseudos.
          This is needed to allow safe register renaming.  */
@@ -3119,7 +3151,6 @@ repeat:
       /* SCRATCH must be shared because they represent distinct values.  */
       return;
     case CLOBBER:
-    case CLOBBER_HIGH:
       /* Share clobbers of hard registers (like cc0), but do not share pseudo reg
          clobbers or clobbers of hard registers that originated as pseudos.
          This is needed to allow safe register renaming.  */
@@ -3993,7 +4024,7 @@ try_split (rtx pat, rtx_insn *trial, int last)
   before = PREV_INSN (trial);
   after = NEXT_INSN (trial);
 
-  tem = emit_insn_after_setloc (seq, trial, INSN_LOCATION (trial));
+  emit_insn_after_setloc (seq, trial, INSN_LOCATION (trial));
 
   delete_insn (trial);
 
@@ -5693,7 +5724,6 @@ copy_insn_1 (rtx orig)
     case SIMPLE_RETURN:
       return orig;
     case CLOBBER:
-    case CLOBBER_HIGH:
       /* Share clobbers of hard registers (like cc0), but do not share pseudo reg
          clobbers or clobbers of hard registers that originated as pseudos.
          This is needed to allow safe register renaming.  */
@@ -6505,21 +6535,6 @@ gen_hard_reg_clobber (machine_mode mode, unsigned int regno)
 	    gen_rtx_CLOBBER (VOIDmode, gen_rtx_REG (mode, regno)));
 }
 
-static GTY((deletable)) rtx
-hard_reg_clobbers_high[NUM_MACHINE_MODES][FIRST_PSEUDO_REGISTER];
-
-/* Return a CLOBBER_HIGH expression for register REGNO that clobbers MODE,
-   caching into HARD_REG_CLOBBERS_HIGH.  */
-rtx
-gen_hard_reg_clobber_high (machine_mode mode, unsigned int regno)
-{
-  if (hard_reg_clobbers_high[mode][regno])
-    return hard_reg_clobbers_high[mode][regno];
-  else
-    return (hard_reg_clobbers_high[mode][regno]
-	    = gen_rtx_CLOBBER_HIGH (VOIDmode, gen_rtx_REG (mode, regno)));
-}
-
 location_t prologue_location;
 location_t epilogue_location;
 
@@ -6556,6 +6571,18 @@ location_t
 curr_insn_location (void)
 {
   return curr_location;
+}
+
+/* Set the location of the insn chain starting at INSN to LOC.  */
+void
+set_insn_locations (rtx_insn *insn, location_t loc)
+{
+  while (insn)
+    {
+      if (INSN_P (insn))
+	INSN_LOCATION (insn) = loc;
+      insn = NEXT_INSN (insn);
+    }
 }
 
 /* Return lexical scope block insn belongs to.  */

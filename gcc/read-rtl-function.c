@@ -41,6 +41,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "read-rtl-function.h"
 #include "selftest.h"
 #include "selftest-rtl.h"
+#include "regs.h"
+#include "function-abi.h"
 
 /* Forward decls.  */
 class function_reader;
@@ -52,8 +54,9 @@ class fixup;
    at LOC, which will be turned into an actual CFG edge once
    the "insn-chain" is fully parsed.  */
 
-struct deferred_edge
+class deferred_edge
 {
+public:
   deferred_edge (file_location loc, int src_bb_idx, int dest_bb_idx, int flags)
   : m_loc (loc), m_src_bb_idx (src_bb_idx), m_dest_bb_idx (dest_bb_idx),
     m_flags (flags)
@@ -707,7 +710,7 @@ parse_edge_flag_token (const char *tok)
   } while (0);
 #include "cfg-flags.def"
 #undef DEF_EDGE_FLAG
-  error ("unrecognized edge flag: '%s'", tok);
+  error ("unrecognized edge flag: %qs", tok);
   return 0;
 }
 
@@ -978,7 +981,7 @@ function_reader::parse_enum_value (int num_values, const char *const *strings)
       if (strcmp (name.string, strings[i]) == 0)
 	return i;
     }
-  error ("unrecognized enum value: '%s'", name.string);
+  error ("unrecognized enum value: %qs", name.string);
   return 0;
 }
 
@@ -1610,6 +1613,7 @@ bool
 read_rtl_function_body (const char *path)
 {
   initialize_rtl ();
+  crtl->abi = &default_function_abi;
   init_emit ();
   init_varasm_status ();
 
@@ -1643,6 +1647,7 @@ read_rtl_function_body_from_file_range (location_t start_loc,
     }
 
   initialize_rtl ();
+  crtl->abi = &fndecl_abi (cfun->decl).base_abi ();
   init_emit ();
   init_varasm_status ();
 

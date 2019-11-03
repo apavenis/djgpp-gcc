@@ -158,7 +158,8 @@ create_dispatcher_calls (struct cgraph_node *node)
 	    {
 	      symtab_node *source = ref->referring;
 	      source->create_reference (inode, IPA_REF_ALIAS);
-	      source->add_to_same_comdat_group (inode);
+	      if (inode->get_comdat_group ())
+		source->add_to_same_comdat_group (inode);
 	    }
 	  else
 	    gcc_unreachable ();
@@ -310,9 +311,8 @@ create_target_clone (cgraph_node *node, bool definition, char *name,
   if (definition)
     {
       new_node = node->create_version_clone_with_body (vNULL, NULL,
-    						       NULL, false,
-						       NULL, NULL,
-						       name, attributes);
+    						       NULL, NULL,
+						       NULL, name, attributes);
       if (new_node == NULL)
 	return NULL;
       new_node->force_output = true;
@@ -356,7 +356,7 @@ expand_target_clones (struct cgraph_node *node, bool definition)
     }
 
   if (node->definition
-      && !tree_versionable_function_p (node->decl))
+      && (node->alias || !tree_versionable_function_p (node->decl)))
     {
       auto_diagnostic_group d;
       error_at (DECL_SOURCE_LOCATION (node->decl),
@@ -365,6 +365,9 @@ expand_target_clones (struct cgraph_node *node, bool definition)
       if (lookup_attribute ("noclone", DECL_ATTRIBUTES (node->decl)))
 	reason = G_("function %q+F can never be copied "
 		    "because it has %<noclone%> attribute");
+      else if (node->alias)
+	reason
+	  = "%<target_clones%> cannot be combined with %<alias%> attribute";
       else
 	reason = copy_forbidden (DECL_STRUCT_FUNCTION (node->decl));
       if (reason)
@@ -426,7 +429,7 @@ expand_target_clones (struct cgraph_node *node, bool definition)
 						   attributes);
       if (new_node == NULL)
 	return false;
-      new_node->local.local = false;
+      new_node->local = false;
       XDELETEVEC (suffix);
 
       decl2_v = new_node->function_version ();
@@ -454,7 +457,7 @@ expand_target_clones (struct cgraph_node *node, bool definition)
   tree attributes = make_attribute ("target", "default",
 				    DECL_ATTRIBUTES (node->decl));
   DECL_ATTRIBUTES (node->decl) = attributes;
-  node->local.local = false;
+  node->local = false;
   return true;
 }
 

@@ -574,8 +574,9 @@ typedef struct c_binding *c_binding_ptr;
 /* Information that we keep for a struct or union while it is being
    parsed.  */
 
-struct c_struct_parse_info
+class c_struct_parse_info
 {
+public:
   /* If warn_cxx_compat, a list of types defined within this
      struct.  */
   auto_vec<tree> struct_types;
@@ -591,7 +592,7 @@ struct c_struct_parse_info
 
 /* Information for the struct or union currently being parsed, or
    NULL if not parsing a struct or union.  */
-static struct c_struct_parse_info *struct_parse_info;
+static class c_struct_parse_info *struct_parse_info;
 
 /* Forward declarations.  */
 static tree lookup_name_in_scope (tree, struct c_scope *);
@@ -604,7 +605,7 @@ static tree grokparms (struct c_arg_info *, bool);
 static void layout_array_type (tree);
 static void warn_defaults_to (location_t, int, const char *, ...)
     ATTRIBUTE_GCC_DIAG(3,4);
-static const char *header_for_builtin_fn (enum built_in_function);
+static const char *header_for_builtin_fn (tree);
 
 /* T is a statement.  Add it to the statement-tree.  This is the
    C/ObjC version--C++ has a slightly different version of this
@@ -1780,15 +1781,16 @@ diagnose_arglist_conflict (tree newdecl, tree olddecl,
       if (TREE_CHAIN (t) == NULL_TREE
 	  && TYPE_MAIN_VARIANT (type) != void_type_node)
 	{
-	  inform (input_location, "a parameter list with an ellipsis can%'t match "
-		  "an empty parameter name list declaration");
+	  inform (input_location, "a parameter list with an ellipsis "
+		  "cannot match an empty parameter name list declaration");
 	  break;
 	}
 
       if (c_type_promotes_to (type) != type)
 	{
-	  inform (input_location, "an argument type that has a default promotion can%'t match "
-		  "an empty parameter name list declaration");
+	  inform (input_location, "an argument type that has a default "
+		  "promotion cannot match an empty parameter name list "
+		  "declaration");
 	  break;
 	}
     }
@@ -1951,7 +1953,8 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
   if (!comptypes (oldtype, newtype))
     {
       if (TREE_CODE (olddecl) == FUNCTION_DECL
-	  && fndecl_built_in_p (olddecl) && !C_DECL_DECLARED_BUILTIN (olddecl))
+	  && fndecl_built_in_p (olddecl, BUILT_IN_NORMAL)
+	  && !C_DECL_DECLARED_BUILTIN (olddecl))
 	{
 	  /* Accept "harmless" mismatches in function types such
 	     as missing qualifiers or pointer vs same size integer
@@ -1973,8 +1976,7 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
 	      /* If types don't match for a built-in, throw away the
 		 built-in.  No point in calling locate_old_decl here, it
 		 won't print anything.  */
-	      const char *header
-		= header_for_builtin_fn (DECL_FUNCTION_CODE (olddecl));
+	      const char *header = header_for_builtin_fn (olddecl);
 	      location_t loc = DECL_SOURCE_LOCATION (newdecl);
 	      if (warning_at (loc, OPT_Wbuiltin_declaration_mismatch,
 			      "conflicting types for built-in function %q+D; "
@@ -2637,7 +2639,10 @@ merge_decls (tree newdecl, tree olddecl, tree newtype, tree oldtype)
 	    |= DECL_NO_INSTRUMENT_FUNCTION_ENTRY_EXIT (olddecl);
 	  TREE_THIS_VOLATILE (newdecl) |= TREE_THIS_VOLATILE (olddecl);
 	  DECL_IS_MALLOC (newdecl) |= DECL_IS_MALLOC (olddecl);
-	  DECL_IS_OPERATOR_NEW (newdecl) |= DECL_IS_OPERATOR_NEW (olddecl);
+	  if (DECL_IS_OPERATOR_NEW_P (olddecl))
+	    DECL_SET_IS_OPERATOR_NEW (newdecl, true);
+	  if (DECL_IS_OPERATOR_DELETE_P (olddecl))
+	    DECL_SET_IS_OPERATOR_DELETE (newdecl, true);
 	  TREE_READONLY (newdecl) |= TREE_READONLY (olddecl);
 	  DECL_PURE_P (newdecl) |= DECL_PURE_P (olddecl);
 	  DECL_IS_NOVOPS (newdecl) |= DECL_IS_NOVOPS (olddecl);
@@ -2731,8 +2736,7 @@ merge_decls (tree newdecl, tree olddecl, tree newtype, tree oldtype)
 	{
 	  /* If redeclaring a builtin function, it stays built in.
 	     But it gets tagged as having been declared.  */
-	  DECL_BUILT_IN_CLASS (newdecl) = DECL_BUILT_IN_CLASS (olddecl);
-	  DECL_FUNCTION_CODE (newdecl) = DECL_FUNCTION_CODE (olddecl);
+	  copy_decl_built_in_function (newdecl, olddecl);
 	  C_DECL_DECLARED_BUILTIN (newdecl) = 1;
 	  if (new_is_prototype)
 	    {
@@ -3126,8 +3130,11 @@ pushdecl (tree x)
      detecting duplicate declarations of the same object, no matter
      what scope they are in; this is what we do here.  (C99 6.2.7p2:
      All declarations that refer to the same object or function shall
-     have compatible type; otherwise, the behavior is undefined.)  */
-  if (DECL_EXTERNAL (x) || scope == file_scope)
+     have compatible type; otherwise, the behavior is undefined.)
+     However, in Objective-C, we also want to detect declarations
+     conflicting with those of the basic types.  */
+  if ((DECL_EXTERNAL (x) || scope == file_scope)
+      && (VAR_OR_FUNCTION_DECL_P (x) || c_dialect_objc ()))
     {
       tree type = TREE_TYPE (x);
       tree vistype = NULL_TREE;
@@ -3334,13 +3341,17 @@ implicit_decl_warning (location_t loc, tree id, tree olddecl)
     hint.suppress ();
 }
 
-/* This function represents mapping of a function code FCODE
-   to its respective header.  */
+/* Return the name of the header file that declares built-in function
+   FNDECL, or null if either we don't know or don't expect to see an
+   explicit declaration.  */
 
 static const char *
-header_for_builtin_fn (enum built_in_function fcode)
+header_for_builtin_fn (tree fndecl)
 {
-  switch (fcode)
+  if (DECL_BUILT_IN_CLASS (fndecl) != BUILT_IN_NORMAL)
+    return NULL;
+
+  switch (DECL_FUNCTION_CODE (fndecl))
     {
     CASE_FLT_FN (BUILT_IN_ACOS):
     CASE_FLT_FN (BUILT_IN_ACOSH):
@@ -3590,8 +3601,7 @@ implicitly_declare (location_t loc, tree functionid)
 					    "declaration of built-in "
 					    "function %qD", decl);
 		  /* See if we can hint which header to include.  */
-		  const char *header
-		    = header_for_builtin_fn (DECL_FUNCTION_CODE (decl));
+		  const char *header = header_for_builtin_fn (decl);
 		  if (header != NULL && warned)
 		    {
 		      rich_location richloc (line_table, loc);
@@ -4471,6 +4481,16 @@ c_builtin_function_ext_scope (tree decl)
 
   return decl;
 }
+
+/* Implement LANG_HOOKS_SIMULATE_BUILTIN_FUNCTION_DECL.  */
+
+tree
+c_simulate_builtin_function_decl (tree decl)
+{
+  tree type = TREE_TYPE (decl);
+  C_DECL_BUILTIN_PROTOTYPE (decl) = prototype_p (type);
+  return pushdecl (decl);
+}
 
 /* Called when a declaration is seen that contains no names to declare.
    If its type is a reference to a structure, union or enum inherited
@@ -4822,8 +4842,12 @@ c_decl_attributes (tree *node, tree attributes, int flags)
 	attributes = tree_cons (get_identifier ("omp declare target implicit"),
 				NULL_TREE, attributes);
       else
-	attributes = tree_cons (get_identifier ("omp declare target"),
-				NULL_TREE, attributes);
+	{
+	  attributes = tree_cons (get_identifier ("omp declare target"),
+				  NULL_TREE, attributes);
+	  attributes = tree_cons (get_identifier ("omp declare target block"),
+				  NULL_TREE, attributes);
+	}
     }
 
   /* Look up the current declaration with all the attributes merged
@@ -4887,7 +4911,7 @@ start_decl (struct c_declarator *declarator, struct c_declspecs *declspecs,
     switch (TREE_CODE (decl))
       {
       case TYPE_DECL:
-	error ("typedef %qD is initialized (use __typeof__ instead)", decl);
+	error ("typedef %qD is initialized (use %<__typeof__%> instead)", decl);
 	initialized = false;
 	break;
 
@@ -5012,8 +5036,8 @@ start_decl (struct c_declarator *declarator, struct c_declspecs *declspecs,
       && DECL_DECLARED_INLINE_P (decl)
       && DECL_UNINLINABLE (decl)
       && lookup_attribute ("noinline", DECL_ATTRIBUTES (decl)))
-    warning (OPT_Wattributes, "inline function %q+D given attribute noinline",
-	     decl);
+    warning (OPT_Wattributes, "inline function %q+D given attribute %qs",
+	     decl, "noinline");
 
   /* C99 6.7.4p3: An inline definition of a function with external
      linkage shall not contain a definition of a modifiable object
@@ -5282,7 +5306,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
 	      && VAR_P (decl)
 	      && !C_DECL_REGISTER (decl)
 	      && !TREE_STATIC (decl))
-	    warning (0, "ignoring asm-specifier for non-static local "
+	    warning (0, "ignoring %<asm%> specifier for non-static local "
 		     "variable %q+D", decl);
 	  else
 	    set_user_assembler_name (decl, asmspec);
@@ -5398,7 +5422,7 @@ finish_decl (tree decl, location_t init_loc, tree init,
       type = strip_array_types (type);
       if (TREE_READONLY (decl))
 	warning_at (DECL_SOURCE_LOCATION (decl), OPT_Wc___compat,
-		    "uninitialized const %qD is invalid in C++", decl);
+		    "uninitialized %<const %D%> is invalid in C++", decl);
       else if (RECORD_OR_UNION_TYPE_P (type)
 	       && C_TYPE_FIELDS_READONLY (type))
 	diagnose_uninitialized_cst_member (decl, type);
@@ -5725,10 +5749,10 @@ warn_variable_length_array (tree name, tree size)
       if (name)
 	pedwarn_c90 (input_location, OPT_Wvla,
 		     "ISO C90 forbids array %qE whose size "
-		     "can%'t be evaluated", name);
+		     "cannot be evaluated", name);
       else
 	pedwarn_c90 (input_location, OPT_Wvla, "ISO C90 forbids array "
-		     "whose size can%'t be evaluated");
+		     "whose size cannot be evaluated");
     }
   else
     {
@@ -7766,7 +7790,7 @@ xref_tag (enum tree_code code, tree name)
 
 tree
 start_struct (location_t loc, enum tree_code code, tree name,
-	      struct c_struct_parse_info **enclosing_struct_parse_info)
+	      class c_struct_parse_info **enclosing_struct_parse_info)
 {
   /* If there is already a tag defined at this scope
      (as a forward reference), just return it.  */
@@ -8181,7 +8205,7 @@ field_decl_cmp (const void *x_p, const void *y_p)
 
 tree
 finish_struct (location_t loc, tree t, tree fieldlist, tree attributes,
-	       struct c_struct_parse_info *enclosing_struct_parse_info)
+	       class c_struct_parse_info *enclosing_struct_parse_info)
 {
   tree x;
   bool toplevel = file_scope == current_scope;
@@ -8673,7 +8697,7 @@ finish_enum (tree enumtype, tree values, tree attributes)
       if (precision > TYPE_PRECISION (enumtype))
 	{
 	  TYPE_PRECISION (enumtype) = 0;
-	  error ("specified mode too small for enumeral values");
+	  error ("specified mode too small for enumerated values");
 	}
       else
 	precision = TYPE_PRECISION (enumtype);
@@ -8775,6 +8799,8 @@ finish_enum (tree enumtype, tree values, tree attributes)
       && struct_parse_info != NULL
       && !in_sizeof && !in_typeof && !in_alignof)
     struct_parse_info->struct_types.safe_push (enumtype);
+
+  C_TYPE_BEING_DEFINED (enumtype) = 0;
 
   return enumtype;
 }
@@ -8881,6 +8907,36 @@ build_enumerator (location_t decl_loc, location_t loc,
   return tree_cons (decl, value, NULL_TREE);
 }
 
+/* Implement LANG_HOOKS_SIMULATE_ENUM_DECL.  */
+
+tree
+c_simulate_enum_decl (location_t loc, const char *name,
+		      vec<string_int_pair> values)
+{
+  location_t saved_loc = input_location;
+  input_location = loc;
+
+  struct c_enum_contents the_enum;
+  tree enumtype = start_enum (loc, &the_enum, get_identifier (name));
+
+  tree value_chain = NULL_TREE;
+  string_int_pair *value;
+  unsigned int i;
+  FOR_EACH_VEC_ELT (values, i, value)
+    {
+      tree decl = build_enumerator (loc, loc, &the_enum,
+				    get_identifier (value->first),
+				    build_int_cst (integer_type_node,
+						   value->second));
+      TREE_CHAIN (decl) = value_chain;
+      value_chain = decl;
+    }
+
+  finish_enum (enumtype, nreverse (value_chain), NULL_TREE);
+
+  input_location = saved_loc;
+  return enumtype;
+}
 
 /* Create the FUNCTION_DECL for a function definition.
    DECLSPECS, DECLARATOR and ATTRIBUTES are the parts of
@@ -8934,8 +8990,8 @@ start_function (struct c_declspecs *declspecs, struct c_declarator *declarator,
       && DECL_UNINLINABLE (decl1)
       && lookup_attribute ("noinline", DECL_ATTRIBUTES (decl1)))
     warning_at (loc, OPT_Wattributes,
-		"inline function %qD given attribute noinline",
-		decl1);
+		"inline function %qD given attribute %qs",
+		decl1, "noinline");
 
   /* Handle gnu_inline attribute.  */
   if (declspecs->inline_p
@@ -9685,6 +9741,7 @@ finish_function (void)
       /* Normally, with -Wreturn-type, flow will complain, but we might
          optimize out static functions.  */
       && !TREE_PUBLIC (fndecl)
+      && targetm.warn_func_return (fndecl)
       && warning (OPT_Wreturn_type,
 		  "no return statement in function returning non-void"))
     TREE_NO_WARNING (fndecl) = 1;
@@ -9971,6 +10028,34 @@ identifier_global_value	(tree t)
       return b->decl;
 
   return NULL_TREE;
+}
+
+/* Returns true if NAME refers to a built-in function or function-like
+   operator.  */
+
+bool
+names_builtin_p (const char *name)
+{
+  tree id = get_identifier (name);
+  if (tree decl = identifier_global_value (id))
+    return TREE_CODE (decl) == FUNCTION_DECL && DECL_IS_BUILTIN (decl);
+
+  /* Also detect common reserved C words that aren't strictly built-in
+     functions.  */
+  switch (C_RID_CODE (id))
+    {
+    case RID_BUILTIN_CONVERTVECTOR:
+    case RID_BUILTIN_HAS_ATTRIBUTE:
+    case RID_BUILTIN_SHUFFLE:
+    case RID_CHOOSE_EXPR:
+    case RID_OFFSETOF:
+    case RID_TYPES_COMPATIBLE_P:
+      return true;
+    default:
+      break;
+    }
+
+  return false;
 }
 
 /* In C, the only C-linkage public declaration is at file scope.  */
@@ -10636,7 +10721,11 @@ declspecs_add_type (location_t loc, struct c_declspecs *specs,
 	    case RID_INT_N_2:
 	    case RID_INT_N_3:
 	      specs->int_n_idx = i - RID_INT_N_0;
-	      if (!in_system_header_at (input_location))
+	      if (!in_system_header_at (input_location)
+		  /* If the INT_N type ends in "__", and so is of the format
+		     "__intN__", don't pedwarn.  */
+		  && (strncmp (IDENTIFIER_POINTER (type)
+			       + (IDENTIFIER_LENGTH (type) - 2), "__", 2) != 0))
 		pedwarn (loc, OPT_Wpedantic,
 			 "ISO C does not support %<__int%d%> types",
 			 int_n_data[specs->int_n_idx].bitsize);
@@ -10940,10 +11029,11 @@ declspecs_add_type (location_t loc, struct c_declspecs *specs,
 	      }
 	      if (!targetm.decimal_float_supported_p ())
 		error_at (loc,
-			  ("decimal floating point not supported "
+			  ("decimal floating-point not supported "
 			   "for this target"));
-	      pedwarn (loc, OPT_Wpedantic,
-		       "ISO C does not support decimal floating point");
+	      pedwarn_c11 (loc, OPT_Wpedantic,
+			   "ISO C does not support decimal floating-point "
+			   "before C2X");
 	      return specs;
 	    case RID_FRACT:
 	    case RID_ACCUM:
