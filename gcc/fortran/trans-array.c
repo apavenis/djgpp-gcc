@@ -1164,6 +1164,7 @@ gfc_trans_create_temp_array (stmtblock_t * pre, stmtblock_t * post, gfc_ss * ss,
   tree nelem;
   tree cond;
   tree or_expr;
+  tree elemsize;
   tree class_expr = NULL_TREE;
   int n, dim, tmp_dim;
   int total_dim = 0;
@@ -1329,21 +1330,21 @@ gfc_trans_create_temp_array (stmtblock_t * pre, stmtblock_t * post, gfc_ss * ss,
 	}
     }
 
+  if (class_expr == NULL_TREE)
+    elemsize = fold_convert (gfc_array_index_type,
+			     TYPE_SIZE_UNIT (gfc_get_element_type (type)));
+  else
+    elemsize = gfc_class_vtab_size_get (class_expr);
+
   /* Get the size of the array.  */
   if (size && !callee_alloc)
     {
-      tree elemsize;
       /* If or_expr is true, then the extent in at least one
 	 dimension is zero and the size is set to zero.  */
       size = fold_build3_loc (input_location, COND_EXPR, gfc_array_index_type,
 			      or_expr, gfc_index_zero_node, size);
 
       nelem = size;
-      if (class_expr == NULL_TREE)
-	elemsize = fold_convert (gfc_array_index_type,
-			TYPE_SIZE_UNIT (gfc_get_element_type (type)));
-      else
-	elemsize = gfc_class_vtab_size_get (class_expr);
 
       size = fold_build2_loc (input_location, MULT_EXPR, gfc_array_index_type,
 			      size, elemsize);
@@ -1353,6 +1354,10 @@ gfc_trans_create_temp_array (stmtblock_t * pre, stmtblock_t * post, gfc_ss * ss,
       nelem = size;
       size = NULL_TREE;
     }
+
+  /* Set the span.  */
+  tmp = fold_convert (gfc_array_index_type, elemsize);
+  gfc_conv_descriptor_span_set (pre, desc, tmp);
 
   gfc_trans_allocate_array_storage (pre, post, info, size, nelem, initial,
 				    dynamic, dealloc);
@@ -2652,6 +2657,9 @@ gfc_scalar_elemental_arg_saved_as_reference (gfc_ss_info * ss_info)
   if (ss_info->type != GFC_SS_REFERENCE)
     return false;
 
+  if (ss_info->data.scalar.needs_temporary)
+    return false;
+
   /* If the actual argument can be absent (in other words, it can
      be a NULL reference), don't try to evaluate it; pass instead
      the reference directly.  */
@@ -3414,10 +3422,8 @@ gfc_conv_scalarized_array_ref (gfc_se * se, gfc_array_ref * ar)
   if (build_class_array_ref (se, base, index))
     return;
 
-  if (expr && ((is_subref_array (expr)
-		&& GFC_DESCRIPTOR_TYPE_P (TREE_TYPE (info->descriptor)))
-	       || (expr->ts.deferred && (expr->expr_type == EXPR_VARIABLE
-					 || expr->expr_type == EXPR_FUNCTION))))
+  if (expr && (expr->ts.deferred && (expr->expr_type == EXPR_VARIABLE
+				     || expr->expr_type == EXPR_FUNCTION)))
     decl = expr->symtree->n.sym->backend_decl;
 
   /* A pointer array component can be detected from its field decl. Fix
@@ -9527,9 +9533,15 @@ gfc_is_reallocatable_lhs (gfc_expr *expr)
   if (sym->ts.type == BT_CLASS
       && !sym->attr.associate_var
       && CLASS_DATA (sym)->attr.allocatable
-      && expr->ref && expr->ref->type == REF_COMPONENT
-      && strcmp (expr->ref->u.c.component->name, "_data") == 0
-      && expr->ref->next == NULL)
+      && expr->ref
+      && ((expr->ref->type == REF_ARRAY && expr->ref->u.ar.type == AR_FULL
+	   && expr->ref->next == NULL)
+	  || (expr->ref->type == REF_COMPONENT
+	      && strcmp (expr->ref->u.c.component->name, "_data") == 0
+	      && (expr->ref->next == NULL
+		  || (expr->ref->next->type == REF_ARRAY
+		      && expr->ref->next->u.ar.type == AR_FULL
+		      && expr->ref->next->next == NULL)))))
     return true;
 
   /* An allocatable variable.  */
@@ -10349,6 +10361,8 @@ static gfc_ss *
 gfc_walk_variable_expr (gfc_ss * ss, gfc_expr * expr)
 {
   gfc_ref *ref;
+
+  gfc_fix_class_refs (expr);
 
   for (ref = expr->ref; ref; ref = ref->next)
     if (ref->type == REF_ARRAY && ref->u.ar.type != AR_ELEMENT)
