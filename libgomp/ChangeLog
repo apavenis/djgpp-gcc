@@ -1,3 +1,24 @@
+2019-12-11  Thomas Schwinge  <thomas@codesourcery.com>
+	    Julian Brown  <julian@codesourcery.com>
+
+	* target.c (gomp_load_image_to_device, omp_target_associate_ptr):
+	Initialize 'dynamic_refcount' whenever we initialize 'refcount'.
+
+2019-12-11  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from mainline
+	2019-12-11  Tobias Burnus  <tobias@codesourcery.com>
+
+	* omp_lib.h.in: Fix spelling of function declaration
+	omp_get_cancell(l)ation.
+
+2019-08-13  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/91422
+	* testsuite/libgomp.oacc-fortran/routine-7.f90: Correct array
+	dimension.
+
 2019-08-12  Release Manager
 
 	* GCC 9.2.0 released.
