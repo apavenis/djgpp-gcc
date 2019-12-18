@@ -787,6 +787,7 @@ WARN_LOGFILE           =
 # Note: If this tag is empty the current directory is searched.
 
 INPUT                  = @srcdir@/doc/doxygen/doxygroups.cc \
+                         @srcdir@/libsupc++/compare \
                          @srcdir@/libsupc++/cxxabi.h \
                          @srcdir@/libsupc++/exception \
                          @srcdir@/libsupc++/initializer_list \
@@ -839,6 +840,7 @@ INPUT                  = @srcdir@/doc/doxygen/doxygroups.cc \
                          include/sstream \
                          include/stack \
                          include/stdexcept \
+                         include/stop_token \
                          include/streambuf \
                          include/string \
                          include/string_view \

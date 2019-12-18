@@ -19,13 +19,13 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-/* Gimple identical code folding (class func_checker) is an infastructure
+/* Gimple identical code folding (class func_checker) is an infrastructure
    capable of comparing two given functions. The class compares every
    gimple statement and uses many dictionaries to map source and target
    SSA_NAMEs, declarations and other components.
 
-   To use the infrastructure, create an instanse of func_checker and call
-   a comparsion function based on type of gimple statement.  */
+   To use the infrastructure, create an instance of func_checker and call
+   a comparison function based on type of gimple statement.  */
 
 /* Prints string STRING to a FILE with a given number of SPACE_COUNT.  */
 #define FPUTS_SPACES(file, space_count, string) \
@@ -121,6 +121,16 @@ public:
 class func_checker : operand_compare
 {
 public:
+  /* Default constructor.  */
+  func_checker ():
+    m_source_func_decl (NULL_TREE), m_target_func_decl (NULL_TREE),
+    m_ignored_source_nodes (NULL), m_ignored_target_nodes (NULL),
+    m_ignore_labels (false)
+  {
+    m_source_ssa_names.create (0);
+    m_target_ssa_names.create (0);
+  }
+
   /* Initialize internal structures for a given SOURCE_FUNC_DECL and
      TARGET_FUNC_DECL. Strict polymorphic comparison is processed if
      an option COMPARE_POLYMORPHIC is true. For special cases, one can
@@ -210,7 +220,7 @@ public:
   bool compare_loops (basic_block bb1, basic_block bb2);
 
   /* Return true if types are compatible for polymorphic call analysis.
-     COMPARE_PTR indicates if polymorphic type comparsion should be
+     COMPARE_PTR indicates if polymorphic type comparison should be
      done for pointers, too.  */
   static bool compatible_polymorphic_types_p (tree t1, tree t2,
 					      bool compare_ptr);
@@ -254,6 +264,7 @@ private:
   /* Flag if ignore labels in comparison.  */
   bool m_ignore_labels;
 
+public:
   /* Return true if two operands are equal.  The flags fields can be used
      to specify OEP flags described above.  */
   virtual bool operand_equal_p (const_tree, const_tree, unsigned int flags);

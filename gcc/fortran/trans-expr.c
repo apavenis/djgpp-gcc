@@ -1725,7 +1725,8 @@ gfc_conv_expr_present (gfc_symbol * sym)
       /* Walk function argument list to find hidden arg.  */
       cond = DECL_ARGUMENTS (DECL_CONTEXT (decl));
       for ( ; cond != NULL_TREE; cond = TREE_CHAIN (cond))
-	if (DECL_NAME (cond) == tree_name)
+	if (DECL_NAME (cond) == tree_name
+	    && DECL_ARTIFICIAL (cond))
 	  break;
 
       gcc_assert (cond);
@@ -5749,7 +5750,9 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 					fold_convert (TREE_TYPE (parmse.expr),
 						      integer_zero_node));
 
-			    vec_safe_push (optionalargs, tmp);
+			    vec_safe_push (optionalargs,
+					   fold_convert (boolean_type_node,
+							 tmp));
 			  }
 		      }
 		    }
@@ -8327,7 +8330,6 @@ gfc_trans_structure_assign (tree dest, gfc_expr * expr, bool init, bool coarray)
   gfc_se se;
 
   gfc_start_block (&block);
-  cm = expr->ts.u.derived->components;
 
   if (expr->ts.u.derived->from_intmod == INTMOD_ISO_C_BINDING
       && (expr->ts.u.derived->intmod_sym_id == ISOCBINDING_PTR
@@ -8344,6 +8346,17 @@ gfc_trans_structure_assign (tree dest, gfc_expr * expr, bool init, bool coarray)
 
       return gfc_finish_block (&block);
     }
+
+  /* Make sure that the derived type has been completely built.  */
+  if (!expr->ts.u.derived->backend_decl
+      || !TYPE_FIELDS (expr->ts.u.derived->backend_decl))
+    {
+      tmp = gfc_typenode_for_spec (&expr->ts);
+      gcc_assert (tmp);
+    }
+
+  cm = expr->ts.u.derived->components;
+
 
   if (coarray)
     gfc_init_se (&se, NULL);
@@ -8415,6 +8428,7 @@ gfc_trans_structure_assign (tree dest, gfc_expr * expr, bool init, bool coarray)
 	  gfc_add_expr_to_block (&block, tmp);
 	}
       field = cm->backend_decl;
+      gcc_assert(field);
       tmp = fold_build3_loc (input_location, COMPONENT_REF, TREE_TYPE (field),
 			     dest, field, NULL_TREE);
       if (!c->expr)
@@ -9203,6 +9217,13 @@ gfc_trans_pointer_assignment (gfc_expr * expr1, gfc_expr * expr2)
 	    && remap->u.ar.type == AR_SECTION)
 	  break;
       rank_remap = (remap && remap->u.ar.end[0]);
+
+      if (remap && expr2->expr_type == EXPR_NULL)
+	{
+	  gfc_error ("If bounds remapping is specified at %L, "
+		     "the pointer target shall not be NULL", &expr1->where);
+	  return NULL_TREE;
+	}
 
       gfc_init_se (&lse, NULL);
       if (remap)

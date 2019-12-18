@@ -401,9 +401,7 @@ extern GTY(()) int darwin_ms_struct;
 #undef  STARTFILE_SPEC
 #define STARTFILE_SPEC							    \
 "%{Zdynamiclib: %(darwin_dylib1) %{fgnu-tm: -lcrttms.o}}		    \
- %{!Zdynamiclib:%{Zbundle:%{!static:					    \
-	%:version-compare(< 10.6 mmacosx-version-min= -lbundle1.o)	    \
-	%{fgnu-tm: -lcrttms.o}}}					    \
+ %{!Zdynamiclib:%{Zbundle:%(darwin_bundle1)}				    \
      %{!Zbundle:%{pg:%{static:-lgcrt0.o}				    \
                      %{!static:%{object:-lgcrt0.o}			    \
                                %{!object:%{preload:-lgcrt0.o}		    \
@@ -425,7 +423,8 @@ extern GTY(()) int darwin_ms_struct;
   { "darwin_crt1", DARWIN_CRT1_SPEC },					\
   { "darwin_crt2", DARWIN_CRT2_SPEC },					\
   { "darwin_crt3", DARWIN_CRT3_SPEC },					\
-  { "darwin_dylib1", DARWIN_DYLIB1_SPEC },
+  { "darwin_dylib1", DARWIN_DYLIB1_SPEC },				\
+  { "darwin_bundle1", DARWIN_BUNDLE1_SPEC },
 
 #define DARWIN_CRT1_SPEC						\
   "%:version-compare(!> 10.5 mmacosx-version-min= -lcrt1.o)		\
@@ -446,6 +445,10 @@ extern GTY(()) int darwin_ms_struct;
 #define DARWIN_DYLIB1_SPEC						\
   "%:version-compare(!> 10.5 mmacosx-version-min= -ldylib1.o)		\
    %:version-compare(>< 10.5 10.6 mmacosx-version-min= -ldylib1.10.5.o)"
+
+#define DARWIN_BUNDLE1_SPEC \
+"%{!static:%:version-compare(< 10.6 mmacosx-version-min= -lbundle1.o)	\
+	   %{fgnu-tm: -lcrttms.o}}"
 
 #ifdef HAVE_AS_MMACOSX_VERSION_MIN_OPTION
 /* Emit macosx version (but only major).  */
@@ -842,6 +845,13 @@ extern GTY(()) section * darwin_sections[NUM_DARWIN_SECTIONS];
 #define MACHO_SYMBOL_FLAG_HIDDEN_VIS ((SYMBOL_FLAG_SUBT_DEP) << 3)
 #define MACHO_SYMBOL_HIDDEN_VIS_P(RTX) \
   ((SYMBOL_REF_FLAGS (RTX) & MACHO_SYMBOL_FLAG_HIDDEN_VIS) != 0)
+
+/* Set on a symbol that should be made visible to the linker (overriding
+   'L' symbol prefixes).  */
+
+#define MACHO_SYMBOL_FLAG_LINKER_VIS ((SYMBOL_FLAG_SUBT_DEP) << 4)
+#define MACHO_SYMBOL_LINKER_VIS_P(RTX) \
+  ((SYMBOL_REF_FLAGS (RTX) & MACHO_SYMBOL_FLAG_LINKER_VIS) != 0)
 
 /* Set on a symbol that is a pic stub or symbol indirection (i.e. the
    L_xxxxx${stub,non_lazy_ptr,lazy_ptr}.  */

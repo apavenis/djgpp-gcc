@@ -757,6 +757,16 @@ extern bool done_lexing;
 #define C_TYPE_OBJECT_OR_INCOMPLETE_P(type) \
   (!C_TYPE_FUNCTION_P (type))
 
+/* Return true if TYPE is a vector type that should be subject to the GNU
+   vector extensions (as opposed to a vector type that is used only for
+   the purposes of defining target-specific built-in functions).  */
+
+inline bool
+gnu_vector_type_p (const_tree type)
+{
+  return TREE_CODE (type) == VECTOR_TYPE && !TYPE_INDIVISIBLE_P (type);
+}
+
 struct visibility_flags
 {
   unsigned inpragma : 1;	/* True when in #pragma GCC visibility.  */
@@ -801,6 +811,7 @@ extern void c_register_addr_space (const char *str, addr_space_t as);
 extern bool in_late_binary_op;
 extern const char *c_addr_space_name (addr_space_t as);
 extern tree identifier_global_value (tree);
+extern tree identifier_global_tag (tree);
 extern bool names_builtin_p (const char *);
 extern tree c_linkage_bindings (tree);
 extern void record_builtin_type (enum rid, const char *, tree);
@@ -870,7 +881,7 @@ extern bool pointer_to_zero_sized_aggr_p (tree);
 extern bool bool_promoted_to_int_p (tree);
 extern tree fold_for_warn (tree);
 extern tree c_common_get_narrower (tree, int *);
-extern bool get_nonnull_operand (tree, unsigned HOST_WIDE_INT *);
+extern bool get_attribute_operand (tree, unsigned HOST_WIDE_INT *);
 
 #define c_sizeof(LOC, T)  c_sizeof_or_alignof_type (LOC, T, true, false, 1)
 #define c_alignof(LOC, T) c_sizeof_or_alignof_type (LOC, T, false, false, 1)
@@ -1347,7 +1358,9 @@ extern void warn_for_multistatement_macros (location_t, location_t,
 
 /* In c-attribs.c.  */
 extern bool attribute_takes_identifier_p (const_tree);
+extern tree handle_deprecated_attribute (tree *, tree, tree, int, bool *);
 extern tree handle_unused_attribute (tree *, tree, tree, int, bool *);
+extern tree handle_fallthrough_attribute (tree *, tree, tree, int, bool *);
 extern int parse_tm_stmt_attr (tree, int);
 extern int tm_attr_to_mask (tree);
 extern tree tm_mask_to_attr (int);

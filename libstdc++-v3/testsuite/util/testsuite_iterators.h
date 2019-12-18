@@ -677,21 +677,12 @@ namespace __gnu_test
 
 	  friend bool operator==(const sentinel& s, const I& i)
 	  { return s.end == i.ptr; }
-
-	  friend bool operator!=(const sentinel& s, const I& i)
-	  { return !(s == i); }
-
-	  friend bool operator==(const I& i, const sentinel& s)
-	  { return s == i; }
-
-	  friend bool operator!=(const I& i, const sentinel& s)
-	  { return !(s == i); }
 	};
 
       auto
       get_iterator(T* p)
       {
-	if constexpr (std::default_constructible<Iter<T>>)
+	if constexpr (std::default_initializable<Iter<T>>)
 	  return Iter<T>(p, &bounds);
 	else
 	  return iterator(p, &bounds);
@@ -767,6 +758,11 @@ namespace __gnu_test
   template<typename T>
     using test_output_sized_range
       = test_sized_range<T, output_iterator_wrapper>;
+
+// test_container, test_range and test_sized_range do not own their elements,
+// so they all model std::ranges::safe_range. This file does not define
+// specializations of std::ranges::enable_safe_range, so that individual
+// test can decide whether or not to do so.
 #endif // C++20
 } // namespace __gnu_test
 #endif // _TESTSUITE_ITERATORS

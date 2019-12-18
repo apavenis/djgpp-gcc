@@ -54,7 +54,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-iterator.h"
 #include "gimplify.h"
 #include "tree-dfa.h"
-#include "params.h"
 #include "langhooks-def.h"
 #include "tree-diagnostic.h"
 #include "except.h"
@@ -267,7 +266,7 @@ static void print_type_hash_statistics (void);
 static void print_debug_expr_statistics (void);
 static void print_value_expr_statistics (void);
 
-static tree build_array_type_1 (tree, tree, bool, bool);
+static tree build_array_type_1 (tree, tree, bool, bool, bool);
 
 tree global_trees[TI_MAX];
 tree integer_types[itk_none];
@@ -1170,6 +1169,10 @@ free_node (tree node)
     vec_free (BLOCK_NONLOCALIZED_VARS (node));
   else if (code == TREE_BINFO)
     vec_free (BINFO_BASE_ACCESSES (node));
+  else if (code == OPTIMIZATION_NODE)
+    cl_optimization_option_free (TREE_OPTIMIZATION (node));
+  else if (code == TARGET_OPTION_NODE)
+    cl_target_option_free (TREE_TARGET_OPTION (node));
   ggc_free (node);
 }
 
@@ -1549,15 +1552,15 @@ wide_int_to_tree_1 (tree type, const wide_int_ref &pcst)
 	  if (TYPE_SIGN (type) == UNSIGNED)
 	    {
 	      /* Cache [0, N).  */
-	      limit = INTEGER_SHARE_LIMIT;
-	      if (IN_RANGE (hwi, 0, INTEGER_SHARE_LIMIT - 1))
+	      limit = param_integer_share_limit;
+	      if (IN_RANGE (hwi, 0, param_integer_share_limit - 1))
 		ix = hwi;
 	    }
 	  else
 	    {
 	      /* Cache [-1, N).  */
-	      limit = INTEGER_SHARE_LIMIT + 1;
-	      if (IN_RANGE (hwi, -1, INTEGER_SHARE_LIMIT - 1))
+	      limit = param_integer_share_limit + 1;
+	      if (IN_RANGE (hwi, -1, param_integer_share_limit - 1))
 		ix = hwi + 1;
 	    }
 	  break;
@@ -1733,23 +1736,24 @@ cache_integer_cst (tree t)
       if (TYPE_UNSIGNED (type))
 	{
 	  /* Cache 0..N */
-	  limit = INTEGER_SHARE_LIMIT;
+	  limit = param_integer_share_limit;
 
 	  /* This is a little hokie, but if the prec is smaller than
-	     what is necessary to hold INTEGER_SHARE_LIMIT, then the
+	     what is necessary to hold param_integer_share_limit, then the
 	     obvious test will not get the correct answer.  */
 	  if (prec < HOST_BITS_PER_WIDE_INT)
 	    {
-	      if (tree_to_uhwi (t) < (unsigned HOST_WIDE_INT) INTEGER_SHARE_LIMIT)
+	      if (tree_to_uhwi (t)
+		  < (unsigned HOST_WIDE_INT) param_integer_share_limit)
 		ix = tree_to_uhwi (t);
 	    }
-	  else if (wi::ltu_p (wi::to_wide (t), INTEGER_SHARE_LIMIT))
+	  else if (wi::ltu_p (wi::to_wide (t), param_integer_share_limit))
 	    ix = tree_to_uhwi (t);
 	}
       else
 	{
 	  /* Cache -1..N */
-	  limit = INTEGER_SHARE_LIMIT + 1;
+	  limit = param_integer_share_limit + 1;
 
 	  if (integer_minus_onep (t))
 	    ix = 0;
@@ -1757,10 +1761,10 @@ cache_integer_cst (tree t)
 	    {
 	      if (prec < HOST_BITS_PER_WIDE_INT)
 		{
-		  if (tree_to_shwi (t) < INTEGER_SHARE_LIMIT)
+		  if (tree_to_shwi (t) < param_integer_share_limit)
 		    ix = tree_to_shwi (t) + 1;
 		}
-	      else if (wi::ltu_p (wi::to_wide (t), INTEGER_SHARE_LIMIT))
+	      else if (wi::ltu_p (wi::to_wide (t), param_integer_share_limit))
 		ix = tree_to_shwi (t) + 1;
 	    }
 	}
@@ -1854,6 +1858,9 @@ make_vector (unsigned log2_npatterns,
 tree
 build_vector_from_ctor (tree type, vec<constructor_elt, va_gc> *v)
 {
+  if (vec_safe_length (v) == 0)
+    return build_zero_cst (type);
+
   unsigned HOST_WIDE_INT idx, nelts;
   tree value;
 
@@ -5296,8 +5303,9 @@ fld_process_array_type (tree t, tree t2, hash_map<tree, tree> *map,
      = map->get_or_insert (t, &existed);
   if (!existed)
     {
-      array = build_array_type_1 (t2, TYPE_DOMAIN (t),
-				  TYPE_TYPELESS_STORAGE (t), false);
+      array
+	= build_array_type_1 (t2, TYPE_DOMAIN (t), TYPE_TYPELESS_STORAGE (t),
+			      false, false);
       TYPE_CANONICAL (array) = TYPE_CANONICAL (t);
       if (!fld->pset.add (array))
 	add_tree_to_fld_list (array, fld);
@@ -5383,9 +5391,15 @@ fld_incomplete_type_of (tree t, class free_lang_data_d *fld)
 	      TYPE_TYPELESS_STORAGE (copy) = 0;
 	      TYPE_FIELDS (copy) = NULL;
 	      TYPE_BINFO (copy) = NULL;
+	      TYPE_FINAL_P (copy) = 0;
+	      TYPE_EMPTY_P (copy) = 0;
 	    }
 	  else
-	    TYPE_VALUES (copy) = NULL;
+	    {
+	      TYPE_VALUES (copy) = NULL;
+	      ENUM_IS_OPAQUE (copy) = 0;
+	      ENUM_IS_SCOPED (copy) = 0;
+	    }
 
 	  /* Build copy of TYPE_DECL in TYPE_NAME if necessary.
 	     This is needed for ODR violation warnings to come out right (we
@@ -5468,6 +5482,7 @@ free_lang_data_in_binfo (tree binfo)
   BINFO_INHERITANCE_CHAIN (binfo) = NULL_TREE;
   BINFO_SUBVTT_INDEX (binfo) = NULL_TREE;
   BINFO_VPTR_FIELD (binfo) = NULL_TREE;
+  TREE_PUBLIC (binfo) = 0;
 
   FOR_EACH_VEC_ELT (*BINFO_BASE_BINFOS (binfo), i, t)
     free_lang_data_in_binfo (t);
@@ -5569,6 +5584,8 @@ free_lang_data_in_type (tree type, class free_lang_data_d *fld)
     {
       if (TREE_CODE (type) == ENUMERAL_TYPE)
 	{
+	  ENUM_IS_OPAQUE (type) = 0;
+	  ENUM_IS_SCOPED (type) = 0;
 	  /* Type values are used only for C++ ODR checking.  Drop them
 	     for all type variants and non-ODR types.
 	     For ODR types the data is freed in free_odr_warning_data.  */
@@ -8139,11 +8156,12 @@ subrange_type_for_debug_p (const_tree type, tree *lowval, tree *highval)
 /* Construct, lay out and return the type of arrays of elements with ELT_TYPE
    and number of elements specified by the range of values of INDEX_TYPE.
    If TYPELESS_STORAGE is true, TYPE_TYPELESS_STORAGE flag is set on the type.
-   If SHARED is true, reuse such a type that has already been constructed.  */
+   If SHARED is true, reuse such a type that has already been constructed.
+   If SET_CANONICAL is true, compute TYPE_CANONICAL from the element type.  */
 
 static tree
 build_array_type_1 (tree elt_type, tree index_type, bool typeless_storage,
-		    bool shared)
+		    bool shared, bool set_canonical)
 {
   tree t;
 
@@ -8160,19 +8178,13 @@ build_array_type_1 (tree elt_type, tree index_type, bool typeless_storage,
   TYPE_TYPELESS_STORAGE (t) = typeless_storage;
   layout_type (t);
 
-  /* If the element type is incomplete at this point we get marked for
-     structural equality.  Do not record these types in the canonical
-     type hashtable.  */
-  if (TYPE_STRUCTURAL_EQUALITY_P (t))
-    return t;
-
   if (shared)
     {
       hashval_t hash = type_hash_canon_hash (t);
       t = type_hash_canon (hash, t);
     }
 
-  if (TYPE_CANONICAL (t) == t)
+  if (TYPE_CANONICAL (t) == t && set_canonical)
     {
       if (TYPE_STRUCTURAL_EQUALITY_P (elt_type)
 	  || (index_type && TYPE_STRUCTURAL_EQUALITY_P (index_type))
@@ -8184,7 +8196,7 @@ build_array_type_1 (tree elt_type, tree index_type, bool typeless_storage,
 	  = build_array_type_1 (TYPE_CANONICAL (elt_type),
 				index_type
 				? TYPE_CANONICAL (index_type) : NULL_TREE,
-				typeless_storage, shared);
+				typeless_storage, shared, set_canonical);
     }
 
   return t;
@@ -8195,7 +8207,8 @@ build_array_type_1 (tree elt_type, tree index_type, bool typeless_storage,
 tree
 build_array_type (tree elt_type, tree index_type, bool typeless_storage)
 {
-  return build_array_type_1 (elt_type, index_type, typeless_storage, true);
+  return
+    build_array_type_1 (elt_type, index_type, typeless_storage, true, true);
 }
 
 /* Wrapper around build_array_type_1 with SHARED set to false.  */
@@ -8203,7 +8216,7 @@ build_array_type (tree elt_type, tree index_type, bool typeless_storage)
 tree
 build_nonshared_array_type (tree elt_type, tree index_type)
 {
-  return build_array_type_1 (elt_type, index_type, false, false);
+  return build_array_type_1 (elt_type, index_type, false, false, true);
 }
 
 /* Return a representation of ELT_TYPE[NELTS], using indices of type
@@ -10318,23 +10331,23 @@ build_common_tree_nodes (bool signed_char)
   uint64_type_node = make_or_reuse_type (64, 1);
 
   /* Decimal float types. */
-  dfloat32_type_node = make_node (REAL_TYPE);
-  TYPE_PRECISION (dfloat32_type_node) = DECIMAL32_TYPE_SIZE;
-  SET_TYPE_MODE (dfloat32_type_node, SDmode);
-  layout_type (dfloat32_type_node);
-  dfloat32_ptr_type_node = build_pointer_type (dfloat32_type_node);
+  if (targetm.decimal_float_supported_p ())
+    {
+      dfloat32_type_node = make_node (REAL_TYPE);
+      TYPE_PRECISION (dfloat32_type_node) = DECIMAL32_TYPE_SIZE;
+      SET_TYPE_MODE (dfloat32_type_node, SDmode);
+      layout_type (dfloat32_type_node);
 
-  dfloat64_type_node = make_node (REAL_TYPE);
-  TYPE_PRECISION (dfloat64_type_node) = DECIMAL64_TYPE_SIZE;
-  SET_TYPE_MODE (dfloat64_type_node, DDmode);
-  layout_type (dfloat64_type_node);
-  dfloat64_ptr_type_node = build_pointer_type (dfloat64_type_node);
+      dfloat64_type_node = make_node (REAL_TYPE);
+      TYPE_PRECISION (dfloat64_type_node) = DECIMAL64_TYPE_SIZE;
+      SET_TYPE_MODE (dfloat64_type_node, DDmode);
+      layout_type (dfloat64_type_node);
 
-  dfloat128_type_node = make_node (REAL_TYPE);
-  TYPE_PRECISION (dfloat128_type_node) = DECIMAL128_TYPE_SIZE;
-  SET_TYPE_MODE (dfloat128_type_node, TDmode);
-  layout_type (dfloat128_type_node);
-  dfloat128_ptr_type_node = build_pointer_type (dfloat128_type_node);
+      dfloat128_type_node = make_node (REAL_TYPE);
+      TYPE_PRECISION (dfloat128_type_node) = DECIMAL128_TYPE_SIZE;
+      SET_TYPE_MODE (dfloat128_type_node, TDmode);
+      layout_type (dfloat128_type_node);
+    }
 
   complex_integer_type_node = build_complex_type (integer_type_node, true);
   complex_float_type_node = build_complex_type (float_type_node, true);
@@ -10860,44 +10873,44 @@ build_vector_type (tree innertype, poly_int64 nunits)
   return make_vector_type (innertype, nunits, VOIDmode);
 }
 
-/* Build truth vector with specified length and number of units.  */
+/* Build a truth vector with NUNITS units, giving it mode MASK_MODE.  */
 
 tree
-build_truth_vector_type (poly_uint64 nunits, poly_uint64 vector_size)
+build_truth_vector_type_for_mode (poly_uint64 nunits, machine_mode mask_mode)
 {
-  machine_mode mask_mode
-    = targetm.vectorize.get_mask_mode (nunits, vector_size).else_blk ();
+  gcc_assert (mask_mode != BLKmode);
 
-  poly_uint64 vsize;
-  if (mask_mode == BLKmode)
-    vsize = vector_size * BITS_PER_UNIT;
-  else
-    vsize = GET_MODE_BITSIZE (mask_mode);
-
+  poly_uint64 vsize = GET_MODE_BITSIZE (mask_mode);
   unsigned HOST_WIDE_INT esize = vector_element_size (vsize, nunits);
-
   tree bool_type = build_nonstandard_boolean_type (esize);
 
   return make_vector_type (bool_type, nunits, mask_mode);
 }
 
-/* Returns a vector type corresponding to a comparison of VECTYPE.  */
+/* Build a vector type that holds one boolean result for each element of
+   vector type VECTYPE.  The public interface for this operation is
+   truth_type_for.  */
 
-tree
-build_same_sized_truth_vector_type (tree vectype)
+static tree
+build_truth_vector_type_for (tree vectype)
 {
-  if (VECTOR_BOOLEAN_TYPE_P (vectype))
-    return vectype;
+  machine_mode vector_mode = TYPE_MODE (vectype);
+  poly_uint64 nunits = TYPE_VECTOR_SUBPARTS (vectype);
 
-  poly_uint64 size = GET_MODE_SIZE (TYPE_MODE (vectype));
+  machine_mode mask_mode;
+  if (VECTOR_MODE_P (vector_mode)
+      && targetm.vectorize.get_mask_mode (vector_mode).exists (&mask_mode))
+    return build_truth_vector_type_for_mode (nunits, mask_mode);
 
-  if (known_eq (size, 0U))
-    size = tree_to_uhwi (TYPE_SIZE_UNIT (vectype));
+  poly_uint64 vsize = tree_to_poly_uint64 (TYPE_SIZE (vectype));
+  unsigned HOST_WIDE_INT esize = vector_element_size (vsize, nunits);
+  tree bool_type = build_nonstandard_boolean_type (esize);
 
-  return build_truth_vector_type (TYPE_VECTOR_SUBPARTS (vectype), size);
+  return make_vector_type (bool_type, nunits, BLKmode);
 }
 
-/* Similarly, but builds a variant type with TYPE_VECTOR_OPAQUE set.  */
+/* Like build_vector_type, but builds a variant type with TYPE_VECTOR_OPAQUE
+   set.  */
 
 tree
 build_opaque_vector_type (tree innertype, poly_int64 nunits)
@@ -11701,8 +11714,7 @@ truth_type_for (tree type)
     {
       if (VECTOR_BOOLEAN_TYPE_P (type))
 	return type;
-      return build_truth_vector_type (TYPE_VECTOR_SUBPARTS (type),
-				      GET_MODE_SIZE (TYPE_MODE (type)));
+      return build_truth_vector_type_for (type);
     }
   else
     return boolean_type_node;
@@ -13571,8 +13583,8 @@ get_initializer_for (tree init, tree decl)
    determine the size of an initialized flexible array member.
    If non-null, *INTERIOR_ZERO_LENGTH is set when REF refers to
    an interior zero-length array.
-   Returns the size (which might be zero for an object with
-   an uninitialized flexible array member) or null if the size
+   Returns the size as sizetype (which might be zero for an object
+   with an uninitialized flexible array member) or null if the size
    cannot be determined.  */
 
 tree
@@ -13635,6 +13647,8 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 	return NULL_TREE;
 
       base = TREE_OPERAND (ref, 0);
+      while (TREE_CODE (base) == COMPONENT_REF)
+	base = TREE_OPERAND (base, 0);
       baseoff = tree_to_poly_int64 (byte_position (TREE_OPERAND (ref, 1)));
     }
 
@@ -13656,27 +13670,28 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 
   memsize = NULL_TREE;
 
-  /* MEMBER is a true flexible array member.  Compute its size from
-     the initializer of the BASE object if it has one.  */
-  if (tree init = DECL_P (base) ? DECL_INITIAL (base) : NULL_TREE)
-    {
-      init = get_initializer_for (init, member);
-      if (init)
-	{
-	  memsize = TYPE_SIZE_UNIT (TREE_TYPE (init));
-	  if (tree refsize = TYPE_SIZE_UNIT (reftype))
-	    {
-	      /* Use the larger of the initializer size and the tail
-		 padding in the enclosing struct.  */
-	      poly_int64 rsz = tree_to_poly_int64 (refsize);
-	      rsz -= baseoff;
-	      if (known_lt (tree_to_poly_int64 (memsize), rsz))
-		memsize = wide_int_to_tree (TREE_TYPE (memsize), rsz);
-	    }
+  if (typematch)
+    /* MEMBER is a true flexible array member.  Compute its size from
+       the initializer of the BASE object if it has one.  */
+    if (tree init = DECL_P (base) ? DECL_INITIAL (base) : NULL_TREE)
+      {
+	init = get_initializer_for (init, member);
+	if (init)
+	  {
+	    memsize = TYPE_SIZE_UNIT (TREE_TYPE (init));
+	    if (tree refsize = TYPE_SIZE_UNIT (reftype))
+	      {
+		/* Use the larger of the initializer size and the tail
+		   padding in the enclosing struct.  */
+		poly_int64 rsz = tree_to_poly_int64 (refsize);
+		rsz -= baseoff;
+		if (known_lt (tree_to_poly_int64 (memsize), rsz))
+		  memsize = wide_int_to_tree (TREE_TYPE (memsize), rsz);
+	      }
 
-	  baseoff = 0;
-	}
-    }
+	    baseoff = 0;
+	  }
+      }
 
   if (!memsize)
     {
@@ -13689,17 +13704,19 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 	    /* The size of a flexible array member of an extern struct
 	       with no initializer cannot be determined (it's defined
 	       in another translation unit and can have an initializer
-	       witth an arbitrary number of elements).  */
+	       with an arbitrary number of elements).  */
 	    return NULL_TREE;
 
 	  /* Use the size of the base struct or, for interior zero-length
 	     arrays, the size of the enclosing type.  */
 	  memsize = TYPE_SIZE_UNIT (bt);
 	}
-      else
+      else if (DECL_P (base))
 	/* Use the size of the BASE object (possibly an array of some
 	   other type such as char used to store the struct).  */
 	memsize = DECL_SIZE_UNIT (base);
+      else
+	return NULL_TREE;
     }
 
   /* If the flexible array member has a known size use the greater
@@ -13716,7 +13733,7 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 	  memsz64 -= baseoff;
 	  return wide_int_to_tree (TREE_TYPE (memsize), memsz64);
 	}
-      return integer_zero_node;
+      return size_zero_node;
     }
 
   /* Return "don't know" for an external non-array object since its
@@ -13727,7 +13744,7 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 	  && DECL_EXTERNAL (base)
 	  && (!typematch
 	      || TREE_CODE (basetype) != ARRAY_TYPE)
-	  ? NULL_TREE : integer_zero_node);
+	  ? NULL_TREE : size_zero_node);
 }
 
 /* Return the machine mode of T.  For vectors, returns the mode of the
@@ -14983,6 +15000,41 @@ default_is_empty_record (const_tree type)
   return default_is_empty_type (TYPE_MAIN_VARIANT (type));
 }
 
+/* Determine whether TYPE is a structure with a flexible array member,
+   or a union containing such a structure (possibly recursively).  */
+
+bool
+flexible_array_type_p (const_tree type)
+{
+  tree x, last;
+  switch (TREE_CODE (type))
+    {
+    case RECORD_TYPE:
+      last = NULL_TREE;
+      for (x = TYPE_FIELDS (type); x != NULL_TREE; x = DECL_CHAIN (x))
+	if (TREE_CODE (x) == FIELD_DECL)
+	  last = x;
+      if (last == NULL_TREE)
+	return false;
+      if (TREE_CODE (TREE_TYPE (last)) == ARRAY_TYPE
+	  && TYPE_SIZE (TREE_TYPE (last)) == NULL_TREE
+	  && TYPE_DOMAIN (TREE_TYPE (last)) != NULL_TREE
+	  && TYPE_MAX_VALUE (TYPE_DOMAIN (TREE_TYPE (last))) == NULL_TREE)
+	return true;
+      return false;
+    case UNION_TYPE:
+      for (x = TYPE_FIELDS (type); x != NULL_TREE; x = DECL_CHAIN (x))
+	{
+	  if (TREE_CODE (x) == FIELD_DECL
+	      && flexible_array_type_p (TREE_TYPE (x)))
+	    return true;
+	}
+      return false;
+    default:
+      return false;
+  }
+}
+
 /* Like int_size_in_bytes, but handle empty records specially.  */
 
 HOST_WIDE_INT
@@ -15101,6 +15153,21 @@ max_object_size (void)
 {
   /* To do: Make this a configurable parameter.  */
   return TYPE_MAX_VALUE (ptrdiff_type_node);
+}
+
+/* A wrapper around TARGET_VERIFY_TYPE_CONTEXT that makes the silent_p
+   parameter default to false and that weeds out error_mark_node.  */
+
+bool
+verify_type_context (location_t loc, type_context_kind context,
+		     const_tree type, bool silent_p)
+{
+  if (type == error_mark_node)
+    return true;
+
+  gcc_assert (TYPE_P (type));
+  return (!targetm.verify_type_context
+	  || targetm.verify_type_context (loc, context, type, silent_p));
 }
 
 #if CHECKING_P

@@ -123,7 +123,7 @@ cxx_types_compatible_p (tree x, tree y)
   return same_type_ignoring_top_level_qualifiers_p (x, y);
 }
 
-static GTY((cache)) tree_cache_map *debug_type_map;
+static GTY((cache)) type_tree_cache_map *debug_type_map;
 
 /* Return a type to use in the debug info instead of TYPE, or NULL_TREE to
    keep TYPE.  */
@@ -349,6 +349,15 @@ identifier_global_value (tree name)
   return get_global_binding (name);
 }
 
+/* Similarly, but return struct/class/union NAME instead.  */
+
+tree
+identifier_global_tag (tree name)
+{
+  return lookup_qualified_name (global_namespace, name, /*prefer_type*/2,
+				/*complain*/false);
+}
+
 /* Returns true if NAME refers to a built-in function or function-like
    operator.  */
 
@@ -518,6 +527,7 @@ cp_common_init_ts (void)
   MARK_TS_EXP (VEC_DELETE_EXPR);
   MARK_TS_EXP (VEC_INIT_EXPR);
   MARK_TS_EXP (VEC_NEW_EXPR);
+  MARK_TS_EXP (SPACESHIP_EXPR);
 
   /* Fold expressions.  */
   MARK_TS_EXP (BINARY_LEFT_FOLD_EXPR);

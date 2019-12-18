@@ -161,6 +161,7 @@ enum omp_region_type
   ORT_ACC_DATA	= ORT_ACC | ORT_TARGET_DATA, /* Data construct.  */
   ORT_ACC_PARALLEL = ORT_ACC | ORT_TARGET,  /* Parallel construct */
   ORT_ACC_KERNELS  = ORT_ACC | ORT_TARGET | 2,  /* Kernels construct.  */
+  ORT_ACC_SERIAL   = ORT_ACC | ORT_TARGET | 4,  /* Serial construct.  */
   ORT_ACC_HOST_DATA = ORT_ACC | ORT_TARGET_DATA | 2,  /* Host data.  */
 
   /* Dummy OpenMP region, used to disable expansion of
@@ -1698,6 +1699,10 @@ gimplify_vla_decl (tree decl, gimple_seq *seq_p)
   t = build2 (MODIFY_EXPR, TREE_TYPE (addr), addr, t);
 
   gimplify_and_add (t, seq_p);
+
+  /* Record the dynamic allocation associated with DECL if requested.  */
+  if (flag_callgraph_info & CALLGRAPH_INFO_DYNAMIC_ALLOC)
+    record_dynamic_alloc (decl);
 }
 
 /* A helper function to be called via walk_tree.  Mark all labels under *TP
@@ -2400,8 +2405,8 @@ expand_FALLTHROUGH_r (gimple_stmt_iterator *gsi_p, bool *handled_ops_p,
 	      gsi_next (&gsi2);
 	    }
 	  if (!found)
-	    warning_at (loc, 0, "attribute %<fallthrough%> not preceding "
-			"a case label or default label");
+	    pedwarn (loc, 0, "attribute %<fallthrough%> not preceding "
+		     "a case label or default label");
 	}
       break;
     default:
@@ -2423,8 +2428,8 @@ expand_FALLTHROUGH (gimple_seq *seq_p)
   if (wi.callback_result == integer_zero_node)
     /* We've found [[fallthrough]]; at the end of a switch, which the C++
        standard says is ill-formed; see [dcl.attr.fallthrough].  */
-    warning_at (loc, 0, "attribute %<fallthrough%> not preceding "
-		"a case label or default label");
+    pedwarn (loc, 0, "attribute %<fallthrough%> not preceding "
+	     "a case label or default label");
 }
 
 
@@ -2982,17 +2987,18 @@ gimplify_compound_lval (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 
 	  if (TREE_OPERAND (t, 3) == NULL_TREE)
 	    {
-	      tree elmt_type = TREE_TYPE (TREE_TYPE (TREE_OPERAND (t, 0)));
-	      tree elmt_size = unshare_expr (array_ref_element_size (t));
-	      tree factor = size_int (TYPE_ALIGN_UNIT (elmt_type));
-
-	      /* Divide the element size by the alignment of the element
-		 type (above).  */
-	      elmt_size
-		= size_binop_loc (loc, EXACT_DIV_EXPR, elmt_size, factor);
-
+	      tree elmt_size = array_ref_element_size (t);
 	      if (!is_gimple_min_invariant (elmt_size))
 		{
+		  elmt_size = unshare_expr (elmt_size);
+		  tree elmt_type = TREE_TYPE (TREE_TYPE (TREE_OPERAND (t, 0)));
+		  tree factor = size_int (TYPE_ALIGN_UNIT (elmt_type));
+
+		  /* Divide the element size by the alignment of the element
+		     type (above).  */
+		  elmt_size = size_binop_loc (loc, EXACT_DIV_EXPR,
+					      elmt_size, factor);
+
 		  TREE_OPERAND (t, 3) = elmt_size;
 		  tret = gimplify_expr (&TREE_OPERAND (t, 3), pre_p,
 					post_p, is_gimple_reg,
@@ -3012,16 +3018,18 @@ gimplify_compound_lval (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	  /* Set the field offset into T and gimplify it.  */
 	  if (TREE_OPERAND (t, 2) == NULL_TREE)
 	    {
-	      tree offset = unshare_expr (component_ref_field_offset (t));
-	      tree field = TREE_OPERAND (t, 1);
-	      tree factor
-		= size_int (DECL_OFFSET_ALIGN (field) / BITS_PER_UNIT);
-
-	      /* Divide the offset by its alignment.  */
-	      offset = size_binop_loc (loc, EXACT_DIV_EXPR, offset, factor);
-
+	      tree offset = component_ref_field_offset (t);
 	      if (!is_gimple_min_invariant (offset))
 		{
+		  offset = unshare_expr (offset);
+		  tree field = TREE_OPERAND (t, 1);
+		  tree factor
+		    = size_int (DECL_OFFSET_ALIGN (field) / BITS_PER_UNIT);
+
+		  /* Divide the offset by its alignment.  */
+		  offset = size_binop_loc (loc, EXACT_DIV_EXPR,
+					   offset, factor);
+
 		  TREE_OPERAND (t, 2) = offset;
 		  tret = gimplify_expr (&TREE_OPERAND (t, 2), pre_p,
 					post_p, is_gimple_reg,
@@ -3386,7 +3394,10 @@ gimplify_call_expr (tree *expr_p, gimple_seq *pre_p, bool want_value)
   /* Remember the original function pointer type.  */
   fnptrtype = TREE_TYPE (CALL_EXPR_FN (*expr_p));
 
-  if (flag_openmp && fndecl)
+  if (flag_openmp
+      && fndecl
+      && cfun
+      && (cfun->curr_properties & PROP_gimple_any) == 0)
     {
       tree variant = omp_resolve_declare_variant (fndecl);
       if (variant != fndecl)
@@ -5547,6 +5558,7 @@ is_gimple_stmt (tree t)
     case STATEMENT_LIST:
     case OACC_PARALLEL:
     case OACC_KERNELS:
+    case OACC_SERIAL:
     case OACC_DATA:
     case OACC_HOST_DATA:
     case OACC_DECLARE:
@@ -6235,8 +6247,13 @@ gimplify_asm_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p)
 	  is_inout = false;
 	}
 
-      /* If we can't make copies, we can only accept memory.  */
-      if (TREE_ADDRESSABLE (TREE_TYPE (TREE_VALUE (link))))
+      /* If we can't make copies, we can only accept memory.
+	 Similarly for VLAs.  */
+      tree outtype = TREE_TYPE (TREE_VALUE (link));
+      if (outtype != error_mark_node
+	  && (TREE_ADDRESSABLE (outtype)
+	      || !COMPLETE_TYPE_P (outtype)
+	      || !tree_fits_poly_uint64_p (TYPE_SIZE_UNIT (outtype))))
 	{
 	  if (allows_mem)
 	    allows_reg = 0;
@@ -6392,7 +6409,11 @@ gimplify_asm_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p)
 			      oconstraints, &allows_mem, &allows_reg);
 
       /* If we can't make copies, we can only accept memory.  */
-      if (TREE_ADDRESSABLE (TREE_TYPE (TREE_VALUE (link))))
+      tree intype = TREE_TYPE (TREE_VALUE (link));
+      if (intype != error_mark_node
+	  && (TREE_ADDRESSABLE (intype)
+	      || !COMPLETE_TYPE_P (intype)
+	      || !tree_fits_poly_uint64_p (TYPE_SIZE_UNIT (intype))))
 	{
 	  if (allows_mem)
 	    allows_reg = 0;
@@ -7276,7 +7297,8 @@ oacc_default_clause (struct gimplify_omp_ctx *ctx, tree decl, unsigned flags)
       break;
 
     case ORT_ACC_PARALLEL:
-      rkind = "parallel";
+    case ORT_ACC_SERIAL:
+      rkind = ctx->region_type == ORT_ACC_PARALLEL ? "parallel" : "serial";
 
       if (is_private)
 	flags |= GOVD_FIRSTPRIVATE;
@@ -8877,8 +8899,8 @@ gimplify_scan_omp_clauses (tree *list_p, gimple_seq *pre_p,
 			      break;
 			    if (scp)
 			      continue;
-			    gcc_assert (offset == NULL_TREE
-					|| poly_int_tree_p (offset));
+			    gcc_assert (offset2 == NULL_TREE
+					|| poly_int_tree_p (offset2));
 			    tree d1 = OMP_CLAUSE_DECL (*sc);
 			    tree d2 = OMP_CLAUSE_DECL (c);
 			    while (TREE_CODE (d1) == ARRAY_REF)
@@ -10085,10 +10107,11 @@ gimplify_adjust_omp_clauses (gimple_seq *pre_p, gimple_seq body, tree *list_p,
 	      break;
 	    }
 	  decl = OMP_CLAUSE_DECL (c);
-	  /* Data clauses associated with acc parallel reductions must be
+	  /* Data clauses associated with reductions must be
 	     compatible with present_or_copy.  Warn and adjust the clause
 	     if that is not the case.  */
-	  if (ctx->region_type == ORT_ACC_PARALLEL)
+	  if (ctx->region_type == ORT_ACC_PARALLEL
+	      || ctx->region_type == ORT_ACC_SERIAL)
 	    {
 	      tree t = DECL_P (decl) ? decl : TREE_OPERAND (decl, 0);
 	      n = NULL;
@@ -10264,7 +10287,8 @@ gimplify_adjust_omp_clauses (gimple_seq *pre_p, gimple_seq body, tree *list_p,
 	  decl = OMP_CLAUSE_DECL (c);
 	  /* OpenACC reductions need a present_or_copy data clause.
 	     Add one if necessary.  Emit error when the reduction is private.  */
-	  if (ctx->region_type == ORT_ACC_PARALLEL)
+	  if (ctx->region_type == ORT_ACC_PARALLEL
+	      || ctx->region_type == ORT_ACC_SERIAL)
 	    {
 	      n = splay_tree_lookup (ctx->variables, (splay_tree_key) decl);
 	      if (n->value & (GOVD_PRIVATE | GOVD_FIRSTPRIVATE))
@@ -12516,6 +12540,9 @@ gimplify_omp_workshare (tree *expr_p, gimple_seq *pre_p)
     case OACC_PARALLEL:
       ort = ORT_ACC_PARALLEL;
       break;
+    case OACC_SERIAL:
+      ort = ORT_ACC_SERIAL;
+      break;
     case OACC_DATA:
       ort = ORT_ACC_DATA;
       break;
@@ -12597,6 +12624,10 @@ gimplify_omp_workshare (tree *expr_p, gimple_seq *pre_p)
       break;
     case OACC_PARALLEL:
       stmt = gimple_build_omp_target (body, GF_OMP_TARGET_KIND_OACC_PARALLEL,
+				      OMP_CLAUSES (expr));
+      break;
+    case OACC_SERIAL:
+      stmt = gimple_build_omp_target (body, GF_OMP_TARGET_KIND_OACC_SERIAL,
 				      OMP_CLAUSES (expr));
       break;
     case OMP_SECTIONS:
@@ -12707,27 +12738,30 @@ gimplify_omp_target_update (tree *expr_p, gimple_seq *pre_p)
 	   && omp_find_clause (OMP_STANDALONE_CLAUSES (expr),
 			       OMP_CLAUSE_FINALIZE))
     {
-      /* Use GOMP_MAP_DELETE/GOMP_MAP_FORCE_FROM to denote that "finalize"
-	 semantics apply to all mappings of this OpenACC directive.  */
-      bool finalize_marked = false;
+      /* Use GOMP_MAP_DELETE/GOMP_MAP_FORCE_FROM to denote "finalize"
+	 semantics.  */
+      bool have_clause = false;
       for (tree c = OMP_STANDALONE_CLAUSES (expr); c; c = OMP_CLAUSE_CHAIN (c))
 	if (OMP_CLAUSE_CODE (c) == OMP_CLAUSE_MAP)
 	  switch (OMP_CLAUSE_MAP_KIND (c))
 	    {
 	    case GOMP_MAP_FROM:
 	      OMP_CLAUSE_SET_MAP_KIND (c, GOMP_MAP_FORCE_FROM);
-	      finalize_marked = true;
+	      have_clause = true;
 	      break;
 	    case GOMP_MAP_RELEASE:
 	      OMP_CLAUSE_SET_MAP_KIND (c, GOMP_MAP_DELETE);
-	      finalize_marked = true;
+	      have_clause = true;
+	      break;
+	    case GOMP_MAP_POINTER:
+	    case GOMP_MAP_TO_PSET:
+	      /* TODO PR92929: we may see these here, but they'll always follow
+		 one of the clauses above, and will be handled by libgomp as
+		 one group, so no handling required here.  */
+	      gcc_assert (have_clause);
 	      break;
 	    default:
-	      /* Check consistency: libgomp relies on the very first data
-		 mapping clause being marked, so make sure we did that before
-		 any other mapping clauses.  */
-	      gcc_assert (finalize_marked);
-	      break;
+	      gcc_unreachable ();
 	    }
     }
   stmt = gimple_build_omp_target (NULL, kind, OMP_STANDALONE_CLAUSES (expr));
@@ -13857,6 +13891,7 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	case OACC_DATA:
 	case OACC_KERNELS:
 	case OACC_PARALLEL:
+	case OACC_SERIAL:
 	case OMP_SECTIONS:
 	case OMP_SINGLE:
 	case OMP_TARGET:
@@ -14273,6 +14308,7 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 		  && code != EH_ELSE_EXPR
 		  && code != OACC_PARALLEL
 		  && code != OACC_KERNELS
+		  && code != OACC_SERIAL
 		  && code != OACC_DATA
 		  && code != OACC_HOST_DATA
 		  && code != OACC_DECLARE

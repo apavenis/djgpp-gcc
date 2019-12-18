@@ -548,7 +548,7 @@ perform_target_ctor (tree init)
 
 /* Return the non-static data initializer for FIELD_DECL MEMBER.  */
 
-static GTY((cache)) tree_cache_map *nsdmi_inst;
+static GTY((cache)) decl_tree_cache_map *nsdmi_inst;
 
 tree
 get_nsdmi (tree member, bool in_ctor, tsubst_flags_t complain)
@@ -3058,6 +3058,10 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 				    complain);
     }
 
+  if (!verify_type_context (input_location, TCTX_ALLOCATION, elt_type,
+			    !(complain & tf_error)))
+    return error_mark_node;
+
   if (variably_modified_type_p (elt_type, NULL_TREE) && (complain & tf_error))
     {
       error ("variably modified type not allowed in new-expression");
@@ -3587,7 +3591,7 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 						     complete_ctor_identifier,
 						     init, elt_type,
 						     LOOKUP_NORMAL,
-                                                     complain);
+						     complain|tf_no_cleanup);
 	    }
 	  else if (explicit_value_init_p)
 	    {
@@ -3604,10 +3608,22 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 	      tree ie;
 
 	      /* We are processing something like `new int (10)', which
-		 means allocate an int, and initialize it with 10.  */
+		 means allocate an int, and initialize it with 10.
 
-	      ie = build_x_compound_expr_from_vec (*init, "new initializer",
-						   complain);
+		 In C++20, also handle `new A(1, 2)'.  */
+	      if (cxx_dialect >= cxx2a
+		  && AGGREGATE_TYPE_P (type)
+		  && (*init)->length () > 1)
+		{
+		  ie = build_tree_list_vec (*init);
+		  ie = build_constructor_from_list (init_list_type_node, ie);
+		  CONSTRUCTOR_IS_DIRECT_INIT (ie) = true;
+		  CONSTRUCTOR_IS_PAREN_INIT (ie) = true;
+		  ie = digest_init (type, ie, complain);
+		}
+	      else
+		ie = build_x_compound_expr_from_vec (*init, "new initializer",
+						     complain);
 	      init_expr = cp_build_modify_expr (input_location, init_expr,
 						INIT_EXPR, ie, complain);
 	    }
@@ -3942,6 +3958,10 @@ build_vec_delete_1 (tree base, tree maxindex, tree type,
   if (base == error_mark_node || maxindex == error_mark_node)
     return error_mark_node;
 
+  if (!verify_type_context (input_location, TCTX_DEALLOCATION, type,
+			    !(complain & tf_error)))
+    return error_mark_node;
+
   if (!COMPLETE_TYPE_P (type))
     {
       if (complain & tf_warning)
@@ -4060,7 +4080,7 @@ build_vec_delete_1 (tree base, tree maxindex, tree type,
   else if (!body)
     body = deallocate_expr;
   else
-    /* The delete operator mist be called, even if a destructor
+    /* The delete operator must be called, even if a destructor
        throws.  */
     body = build2 (TRY_FINALLY_EXPR, void_type_node, body, deallocate_expr);
 
@@ -4827,6 +4847,11 @@ build_delete (tree otype, tree addr, special_function_kind auto_delete,
       if (!VOID_TYPE_P (type))
 	{
 	  complete_type (type);
+	  if (deleting
+	      && !verify_type_context (input_location, TCTX_DEALLOCATION, type,
+				       !(complain & tf_error)))
+	    return error_mark_node;
+
 	  if (!COMPLETE_TYPE_P (type))
 	    {
 	      if (complain & tf_warning)

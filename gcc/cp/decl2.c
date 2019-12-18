@@ -4414,7 +4414,14 @@ decl_maybe_constant_var_p (tree decl)
 void
 no_linkage_error (tree decl)
 {
-  if (cxx_dialect >= cxx11 && decl_defined_p (decl))
+  if (cxx_dialect >= cxx11
+      && (decl_defined_p (decl)
+	  /* Treat templates which limit_bad_template_recursion decided
+	     not to instantiate as if they were defined.  */
+	  || (errorcount + sorrycount > 0
+	      && DECL_LANG_SPECIFIC (decl)
+	      && DECL_TEMPLATE_INFO (decl)
+	      && TREE_NO_WARNING (decl))))
     /* In C++11 it's ok if the decl is defined.  */
     return;
   tree t = no_linkage_check (TREE_TYPE (decl), /*relaxed_p=*/false);
@@ -5472,6 +5479,17 @@ mark_used (tree decl, tsubst_flags_t complain)
     used_types_insert (DECL_CONTEXT (decl));
 
   if (TREE_CODE (decl) == FUNCTION_DECL
+      && DECL_MAYBE_DELETED (decl))
+    {
+      /* ??? Switch other defaulted functions to use DECL_MAYBE_DELETED?  */
+      gcc_assert (special_function_p (decl) == sfk_comparison);
+
+      ++function_depth;
+      synthesize_method (decl);
+      --function_depth;
+    }
+
+  if (TREE_CODE (decl) == FUNCTION_DECL
       && !maybe_instantiate_noexcept (decl, complain))
     return false;
 
@@ -5524,6 +5542,21 @@ mark_used (tree decl, tsubst_flags_t complain)
      directly.  */
   maybe_instantiate_decl (decl);
 
+  if (flag_concepts && TREE_CODE (decl) == FUNCTION_DECL
+      && !constraints_satisfied_p (decl))
+    {
+      if (complain & tf_error)
+	{
+	  auto_diagnostic_group d;
+	  error ("use of function %qD with unsatisfied constraints",
+		 decl);
+	  location_t loc = DECL_SOURCE_LOCATION (decl);
+	  inform (loc, "declared here");
+	  diagnose_constraints (loc, decl, NULL_TREE);
+	}
+      return false;
+    }
+
   if (processing_template_decl || in_template_function ())
     return true;
 
@@ -5570,14 +5603,16 @@ mark_used (tree decl, tsubst_flags_t complain)
 	vec_safe_push (no_linkage_decls, decl);
     }
 
-  if (TREE_CODE (decl) == FUNCTION_DECL && DECL_DECLARED_INLINE_P (decl)
-      && !DECL_INITIAL (decl) && !DECL_ARTIFICIAL (decl))
+  if (TREE_CODE (decl) == FUNCTION_DECL
+      && DECL_DECLARED_INLINE_P (decl)
+      && !DECL_INITIAL (decl)
+      && !DECL_ARTIFICIAL (decl)
+      && !DECL_PURE_VIRTUAL_P (decl))
     /* Remember it, so we can check it was defined.  */
     note_vague_linkage_fn (decl);
 
   /* Is it a synthesized method that needs to be synthesized?  */
   if (TREE_CODE (decl) == FUNCTION_DECL
-      && DECL_NONSTATIC_MEMBER_FUNCTION_P (decl)
       && DECL_DEFAULTED_FN (decl)
       /* A function defaulted outside the class is synthesized either by
 	 cp_finish_decl or instantiate_decl.  */

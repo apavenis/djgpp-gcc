@@ -136,7 +136,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-cfg.h"
 #include "tree-ssa-propagate.h"
 #include "dbgcnt.h"
-#include "params.h"
 #include "builtins.h"
 #include "cfgloop.h"
 #include "stor-layout.h"
@@ -147,6 +146,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "stringpool.h"
 #include "attribs.h"
 #include "tree-vector-builder.h"
+#include "cgraph.h"
+#include "alloc-pool.h"
+#include "symbol-summary.h"
+#include "ipa-utils.h"
+#include "ipa-prop.h"
 
 /* Possible lattice values.  */
 typedef enum
@@ -293,11 +297,26 @@ get_default_value (tree var)
 	  if (flag_tree_bit_ccp)
 	    {
 	      wide_int nonzero_bits = get_nonzero_bits (var);
-	      if (nonzero_bits != -1)
+	      tree value;
+	      widest_int mask;
+
+	      if (SSA_NAME_VAR (var)
+		  && TREE_CODE (SSA_NAME_VAR (var)) == PARM_DECL
+		  && ipcp_get_parm_bits (SSA_NAME_VAR (var), &value, &mask))
+		{
+		  val.lattice_val = CONSTANT;
+		  val.value = value;
+		  val.mask = mask;
+		  if (nonzero_bits != -1)
+		    val.mask &= extend_mask (nonzero_bits,
+					     TYPE_SIGN (TREE_TYPE (var)));
+		}
+	      else if (nonzero_bits != -1)
 		{
 		  val.lattice_val = CONSTANT;
 		  val.value = build_zero_cst (TREE_TYPE (var));
-		  val.mask = extend_mask (nonzero_bits, TYPE_SIGN (TREE_TYPE (var)));
+		  val.mask = extend_mask (nonzero_bits,
+					  TYPE_SIGN (TREE_TYPE (var)));
 		}
 	    }
 	}
@@ -2115,8 +2134,6 @@ insert_clobber_before_stack_restore (tree saved_val, tree var,
     else if (gimple_assign_ssa_name_copy_p (stmt))
       insert_clobber_before_stack_restore (gimple_assign_lhs (stmt), var,
 					   visited);
-    else
-      gcc_assert (is_gimple_debug (stmt));
 }
 
 /* Advance the iterator to the previous non-debug gimple statement in the same
@@ -2141,9 +2158,9 @@ gsi_prev_dom_bb_nondebug (gimple_stmt_iterator *i)
 /* Find a BUILT_IN_STACK_SAVE dominating gsi_stmt (I), and insert
    a clobber of VAR before each matching BUILT_IN_STACK_RESTORE.
 
-   It is possible that BUILT_IN_STACK_SAVE cannot be find in a dominator when a
-   previous pass (such as DOM) duplicated it along multiple paths to a BB.  In
-   that case the function gives up without inserting the clobbers.  */
+   It is possible that BUILT_IN_STACK_SAVE cannot be found in a dominator when
+   a previous pass (such as DOM) duplicated it along multiple paths to a BB.
+   In that case the function gives up without inserting the clobbers.  */
 
 static void
 insert_clobbers_for_var (gimple_stmt_iterator i, tree var)
@@ -2195,7 +2212,7 @@ fold_builtin_alloca_with_align (gimple *stmt)
   size = tree_to_uhwi (arg);
 
   /* Heuristic: don't fold large allocas.  */
-  threshold = (unsigned HOST_WIDE_INT)PARAM_VALUE (PARAM_LARGE_STACK_FRAME);
+  threshold = (unsigned HOST_WIDE_INT)param_large_stack_frame;
   /* In case the alloca is located at function entry, it has the same lifetime
      as a declared array, so we allow a larger size.  */
   block = gimple_block (stmt);
@@ -2222,7 +2239,25 @@ fold_builtin_alloca_with_align (gimple *stmt)
   elem_type = build_nonstandard_integer_type (BITS_PER_UNIT, 1);
   n_elem = size * 8 / BITS_PER_UNIT;
   array_type = build_array_type_nelts (elem_type, n_elem);
-  var = create_tmp_var (array_type);
+
+  if (tree ssa_name = SSA_NAME_IDENTIFIER (lhs))
+    {
+      /* Give the temporary a name derived from the name of the VLA
+	 declaration so it can be referenced in diagnostics.  */
+      const char *name = IDENTIFIER_POINTER (ssa_name);
+      var = create_tmp_var (array_type, name);
+    }
+  else
+    var = create_tmp_var (array_type);
+
+  if (gimple *lhsdef = SSA_NAME_DEF_STMT (lhs))
+    {
+      /* Set the temporary's location to that of the VLA declaration
+	 so it can be pointed to in diagnostics.  */
+      location_t loc = gimple_location (lhsdef);
+      DECL_SOURCE_LOCATION (var) = loc;
+    }
+
   SET_DECL_ALIGN (var, TREE_INT_CST_LOW (gimple_call_arg (stmt, 1)));
   if (uid != 0)
     SET_DECL_PT_UID (var, uid);

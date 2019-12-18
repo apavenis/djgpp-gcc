@@ -27,17 +27,18 @@
 !  see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 !  <http://www.gnu.org/licenses/>.
 
+! Keep in sync with config/accel/openacc.f90 and openacc_lib.h.
+
 module openacc_kinds
   use iso_fortran_env, only: int32
   implicit none
 
+  public
   private :: int32
-  public :: acc_device_kind
+
+  ! When adding items, also update 'public' setting in 'module openacc' below.
 
   integer, parameter :: acc_device_kind = int32
-
-  public :: acc_device_none, acc_device_default, acc_device_host
-  public :: acc_device_not_host, acc_device_nvidia
 
   ! Keep in sync with include/gomp-constants.h.
   integer (acc_device_kind), parameter :: acc_device_none = 0
@@ -46,18 +47,14 @@ module openacc_kinds
   ! integer (acc_device_kind), parameter :: acc_device_host_nonshm = 3 removed.
   integer (acc_device_kind), parameter :: acc_device_not_host = 4
   integer (acc_device_kind), parameter :: acc_device_nvidia = 5
-
-  public :: acc_handle_kind
+  integer (acc_device_kind), parameter :: acc_device_gcn = 8
 
   integer, parameter :: acc_handle_kind = int32
-
-  public :: acc_async_noval, acc_async_sync
 
   ! Keep in sync with include/gomp-constants.h.
   integer (acc_handle_kind), parameter :: acc_async_noval = -1
   integer (acc_handle_kind), parameter :: acc_async_sync = -2
-
-end module
+end module openacc_kinds
 
 module openacc_internal
   use openacc_kinds
@@ -709,12 +706,20 @@ module openacc_internal
       integer (c_int), value :: async
     end subroutine
   end interface
-end module
+end module openacc_internal
 
 module openacc
   use openacc_kinds
   use openacc_internal
   implicit none
+
+  private
+
+  ! From openacc_kinds
+  public :: acc_device_kind, acc_handle_kind
+  public :: acc_device_none, acc_device_default, acc_device_host
+  public :: acc_device_not_host, acc_device_nvidia, acc_device_gcn
+  public :: acc_async_noval, acc_async_sync
 
   public :: openacc_version
 
@@ -729,6 +734,7 @@ module openacc
   public :: acc_update_device, acc_update_self, acc_is_present
   public :: acc_copyin_async, acc_create_async, acc_copyout_async
   public :: acc_delete_async, acc_update_device_async, acc_update_self_async
+  public :: acc_copyout_finalize, acc_delete_finalize
 
   integer, parameter :: openacc_version = 201306
 
@@ -930,7 +936,7 @@ module openacc
     procedure :: acc_update_self_async_array_h
   end interface
 
-end module
+end module openacc
 
 function acc_get_num_devices_h (d)
   use openacc_internal, only: acc_get_num_devices_l

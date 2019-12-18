@@ -309,7 +309,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	typename _Iter::reference;
       };
 
-    // FIXME: needed due to PR c++/92102
     template<typename _Iter>
       concept __iter_without_nested_types = !__iter_with_nested_types<_Iter>;
 
@@ -421,20 +420,22 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   namespace __detail
   {
     template<typename _Iter>
-      struct __iter_concept_impl
-      { };
+      struct __iter_concept_impl;
 
+    // ITER_CONCEPT(I) is ITER_TRAITS(I)::iterator_concept if that is valid.
     template<typename _Iter>
       requires requires { typename __iter_traits<_Iter>::iterator_concept; }
       struct __iter_concept_impl<_Iter>
       { using type = typename __iter_traits<_Iter>::iterator_concept; };
 
+    // Otherwise, ITER_TRAITS(I)::iterator_category if that is valid.
     template<typename _Iter>
       requires (!requires { typename __iter_traits<_Iter>::iterator_concept; }
 	  && requires { typename __iter_traits<_Iter>::iterator_category; })
       struct __iter_concept_impl<_Iter>
       { using type = typename __iter_traits<_Iter>::iterator_category; };
 
+    // Otherwise, random_access_tag if iterator_traits<I> is not specialized.
     template<typename _Iter>
       requires (!requires { typename __iter_traits<_Iter>::iterator_concept; }
 	  && !requires { typename __iter_traits<_Iter>::iterator_category; }
@@ -442,7 +443,12 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       struct __iter_concept_impl<_Iter>
       { using type = random_access_iterator_tag; };
 
-    // ITER_TRAITS
+    // Otherwise, there is no ITER_CONCEPT(I) type.
+    template<typename _Iter>
+      struct __iter_concept_impl
+      { };
+
+    // ITER_CONCEPT
     template<typename _Iter>
       using __iter_concept = typename __iter_concept_impl<_Iter>::type;
   } // namespace __detail
@@ -468,18 +474,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       struct __iter_common_ref
       : common_reference<iter_reference_t<_Tp>, iter_value_t<_Tp>&>
       { };
-
-    // FIXME: needed due to PR c++/67704
-    template<typename _Fn, typename... _Is>
-      struct __indirect_result
-      { };
-
-    template<typename _Fn, typename... _Is>
-      requires (readable<_Is> && ...)
-	&& invocable<_Fn, iter_reference_t<_Is>...>
-      struct __indirect_result<_Fn, _Is...>
-      : invoke_result<_Fn, iter_reference_t<_Is>...>
-      { };
   } // namespace __detail
 
   template<typename _Tp>
@@ -500,7 +494,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   /// Requirements on types that can be incremented with ++.
   template<typename _Iter>
-    concept weakly_incrementable = default_constructible<_Iter>
+    concept weakly_incrementable = default_initializable<_Iter>
       && movable<_Iter>
       && requires(_Iter __i)
       {
@@ -525,11 +519,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       && __detail::__weakly_eq_cmp_with<_Sent, _Iter>;
 
   template<typename _Sent, typename _Iter>
-    inline constexpr bool disable_sized_sentinel = false;
+    inline constexpr bool disable_sized_sentinel_for = false;
 
   template<typename _Sent, typename _Iter>
     concept sized_sentinel_for = sentinel_for<_Sent, _Iter>
-    && !disable_sized_sentinel<remove_cv_t<_Sent>, remove_cv_t<_Iter>>
+    && !disable_sized_sentinel_for<remove_cv_t<_Sent>, remove_cv_t<_Iter>>
     && requires(const _Iter& __i, const _Sent& __s)
     {
       { __s - __i } -> same_as<iter_difference_t<_Iter>>;
@@ -616,15 +610,26 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       && predicate<_Fn&, iter_reference_t<_Iter>>
       && predicate<_Fn&, iter_common_reference_t<_Iter>>;
 
-  template<typename _Fn, typename _I1, typename _I2 = _I1>
-    concept indirect_relation = readable<_I1> && readable<_I2>
+  template<typename _Fn, typename _I1, typename _I2>
+    concept indirect_binary_predicate = readable<_I1> && readable<_I2>
       && copy_constructible<_Fn>
-      && relation<_Fn&, iter_value_t<_I1>&, iter_value_t<_I2>&>
-      && relation<_Fn&, iter_value_t<_I1>&, iter_reference_t<_I2>>
-      && relation<_Fn&, iter_reference_t<_I1>, iter_value_t<_I2>&>
-      && relation<_Fn&, iter_reference_t<_I1>, iter_reference_t<_I2>>
-      && relation<_Fn&, iter_common_reference_t<_I1>,
-		  iter_common_reference_t<_I2>>;
+      && predicate<_Fn&, iter_value_t<_I1>&, iter_value_t<_I2>&>
+      && predicate<_Fn&, iter_value_t<_I1>&, iter_reference_t<_I2>>
+      && predicate<_Fn&, iter_reference_t<_I1>, iter_value_t<_I2>&>
+      && predicate<_Fn&, iter_reference_t<_I1>, iter_reference_t<_I2>>
+      && predicate<_Fn&, iter_common_reference_t<_I1>,
+		   iter_common_reference_t<_I2>>;
+
+  template<typename _Fn, typename _I1, typename _I2 = _I1>
+    concept indirect_equivalence_relation = readable<_I1> && readable<_I2>
+      && copy_constructible<_Fn>
+      && equivalence_relation<_Fn&, iter_value_t<_I1>&, iter_value_t<_I2>&>
+      && equivalence_relation<_Fn&, iter_value_t<_I1>&, iter_reference_t<_I2>>
+      && equivalence_relation<_Fn&, iter_reference_t<_I1>, iter_value_t<_I2>&>
+      && equivalence_relation<_Fn&, iter_reference_t<_I1>,
+			      iter_reference_t<_I2>>
+      && equivalence_relation<_Fn&, iter_common_reference_t<_I1>,
+			      iter_common_reference_t<_I2>>;
 
   template<typename _Fn, typename _I1, typename _I2 = _I1>
     concept indirect_strict_weak_order = readable<_I1> && readable<_I2>
@@ -636,15 +641,31 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       && strict_weak_order<_Fn&, iter_common_reference_t<_I1>,
 			   iter_common_reference_t<_I2>>;
 
+  namespace __detail
+  {
+    // FIXME: needed due to PR c++/67704
+    template<typename _Fn, typename... _Is>
+      struct __indirect_result
+      { };
+
+    template<typename _Fn, typename... _Is>
+      requires (readable<_Is> && ...)
+	&& invocable<_Fn, iter_reference_t<_Is>...>
+      struct __indirect_result<_Fn, _Is...>
+      : invoke_result<_Fn, iter_reference_t<_Is>...>
+      { };
+  } // namespace __detail
+
   template<typename _Fn, typename... _Is>
     using indirect_result_t = typename
-      __detail::__indirect_result<_Fn, iter_reference_t<_Is>...>::type;
+      __detail::__indirect_result<_Fn, _Is...>::type;
 
   /// [projected], projected
   template<readable _Iter, indirectly_regular_unary_invocable<_Iter> _Proj>
     struct projected
     {
       using value_type = remove_cvref_t<indirect_result_t<_Proj&, _Iter>>;
+
       indirect_result_t<_Proj&, _Iter> operator*() const; // not defined
     };
 
@@ -683,7 +704,7 @@ namespace ranges
   namespace __cust_iswap
   {
     template<typename _It1, typename _It2>
-      void iter_swap(_It1&, _It2&) = delete;
+      void iter_swap(_It1, _It2) = delete;
 
     template<typename _Tp, typename _Up>
       concept __adl_iswap
@@ -727,7 +748,8 @@ namespace ranges
     public:
       template<typename _Tp, typename _Up>
 	requires __adl_iswap<_Tp, _Up>
-	|| (readable<_Tp> && readable<_Up>
+	|| (readable<remove_reference_t<_Tp>>
+	    && readable<remove_reference_t<_Up>>
 	    && swappable_with<iter_reference_t<_Tp>, iter_reference_t<_Up>>)
 	|| (indirectly_movable_storable<_Tp, _Up>
 	    && indirectly_movable_storable<_Up, _Tp>)
@@ -768,7 +790,8 @@ namespace ranges
   template<typename _I1, typename _I2, typename _Rel, typename _P1 = identity,
 	   typename _P2 = identity>
     concept indirectly_comparable
-      = indirect_relation<_Rel, projected<_I1, _P1>, projected<_I2, _P2>>;
+      = indirect_binary_predicate<_Rel, projected<_I1, _P1>,
+				  projected<_I2, _P2>>;
 
   /// [alg.req.permutable], concept `permutable`
   template<typename _Iter>
@@ -798,23 +821,6 @@ namespace ranges
       friend constexpr bool
       operator==(unreachable_sentinel_t, const _It&) noexcept
       { return false; }
-
-#ifndef __cpp_lib_three_way_comparison
-    template<weakly_incrementable _It>
-      friend constexpr bool
-      operator!=(unreachable_sentinel_t, const _It&) noexcept
-      { return true; }
-
-    template<weakly_incrementable _It>
-      friend constexpr bool
-      operator==(const _It&, unreachable_sentinel_t) noexcept
-      { return false; }
-
-    template<weakly_incrementable _It>
-      friend constexpr bool
-      operator!=(const _It&, unreachable_sentinel_t) noexcept
-      { return true; }
-#endif
   };
 
   inline constexpr unreachable_sentinel_t unreachable_sentinel{};

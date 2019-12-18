@@ -47,6 +47,8 @@
 #include "builtins.h"
 #include "intl.h"
 #include "msp430-devices.h"
+#include "incpath.h"
+#include "prefix.h"
 
 /* This file should be included last.  */
 #include "target-def.h"
@@ -285,6 +287,22 @@ msp430_option_override (void)
      possible to build newlib with -Os enabled.  Until now...  */
   if (TARGET_OPT_SPACE && optimize < 3)
     optimize_size = 1;
+
+#if !DEFAULT_USE_CXA_ATEXIT
+  /* For some configurations, we use atexit () instead of __cxa_atexit () by
+     default to save on code size and remove the declaration of __dso_handle
+     from the CRT library.
+     Configuring GCC with --enable-__cxa-atexit re-enables it by defining
+     DEFAULT_USE_CXA_ATEXIT to 1.  */
+  if (flag_use_cxa_atexit)
+    error ("%<-fuse-cxa-atexit%> is not supported for msp430-elf");
+#endif
+
+#ifndef HAVE_NEWLIB_NANO_FORMATTED_IO
+  if (TARGET_TINY_PRINTF)
+    error ("GCC must be configured with %<--enable-newlib-nano-formatted-io%> "
+	   "to use %<-mtiny-printf%>");
+#endif
 }
 
 #undef  TARGET_SCALAR_MODE_SUPPORTED_P
@@ -3633,6 +3651,27 @@ rtx
 msp430_incoming_return_addr_rtx (void)
 {
   return gen_rtx_MEM (Pmode, stack_pointer_rtx);
+}
+
+/* If the path to the MSP430-GCC support files has been found by examining
+   an environment variable (see msp430_check_env_var_for_devices in
+   msp430-devices.c), or -mdevices-csv-loc=, register this path as an include
+   directory so the user can #include msp430.h without needing to specify the
+   path to the support files with -I.  */
+void
+msp430_register_pre_includes (const char *sysroot ATTRIBUTE_UNUSED,
+			      const char *iprefix ATTRIBUTE_UNUSED,
+			      int stdinc ATTRIBUTE_UNUSED)
+{
+  char *include_dir;
+  if (msp430_devices_csv_loc)
+    include_dir = xstrdup (msp430_devices_csv_loc);
+  else if (msp430_check_env_var_for_devices (&include_dir))
+    return;
+  include_dir = msp430_dirname (include_dir);
+
+  include_dir = update_path (include_dir, "");
+  add_path (include_dir, INC_SYSTEM, false, false);
 }
 
 /* Instruction generation stuff.  */

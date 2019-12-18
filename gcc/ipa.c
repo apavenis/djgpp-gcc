@@ -520,9 +520,14 @@ symbol_table::remove_unreachable_nodes (FILE *file)
 	     reliably.  */
 	  if (node->alias || node->thunk.thunk_p)
 	    ;
-	  else if (!body_needed_for_clonning.contains (node->decl)
-	      && !node->alias && !node->thunk.thunk_p)
-	    node->release_body ();
+	  else if (!body_needed_for_clonning.contains (node->decl))
+	    {
+	      /* Make the node a non-clone so that we do not attempt to
+		 materialize it later.  */
+	      if (node->clone_of)
+		node->remove_from_clone_tree ();
+	      node->release_body ();
+	    }
 	  else if (!node->clone_of)
 	    gcc_assert (in_lto_p || DECL_RESULT (node->decl));
 	  if (node->definition && !node->alias && !node->thunk.thunk_p)
@@ -914,7 +919,14 @@ cgraph_build_static_cdtor_1 (char which, tree body, int priority, bool final,
 void
 cgraph_build_static_cdtor (char which, tree body, int priority)
 {
-  cgraph_build_static_cdtor_1 (which, body, priority, false, NULL, NULL);
+  /* FIXME: We should be able to
+     gcc_assert (!in_lto_p);
+     because at LTO time the global options are not safe to use.
+     Unfortunately ASAN finish_file will produce constructors late and they
+     may lead to surprises.  */
+  cgraph_build_static_cdtor_1 (which, body, priority, false,
+			       optimization_default_node,
+			       target_option_default_node);
 }
 
 /* When target does not have ctors and dtors, we call all constructor

@@ -259,9 +259,14 @@ builtin_define_float_constants (const char *name_prefix,
   /* Since, for the supported formats, B is always a power of 2, we
      construct the following numbers directly as a hexadecimal
      constants.  */
-  get_max_float (fmt, buf, sizeof (buf));
+  get_max_float (fmt, buf, sizeof (buf), false);
 
   sprintf (name, "__%s_MAX__", name_prefix);
+  builtin_define_with_hex_fp_value (name, type, decimal_dig, buf, fp_suffix, fp_cast);
+
+  get_max_float (fmt, buf, sizeof (buf), true);
+
+  sprintf (name, "__%s_NORM_MAX__", name_prefix);
   builtin_define_with_hex_fp_value (name, type, decimal_dig, buf, fp_suffix, fp_cast);
 
   /* The minimum normalized positive floating-point number,
@@ -947,8 +952,11 @@ c_cpp_builtins (cpp_reader *pfile)
 	{
 	  /* Set feature test macros for C++14.  */
 	  cpp_define (pfile, "__cpp_return_type_deduction=201304L");
-	  cpp_define (pfile, "__cpp_init_captures=201304L");
-	  cpp_define (pfile, "__cpp_generic_lambdas=201304L");
+	  if (cxx_dialect <= cxx17)
+	    {
+	      cpp_define (pfile, "__cpp_init_captures=201304L");
+	      cpp_define (pfile, "__cpp_generic_lambdas=201304L");
+	    }
 	  if (cxx_dialect <= cxx14)
 	    cpp_define (pfile, "__cpp_constexpr=201304L");
 	  cpp_define (pfile, "__cpp_decltype_auto=201304L");
@@ -967,12 +975,14 @@ c_cpp_builtins (cpp_reader *pfile)
 	  cpp_define (pfile, "__cpp_fold_expressions=201603L");
 	  cpp_define (pfile, "__cpp_nontype_template_args=201411L");
 	  cpp_define (pfile, "__cpp_range_based_for=201603L");
-	  cpp_define (pfile, "__cpp_constexpr=201603L");
+	  if (cxx_dialect <= cxx17)
+	    cpp_define (pfile, "__cpp_constexpr=201603L");
 	  cpp_define (pfile, "__cpp_if_constexpr=201606L");
 	  cpp_define (pfile, "__cpp_capture_star_this=201603L");
 	  cpp_define (pfile, "__cpp_inline_variables=201606L");
 	  cpp_define (pfile, "__cpp_aggregate_bases=201603L");
-	  cpp_define (pfile, "__cpp_deduction_guides=201703L");
+	  if (cxx_dialect <= cxx17)
+	    cpp_define (pfile, "__cpp_deduction_guides=201703L");
 	  cpp_define (pfile, "__cpp_noexcept_function_type=201510L");
 	  /* Old macro, superseded by
 	     __cpp_nontype_template_parameter_auto.  */
@@ -985,16 +995,24 @@ c_cpp_builtins (cpp_reader *pfile)
       if (cxx_dialect > cxx17)
 	{
 	  /* Set feature test macros for C++2a.  */
+	  cpp_define (pfile, "__cpp_init_captures=201803L");
+	  cpp_define (pfile, "__cpp_generic_lambdas=201707L");
+	  cpp_define (pfile, "__cpp_designated_initializers=201707L");
+	  cpp_define (pfile, "__cpp_constexpr=201907L");
+	  cpp_define (pfile, "__cpp_constexpr_in_decltype=201711L");
 	  cpp_define (pfile, "__cpp_conditional_explicit=201806L");
+	  /* cpp_define (pfile, "__cpp_consteval=201811L"); */
 	  cpp_define (pfile, "__cpp_constinit=201907L");
+	  cpp_define (pfile, "__cpp_deduction_guides=201907L");
 	  cpp_define (pfile, "__cpp_nontype_template_parameter_class=201806L");
 	  cpp_define (pfile, "__cpp_impl_destroying_delete=201806L");
 	  cpp_define (pfile, "__cpp_constexpr_dynamic_alloc=201907L");
+	  cpp_define (pfile, "__cpp_impl_three_way_comparison=201907L");
+	  cpp_define (pfile, "__cpp_aggregate_paren_init=201902L");
 	}
       if (flag_concepts)
         {
           if (cxx_dialect >= cxx2a)
-            /* FIXME: Update this to the value required by the IS.  */
             cpp_define (pfile, "__cpp_concepts=201907L");
           else
             cpp_define (pfile, "__cpp_concepts=201507L");
@@ -1606,10 +1624,10 @@ struct GTY(()) lazy_hex_fp_value_struct
 };
 /* Number of the expensive to compute macros we should evaluate lazily.
    Each builtin_define_float_constants invocation calls
-   builtin_define_with_hex_fp_value 4 times and builtin_define_float_constants
+   builtin_define_with_hex_fp_value 5 times and builtin_define_float_constants
    is called for FLT, DBL, LDBL and up to NUM_FLOATN_NX_TYPES times for
    FLTNN*.  */ 
-#define LAZY_HEX_FP_VALUES_CNT (4 * (3 + NUM_FLOATN_NX_TYPES))
+#define LAZY_HEX_FP_VALUES_CNT (5 * (3 + NUM_FLOATN_NX_TYPES))
 static GTY(()) struct lazy_hex_fp_value_struct
   lazy_hex_fp_values[LAZY_HEX_FP_VALUES_CNT];
 static GTY(()) unsigned lazy_hex_fp_value_count;

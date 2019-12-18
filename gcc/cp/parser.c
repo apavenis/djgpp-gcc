@@ -1850,6 +1850,7 @@ enum cp_parser_prec
   PREC_AND_EXPRESSION,
   PREC_EQUALITY_EXPRESSION,
   PREC_RELATIONAL_EXPRESSION,
+  PREC_SPACESHIP_EXPRESSION,
   PREC_SHIFT_EXPRESSION,
   PREC_ADDITIVE_EXPRESSION,
   PREC_MULTIPLICATIVE_EXPRESSION,
@@ -1920,6 +1921,8 @@ static const cp_parser_binary_operations_map_node binops[] = {
 
   { CPP_LSHIFT, LSHIFT_EXPR, PREC_SHIFT_EXPRESSION },
   { CPP_RSHIFT, RSHIFT_EXPR, PREC_SHIFT_EXPRESSION },
+
+  { CPP_SPACESHIP, SPACESHIP_EXPR, PREC_SPACESHIP_EXPRESSION },
 
   { CPP_LESS, LT_EXPR, PREC_RELATIONAL_EXPRESSION },
   { CPP_GREATER, GT_EXPR, PREC_RELATIONAL_EXPRESSION },
@@ -2437,7 +2440,7 @@ static tree cp_parser_concept_definition
 static tree cp_parser_constraint_expression
   (cp_parser *);
 static tree cp_parser_requires_clause_opt
-  (cp_parser *);
+  (cp_parser *, bool);
 static tree cp_parser_requires_expression
   (cp_parser *);
 static tree cp_parser_requirement_parameter_list
@@ -2596,8 +2599,9 @@ static enum tag_types cp_parser_token_is_class_key
   (cp_token *);
 static enum tag_types cp_parser_token_is_type_parameter_key
   (cp_token *);
+static void cp_parser_maybe_warn_enum_key (cp_parser *, location_t, tree, rid);
 static void cp_parser_check_class_key
-  (enum tag_types, tree type);
+(cp_parser *, location_t, enum tag_types, tree type, bool, bool);
 static void cp_parser_check_access_in_redeclaration
   (tree type, location_t location);
 static bool cp_parser_optional_template_keyword
@@ -2890,12 +2894,16 @@ cp_parser_error_1 (cp_parser* parser, const char* gmsgid,
 	  error_at (loc, "version control conflict marker in file");
 	  expanded_location token_exploc = expand_location (token->location);
 	  /* Consume tokens until the end of the source line.  */
-	  while (1)
+	  for (;;)
 	    {
 	      cp_lexer_consume_token (parser->lexer);
 	      cp_token *next = cp_lexer_peek_token (parser->lexer);
-	      if (next == NULL)
+	      if (next->type == CPP_EOF)
 		break;
+	      if (next->location == UNKNOWN_LOCATION
+		  || loc == UNKNOWN_LOCATION)
+		break;
+
 	      expanded_location next_exploc = expand_location (next->location);
 	      if (next_exploc.file != token_exploc.file)
 		break;
@@ -3360,7 +3368,8 @@ cp_parser_diagnose_invalid_type_name (cp_parser *parser, tree id,
 	inform (location, "C++20 %<constinit%> only available with "
 		"%<-std=c++2a%> or %<-std=gnu++2a%>");
       else if (!flag_concepts && id == ridpointers[(int)RID_CONCEPT])
-	inform (location, "%<concept%> only available with %<-fconcepts%>");
+	inform (location, "%<concept%> only available with %<-std=c++2a%> or "
+		"%<-fconcepts%>");
       else if (processing_template_decl && current_class_type
 	       && TYPE_BINFO (current_class_type))
 	{
@@ -4542,9 +4551,8 @@ cp_parser_userdef_numeric_literal (cp_parser *parser)
 
   if (i14 && ext)
     {
-      tree cxlit = lookup_qualified_name (std_node,
-					  get_identifier ("complex_literals"),
-					  0, false, false);
+      tree cxlit = lookup_qualified_name (std_node, "complex_literals",
+					  0, false);
       if (cxlit == error_mark_node)
 	{
 	  /* No <complex>, so pedwarn and use GNU semantics.  */
@@ -6889,36 +6897,38 @@ cp_parser_postfix_expression (cp_parser *parser, bool address_p, bool cast_p,
 	    break;
 	  }
 
-	switch (keyword)
-	  {
-	  case RID_DYNCAST:
-	    postfix_expression
-	      = build_dynamic_cast (type, expression, tf_warning_or_error);
-	    break;
-	  case RID_STATCAST:
-	    postfix_expression
-	      = build_static_cast (type, expression, tf_warning_or_error);
-	    break;
-	  case RID_REINTCAST:
-	    postfix_expression
-	      = build_reinterpret_cast (type, expression,
-                                        tf_warning_or_error);
-	    break;
-	  case RID_CONSTCAST:
-	    postfix_expression
-	      = build_const_cast (type, expression, tf_warning_or_error);
-	    break;
-	  default:
-	    gcc_unreachable ();
-	  }
-
 	/* Construct a location e.g. :
 	     reinterpret_cast <int *> (expr)
 	     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	   ranging from the start of the "*_cast" token to the final closing
 	   paren, with the caret at the start.  */
 	location_t cp_cast_loc = make_location (start_loc, start_loc, end_loc);
-	postfix_expression.set_location (cp_cast_loc);
+
+	switch (keyword)
+	  {
+	  case RID_DYNCAST:
+	    postfix_expression
+	      = build_dynamic_cast (cp_cast_loc, type, expression,
+				    tf_warning_or_error);
+	    break;
+	  case RID_STATCAST:
+	    postfix_expression
+	      = build_static_cast (cp_cast_loc, type, expression,
+				   tf_warning_or_error);
+	    break;
+	  case RID_REINTCAST:
+	    postfix_expression
+	      = build_reinterpret_cast (cp_cast_loc, type, expression,
+                                        tf_warning_or_error);
+	    break;
+	  case RID_CONSTCAST:
+	    postfix_expression
+	      = build_const_cast (cp_cast_loc, type, expression,
+				  tf_warning_or_error);
+	    break;
+	  default:
+	    gcc_unreachable ();
+	  }
       }
       break;
 
@@ -9144,17 +9154,18 @@ get_cast_suggestion (tree dst_type, tree orig_expr)
     return NULL;
 
   /* First try const_cast.  */
-  trial = build_const_cast (dst_type, orig_expr, tf_none);
+  trial = build_const_cast (input_location, dst_type, orig_expr, tf_none);
   if (trial != error_mark_node)
     return "const_cast";
 
   /* If that fails, try static_cast.  */
-  trial = build_static_cast (dst_type, orig_expr, tf_none);
+  trial = build_static_cast (input_location, dst_type, orig_expr, tf_none);
   if (trial != error_mark_node)
     return "static_cast";
 
   /* Finally, try reinterpret_cast.  */
-  trial = build_reinterpret_cast (dst_type, orig_expr, tf_none);
+  trial = build_reinterpret_cast (input_location, dst_type, orig_expr,
+				  tf_none);
   if (trial != error_mark_node)
     return "reinterpret_cast";
 
@@ -10142,8 +10153,8 @@ cp_parser_builtin_offsetof (cp_parser *parser)
 
   /* Build the (type *)null that begins the traditional offsetof macro.  */
   tree object_ptr
-    = build_static_cast (build_pointer_type (type), null_pointer_node,
-			 tf_warning_or_error);
+    = build_static_cast (input_location, build_pointer_type (type),
+			 null_pointer_node, tf_warning_or_error);
 
   /* Parse the offsetof-member-designator.  We begin as if we saw "expr->".  */
   expr = cp_parser_postfix_dot_deref_expression (parser, CPP_DEREF, object_ptr,
@@ -10891,7 +10902,7 @@ cp_parser_lambda_declarator_opt (cp_parser* parser, tree lambda_expr)
       /* We may have a constrained generic lambda; parse the requires-clause
 	 immediately after the template-parameter-list and combine with any
 	 shorthand constraints present.  */
-      tree dreqs = cp_parser_requires_clause_opt (parser);
+      tree dreqs = cp_parser_requires_clause_opt (parser, true);
       if (flag_concepts)
 	{
 	  tree reqs = get_shorthand_constraints (current_template_parms);
@@ -10984,7 +10995,7 @@ cp_parser_lambda_declarator_opt (cp_parser* parser, tree lambda_expr)
 	gnu_attrs = cp_parser_gnu_attributes_opt (parser);
 
       /* Parse optional trailing requires clause.  */
-      trailing_requires_clause = cp_parser_requires_clause_opt (parser);
+      trailing_requires_clause = cp_parser_requires_clause_opt (parser, false);
 
       /* The function parameters must be in scope all the way until after the
          trailing-return-type in case of decltype.  */
@@ -14091,6 +14102,9 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
           ds = ds_concept;
           cp_lexer_consume_token (parser->lexer);
 
+	  if (flags & CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR)
+	    break;
+
           /* Warn for concept as a decl-specifier. We'll rewrite these as
              concept declarations later.  */
           if (!flag_concepts_ts)
@@ -14133,6 +14147,10 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
 	  ds = ds_typedef;
 	  /* Consume the token.  */
 	  cp_lexer_consume_token (parser->lexer);
+
+	  if (flags & CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR)
+	    break;
+
 	  /* A constructor declarator cannot appear in a typedef.  */
 	  constructor_possible_p = false;
 	  /* The "typedef" keyword can only occur in a declaration; we
@@ -14228,6 +14246,9 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
 	  int decl_spec_declares_class_or_enum;
 	  bool is_cv_qualifier;
 	  tree type_spec;
+
+	  if (flags & CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR)
+	    flags |= CP_PARSER_FLAGS_NO_TYPE_DEFINITIONS;
 
 	  type_spec
 	    = cp_parser_type_specifier (parser, flags,
@@ -14617,11 +14638,6 @@ cp_parser_decltype_expr (cp_parser *parser,
   cp_token *id_expr_start_token;
   tree expr;
 
-  /* Since we're going to preserve any side-effects from this parse, set up a
-     firewall to protect our callers from cp_parser_commit_to_tentative_parse
-     in the expression.  */
-  tentative_firewall firewall (parser);
-
   /* First, try parsing an id-expression.  */
   id_expr_start_token = cp_lexer_peek_token (parser->lexer);
   cp_parser_parse_tentatively (parser);
@@ -14713,9 +14729,6 @@ cp_parser_decltype_expr (cp_parser *parser,
          expression.  */
       cp_parser_abort_tentative_parse (parser);
 
-      /* Commit to the tentative_firewall so we get syntax errors.  */
-      cp_parser_commit_to_tentative_parse (parser);
-
       /* Parse a full expression.  */
       expr = cp_parser_expression (parser, /*pidk=*/NULL, /*cast_p=*/false,
 				   /*decltype_p=*/true);
@@ -14752,6 +14765,17 @@ cp_parser_decltype (cp_parser *parser)
   matching_parens parens;
   if (!parens.require_open (parser))
     return error_mark_node;
+
+  /* Since we're going to preserve any side-effects from this parse, set up a
+     firewall to protect our callers from cp_parser_commit_to_tentative_parse
+     in the expression.  */
+  tentative_firewall firewall (parser);
+
+  /* If in_declarator_p, a reparse as an expression might succeed (60361).
+     Otherwise, commit now for better diagnostics.  */
+  if (cp_parser_uncommitted_to_tentative_parse_p (parser)
+      && !parser->in_declarator_p)
+    cp_parser_commit_to_topmost_tentative_parse (parser);
 
   push_deferring_access_checks (dk_deferred);
 
@@ -14813,10 +14837,16 @@ cp_parser_decltype (cp_parser *parser)
     }
 
   /* Parse to the closing `)'.  */
-  if (!parens.require_close (parser))
+  if (expr == error_mark_node || !parens.require_close (parser))
     {
       cp_parser_skip_to_closing_parenthesis (parser, true, false,
 					     /*consume_paren=*/true);
+      expr = error_mark_node;
+    }
+
+  /* If we got a parse error while tentative, bail out now.  */
+  if (cp_parser_error_occurred (parser))
+    {
       pop_deferring_access_checks ();
       return error_mark_node;
     }
@@ -14839,6 +14869,11 @@ cp_parser_decltype (cp_parser *parser)
   start_token->u.tree_check_value->value = expr;
   start_token->u.tree_check_value->checks = get_deferred_access_checks ();
   start_token->keyword = RID_MAX;
+
+  location_t loc = start_token->location;
+  loc = make_location (loc, loc, parser->lexer);
+  start_token->location = loc;
+
   cp_lexer_purge_tokens_after (parser->lexer, start_token);
 
   pop_to_parent_deferring_access_checks ();
@@ -15504,6 +15539,10 @@ cp_parser_operator (cp_parser* parser, location_t start_loc)
       op = GE_EXPR;
       break;
 
+    case CPP_SPACESHIP:
+      op = SPACESHIP_EXPR;
+      break;
+
     case CPP_AND_AND:
       op = TRUTH_ANDIF_EXPR;
       break;
@@ -15530,6 +15569,15 @@ cp_parser_operator (cp_parser* parser, location_t start_loc)
 
     case CPP_DEREF:
       op = COMPONENT_REF;
+      break;
+
+    case CPP_QUERY:
+      op = COND_EXPR;
+      /* Consume the `?'.  */
+      cp_lexer_consume_token (parser->lexer);
+      /* Look for the matching `:'.  */
+      cp_parser_require (parser, CPP_COLON, RT_COLON);
+      consumed = true;
       break;
 
     case CPP_OPEN_PAREN:
@@ -16299,11 +16347,11 @@ cp_parser_type_parameter (cp_parser* parser, bool *is_parameter_pack)
 	/* Look for the `>'.  */
 	cp_parser_require (parser, CPP_GREATER, RT_GREATER);
 
-        // If template requirements are present, parse them.
+	/* If template requirements are present, parse them.  */
 	if (flag_concepts)
           {
 	    tree reqs = get_shorthand_constraints (current_template_parms);
-	    if (tree dreqs = cp_parser_requires_clause_opt (parser))
+	    if (tree dreqs = cp_parser_requires_clause_opt (parser, false))
               reqs = combine_constraint_expressions (reqs, dreqs);
 	    TEMPLATE_PARMS_CONSTRAINTS (current_template_parms) = reqs;
           }
@@ -18053,8 +18101,7 @@ cp_parser_simple_type_specifier (cp_parser* parser,
 						 /*ambiguous_decls=*/NULL,
 						 token->location);
 	      if (tmpl && tmpl != error_mark_node
-		  && (DECL_CLASS_TEMPLATE_P (tmpl)
-		      || DECL_TEMPLATE_TEMPLATE_PARM_P (tmpl)))
+		  && ctad_template_p (tmpl))
 		type = make_template_placeholder (tmpl);
 	      else if (flag_concepts && tmpl && concept_definition_p (tmpl))
 		type = cp_parser_placeholder_type_specifier (parser, loc,
@@ -18452,6 +18499,11 @@ cp_parser_elaborated_type_specifier (cp_parser* parser,
   tree globalscope;
   cp_token *token = NULL;
 
+  /* For class and enum types the location of the class-key or enum-key.  */
+  location_t key_loc = cp_lexer_peek_token (parser->lexer)->location;
+  /* For a scoped enum, the 'class' or 'struct' keyword id.  */
+  rid scoped_key = RID_MAX;
+
   /* See if we're looking at the `enum' keyword.  */
   if (cp_lexer_next_token_is_keyword (parser->lexer, RID_ENUM))
     {
@@ -18462,10 +18514,11 @@ cp_parser_elaborated_type_specifier (cp_parser* parser,
       /* Issue a warning if the `struct' or `class' key (for C++0x scoped
 	 enums) is used here.  */
       cp_token *token = cp_lexer_peek_token (parser->lexer);
-      if (cp_parser_is_keyword (token, RID_CLASS)
-	  || cp_parser_is_keyword (token, RID_STRUCT))
+      if (cp_parser_is_keyword (token, scoped_key = RID_CLASS)
+	  || cp_parser_is_keyword (token, scoped_key = RID_STRUCT))
 	{
-	  gcc_rich_location richloc (token->location);
+	  location_t loc = token->location;
+	  gcc_rich_location richloc (loc);
 	  richloc.add_range (input_location);
 	  richloc.add_fixit_remove ();
 	  pedwarn (&richloc, 0, "elaborated-type-specifier for "
@@ -18473,7 +18526,12 @@ cp_parser_elaborated_type_specifier (cp_parser* parser,
 		   token->u.value);
 	  /* Consume the `struct' or `class' and parse it anyway.  */
 	  cp_lexer_consume_token (parser->lexer);
+	  /* Create a combined location for the whole scoped-enum-key.  */
+	  key_loc = make_location (key_loc, key_loc, loc);
 	}
+      else
+	scoped_key = RID_MAX;
+
       /* Parse the attributes.  */
       attributes = cp_parser_attributes_opt (parser);
     }
@@ -18489,6 +18547,7 @@ cp_parser_elaborated_type_specifier (cp_parser* parser,
   /* Otherwise it must be a class-key.  */
   else
     {
+      key_loc = cp_lexer_peek_token (parser->lexer)->location;
       tag_type = cp_parser_class_key (parser);
       if (tag_type == none_type)
 	return error_mark_node;
@@ -18799,13 +18858,18 @@ cp_parser_elaborated_type_specifier (cp_parser* parser,
 		 "attributes ignored on elaborated-type-specifier that is not a forward declaration");
     }
 
-  if (tag_type != enum_type)
+  if (tag_type == enum_type)
+    cp_parser_maybe_warn_enum_key (parser, key_loc, type, scoped_key);
+  else
     {
+      /* Diagnose class/struct/union mismatches.  */
+      cp_parser_check_class_key (parser, key_loc, tag_type, type, false,
+				 cp_parser_declares_only_class_p (parser));
+
       /* Indicate whether this class was declared as a `class' or as a
 	 `struct'.  */
-      if (CLASS_TYPE_P (type))
+      if (CLASS_TYPE_P (type) && !currently_open_class (type))
 	CLASSTYPE_DECLARED_CLASS (type) = (tag_type == class_type);
-      cp_parser_check_class_key (tag_type, type);
     }
 
   /* A "<" cannot follow an elaborated type specifier.  If that
@@ -19871,14 +19935,6 @@ cp_parser_alias_declaration (cp_parser* parser)
 		       attributes, NULL_TREE, &pushed_scope);
   if (decl == error_mark_node)
     return decl;
-
-  /* Attach constraints to the alias declaration.  */
-  if (flag_concepts && current_template_parms)
-    {
-      tree reqs = TEMPLATE_PARMS_CONSTRAINTS (current_template_parms);
-      tree constr = build_constraints (reqs, NULL_TREE);
-      set_constraints (decl, constr);
-    }
 
   cp_finish_decl (decl, NULL_TREE, 0, NULL_TREE, 0);
 
@@ -21911,7 +21967,7 @@ cp_parser_late_return_type_opt (cp_parser* parser, cp_declarator *declarator,
 
   /* Function declarations may be followed by a trailing
      requires-clause.  */
-  requires_clause = cp_parser_requires_clause_opt (parser);
+  requires_clause = cp_parser_requires_clause_opt (parser, false);
 
   if (declare_simd_p)
     declarator->attributes
@@ -24351,11 +24407,14 @@ cp_parser_class_head (cp_parser* parser,
 		       parser->num_template_parameter_lists);
     }
 
+  /* Diagnose class/struct/union mismatches.  */
+  cp_parser_check_class_key (parser, UNKNOWN_LOCATION, class_key, type,
+			     true, true);
+
   /* Indicate whether this class was declared as a `class' or as a
      `struct'.  */
   if (TREE_CODE (type) == RECORD_TYPE)
-    CLASSTYPE_DECLARED_CLASS (type) = (class_key == class_type);
-  cp_parser_check_class_key (class_key, type);
+    CLASSTYPE_DECLARED_CLASS (type) = class_key == class_type;
 
   /* If this type was already complete, and we see another definition,
      that's an error.  Likewise if the type is already being defined:
@@ -25017,6 +25076,32 @@ cp_parser_member_declaration (cp_parser* parser)
 		    initializer = cp_parser_save_nsdmi (parser);
 		  else
 		    initializer = cp_parser_initializer (parser, &x, &x);
+		}
+	      /* Detect invalid bit-field cases such as
+
+		   int *p : 4;
+		   int &&r : 3;
+
+		 and similar.  */
+	      else if (cp_lexer_next_token_is (parser->lexer, CPP_COLON)
+		       /* If there were no type specifiers, it was a
+			  constructor.  */
+		       && decl_specifiers.any_type_specifiers_p)
+		{
+		  /* This is called for a decent diagnostic only.  */
+		  tree d = grokdeclarator (declarator, &decl_specifiers,
+					   BITFIELD, /*initialized=*/false,
+					   &attributes);
+		  if (!error_operand_p (d))
+		    error_at (DECL_SOURCE_LOCATION (d),
+			      "bit-field %qD has non-integral type %qT",
+			      d, TREE_TYPE (d));
+		  cp_parser_skip_to_end_of_statement (parser);
+		  /* Avoid "extra ;" pedwarns.  */
+		  if (cp_lexer_next_token_is (parser->lexer,
+					      CPP_SEMICOLON))
+		    cp_lexer_consume_token (parser->lexer);
+		  goto out;
 		}
 	      /* Otherwise, there is no initializer.  */
 	      else
@@ -26574,6 +26659,15 @@ cp_parser_std_attribute (cp_parser *parser, tree attr_ns)
       /* A GNU attribute that takes an identifier in parameter.  */
       attr_flag = id_attr;
 
+    if (as == NULL)
+      {
+	/* For unknown attributes, just skip balanced tokens instead of
+	   trying to parse the arguments.  */
+	for (size_t n = cp_parser_skip_balanced_tokens (parser, 1) - 1; n; --n)
+	  cp_lexer_consume_token (parser->lexer);
+	return attribute;
+      }
+
     vec = cp_parser_parenthesized_expression_list
       (parser, attr_flag, /*cast_p=*/false,
        /*allow_expansion_p=*/true,
@@ -26582,7 +26676,7 @@ cp_parser_std_attribute (cp_parser *parser, tree attr_ns)
       arguments = error_mark_node;
     else
       {
-	if (vec->is_empty())
+	if (vec->is_empty ())
 	  /* e.g. [[attr()]].  */
 	  error_at (token->location, "parentheses must be omitted if "
 		    "%qE attribute argument list is empty",
@@ -27058,8 +27152,7 @@ cp_parser_concept_definition (cp_parser *parser)
 static void
 cp_parser_diagnose_ungrouped_constraint_plain (location_t loc)
 {
-  error_at (loc, "expression after %<requires%> must be enclosed "
-		 "in parentheses");
+  error_at (loc, "expression must be enclosed in parentheses");
 }
 
 static void
@@ -27068,56 +27161,48 @@ cp_parser_diagnose_ungrouped_constraint_rich (location_t loc)
   gcc_rich_location richloc (loc);
   richloc.add_fixit_insert_before ("(");
   richloc.add_fixit_insert_after (")");
-  error_at (&richloc, "expression after %<requires%> must be enclosed "
-		      "in parentheses");
+  error_at (&richloc, "expression must be enclosed in parentheses");
 }
 
-/* Parse a primary expression within a constraint.  */
-
-static cp_expr
-cp_parser_constraint_primary_expression (cp_parser *parser)
+/* Characterizes the likely kind of expression intended by a mis-written
+   primary constraint.  */
+enum primary_constraint_error
 {
-  cp_parser_parse_tentatively (parser);
-  cp_id_kind idk;
-  location_t loc = input_location;
-  cp_expr expr = cp_parser_primary_expression (parser,
-					       /*address_p=*/false,
-					       /*cast_p=*/false,
-					       /*template_arg_p=*/false,
-					       &idk);
-  expr.maybe_add_location_wrapper ();
-  if (expr != error_mark_node)
-    expr = finish_constraint_primary_expr (expr);
-  if (cp_parser_parse_definitely (parser))
-    return expr;
+  pce_ok,
+  pce_maybe_operator,
+  pce_maybe_postfix
+};
 
-  /* Retry the parse at a lower precedence. If that succeeds, diagnose the
-     error, but return the expression as if it were valid.  */
-  cp_parser_parse_tentatively (parser);
-  expr = cp_parser_simple_cast_expression (parser);
-  if (cp_parser_parse_definitely (parser))
-    {
-      cp_parser_diagnose_ungrouped_constraint_rich (expr.get_location());
-      return expr;
-    }
+/* Returns true if the token(s) following a primary-expression in a
+   constraint-logical-* expression would require parentheses.  */
 
-  /* Otherwise, something has gone wrong, but we can't generate a more
-     meaningful diagnostic or recover.  */
-  cp_parser_diagnose_ungrouped_constraint_plain (loc);
-  return error_mark_node;
-}
-
-/* Examine the token following EXPR. If it is an operator in a non-logical
-   binary expression, diagnose that as an error. Returns ERROR_MARK_NODE.  */
-
-static cp_expr
-cp_parser_check_non_logical_constraint (cp_parser *parser, cp_expr lhs)
+static primary_constraint_error
+cp_parser_constraint_requires_parens (cp_parser *parser, bool lambda_p)
 {
   cp_token *token = cp_lexer_peek_token (parser->lexer);
   switch (token->type)
     {
       default:
-        return lhs;
+	return pce_ok;
+
+      case CPP_EQ:
+	{
+	  /* An equal sign may be part of the the definition of a function,
+	     and not an assignment operator, when parsing the expression
+	     for a trailing requires-clause. For example:
+
+		template<typename T>
+		struct S {
+		  S() requires C<T> = default;
+		};
+
+	     Don't try to reparse this a binary operator.  */
+	  if (cp_lexer_nth_token_is_keyword (parser->lexer, 2, RID_DELETE)
+	      || cp_lexer_nth_token_is_keyword (parser->lexer, 2, RID_DEFAULT))
+	    return pce_ok;
+
+	  gcc_fallthrough ();
+	}
 
       /* Arithmetic operators.  */
       case CPP_PLUS:
@@ -27132,15 +27217,13 @@ cp_parser_check_non_logical_constraint (cp_parser *parser, cp_expr lhs)
       case CPP_RSHIFT:
       case CPP_LSHIFT:
       /* Relational operators.  */
-      /* FIXME: Handle '<=>'.  */
       case CPP_EQ_EQ:
       case CPP_NOT_EQ:
       case CPP_LESS:
       case CPP_GREATER:
       case CPP_LESS_EQ:
       case CPP_GREATER_EQ:
-      /* Conditional operator */
-      case CPP_QUERY:
+      case CPP_SPACESHIP:
       /* Pointer-to-member.  */
       case CPP_DOT_STAR:
       case CPP_DEREF_STAR:
@@ -27155,52 +27238,138 @@ cp_parser_check_non_logical_constraint (cp_parser *parser, cp_expr lhs)
       case CPP_XOR_EQ:
       case CPP_RSHIFT_EQ:
       case CPP_LSHIFT_EQ:
-        break;
+      /* Conditional operator */
+      case CPP_QUERY:
+	/* Unenclosed binary or conditional operator.  */
+	return pce_maybe_operator;
 
-      case CPP_EQ: {
-	/* An equal sign may be part of the the definition of a function,
-	   and not an assignment operator, when parsing the expression
-	   for a trailing requires-clause. For example:
+      case CPP_OPEN_PAREN:
+	{
+	  /* A primary constraint that precedes the parameter-list of a
+	     lambda expression is followed by an open paren.
 
-	      template<typename T>
-	      struct S {
-		S() requires C<T> = default;
-	      }
+		[]<typename T> requires C (T a, T b) { ... }
 
-	   This is not an error.  */
-	if (cp_lexer_nth_token_is_keyword (parser->lexer, 2, RID_DELETE)
-	    || cp_lexer_nth_token_is_keyword (parser->lexer, 2, RID_DEFAULT))
-	  return lhs;
+	     Don't try to re-parse this as a postfix expression.  */
+	  if (lambda_p)
+	    return pce_ok;
 
-        break;
-      }
+	  gcc_fallthrough ();
+	}
+      case CPP_OPEN_SQUARE:
+      case CPP_PLUS_PLUS:
+      case CPP_MINUS_MINUS:
+      case CPP_DOT:
+      case CPP_DEREF:
+	/* Unenclosed postfix operator.  */
+	return pce_maybe_postfix;
    }
+}
 
-   /* Try to parse the RHS as either the remainder of a conditional-expression
-      or a logical-or-expression so we can form a good diagnostic.  */
+/* Returns true if the next token begins a unary expression, preceded by
+   an operator or keyword.  */
+
+static bool
+cp_parser_unary_constraint_requires_parens (cp_parser *parser)
+{
+  cp_token *token = cp_lexer_peek_token (parser->lexer);
+  switch (token->type)
+    {
+      case CPP_NOT:
+      case CPP_PLUS:
+      case CPP_MINUS:
+      case CPP_MULT:
+      case CPP_COMPL:
+      case CPP_PLUS_PLUS:
+      case CPP_MINUS_MINUS:
+	return true;
+
+      case CPP_KEYWORD:
+	{
+	  switch (token->keyword)
+	    {
+	      case RID_STATCAST:
+	      case RID_DYNCAST:
+	      case RID_REINTCAST:
+	      case RID_CONSTCAST:
+	      case RID_TYPEID:
+	      case RID_SIZEOF:
+	      case RID_ALIGNOF:
+	      case RID_NOEXCEPT:
+	      case RID_NEW:
+	      case RID_DELETE:
+	      case RID_THROW:
+		return true;
+
+	     default:
+		break;
+	  }
+	}
+
+      default:
+	break;
+    }
+
+  return false;
+}
+
+/* Parse a primary expression within a constraint.  */
+
+static cp_expr
+cp_parser_constraint_primary_expression (cp_parser *parser, bool lambda_p)
+{
+  /* If this looks like a unary expression, parse it as such, but diagnose
+     it as ill-formed; it requires parens.  */
+  if (cp_parser_unary_constraint_requires_parens (parser))
+    {
+      cp_expr e = cp_parser_assignment_expression (parser, NULL, false, false);
+      cp_parser_diagnose_ungrouped_constraint_rich (e.get_location());
+      return e;
+    }
+
   cp_parser_parse_tentatively (parser);
-  cp_expr rhs;
-  if (token->type == CPP_QUERY)
-    rhs = cp_parser_question_colon_clause (parser, lhs);
+  cp_id_kind idk;
+  location_t loc = input_location;
+  cp_expr expr = cp_parser_primary_expression (parser,
+					       /*address_p=*/false,
+					       /*cast_p=*/false,
+					       /*template_arg_p=*/false,
+					       &idk);
+  expr.maybe_add_location_wrapper ();
+
+  primary_constraint_error pce = pce_ok;
+  if (expr != error_mark_node)
+    {
+      /* The primary-expression could be part of an unenclosed non-logical
+	 compound expression.  */
+      pce = cp_parser_constraint_requires_parens (parser, lambda_p);
+      if (pce != pce_ok)
+	cp_parser_simulate_error (parser);
+      else
+	expr = finish_constraint_primary_expr (expr);
+    }
+  if (cp_parser_parse_definitely (parser))
+    return expr;
+  if (expr == error_mark_node)
+    return error_mark_node;
+
+  /* Retry the parse at a lower precedence. If that succeeds, diagnose the
+     error, but return the expression as if it were valid.  */
+  gcc_assert (pce != pce_ok);
+  cp_parser_parse_tentatively (parser);
+  if (pce == pce_maybe_operator)
+    expr = cp_parser_assignment_expression (parser, NULL, false, false);
   else
+    expr = cp_parser_simple_cast_expression (parser);
+  if (cp_parser_parse_definitely (parser))
     {
-      cp_lexer_consume_token (parser->lexer);
-      rhs = cp_parser_binary_expression (parser, false, false, false,
-					 PREC_NOT_OPERATOR, NULL);
+      cp_parser_diagnose_ungrouped_constraint_rich (expr.get_location());
+      return expr;
     }
 
-  /* If we couldn't parse the RHS, then emit the best diagnostic we can.  */
-  if (!cp_parser_parse_definitely (parser))
-    {
-      cp_parser_diagnose_ungrouped_constraint_plain (token->location);
-      return error_mark_node;
-    }
-
-  /* Otherwise, emit a fixit for the complete binary expression.  */
-  location_t loc = make_location (token->location,
-				  lhs.get_start(),
-				  rhs.get_finish());
-  cp_parser_diagnose_ungrouped_constraint_rich (loc);
+  /* Otherwise, something has gone very wrong, and we can't generate a more
+     meaningful diagnostic or recover.  */
+  cp_parser_diagnose_ungrouped_constraint_plain (loc);
   return error_mark_node;
 }
 
@@ -27211,16 +27380,16 @@ cp_parser_check_non_logical_constraint (cp_parser *parser, cp_expr lhs)
        constraint-logical-and-expression '&&' primary-expression  */
 
 static cp_expr
-cp_parser_constraint_logical_and_expression (cp_parser *parser)
+cp_parser_constraint_logical_and_expression (cp_parser *parser, bool lambda_p)
 {
-  cp_expr lhs = cp_parser_constraint_primary_expression (parser);
+  cp_expr lhs = cp_parser_constraint_primary_expression (parser, lambda_p);
   while (cp_lexer_next_token_is (parser->lexer, CPP_AND_AND))
     {
       cp_token *op = cp_lexer_consume_token (parser->lexer);
-      tree rhs = cp_parser_constraint_primary_expression (parser);
+      tree rhs = cp_parser_constraint_primary_expression (parser, lambda_p);
       lhs = finish_constraint_and_expr (op->location, lhs, rhs);
     }
-  return cp_parser_check_non_logical_constraint (parser, lhs);
+  return lhs;
 }
 
 /* Parse a constraint-logical-or-expression.
@@ -27230,27 +27399,27 @@ cp_parser_constraint_logical_and_expression (cp_parser *parser)
        constraint-logical-or-expression '||' constraint-logical-and-expression  */
 
 static cp_expr
-cp_parser_constraint_logical_or_expression (cp_parser *parser)
+cp_parser_constraint_logical_or_expression (cp_parser *parser, bool lambda_p)
 {
-  cp_expr lhs = cp_parser_constraint_logical_and_expression (parser);
+  cp_expr lhs = cp_parser_constraint_logical_and_expression (parser, lambda_p);
   while (cp_lexer_next_token_is (parser->lexer, CPP_OR_OR))
     {
       cp_token *op = cp_lexer_consume_token (parser->lexer);
-      cp_expr rhs = cp_parser_constraint_logical_and_expression (parser);
+      cp_expr rhs = cp_parser_constraint_logical_and_expression (parser, lambda_p);
       lhs = finish_constraint_or_expr (op->location, lhs, rhs);
     }
-  return cp_parser_check_non_logical_constraint (parser, lhs);
+  return lhs;
 }
 
 /* Parse the expression after a requires-clause. This has a different grammar
     than that in the concepts TS.  */
 
 static tree
-cp_parser_requires_clause_expression (cp_parser *parser)
+cp_parser_requires_clause_expression (cp_parser *parser, bool lambda_p)
 {
   processing_constraint_expression_sentinel parsing_constraint;
   ++processing_template_decl;
-  cp_expr expr = cp_parser_constraint_logical_or_expression (parser);
+  cp_expr expr = cp_parser_constraint_logical_or_expression (parser, lambda_p);
   if (check_for_bare_parameter_packs (expr))
     expr = error_mark_node;
   --processing_template_decl;
@@ -27283,12 +27452,15 @@ cp_parser_constraint_expression (cp_parser *parser)
 /* Optionally parse a requires clause:
 
       requires-clause:
-        `requires` constraint-logical-or-expression.
+	`requires` constraint-logical-or-expression.
    [ConceptsTS]
-        `requires constraint-expression.  */
+	`requires constraint-expression.
+
+   LAMBDA_P is true when the requires-clause is parsed before the
+   parameter-list of a lambda-declarator.  */
 
 static tree
-cp_parser_requires_clause_opt (cp_parser *parser)
+cp_parser_requires_clause_opt (cp_parser *parser, bool lambda_p)
 {
   cp_token *tok = cp_lexer_peek_token (parser->lexer);
   if (tok->keyword != RID_REQUIRES)
@@ -27308,7 +27480,7 @@ cp_parser_requires_clause_opt (cp_parser *parser)
   cp_lexer_consume_token (parser->lexer);
 
   if (!flag_concepts_ts)
-    return cp_parser_requires_clause_expression (parser);
+    return cp_parser_requires_clause_expression (parser, lambda_p);
   else
     return cp_parser_constraint_expression (parser);
 }
@@ -27327,17 +27499,6 @@ cp_parser_requires_expression (cp_parser *parser)
 {
   gcc_assert (cp_lexer_next_token_is_keyword (parser->lexer, RID_REQUIRES));
   location_t loc = cp_lexer_consume_token (parser->lexer)->location;
-
-  /* A requires-expression shall appear only within a concept
-     definition or a requires-clause.
-
-     TODO: Implement this diagnostic correctly. */
-  if (!processing_template_decl)
-    {
-      error_at (loc, "a requires expression cannot appear outside a template");
-      cp_parser_skip_to_end_of_statement (parser);
-      return error_mark_node;
-    }
 
   /* This is definitely a requires-expression.  */
   cp_parser_commit_to_tentative_parse (parser);
@@ -27777,6 +27938,11 @@ cp_parser_lookup_name (cp_parser *parser, tree name,
       /* If that's not a class type, there is no destructor.  */
       if (!type || !CLASS_TYPE_P (type))
 	return error_mark_node;
+
+      /* In a non-static member function, check implicit this->.  */
+      if (current_class_ref)
+	return lookup_destructor (current_class_ref, parser->scope, name,
+				  tf_warning_or_error);
 
       if (CLASSTYPE_LAZY_DESTRUCTOR (type))
 	lazily_declare_fn (sfk_destructor, type);
@@ -28874,7 +29040,7 @@ cp_parser_explicit_template_declaration (cp_parser* parser, bool member_p)
   if (flag_concepts)
   {
     tree reqs = get_shorthand_constraints (current_template_parms);
-    if (tree treqs = cp_parser_requires_clause_opt (parser))
+    if (tree treqs = cp_parser_requires_clause_opt (parser, false))
       reqs = combine_constraint_expressions (reqs, treqs);
     TEMPLATE_PARMS_CONSTRAINTS (current_template_parms) = reqs;
   }
@@ -29146,8 +29312,16 @@ cp_parser_functional_cast (cp_parser* parser, tree type)
       release_tree_vector (vec);
     }
 
-  cast = build_functional_cast (type, expression_list,
+  /* Create a location of the form:
+       float(i)
+       ^~~~~~~~
+     with caret == start at the start of the type name,
+     finishing at the closing paren.  */
+  location_t combined_loc = make_location (start_loc, start_loc,
+					   parser->lexer);
+  cast = build_functional_cast (combined_loc, type, expression_list,
                                 tf_warning_or_error);
+  
   /* [expr.const]/1: In an integral constant expression "only type
      conversions to integral or enumeration type can be used".  */
   if (TREE_CODE (type) == TYPE_DECL)
@@ -29158,13 +29332,6 @@ cp_parser_functional_cast (cp_parser* parser, tree type)
 						     NIC_CONSTRUCTOR))
     return error_mark_node;
 
-  /* Create a location of the form:
-       float(i)
-       ^~~~~~~~
-     with caret == start at the start of the type name,
-     finishing at the closing paren.  */
-  location_t combined_loc = make_location (start_loc, start_loc, parser->lexer);
-  cast.set_location (combined_loc);
   return cast;
 }
 
@@ -30476,14 +30643,169 @@ cp_parser_token_is_type_parameter_key (cp_token* token)
     }
 }
 
-/* Issue an error message if the CLASS_KEY does not match the TYPE.  */
+/* Diagnose redundant enum-keys.  */
 
 static void
-cp_parser_check_class_key (enum tag_types class_key, tree type)
+cp_parser_maybe_warn_enum_key (cp_parser *parser, location_t key_loc,
+			       tree type, rid scoped_key)
+{
+  tree type_decl = TYPE_MAIN_DECL (type);
+  tree name = DECL_NAME (type_decl);
+  /* Look up the NAME to see if it unambiguously refers to the TYPE
+     and set KEY_REDUNDANT if so.  */
+  tree decl = cp_parser_lookup_name_simple (parser, name, input_location);
+
+  /* The enum-key is redundant for uses of the TYPE that are not
+     declarations and for which name lookup returns just the type
+     itself.  */
+  if (decl == type_decl)
+    {
+      gcc_rich_location richloc (key_loc);
+      richloc.add_fixit_remove (key_loc);
+      warning_at (&richloc, OPT_Wredundant_tags,
+		  "redundant enum-key %<enum%s%> in reference to %q#T",
+		  (scoped_key == RID_CLASS ? " class"
+		   : scoped_key == RID_STRUCT ? " struct" : ""), type);
+    }
+}
+
+/* Describes the set of declarations of a struct, class, or class template
+   or its specializations.  Used for -Wmismatched-tags.  */
+
+class class_decl_loc_t
+{
+ public:
+
+  class_decl_loc_t ()
+    : locvec (), idxdef (), def_class_key ()
+  {
+    locvec.create (4);
+  }
+
+  /* Constructs an object for a single declaration of a class with
+     CLASS_KEY at the current location in the current function (or
+     at another scope).  KEY_REDUNDANT is true if the class-key may
+     be omitted in the current context without an ambiguity with
+     another symbol with the same name.
+     DEF_P is true for a class declaration that is a definition.
+     CURLOC is the associated location.  */
+  class_decl_loc_t (tag_types class_key, bool key_redundant, bool def_p,
+		    location_t curloc = input_location)
+    : locvec (), idxdef (def_p ? 0 : UINT_MAX), def_class_key (class_key)
+  {
+    locvec.create (4);
+    class_key_loc_t ckl (current_function_decl, curloc, class_key,
+			 key_redundant);
+    locvec.quick_push (ckl);
+  }
+
+  /* Copy, assign, and destroy the object.  Necessary because LOCVEC
+     isn't safely copyable and assignable and doesn't release storage
+     on its own.  */
+  class_decl_loc_t (const class_decl_loc_t &rhs)
+    : locvec (rhs.locvec.copy ()), idxdef (rhs.idxdef),
+      def_class_key (rhs.def_class_key)
+  { }
+
+  class_decl_loc_t& operator= (const class_decl_loc_t &rhs)
+  {
+    if (this == &rhs)
+      return *this;
+    locvec.release ();
+    locvec = rhs.locvec.copy ();
+    idxdef = rhs.idxdef;
+    def_class_key = rhs.def_class_key;
+    return *this;
+  }
+
+  ~class_decl_loc_t ()
+  {
+    locvec.release ();
+  }
+
+  /* Issues -Wmismatched-tags for a single class.  */
+  void diag_mismatched_tags (tree);
+
+  /* Issues -Wmismatched-tags for all classes.  */
+  static void diag_mismatched_tags ();
+
+  /* Adds TYPE_DECL to the collection of class decls.  */
+  static void add (tree, tag_types, bool, bool);
+
+  /* Either adds this decl to the collection of class decls
+     or diagnoses it, whichever is appropriate.  */
+  void add_or_diag_mismatched_tag (tree, tag_types, bool, bool);
+
+private:
+
+  tree function (unsigned i) const
+  {
+    return locvec[i].func;
+  }
+
+  location_t location (unsigned i) const
+  {
+    return locvec[i].loc;
+  }
+
+  bool key_redundant (unsigned i) const
+  {
+    return locvec[i].key_redundant;
+  }
+
+  tag_types class_key (unsigned i) const
+  {
+    return locvec[i].class_key;
+  }
+
+  /* The location of a single mention of a class type with the given
+     class-key.  */
+  struct class_key_loc_t
+  {
+    class_key_loc_t (tree func, location_t loc, tag_types key, bool redundant)
+      : func (func), loc (loc), class_key (key), key_redundant (redundant) { }
+
+    /* The function the type is mentioned in.  */
+    tree func;
+    /* The exact location.  */
+    location_t loc;
+    /* The class-key used in the mention of the type.  */
+    tag_types class_key;
+    /* True when the class-key could be omitted at this location
+       without an ambiguity with another symbol of the same name.  */
+    bool key_redundant;
+  };
+  /* Avoid using auto_vec here since it's not safe to copy due to pr90904.  */
+  vec <class_key_loc_t> locvec;
+  /* LOCVEC index of the definition or UINT_MAX if none exists.  */
+  unsigned idxdef;
+  /* The class-key the class was last declared with or none_type when
+     it has been declared with a mismatched key.  */
+  tag_types def_class_key;
+
+  /* A mapping between a TYPE_DECL for a class and the class_decl_loc_t
+     description above.  */
+  typedef hash_map<tree_decl_hash, class_decl_loc_t> class_to_loc_map_t;
+  static class_to_loc_map_t class2loc;
+};
+
+class_decl_loc_t::class_to_loc_map_t class_decl_loc_t::class2loc;
+
+/* Issue an error message if the CLASS_KEY does not match the TYPE.
+   DEF_P is expected to be set for a definition of class TYPE.  DECL_P
+   is set for a declaration of class TYPE and clear for a reference to
+   it that is not a declaration of it.  */
+
+static void
+cp_parser_check_class_key (cp_parser *parser, location_t key_loc,
+			   tag_types class_key, tree type, bool def_p,
+			   bool decl_p)
 {
   if (type == error_mark_node)
     return;
-  if ((TREE_CODE (type) == UNION_TYPE) != (class_key == union_type))
+
+  bool seen_as_union = TREE_CODE (type) == UNION_TYPE;
+  if (seen_as_union != (class_key == union_type))
     {
       if (permerror (input_location, "%qs tag used in naming %q#T",
 		     class_key == union_type ? "union"
@@ -30491,7 +30813,240 @@ cp_parser_check_class_key (enum tag_types class_key, tree type)
 		     type))
 	inform (DECL_SOURCE_LOCATION (TYPE_NAME (type)),
 		"%q#T was previously declared here", type);
+      return;
     }
+
+  if (!warn_mismatched_tags && !warn_redundant_tags)
+    return;
+
+  tree type_decl = TYPE_MAIN_DECL (type);
+  tree name = DECL_NAME (type_decl);
+  /* Look up the NAME to see if it unambiguously refers to the TYPE
+     and set KEY_REDUNDANT if so.  */
+  tree decl = cp_parser_lookup_name_simple (parser, name, input_location);
+
+  /* The class-key is redundant for uses of the CLASS_TYPE that are
+     neither definitions of it nor declarations, and for which name
+     lookup returns just the type itself.  */
+  bool key_redundant = !def_p && !decl_p && decl == type_decl;
+  if (key_redundant)
+    {
+      gcc_rich_location richloc (key_loc);
+      richloc.add_fixit_remove (key_loc);
+      warning_at (&richloc, OPT_Wredundant_tags,
+		"redundant class-key %qs in reference to %q#T",
+		class_key == union_type ? "union"
+		: class_key == record_type ? "struct" : "class",
+		type);
+    }
+
+  if (seen_as_union || !warn_mismatched_tags)
+    return;
+
+  class_decl_loc_t::add (type_decl, class_key, key_redundant, def_p);
+}
+
+/* Adds TYPE_DECL to the collection of class decls.  */
+
+void
+class_decl_loc_t::add (tree type_decl, tag_types class_key, bool redundant,
+		       bool def_p)
+{
+  bool exist;
+  class_decl_loc_t *rdl = &class2loc.get_or_insert (type_decl, &exist);
+  if (!exist)
+    {
+      tree type = TREE_TYPE (type_decl);
+      if (def_p || !COMPLETE_TYPE_P (type))
+	{
+	  /* TYPE_DECL is the first declaration or definition of the type
+	     (outside precompiled headers -- see below).  Just create
+	     a new entry for it.  */
+	  *rdl = class_decl_loc_t (class_key, false, def_p);
+	  return;
+	}
+
+      /* TYPE was previously defined in some unknown precompiled hdeader.
+	 Simply add a record of its definition at an unknown location and
+	 proceed below to add a reference to it at the current location.
+	 (Declarations in precompiled headers that are not definitions
+	 are ignored.)  */
+      tag_types def_key
+	= CLASSTYPE_DECLARED_CLASS (type) ? class_type : record_type;
+      location_t def_loc = DECL_SOURCE_LOCATION (type_decl);
+      *rdl = class_decl_loc_t (def_key, false, true, def_loc);
+    }
+
+  /* A prior declaration of TYPE_DECL has been seen.  */
+
+  if (rdl->idxdef != UINT_MAX && rdl->def_class_key == class_key)
+    /* Do nothing if the class-key in this declaration matches
+       the definition.  */
+    return;
+
+  rdl->add_or_diag_mismatched_tag (type_decl, class_key, redundant, def_p);
+}
+
+/* Either adds this DECL corresponding to the TYPE_DECL to the collection
+   of class decls or diagnoses it, whichever is appropriate.  */
+
+void
+class_decl_loc_t::add_or_diag_mismatched_tag (tree type_decl,
+					      tag_types class_key,
+					      bool redundant,
+					      bool def_p)
+{
+  /* Reset the CLASS_KEY associated with this type on mismatch.
+     This is an optimization that lets the diagnostic code skip
+     over classes that use the same class-key in all declarations.  */
+  if (def_class_key != class_key)
+    def_class_key = none_type;
+
+  /* Set IDXDEF to the index of the vector corresponding to
+     the definition.  */
+  if (def_p)
+    idxdef = locvec.length ();
+
+  /* Append a record of this declaration to the vector.  */
+  class_key_loc_t ckl (current_function_decl, input_location, class_key,
+		       redundant);
+  locvec.safe_push (ckl);
+
+  if (idxdef == UINT_MAX)
+    return;
+
+  /* As a space optimization diagnose declarations of a class
+     whose definition has been seen and purge the LOCVEC of
+     all entries except the definition.  */
+  diag_mismatched_tags (type_decl);
+  if (idxdef)
+    {
+      class_decl_loc_t::class_key_loc_t ent = locvec[idxdef];
+      locvec.release ();
+      locvec.reserve (2);
+      locvec.safe_push (ent);
+      idxdef = 0;
+    }
+  else
+    /* Pop the entry pushed above for this declaration.  */
+    locvec.pop ();
+}
+
+/* Issues -Wmismatched-tags for a single class.  */
+
+void
+class_decl_loc_t::diag_mismatched_tags (tree type_decl)
+{
+  unsigned ndecls = locvec.length ();
+
+  /* Skip a declaration that consistently uses the same class-key
+     or one with just a solitary declaration (i.e., TYPE_DECL).  */
+  if (def_class_key != none_type || ndecls < 2)
+    return;
+
+  /* Save the current function before changing it below.  */
+  tree save_func = current_function_decl;
+  /* Set if a class definition for RECLOC has been seen.  */
+  bool def_p = idxdef < ndecls;
+  unsigned idxguide = def_p ? idxdef : 0;
+  unsigned idx = 0;
+  /* Advance IDX to the first declaration that either is not
+     a definition or that doesn't match the first declaration
+     if no definition is provided.  */
+  while (class_key (idx) == class_key (idxguide))
+    if (++idx == ndecls)
+      return;
+
+  /* The class-key the class is expected to be declared with: it's
+     either the key used in its definition or the first declaration
+     if no definition has been provided.  */
+  tag_types xpect_key = class_key (def_p ? idxguide : 0);
+  const char *xmatchkstr = xpect_key == record_type ? "class" : "struct";
+  const char *xpectkstr = xpect_key == record_type ? "struct" : "class";
+  /* Set the function declaration to print in diagnostic context.  */
+  current_function_decl = function (idx);
+
+  location_t loc = location (idx);
+  bool key_redundant_p = key_redundant (idx);
+  auto_diagnostic_group d;
+  /* Issue a warning for the first mismatched declaration.
+     Avoid using "%#qT" since the class-key for the same type will
+     be the same regardless of which one was used in the declaraion.  */
+  warning_at (loc, OPT_Wmismatched_tags,
+	      "%qT declared with a mismatched class-key %qs",
+	      type_decl, xmatchkstr);
+
+  /* Suggest how to avoid the warning for each instance since
+     the guidance may be different depending on context.  */
+  inform (loc,
+	  (key_redundant_p
+	   ? G_("remove the class-key or replace it with %qs")
+	   : G_("replace the class-key with %qs")),
+	  xpectkstr);
+
+  /* Also point to the first declaration or definition that guided
+     the decision to issue the warning above.  */
+  inform (location (idxguide),
+	  (def_p
+	   ? G_("%qT defined as %qs here")
+	   : G_("%qT first declared as %qs here")),
+	  type_decl, xpectkstr);
+
+  /* Issue warnings for the remaining inconsistent declarations.  */
+  for (unsigned i = idx + 1; i != ndecls; ++i)
+    {
+      tag_types clskey = class_key (i);
+      /* Skip over the declarations that match either the definition
+	 if one was provided or the first declaration.  */
+      if (clskey == xpect_key)
+	continue;
+
+      loc = location (i);
+      key_redundant_p = key_redundant (i);
+      /* Set the function declaration to print in diagnostic context.  */
+      current_function_decl = function (i);
+      warning_at (loc, OPT_Wmismatched_tags,
+		  "%qT declared with a mismatched class-key %qs",
+		  type_decl, xmatchkstr);
+      /* Suggest how to avoid the warning for each instance since
+	 the guidance may be different depending on context.  */
+      inform (loc,
+	      (key_redundant_p
+	       ? G_("remove the class-key or replace it with %qs")
+	       : G_("replace the class-key with %qs")),
+	      xpectkstr);
+    }
+
+  /* Restore the current function in case it was replaced above.  */
+  current_function_decl = save_func;
+}
+
+/* Issues -Wmismatched-tags for all classes.  Called at the end
+   of processing a translation unit, after declarations of all class
+   types and their uses have been recorded.  */
+
+void
+class_decl_loc_t::diag_mismatched_tags ()
+{
+  /* CLASS2LOC should be empty if -Wmismatched-tags is disabled.  */
+  gcc_assert (warn_mismatched_tags || class2loc.is_empty ());
+
+  /* Save the current function before changing it below.  It should
+     be null at this point.  */
+  tree save_func = current_function_decl;
+
+  /* Iterate over the collected class/struct declarations.  */
+  typedef class_to_loc_map_t::iterator iter_t;
+  for (iter_t it = class2loc.begin (); it != class2loc.end (); ++it)
+    {
+      tree type_decl = (*it).first;
+      class_decl_loc_t &recloc = (*it).second;
+      recloc.diag_mismatched_tags (type_decl);
+    }
+
+  class2loc.empty ();
+  /* Restore the current function.  */
+  current_function_decl = save_func;
 }
 
 /* Issue an error message if DECL is redeclared with different
@@ -40142,6 +40697,10 @@ cp_parser_oacc_loop (cp_parser *parser, cp_token *pragma_tok, char *p_name,
 
    # pragma acc parallel oacc-parallel-clause[optseq] new-line
      structured-block
+
+   OpenACC 2.6:
+
+   # pragma acc serial oacc-serial-clause[optseq] new-line
 */
 
 #define OACC_KERNELS_CLAUSE_MASK					\
@@ -40177,9 +40736,24 @@ cp_parser_oacc_loop (cp_parser *parser, cp_token *pragma_tok, char *p_name,
 	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_VECTOR_LENGTH)       \
 	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_WAIT) )
 
+#define OACC_SERIAL_CLAUSE_MASK						\
+	( (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_ASYNC)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_COPY)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_COPYIN)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_COPYOUT)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_CREATE)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_DEFAULT)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_DEVICEPTR)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_IF)			\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_PRIVATE)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_FIRSTPRIVATE)	\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_PRESENT)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_REDUCTION)		\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OACC_CLAUSE_WAIT) )
+
 static tree
-cp_parser_oacc_kernels_parallel (cp_parser *parser, cp_token *pragma_tok,
-				 char *p_name, bool *if_p)
+cp_parser_oacc_compute (cp_parser *parser, cp_token *pragma_tok,
+			char *p_name, bool *if_p)
 {
   omp_clause_mask mask;
   enum tree_code code;
@@ -40194,6 +40768,11 @@ cp_parser_oacc_kernels_parallel (cp_parser *parser, cp_token *pragma_tok,
       strcat (p_name, " parallel");
       mask = OACC_PARALLEL_CLAUSE_MASK;
       code = OACC_PARALLEL;
+      break;
+    case PRAGMA_OACC_SERIAL:
+      strcat (p_name, " serial");
+      mask = OACC_SERIAL_CLAUSE_MASK;
+      code = OACC_SERIAL;
       break;
     default:
       gcc_unreachable ();
@@ -40407,9 +40986,9 @@ cp_parser_omp_context_selector (cp_parser *parser, tree set, bool has_parms_p)
       bool allow_score = true;
       bool allow_user = false;
       int property_limit = 0;
-      enum { CTX_PROPERTY_NONE, CTX_PROPERTY_USER, CTX_PROPERTY_IDLIST,
-	     CTX_PROPERTY_EXPR, CTX_PROPERTY_SIMD } property_kind
-	= CTX_PROPERTY_NONE;
+      enum { CTX_PROPERTY_NONE, CTX_PROPERTY_USER, CTX_PROPERTY_NAME_LIST,
+	     CTX_PROPERTY_ID, CTX_PROPERTY_EXPR,
+	     CTX_PROPERTY_SIMD } property_kind = CTX_PROPERTY_NONE;
       switch (IDENTIFIER_POINTER (set)[0])
 	{
 	case 'c': /* construct */
@@ -40423,13 +41002,13 @@ cp_parser_omp_context_selector (cp_parser *parser, tree set, bool has_parms_p)
 	  allow_score = false;
 	  allow_user = true;
 	  property_limit = 3;
-	  property_kind = CTX_PROPERTY_IDLIST;
+	  property_kind = CTX_PROPERTY_NAME_LIST;
 	  break;
 	case 'i': /* implementation */
 	  selectors = omp_implementation_selectors;
 	  allow_user = true;
 	  property_limit = 3;
-	  property_kind = CTX_PROPERTY_IDLIST;
+	  property_kind = CTX_PROPERTY_NAME_LIST;
 	  break;
 	case 'u': /* user */
 	  selectors = omp_user_selectors;
@@ -40462,6 +41041,11 @@ cp_parser_omp_context_selector (cp_parser *parser, tree set, bool has_parms_p)
 	  if (strcmp (selectors[i], IDENTIFIER_POINTER (selector)) == 0)
 	    break;
 	}
+      if (property_kind == CTX_PROPERTY_NAME_LIST
+	  && IDENTIFIER_POINTER (set)[0] == 'i'
+	  && strcmp (IDENTIFIER_POINTER (selector),
+		     "atomic_default_mem_order") == 0)
+	property_kind = CTX_PROPERTY_ID;
 
       cp_lexer_consume_token (parser->lexer);
 
@@ -40503,11 +41087,16 @@ cp_parser_omp_context_selector (cp_parser *parser, tree set, bool has_parms_p)
 		  if (score != error_mark_node)
 		    {
 		      score = fold_non_dependent_expr (score);
-		      if (!value_dependent_expression_p (score)
-			  && (!INTEGRAL_TYPE_P (TREE_TYPE (score))
-			      || !tree_fits_shwi_p (score)))
+		      if (value_dependent_expression_p (score))
+			properties = tree_cons (get_identifier (" score"),
+						score, properties);
+		      else if (!INTEGRAL_TYPE_P (TREE_TYPE (score))
+			       || TREE_CODE (score) != INTEGER_CST)
 			error_at (token->location, "score argument must be "
 				  "constant integer expression");
+		      else if (tree_int_cst_sgn (score) < 0)
+			error_at (token->location, "score argument must be "
+				  "non-negative");
 		      else
 			properties = tree_cons (get_identifier (" score"),
 						score, properties);
@@ -40550,21 +41139,40 @@ cp_parser_omp_context_selector (cp_parser *parser, tree set, bool has_parms_p)
 		}
 	      while (1);
 	      break;
-	    case CTX_PROPERTY_IDLIST:
+	    case CTX_PROPERTY_ID:
+	      if (cp_lexer_next_token_is (parser->lexer, CPP_KEYWORD)
+		  || cp_lexer_next_token_is (parser->lexer, CPP_NAME))
+		{
+		  tree prop = cp_lexer_peek_token (parser->lexer)->u.value;
+		  cp_lexer_consume_token (parser->lexer);
+		  properties = tree_cons (prop, NULL_TREE, properties);
+		}
+	      else
+		{
+		  cp_parser_error (parser, "expected identifier");
+		  return error_mark_node;
+		}
+	      break;
+	    case CTX_PROPERTY_NAME_LIST:
 	      do
 		{
-		  tree prop;
+		  tree prop = NULL_TREE, value = NULL_TREE;
 		  if (cp_lexer_next_token_is (parser->lexer, CPP_KEYWORD)
 		      || cp_lexer_next_token_is (parser->lexer, CPP_NAME))
-		    prop = cp_lexer_peek_token (parser->lexer)->u.value;
+		    {
+		      prop = cp_lexer_peek_token (parser->lexer)->u.value;
+		      cp_lexer_consume_token (parser->lexer);
+		    }
+		  else if (cp_lexer_next_token_is (parser->lexer, CPP_STRING))
+		    value = cp_parser_string_literal (parser, false, false);
 		  else
 		    {
-		      cp_parser_error (parser, "expected identifier");
+		      cp_parser_error (parser, "expected identifier or "
+					       "string literal");
 		      return error_mark_node;
 		    }
-		  cp_lexer_consume_token (parser->lexer);
 
-		  properties = tree_cons (prop, NULL_TREE, properties);
+		  properties = tree_cons (prop, value, properties);
 
 		  if (cp_lexer_next_token_is (parser->lexer, CPP_COMMA))
 		    cp_lexer_consume_token (parser->lexer);
@@ -40611,7 +41219,8 @@ cp_parser_omp_context_selector (cp_parser *parser, tree set, bool has_parms_p)
 
 	  properties = nreverse (properties);
 	}
-      else if (property_kind == CTX_PROPERTY_IDLIST
+      else if (property_kind == CTX_PROPERTY_NAME_LIST
+	       || property_kind == CTX_PROPERTY_ID
 	       || property_kind == CTX_PROPERTY_EXPR)
 	{
 	  cp_parser_require (parser, CPP_OPEN_PAREN, RT_OPEN_PAREN);
@@ -41068,6 +41677,8 @@ cp_parser_omp_declare_reduction_exprs (tree fndecl, cp_parser *parser)
   combiner = cp_parser_expression (parser);
   finish_expr_stmt (combiner);
   block = finish_omp_structured_block (block);
+  if (processing_template_decl)
+    block = build_stmt (input_location, EXPR_STMT, block);
   add_stmt (block);
 
   if (!cp_parser_require (parser, CPP_CLOSE_PAREN, RT_CLOSE_PAREN))
@@ -41172,6 +41783,8 @@ cp_parser_omp_declare_reduction_exprs (tree fndecl, cp_parser *parser)
 
       block = finish_omp_structured_block (block);
       cp_walk_tree (&block, cp_remove_omp_priv_cleanup_stmt, omp_priv, NULL);
+      if (processing_template_decl)
+	block = build_stmt (input_location, EXPR_STMT, block);
       add_stmt (block);
 
       if (ctor)
@@ -42014,9 +42627,9 @@ cp_parser_omp_construct (cp_parser *parser, cp_token *pragma_tok, bool *if_p)
       break;
     case PRAGMA_OACC_KERNELS:
     case PRAGMA_OACC_PARALLEL:
+    case PRAGMA_OACC_SERIAL:
       strcpy (p_name, "#pragma acc");
-      stmt = cp_parser_oacc_kernels_parallel (parser, pragma_tok, p_name,
-					      if_p);
+      stmt = cp_parser_oacc_compute (parser, pragma_tok, p_name, if_p);
       break;
     case PRAGMA_OACC_LOOP:
       strcpy (p_name, "#pragma acc");
@@ -42683,8 +43296,9 @@ cp_parser_pragma (cp_parser *parser, enum pragma_context context, bool *if_p)
     case PRAGMA_OACC_DATA:
     case PRAGMA_OACC_HOST_DATA:
     case PRAGMA_OACC_KERNELS:
-    case PRAGMA_OACC_PARALLEL:
     case PRAGMA_OACC_LOOP:
+    case PRAGMA_OACC_PARALLEL:
+    case PRAGMA_OACC_SERIAL:
     case PRAGMA_OMP_ATOMIC:
     case PRAGMA_OMP_CRITICAL:
     case PRAGMA_OMP_DISTRIBUTE:
@@ -42865,6 +43479,8 @@ c_parse_file (void)
   push_deferring_access_checks (flag_access_control
 				? dk_no_deferred : dk_no_check);
   cp_parser_translation_unit (the_parser);
+  class_decl_loc_t::diag_mismatched_tags ();
+
   the_parser = NULL;
 
   finish_translation_unit ();

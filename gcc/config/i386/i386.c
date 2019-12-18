@@ -59,7 +59,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimplify.h"
 #include "dwarf2.h"
 #include "tm-constrs.h"
-#include "params.h"
 #include "cselib.h"
 #include "sched-int.h"
 #include "opts.h"
@@ -4278,6 +4277,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   tree ptrtype;
   machine_mode nat_mode;
   unsigned int arg_boundary;
+  unsigned int type_align;
 
   /* Only 64bit target needs something special.  */
   if (is_va_list_char_pointer (TREE_TYPE (valist)))
@@ -4335,6 +4335,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   /* Pull the value out of the saved registers.  */
 
   addr = create_tmp_var (ptr_type_node, "addr");
+  type_align = TYPE_ALIGN (type);
 
   if (container)
     {
@@ -4505,6 +4506,9 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
 	  t = build2 (PLUS_EXPR, TREE_TYPE (gpr), gpr,
 		      build_int_cst (TREE_TYPE (gpr), needed_intregs * 8));
 	  gimplify_assign (gpr, t, pre_p);
+	  /* The GPR save area guarantees only 8-byte alignment.  */
+	  if (!need_temp)
+	    type_align = MIN (type_align, 64);
 	}
 
       if (needed_sseregs)
@@ -4549,6 +4553,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   if (container)
     gimple_seq_add_stmt (pre_p, gimple_build_label (lab_over));
 
+  type = build_aligned_type (type, type_align);
   ptrtype = build_pointer_type_for_mode (type, ptr_mode, true);
   addr = fold_convert (ptrtype, addr);
 
@@ -5773,7 +5778,7 @@ get_probe_interval (void)
 {
   if (flag_stack_clash_protection)
     return (HOST_WIDE_INT_1U
-	    << PARAM_VALUE (PARAM_STACK_CLASH_PROTECTION_PROBE_INTERVAL));
+	    << param_stack_clash_protection_probe_interval);
   else
     return (HOST_WIDE_INT_1U << STACK_CHECK_PROBE_INTERVAL_EXP);
 }
@@ -6942,7 +6947,7 @@ ix86_adjust_stack_and_probe_stack_clash (HOST_WIDE_INT size,
   /* If we allocate less than the size of the guard statically,
      then no probing is necessary, but we do need to allocate
      the stack.  */
-  if (size < (1 << PARAM_VALUE (PARAM_STACK_CLASH_PROTECTION_GUARD_SIZE)))
+  if (size < (1 << param_stack_clash_protection_guard_size))
     {
       pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
 			         GEN_INT (-size), -1,
@@ -12469,6 +12474,40 @@ ix86_print_operand (FILE *file, rtx x, int code)
 	    }
 	  return;
 
+	case 'I':
+	  if (ASSEMBLER_DIALECT == ASM_ATT)
+	    putc ('$', file);
+	  switch (GET_CODE (x))
+	    {
+	    case EQ:
+	      putc ('0', file);
+	      break;
+	    case NE:
+	      putc ('4', file);
+	      break;
+	    case GE:
+	    case GEU:
+	      putc ('5', file);
+	      break;
+	    case GT:
+	    case GTU:
+	      putc ('6', file);
+	      break;
+	    case LE:
+	    case LEU:
+	      putc ('2', file);
+	      break;
+	    case LT:
+	    case LTU:
+	      putc ('1', file);
+	      break;
+	    default:
+	      output_operand_lossage ("operand is not a condition code, "
+				      "invalid operand code 'I'");
+	      return;
+	    }
+	  return;
+
 	case 'Y':
 	  switch (GET_CODE (x))
 	    {
@@ -14378,10 +14417,10 @@ distance_agu_use (unsigned int regno0, rtx_insn *insn)
 }
 
 /* Define this macro to tune LEA priority vs ADD, it take effect when
-   there is a dilemma of choicing LEA or ADD
+   there is a dilemma of choosing LEA or ADD
    Negative value: ADD is more preferred than LEA
-   Zero: Netrual
-   Positive value: LEA is more preferred than ADD*/
+   Zero: Neutral
+   Positive value: LEA is more preferred than ADD.  */
 #define IX86_LEA_PRIORITY 0
 
 /* Return true if usage of lea INSN has performance advantage
@@ -14394,11 +14433,10 @@ ix86_lea_outperforms (rtx_insn *insn, unsigned int regno0, unsigned int regno1,
 {
   int dist_define, dist_use;
 
-  /* For Silvermont if using a 2-source or 3-source LEA for
-     non-destructive destination purposes, or due to wanting
-     ability to use SCALE, the use of LEA is justified.  */
-  if (TARGET_SILVERMONT || TARGET_GOLDMONT || TARGET_GOLDMONT_PLUS
-      || TARGET_TREMONT || TARGET_INTEL)
+  /* For Atom processors newer than Bonnell, if using a 2-source or
+     3-source LEA for non-destructive destination purposes, or due to
+     wanting ability to use SCALE, the use of LEA is justified.  */
+  if (!TARGET_BONNELL)
     {
       if (has_scale)
 	return true;
@@ -14533,10 +14571,6 @@ ix86_avoid_lea_for_addr (rtx_insn *insn, rtx operands[])
   struct ix86_address parts;
   int ok;
 
-  /* Check we need to optimize.  */
-  if (!TARGET_AVOID_LEA_FOR_ADDR || optimize_function_for_size_p (cfun))
-    return false;
-
   /* The "at least two components" test below might not catch simple
      move or zero extension insns if parts.base is non-NULL and parts.disp
      is const0_rtx as the only components in the address, e.g. if the
@@ -14572,6 +14606,20 @@ ix86_avoid_lea_for_addr (rtx_insn *insn, rtx operands[])
     regno1 = true_regnum (parts.base);
   if (parts.index)
     regno2 = true_regnum (parts.index);
+
+  /* Use add for a = a + b and a = b + a since it is faster and shorter
+     than lea for most processors.  For the processors like BONNELL, if
+     the destination register of LEA holds an actual address which will
+     be used soon, LEA is better and otherwise ADD is better.  */
+  if (!TARGET_BONNELL
+      && parts.scale == 1
+      && (!parts.disp || parts.disp == const0_rtx)
+      && (regno0 == regno1 || regno0 == regno2))
+    return true;
+
+  /* Check we need to optimize.  */
+  if (!TARGET_AVOID_LEA_FOR_ADDR || optimize_function_for_size_p (cfun))
+    return false;
 
   split_cost = 0;
 
@@ -18960,7 +19008,7 @@ ix86_vec_cost (machine_mode mode, int cost)
       && TARGET_SSE_SPLIT_REGS)
     return cost * 2;
   if (GET_MODE_BITSIZE (mode) > 128
-      && TARGET_AVX128_OPTIMAL)
+      && TARGET_AVX256_SPLIT_REGS)
     return cost * GET_MODE_BITSIZE (mode) / 128;
   return cost;
 }
@@ -19499,6 +19547,15 @@ ix86_rtx_costs (rtx x, machine_mode mode, int outer_code_i, int opno,
 		    + rtx_cost (XEXP (XEXP (x, 0), 0), mode, outer_code,
 				opno, speed)
 		    + rtx_cost (const1_rtx, mode, outer_code, opno, speed));
+	  return true;
+	}
+
+      if (GET_CODE (XEXP (x, 0)) == PLUS
+	  && rtx_equal_p (XEXP (XEXP (x, 0), 0), XEXP (x, 1)))
+	{
+	  /* This is an overflow detection, count it as a normal compare.  */
+	  *total = rtx_cost (XEXP (x, 0), GET_MODE (XEXP (x, 0)),
+			     COMPARE, 0, speed);
 	  return true;
 	}
 
@@ -20820,11 +20877,15 @@ ix86_md_asm_adjust (vec<rtx> &outputs, vec<rtx> &/*inputs*/,
 	    {
 	      x = force_reg (dest_mode, const0_rtx);
 
-	      emit_insn (gen_movstrictqi
-			 (gen_lowpart (QImode, x), destqi));
+	      emit_insn (gen_movstrictqi (gen_lowpart (QImode, x), destqi));
 	    }
 	  else
-	    x = gen_rtx_ZERO_EXTEND (dest_mode, destqi);
+	    {
+	      x = gen_rtx_ZERO_EXTEND (dest_mode, destqi);
+	      if (dest_mode == GET_MODE (dest)
+		  && !register_operand (dest, GET_MODE (dest)))
+		x = force_reg (dest_mode, x);
+	    }
 	}
 
       if (dest_mode != GET_MODE (dest))
@@ -21298,7 +21359,7 @@ ix86_reassociation_width (unsigned int op, machine_mode mode)
 	return 1;
 
       /* Account for targets that splits wide vectors into multiple parts.  */
-      if (TARGET_AVX128_OPTIMAL && GET_MODE_BITSIZE (mode) > 128)
+      if (TARGET_AVX256_SPLIT_REGS && GET_MODE_BITSIZE (mode) > 128)
 	div = GET_MODE_BITSIZE (mode) / 128;
       else if (TARGET_SSE_SPLIT_REGS && GET_MODE_BITSIZE (mode) > 64)
 	div = GET_MODE_BITSIZE (mode) / 64;
@@ -21385,43 +21446,47 @@ ix86_preferred_simd_mode (scalar_mode mode)
    vectors.  If AVX512F is enabled then try vectorizing with 512bit,
    256bit and 128bit vectors.  */
 
-static void
-ix86_autovectorize_vector_sizes (vector_sizes *sizes, bool all)
+static unsigned int
+ix86_autovectorize_vector_modes (vector_modes *modes, bool all)
 {
   if (TARGET_AVX512F && !TARGET_PREFER_AVX256)
     {
-      sizes->safe_push (64);
-      sizes->safe_push (32);
-      sizes->safe_push (16);
+      modes->safe_push (V64QImode);
+      modes->safe_push (V32QImode);
+      modes->safe_push (V16QImode);
     }
   else if (TARGET_AVX512F && all)
     {
-      sizes->safe_push (32);
-      sizes->safe_push (16);
-      sizes->safe_push (64);
+      modes->safe_push (V32QImode);
+      modes->safe_push (V16QImode);
+      modes->safe_push (V64QImode);
     }
   else if (TARGET_AVX && !TARGET_PREFER_AVX128)
     {
-      sizes->safe_push (32);
-      sizes->safe_push (16);
+      modes->safe_push (V32QImode);
+      modes->safe_push (V16QImode);
     }
   else if (TARGET_AVX && all)
     {
-      sizes->safe_push (16);
-      sizes->safe_push (32);
+      modes->safe_push (V16QImode);
+      modes->safe_push (V32QImode);
     }
   else if (TARGET_MMX_WITH_SSE)
-    sizes->safe_push (16);
+    modes->safe_push (V16QImode);
 
   if (TARGET_MMX_WITH_SSE)
-    sizes->safe_push (8);
+    modes->safe_push (V8QImode);
+
+  return 0;
 }
 
 /* Implemenation of targetm.vectorize.get_mask_mode.  */
 
 static opt_machine_mode
-ix86_get_mask_mode (poly_uint64 nunits, poly_uint64 vector_size)
+ix86_get_mask_mode (machine_mode data_mode)
 {
+  unsigned vector_size = GET_MODE_SIZE (data_mode);
+  unsigned nunits = GET_MODE_NUNITS (data_mode);
   unsigned elem_size = vector_size / nunits;
 
   /* Scalar mask case.  */
@@ -21468,18 +21533,18 @@ static unsigned int
 ix86_max_noce_ifcvt_seq_cost (edge e)
 {
   bool predictable_p = predictable_edge_p (e);
-
-  enum compiler_param param
-    = (predictable_p
-       ? PARAM_MAX_RTL_IF_CONVERSION_PREDICTABLE_COST
-       : PARAM_MAX_RTL_IF_CONVERSION_UNPREDICTABLE_COST);
-
-  /* If we have a parameter set, use that, otherwise take a guess using
-     BRANCH_COST.  */
-  if (global_options_set.x_param_values[param])
-    return PARAM_VALUE (param);
+  if (predictable_p)
+    {
+      if (global_options_set.x_param_max_rtl_if_conversion_predictable_cost)
+	return param_max_rtl_if_conversion_predictable_cost;
+    }
   else
-    return BRANCH_COST (true, predictable_p) * COSTS_N_INSNS (2);
+    {
+      if (global_options_set.x_param_max_rtl_if_conversion_unpredictable_cost)
+	return param_max_rtl_if_conversion_unpredictable_cost;
+    }
+
+  return BRANCH_COST (true, predictable_p) * COSTS_N_INSNS (2);
 }
 
 /* Return true if SEQ is a good candidate as a replacement for the
@@ -22951,9 +23016,9 @@ ix86_run_selftests (void)
 #undef TARGET_VECTORIZE_SPLIT_REDUCTION
 #define TARGET_VECTORIZE_SPLIT_REDUCTION \
   ix86_split_reduction
-#undef TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_SIZES
-#define TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_SIZES \
-  ix86_autovectorize_vector_sizes
+#undef TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_MODES
+#define TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_MODES \
+  ix86_autovectorize_vector_modes
 #undef TARGET_VECTORIZE_GET_MASK_MODE
 #define TARGET_VECTORIZE_GET_MASK_MODE ix86_get_mask_mode
 #undef TARGET_VECTORIZE_INIT_COST

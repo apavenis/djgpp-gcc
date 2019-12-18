@@ -28,6 +28,8 @@ extern enum unwind_info_type arm_except_unwind_info (struct gcc_options *);
 extern int use_return_insn (int, rtx);
 extern bool use_simple_return_p (void);
 extern enum reg_class arm_regno_class (int);
+extern bool arm_check_builtin_call (location_t , vec<location_t> , tree,
+				    tree, unsigned int, tree *);
 extern void arm_load_pic_register (unsigned long, rtx);
 extern int arm_volatile_func (void);
 extern void arm_expand_prologue (void);
@@ -58,6 +60,8 @@ extern bool arm_simd_check_vect_par_cnst_half_p (rtx op, machine_mode mode,
 						 bool high);
 extern void arm_emit_speculation_barrier_function (void);
 extern void arm_decompose_di_binop (rtx, rtx, rtx *, rtx *, rtx *, rtx *);
+extern bool arm_q_bit_access (void);
+extern bool arm_ge_bits_access (void);
 
 #ifdef RTX_CODE
 extern void arm_gen_unlikely_cbranch (enum rtx_code, machine_mode cc_mode,
@@ -67,6 +71,7 @@ extern bool arm_small_register_classes_for_mode_p (machine_mode);
 extern int const_ok_for_arm (HOST_WIDE_INT);
 extern int const_ok_for_op (HOST_WIDE_INT, enum rtx_code);
 extern int const_ok_for_dimode_op (HOST_WIDE_INT, enum rtx_code);
+extern void thumb1_gen_const_int (rtx, HOST_WIDE_INT);
 extern int arm_split_constant (RTX_CODE, machine_mode, rtx,
 			       HOST_WIDE_INT, rtx, rtx, int);
 extern int legitimate_pic_operand_p (rtx);
