@@ -2625,7 +2625,7 @@
 ;; Modes handled by reduc_sm{in,ax}* patterns.
 (define_mode_iterator REDUC_SSE_SMINMAX_MODE
   [(V4SF "TARGET_SSE") (V2DF "TARGET_SSE")
-   (V2DI "TARGET_SSE") (V4SI "TARGET_SSE") (V8HI "TARGET_SSE")
+   (V2DI "TARGET_SSE4_2") (V4SI "TARGET_SSE") (V8HI "TARGET_SSE")
    (V16QI "TARGET_SSE")])
 
 (define_expand "reduc_<code>_scal_<mode>"
@@ -16241,7 +16241,7 @@
     }
 })
 
-(define_insn "abs<mode>2"
+(define_insn "ssse3_abs<mode>2"
   [(set (match_operand:MMXMODEI 0 "register_operand" "=y")
 	(abs:MMXMODEI
 	  (match_operand:MMXMODEI 1 "nonimmediate_operand" "ym")))]
