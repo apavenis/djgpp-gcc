@@ -645,10 +645,13 @@ maybe_convert_cond (tree cond)
     return NULL_TREE;
 
   /* Wait until we instantiate templates before doing conversion.  */
-  if (processing_template_decl)
+  if (processing_template_decl
+      && (type_dependent_expression_p (cond)
+	  /* For GCC 8 only convert non-dependent condition in a lambda.  */
+	  || !current_lambda_expr ()))
     return cond;
 
-  if (warn_sequence_point)
+  if (warn_sequence_point && !processing_template_decl)
     verify_sequence_points (cond);
 
   /* Do the conversion.  */
@@ -2099,6 +2102,14 @@ finish_qualified_id_expr (tree qualifying_class,
 	expr = build_offset_ref (qualifying_class, expr, /*address_p=*/false,
 				 complain);
     }
+  else if (!template_p
+	   && TREE_CODE (expr) == TEMPLATE_DECL
+	   && !DECL_FUNCTION_TEMPLATE_P (expr))
+    {
+      if (complain & tf_error)
+	error ("%qE missing template arguments", expr);
+      return error_mark_node;
+    }
   else
     {
       /* In a template, return a SCOPE_REF for most qualified-ids
@@ -2114,6 +2125,8 @@ finish_qualified_id_expr (tree qualifying_class,
 	expr = build_qualified_name (TREE_TYPE (expr),
 				     qualifying_class, expr,
 				     template_p);
+      else if (tree wrap = maybe_get_tls_wrapper_call (expr))
+	expr = wrap;
 
       expr = convert_from_reference (expr);
     }
@@ -3709,18 +3722,10 @@ finish_id_expression (tree id_expression,
 	  *non_integral_constant_expression_p = true;
 	}
 
-      tree wrap;
-      if (VAR_P (decl)
-	  && !cp_unevaluated_operand
-	  && !processing_template_decl
-	  && (TREE_STATIC (decl) || DECL_EXTERNAL (decl))
-	  && CP_DECL_THREAD_LOCAL_P (decl)
-	  && (wrap = get_tls_wrapper_fn (decl)))
-	{
-	  /* Replace an evaluated use of the thread_local variable with
-	     a call to its wrapper.  */
-	  decl = build_cxx_call (wrap, 0, NULL, tf_warning_or_error);
-	}
+      if (tree wrap = maybe_get_tls_wrapper_call (decl))
+	/* Replace an evaluated use of the thread_local variable with
+	   a call to its wrapper.  */
+	decl = wrap;
       else if (TREE_CODE (decl) == TEMPLATE_ID_EXPR
 	       && !dependent_p
 	       && variable_template_p (TREE_OPERAND (decl, 0)))
@@ -4265,7 +4270,12 @@ expand_or_defer_fn_1 (tree fn)
   /* There's no reason to do any of the work here if we're only doing
      semantic analysis; this code just generates RTL.  */
   if (flag_syntax_only)
-    return false;
+    {
+      /* Pretend that this function has been written out so that we don't try
+	 to expand it again.  */
+      TREE_ASM_WRITTEN (fn) = 1;
+      return false;
+    }
 
   return true;
 }
@@ -7305,7 +7315,8 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	  t = require_complete_type (t);
 	  if (t == error_mark_node)
 	    remove = true;
-	  else if (TREE_CODE (TREE_TYPE (t)) == REFERENCE_TYPE
+	  else if (!processing_template_decl
+		   && TREE_CODE (TREE_TYPE (t)) == REFERENCE_TYPE
 		   && !complete_type_or_else (TREE_TYPE (TREE_TYPE (t)), t))
 	    remove = true;
 	}
@@ -8452,6 +8463,11 @@ finish_omp_atomic (enum tree_code code, enum tree_code opcode, tree lhs,
       stmt = build2 (OMP_ATOMIC, void_type_node, integer_zero_node, stmt);
       OMP_ATOMIC_SEQ_CST (stmt) = seq_cst;
     }
+
+  /* Avoid -Wunused-value warnings here, the whole construct has side-effects
+     and even if it might be wrapped from fold-const.c or c-omp.c wrapped
+     in some tree that appears to be unused, the value is not unused.  */
+  warning_sentinel w (warn_unused_value);
   finish_expr_stmt (stmt);
 }
 

@@ -2941,17 +2941,19 @@ compare_actual_formal (gfc_actual_arglist **ap, gfc_formal_arglist *formal,
 
       if (f->sym == NULL)
 	{
+	  /* These errors have to be issued, otherwise an ICE can occur.
+	     See PR 78865.  */
 	  if (where)
-	    gfc_error ("Missing alternate return spec in subroutine call "
-		       "at %L", where);
+	    gfc_error_now ("Missing alternate return specifier in subroutine "
+			   "call at %L", where);
 	  return false;
 	}
 
       if (a->expr == NULL)
 	{
 	  if (where)
-	    gfc_error ("Unexpected alternate return spec in subroutine "
-		       "call at %L", where);
+	    gfc_error_now ("Unexpected alternate return specifier in "
+			   "subroutine call at %L", where);
 	  return false;
 	}
 
@@ -3655,6 +3657,7 @@ gfc_procedure_use (gfc_symbol *sym, gfc_actual_arglist **ap, locus *where)
 	gfc_warning (OPT_Wimplicit_procedure,
 		     "Procedure %qs called at %L is not explicitly declared",
 		     sym->name, where);
+      gfc_find_proc_namespace (sym->ns)->implicit_interface_calls = 1;
     }
 
   if (sym->attr.if_source == IFSRC_UNKNOWN)

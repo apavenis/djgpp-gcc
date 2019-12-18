@@ -352,7 +352,7 @@ gfc_vptr_size_get (tree vptr)
    of refs following.  */
 
 gfc_expr *
-gfc_find_and_cut_at_last_class_ref (gfc_expr *e)
+gfc_find_and_cut_at_last_class_ref (gfc_expr *e, bool is_mold)
 {
   gfc_expr *base_expr;
   gfc_ref *ref, *class_ref, *tail = NULL, *array_ref;
@@ -394,7 +394,10 @@ gfc_find_and_cut_at_last_class_ref (gfc_expr *e)
       e->ref = NULL;
     }
 
-  base_expr = gfc_copy_expr (e);
+  if (is_mold)
+    base_expr = gfc_expr_to_initialize (e);
+  else
+    base_expr = gfc_copy_expr (e);
 
   /* Restore the original tail expression.  */
   if (class_ref)
@@ -3834,7 +3837,8 @@ conv_base_obj_fcn_val (gfc_se * se, tree base_object, gfc_expr * expr)
 
 
 static void
-conv_function_val (gfc_se * se, gfc_symbol * sym, gfc_expr * expr)
+conv_function_val (gfc_se * se, gfc_symbol * sym, gfc_expr * expr,
+		   gfc_actual_arglist *actual_args)
 {
   tree tmp;
 
@@ -3852,7 +3856,7 @@ conv_function_val (gfc_se * se, gfc_symbol * sym, gfc_expr * expr)
   else
     {
       if (!sym->backend_decl)
-	sym->backend_decl = gfc_get_extern_function_decl (sym);
+	sym->backend_decl = gfc_get_extern_function_decl (sym, actual_args);
 
       TREE_USED (sym->backend_decl) = 1;
 
@@ -6276,7 +6280,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 
   /* Generate the actual call.  */
   if (base_object == NULL_TREE)
-    conv_function_val (se, sym, expr);
+    conv_function_val (se, sym, expr, args);
   else
     conv_base_obj_fcn_val (se, base_object, expr);
 
@@ -8385,23 +8389,6 @@ trans_caf_token_assign (gfc_se *lse, gfc_se *rse, gfc_expr *expr1,
     }
 }
 
-/* Indentify class valued proc_pointer assignments.  */
-
-static bool
-pointer_assignment_is_proc_pointer (gfc_expr * expr1, gfc_expr * expr2)
-{
-  gfc_ref * ref;
-
-  ref = expr1->ref;
-  while (ref && ref->next)
-     ref = ref->next;
-
-  return ref && ref->type == REF_COMPONENT
-      && ref->u.c.component->attr.proc_pointer
-      && expr2->expr_type == EXPR_VARIABLE
-      && expr2->symtree->n.sym->attr.flavor == FL_PROCEDURE;
-}
-
 
 /* Do everything that is needed for a CLASS function expr2.  */
 
@@ -8454,7 +8441,7 @@ gfc_trans_pointer_assignment (gfc_expr * expr1, gfc_expr * expr2)
   tree desc;
   tree tmp;
   tree expr1_vptr = NULL_TREE;
-  bool scalar, non_proc_pointer_assign;
+  bool scalar, non_proc_ptr_assign;
   gfc_ss *ss;
 
   gfc_start_block (&block);
@@ -8462,7 +8449,9 @@ gfc_trans_pointer_assignment (gfc_expr * expr1, gfc_expr * expr2)
   gfc_init_se (&lse, NULL);
 
   /* Usually testing whether this is not a proc pointer assignment.  */
-  non_proc_pointer_assign = !pointer_assignment_is_proc_pointer (expr1, expr2);
+  non_proc_ptr_assign = !(gfc_expr_attr (expr1).proc_pointer
+			&& expr2->expr_type == EXPR_VARIABLE
+			&& expr2->symtree->n.sym->attr.flavor == FL_PROCEDURE);
 
   /* Check whether the expression is a scalar or not; we cannot use
      expr1->rank as it can be nonzero for proc pointers.  */
@@ -8472,7 +8461,7 @@ gfc_trans_pointer_assignment (gfc_expr * expr1, gfc_expr * expr2)
     gfc_free_ss_chain (ss);
 
   if (expr1->ts.type == BT_DERIVED && expr2->ts.type == BT_CLASS
-      && expr2->expr_type != EXPR_FUNCTION && non_proc_pointer_assign)
+      && expr2->expr_type != EXPR_FUNCTION && non_proc_ptr_assign)
     {
       gfc_add_data_component (expr2);
       /* The following is required as gfc_add_data_component doesn't
@@ -8492,7 +8481,7 @@ gfc_trans_pointer_assignment (gfc_expr * expr1, gfc_expr * expr2)
       else
 	gfc_conv_expr (&rse, expr2);
 
-      if (non_proc_pointer_assign && expr1->ts.type == BT_CLASS)
+      if (non_proc_ptr_assign && expr1->ts.type == BT_CLASS)
 	{
 	  trans_class_vptr_len_assignment (&block, expr1, expr2, &rse, NULL,
 					   NULL);

@@ -10266,6 +10266,11 @@ cp_parser_lambda_introducer (cp_parser* parser, tree lambda_expr)
       first = false;
     }
 
+  hash_set<tree> *ids = NULL;
+#if GCC_VERSION >= 8000
+  char ids_buf[sizeof (hash_set<tree>) + __alignof__ (hash_set<tree>) - 1];
+#endif
+  tree first_capture_id = NULL_TREE;
   while (cp_lexer_next_token_is_not (parser->lexer, CPP_CLOSE_SQUARE))
     {
       cp_token* capture_token;
@@ -10301,11 +10306,14 @@ cp_parser_lambda_introducer (cp_parser* parser, tree lambda_expr)
 	    pedwarn (loc, 0, "explicit by-copy capture of %<this%> redundant "
 		     "with by-copy capture default");
 	  cp_lexer_consume_token (parser->lexer);
-	  add_capture (lambda_expr,
-		       /*id=*/this_identifier,
-		       /*initializer=*/finish_this_expr (),
-		       /*by_reference_p=*/true,
-		       explicit_init_p);
+	  if (LAMBDA_EXPR_THIS_CAPTURE (lambda_expr))
+	    pedwarn (input_location, 0,
+		     "already captured %qD in lambda expression",
+		     this_identifier);
+	  else
+	    add_capture (lambda_expr, /*id=*/this_identifier,
+			 /*initializer=*/finish_this_expr (),
+			 /*by_reference_p=*/true, explicit_init_p);
 	  continue;
 	}
 
@@ -10319,11 +10327,14 @@ cp_parser_lambda_introducer (cp_parser* parser, tree lambda_expr)
 			     "-std=c++17 or -std=gnu++17");
 	  cp_lexer_consume_token (parser->lexer);
 	  cp_lexer_consume_token (parser->lexer);
-	  add_capture (lambda_expr,
-		       /*id=*/this_identifier,
-		       /*initializer=*/finish_this_expr (),
-		       /*by_reference_p=*/false,
-		       explicit_init_p);
+	  if (LAMBDA_EXPR_THIS_CAPTURE (lambda_expr))
+	    pedwarn (input_location, 0,
+		     "already captured %qD in lambda expression",
+		     this_identifier);
+	  else
+	    add_capture (lambda_expr, /*id=*/this_identifier,
+			 /*initializer=*/finish_this_expr (),
+			 /*by_reference_p=*/false, explicit_init_p);
 	  continue;
 	}
 
@@ -10445,11 +10456,35 @@ cp_parser_lambda_introducer (cp_parser* parser, tree lambda_expr)
 		     "default", capture_id);
 	}
 
-      add_capture (lambda_expr,
-		   capture_id,
-		   capture_init_expr,
-		   /*by_reference_p=*/capture_kind == BY_REFERENCE,
-		   explicit_init_p);
+      /* Check for duplicates.
+	 Optimize for the zero or one explicit captures cases and only create
+	 the hash_set after adding second capture.  */
+      bool found = false;
+      if (ids && ids->elements ())
+	found = ids->add (capture_id);
+      else if (first_capture_id == NULL_TREE)
+	first_capture_id = capture_id;
+      else if (capture_id == first_capture_id)
+	found = true;
+      else
+	{
+#if GCC_VERSION >= 8000
+	  ids = new (ids_buf
+		     + (-(uintptr_t) ids_buf
+			& (__alignof__ (hash_set <tree>) - 1))) hash_set <tree>;
+#else
+	  ids = new hash_set <tree>;
+#endif
+	  ids->add (first_capture_id);
+	  ids->add (capture_id);
+	}
+      if (found)
+	pedwarn (input_location, 0,
+		 "already captured %qD in lambda expression", capture_id);
+      else
+	add_capture (lambda_expr, capture_id, capture_init_expr,
+		     /*by_reference_p=*/capture_kind == BY_REFERENCE,
+		     explicit_init_p);
 
       /* If there is any qualification still in effect, clear it
 	 now; we will be starting fresh with the next capture.  */
@@ -10457,6 +10492,13 @@ cp_parser_lambda_introducer (cp_parser* parser, tree lambda_expr)
       parser->qualifying_scope = NULL_TREE;
       parser->object_scope = NULL_TREE;
     }
+
+  if (ids)
+#if GCC_VERSION >= 8000
+    ids->~hash_set <tree> ();
+#else
+    delete ids;
+#endif
 
   cp_parser_require (parser, CPP_CLOSE_SQUARE, RT_CLOSE_SQUARE);
 }
@@ -13510,6 +13552,15 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
         case RID_CONCEPT:
           ds = ds_concept;
           cp_lexer_consume_token (parser->lexer);
+	  /* In C++20 a concept definition is just 'concept name = expr;'
+	     Support that syntax by pretending we've seen 'bool'.  */
+	  if (cp_lexer_next_token_is (parser->lexer, CPP_NAME)
+	      && cp_lexer_nth_token_is (parser->lexer, 2, CPP_EQ))
+	    {
+	      cp_parser_set_decl_spec_type (decl_specs, boolean_type_node,
+					    token, /*type_definition*/false);
+	      decl_specs->any_type_specifiers_p = true;
+	    }
           break;
 
 	  /* function-specifier:
@@ -18773,7 +18824,8 @@ cp_parser_using_declaration (cp_parser* parser,
 						  /*is_declaration=*/true);
   if (!qscope)
     qscope = global_namespace;
-  else if (UNSCOPED_ENUM_P (qscope))
+  else if (UNSCOPED_ENUM_P (qscope)
+	   && !TYPE_FUNCTION_SCOPE_P (qscope))
     qscope = CP_TYPE_CONTEXT (qscope);
 
   if (access_declaration_p && cp_parser_error_occurred (parser))
@@ -19125,8 +19177,9 @@ cp_parser_asm_definition (cp_parser* parser)
   location_t volatile_loc = UNKNOWN_LOCATION;
   location_t inline_loc = UNKNOWN_LOCATION;
   location_t goto_loc = UNKNOWN_LOCATION;
+  location_t first_loc = UNKNOWN_LOCATION;
 
-  if (cp_parser_allow_gnu_extensions_p (parser) && parser->in_function_body)
+  if (cp_parser_allow_gnu_extensions_p (parser))
     for (;;)
       {
 	cp_token *token = cp_lexer_peek_token (parser->lexer);
@@ -19152,6 +19205,8 @@ cp_parser_asm_definition (cp_parser* parser)
 	      }
 	    else
 	      inline_loc = loc;
+	    if (!first_loc)
+	      first_loc = loc;
 	    cp_lexer_consume_token (parser->lexer);
 	    continue;
 
@@ -19163,6 +19218,8 @@ cp_parser_asm_definition (cp_parser* parser)
 	      }
 	    else
 	      goto_loc = loc;
+	    if (!first_loc)
+	      first_loc = loc;
 	    cp_lexer_consume_token (parser->lexer);
 	    continue;
 
@@ -19181,6 +19238,12 @@ cp_parser_asm_definition (cp_parser* parser)
   bool volatile_p = (volatile_loc != UNKNOWN_LOCATION);
   bool inline_p = (inline_loc != UNKNOWN_LOCATION);
   bool goto_p = (goto_loc != UNKNOWN_LOCATION);
+
+  if (!parser->in_function_body && (inline_p || goto_p))
+    {
+      error_at (first_loc, "asm qualifier outside of function body");
+      inline_p = goto_p = false;
+    }
 
   /* Look for the opening `('.  */
   if (!cp_parser_require (parser, CPP_OPEN_PAREN, RT_OPEN_PAREN))
@@ -33599,8 +33662,10 @@ cp_parser_omp_clause_dist_schedule (cp_parser *parser, tree list,
   else if (!cp_parser_require (parser, CPP_CLOSE_PAREN, RT_COMMA_CLOSE_PAREN))
     goto resync_fail;
 
-  check_no_duplicate_clause (list, OMP_CLAUSE_DIST_SCHEDULE, "dist_schedule",
-			     location);
+  /* check_no_duplicate_clause (list, OMP_CLAUSE_DIST_SCHEDULE,
+				"dist_schedule", location); */
+  if (omp_find_clause (list, OMP_CLAUSE_DIST_SCHEDULE))
+    warning_at (location, 0, "too many %qs clauses", "dist_schedule");
   OMP_CLAUSE_CHAIN (c) = list;
   return c;
 
@@ -38680,7 +38745,10 @@ cp_parser_initial_pragma (cp_token *first_token)
 
   cp_lexer_get_preprocessor_token (NULL, first_token);
   if (cp_parser_pragma_kind (first_token) != PRAGMA_GCC_PCH_PREPROCESS)
-    return;
+    {
+      c_common_no_more_pch ();
+      return;
+    }
 
   cp_lexer_get_preprocessor_token (NULL, first_token);
   if (first_token->type == CPP_STRING)

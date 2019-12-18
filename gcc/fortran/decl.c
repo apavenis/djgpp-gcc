@@ -1678,6 +1678,14 @@ gfc_set_constant_character_len (gfc_charlen_t len, gfc_expr *expr,
       free (expr->value.character.string);
       expr->value.character.string = s;
       expr->value.character.length = len;
+      /* If explicit representation was given, clear it
+	 as it is no longer needed after padding.  */
+      if (expr->representation.length)
+	{
+	  expr->representation.length = 0;
+	  free (expr->representation.string);
+	  expr->representation.string = NULL;
+	}
     }
 }
 
@@ -3891,7 +3899,6 @@ gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
       return MATCH_YES;
     }
 
-
   m = gfc_match (" type (");
   matched_type = (m == MATCH_YES);
   if (matched_type)
@@ -3940,7 +3947,10 @@ gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
 	m = MATCH_YES;
 
       if (matched_type && m == MATCH_YES && gfc_match_char (')') != MATCH_YES)
-	m = MATCH_ERROR;
+	{
+	  gfc_error ("Malformed type-spec at %C");
+	  return MATCH_ERROR;
+	}
 
       return m;
     }
@@ -3963,8 +3973,12 @@ gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
 	  && !gfc_notify_std (GFC_STD_F2008, "TYPE with "
 			      "intrinsic-type-spec at %C"))
 	return MATCH_ERROR;
+
       if (matched_type && gfc_match_char (')') != MATCH_YES)
-	return MATCH_ERROR;
+	{
+	  gfc_error ("Malformed type-spec at %C");
+	  return MATCH_ERROR;
+	}
 
       ts->type = BT_REAL;
       ts->kind = gfc_default_double_kind;
@@ -3994,7 +4008,10 @@ gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
 	return MATCH_ERROR;
 
       if (matched_type && gfc_match_char (')') != MATCH_YES)
-	return MATCH_ERROR;
+	{
+	  gfc_error ("Malformed type-spec at %C");
+	  return MATCH_ERROR;
+	}
 
       ts->type = BT_COMPLEX;
       ts->kind = gfc_default_double_kind;
@@ -4015,7 +4032,13 @@ gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
       if (m == MATCH_ERROR)
 	return m;
 
-    m = gfc_match_char (')');
+      gfc_gobble_whitespace ();
+      if (gfc_peek_ascii_char () != ')')
+	{
+	  gfc_error ("Malformed type-spec at %C");
+	  return MATCH_ERROR;
+	}
+      m = gfc_match_char (')'); /* Burn closing ')'.  */
     }
 
   if (m != MATCH_YES)
@@ -7156,7 +7179,7 @@ add_global_entry (const char *name, const char *binding_label, bool sub,
      name is a global identifier.  */
   if (!binding_label || gfc_notification_std (GFC_STD_F2008))
     {
-      s = gfc_get_gsymbol (name);
+      s = gfc_get_gsymbol (name, false);
 
       if (s->defined || (s->type != GSYM_UNKNOWN && s->type != type))
 	{
@@ -7178,7 +7201,7 @@ add_global_entry (const char *name, const char *binding_label, bool sub,
       && (!gfc_notification_std (GFC_STD_F2008)
 	  || strcmp (name, binding_label) != 0))
     {
-      s = gfc_get_gsymbol (binding_label);
+      s = gfc_get_gsymbol (binding_label, true);
 
       if (s->defined || (s->type != GSYM_UNKNOWN && s->type != type))
 	{

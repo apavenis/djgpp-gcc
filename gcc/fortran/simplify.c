@@ -169,8 +169,10 @@ convert_mpz_to_unsigned (mpz_t x, int bitsize)
     }
   else
     {
-      /* Confirm that no bits above the signed range are set.  */
-      gcc_assert (mpz_scan1 (x, bitsize-1) == ULONG_MAX);
+      /* Confirm that no bits above the signed range are set if we
+	 are doing range checking.  */
+      if (flag_range_check != 0)
+	gcc_assert (mpz_scan1 (x, bitsize-1) == ULONG_MAX);
     }
 }
 
@@ -4469,7 +4471,7 @@ gfc_simplify_len (gfc_expr *e, gfc_expr *kind)
     /* The expression in assoc->target points to a ref to the _data component
        of the unlimited polymorphic entity.  To get the _len component the last
        _data ref needs to be stripped and a ref to the _len component added.  */
-    return gfc_get_len_component (e->symtree->n.sym->assoc->target);
+    return gfc_get_len_component (e->symtree->n.sym->assoc->target, k);
   else
     return NULL;
 }
@@ -6921,6 +6923,7 @@ gfc_simplify_sizeof (gfc_expr *x)
 {
   gfc_expr *result = NULL;
   mpz_t array_size;
+  size_t res_size;
 
   if (x->ts.type == BT_CLASS || x->ts.deferred)
     return NULL;
@@ -6936,7 +6939,8 @@ gfc_simplify_sizeof (gfc_expr *x)
 
   result = gfc_get_constant_expr (BT_INTEGER, gfc_index_integer_kind,
 				  &x->where);
-  mpz_set_si (result->value.integer, gfc_target_expr_size (x));
+  gfc_target_expr_size (x, &res_size);
+  mpz_set_si (result->value.integer, res_size);
 
   return result;
 }
@@ -6950,6 +6954,7 @@ gfc_simplify_storage_size (gfc_expr *x,
 {
   gfc_expr *result = NULL;
   int k;
+  size_t siz;
 
   if (x->ts.type == BT_CLASS || x->ts.deferred)
     return NULL;
@@ -6965,7 +6970,8 @@ gfc_simplify_storage_size (gfc_expr *x,
 
   result = gfc_get_constant_expr (BT_INTEGER, k, &x->where);
 
-  mpz_set_si (result->value.integer, gfc_element_size (x));
+  gfc_element_size (x, &siz);
+  mpz_set_si (result->value.integer, siz);
   mpz_mul_ui (result->value.integer, result->value.integer, BITS_PER_UNIT);
 
   return range_check (result, "STORAGE_SIZE");
