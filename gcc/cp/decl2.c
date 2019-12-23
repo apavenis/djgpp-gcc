@@ -698,7 +698,8 @@ check_classfn (tree ctype, tree function, tree template_parms)
   if (!matched)
     {
       if (!COMPLETE_TYPE_P (ctype))
-	cxx_incomplete_type_error (function, ctype);
+	cxx_incomplete_type_error (DECL_SOURCE_LOCATION (function),
+				   function, ctype);
       else
 	{
 	  if (DECL_CONV_FN_P (function))
@@ -4815,9 +4816,8 @@ c_parse_final_cleanups (void)
   /* Handle -fdump-ada-spec[-slim] */
   if (flag_dump_ada_spec || flag_dump_ada_spec_slim)
     {
-      if (flag_dump_ada_spec_slim)
-	collect_source_ref (main_input_filename);
-      else
+      collect_source_ref (main_input_filename);
+      if (!flag_dump_ada_spec_slim)
 	collect_source_refs (global_namespace);
 
       dump_ada_specs (collect_all_refs, cpp_check);
