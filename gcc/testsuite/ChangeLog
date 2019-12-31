@@ -1,3 +1,136 @@
+2020-12-31  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-cond-reduc-6.c: New test.
+
+2020-12-31  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-epilogues-2.c: New test.
+
+2019-12-30  Olivier Hainque  <hainque@adacore.com>
+
+	* gcc.dg/vect/tree-vect.h: #undef OFFSET.
+
+2019-12-20  Olivier Hainque  <hainque@adacore.com>
+
+	* testsuite/gcc.dg/cpp/ucs.c: Prevent redefinition
+	of WCHAR_MAX if already exposed by limits.h.
+
+2019-12-20  Olivier Hainque  <hainque@adacore.com>
+           Jerome Lambourg  <lambourg@adacore.com>
+
+	* c-c++-common/pr56493.c: Allow '$' in addition to '.'
+	scan-tree-dump expressions matching symbol names.
+	* gcc.dg/tree-ssa/sra-17.c: Likewise.
+	* gcc.dg/tree-ssa/sra-18.c: Likewise.
+
+2019-12-30  Joel Brobecker  <brobecker@adacore.com>
+            Olivier Hainque  <hainque@adacore.com>
+
+	* gcc.target/aarch64/aapcs64/aapcs64.exp: Guard tests using
+	abitest.S by check_weak_available.
+
+2019-12-30  Peter Bergner <bergner@linux.ibm.com>
+
+       PR target/92923
+       * gcc.target/powerpc/pr92923-1.c: New test.
+       * gcc.target/powerpc/pr92923-2.c: Likewise.
+
+2019-12-30  Paolo Carlini  <paolo.carlini@oracle.com>
+
+	* g++.dg/init/delete1.C: Check locations too.
+	* g++.dg/ipa/pr85607.C: Likewise.
+	* g++.dg/warn/Wdelete-incomplete-1.C: Likewise.
+	* g++.dg/warn/delete-non-virtual-dtor.C: Likewise.
+	* g++.dg/warn/incomplete1.C: Likewise.
+
+2019-12-30  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/91651
+	* gfortran.dg/index_3.f90: Fix PR number.
+
+2019-12-30  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/91651
+	* gfortran.dg/index_3.f90: New test.
+
+2019-12-30  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/92961
+	* gfortran.dg/arith_divide_2.f90: New test.
+
+2019-12-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92745
+	* g++.dg/cpp0x/initlist118.C: Add -Wno-psabi -w to dg-options.
+
+2019-12-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/88337 - Implement P1327R1: Allow dynamic_cast in constexpr.
+	* g++.dg/cpp2a/constexpr-dynamic1.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic10.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic11.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic12.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic13.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic14.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic15.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic16.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic17.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic2.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic3.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic4.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic5.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic6.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic7.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic8.C: New test.
+	* g++.dg/cpp2a/constexpr-dynamic9.C: New test.
+
+2019-12-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/93078
+	* gcc.target/i386/sse4_1-pr93078.c: New test.
+	* gcc.target/i386/avx-pr93078.c: New test.
+	* gcc.target/i386/avx512f-pr93078.c: New test.
+
+2019-12-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-strided-epilogue-1.c: New test.
+
+2019-12-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.dg/vect/vect-cond-12.c: New test.
+
+2019-12-27  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.target/aarch64/sve/mixed_size_11.c: New test.
+
+2019-12-27  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* gcc.target/aarch64/sve/mixed_size_10.c: New test.
+
+2019-12-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92438
+	* g++.dg/ext/attrib61.C: New test.
+
+2019-12-23  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* c-c++-common/goacc/mdc-1.c: Restrict to LP64, LLP64.
+
+2019-12-23  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR c++/92789
+	* g++.dg/ext/sve-sizeless-2.C (statements): Expect pointer
+	difference and comparisons between GNU and non-GNU types
+	to be rejected.  Expect __is_same to be false for such pairs.
+	* g++.target/aarch64/sve/acle/general-c++/gnu_vectors_1.C: Remove
+	XFAILs.  Expect conversions between SVE vector pointers and
+	GNU vector pointers to be rejected.  Test references.
+	* g++.target/aarch64/sve/acle/general-c++/gnu_vectors_2.C: Likewise.
+
+2019-12-23  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* g++.dg/ext/vector39.C: New test.
+
 2019-12-21  Andrew Pinski  <apinski@marvell.com>
 
 	PR testsuite/92998

@@ -1,3 +1,225 @@
+2020-12-31  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-stmts.c (vectorizable_condition): Only nullify cond_expr
+	if we've created a new condition.  Don't nullify it if we've decided
+	to keep it and then invert the result.
+
+2020-12-31  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-loop-manip.c (create_lcssa_for_virtual_phi): Return
+	the incoming virtual operand definition.
+	(vect_do_peeling): When vectorizing an epilogue loop, handle the
+	case in which the main loop has a virtual phi and the epilogue
+	and scalar loops don't.  Restore an earlier comment about the
+	update_ssa call.
+
+2019-12-30  Olivier Hainque  <hainque@adacore.com>
+
+	* config/vxworks/stdint.h: New file.  Include _yvals.h
+	then stdint-gcc.h.
+	* config/t-vxworks: Arrange to install the stdint.h wrapper.
+	* config.gcc (*-*-vxworks*): Add stdint-gcc.h to $extra_headers
+	so it gets copied.  Set use_gcc_stdint to request _not_ crafting
+	stdint.h through the common Makefile rules.
+
+2019-12-30  Olivier Hainque  <hainque@adacore.com>
+
+	* config/vxworks/_yvals.h: New file.
+	* config/vxworks/_yvals-wrapper.h: New file.
+	* gcc/config/vxworks/math.h: Use it to wrap the VxWorks
+	math.h header.
+	* gcc/config/vxworks/complex.h: Likewise.
+	* gcc/config/vxworks/setjmp.h: Likewise.
+	* gcc/config/vxworks/inttypes.h: Likewise.
+	* config.gcc (*-*-vxworks*): Add system header wrappers
+	to extra_headers.
+	(powerpc-*-vxworks*): Reuse the common extra_headers.
+
+2019-12-30  Olivier Hainque  <hainque@adacore.com>
+
+	* config/vxworks/_vxworks-versions.h: New file.
+	* config.gcc (*-*-vxworks*): Add it to extra_headers.
+
+2019-12-30  Olivier Hainque  <hainque@adacore.com>
+
+	* config/t-vxworks: Rework the vxworks.o compilation
+	rules to use $(COMPILE).
+
+2019-12-30  Joel Brobecker  <brobecker@adacore.com>
+
+	* config.gcc <*-*-vxworks*>: Add vxworks-c.o to c_target_objs
+	and cxx_target_objs. Set target_has_targetcm to "yes". Add
+	vxworks-predef.h to extra_headers.
+	* config/t-vxworks (vxworks-c.o): New target.
+	* config/vxworks-c.c: New file.
+	* config/vxworks/vxworks-predef.h: New file.
+
+2019-12-30  Alexandre Oliva  <oliva@adacore.com>
+            Olivier Hainque  <hainque@adacore.com>
+
+	* config/vx-common.h (WCHAR_TYPE_SIZE): 32 on VxWorks 7.
+	(WCHAR_TYPE): Pick accordingly.
+	(WINT_TYPE_SIZE): Define in terms of WCHAR_TYPE_SIZE.
+	(WINT_TYPE): Define in terms of WCHAR_TYPE.
+
+2019-12-30  Olivier Hainque  <hainque@adacore.com>
+
+	* config/vx-common.h: Minor reorganization and add
+	sectioning comments.
+
+2019-12-30  Doug Rupp  <rupp@adacore.com>
+
+	* config/rs6000/vxworks.h (STARTFILE_PREFIX_SPEC): Define.
+
+2019-12-30  Olivier Hainque  <hainque@adacore.com>
+            Jerome Lambourg  <labourg@adacore.com>
+
+	* config/t-vxworks: Arrange to alter/restore glimits.h
+	before/after stmp-int-hdrs, so it uses a different macro
+	name to protect itself against recursive inclusions.
+
+2019-12-30  Peter Bergner <bergner@linux.ibm.com>
+
+	PR target/92923
+	* config/rs6000/rs6000-builtin.def (VAND, VANDC, VNOR, VOR, VXOR):
+	Delete.
+	(EQV_V16QI_UNS, EQV_V8HI_UNS, EQV_V4SI_UNS, EQV_V2DI_UNS, EQV_V1TI_UNS,
+	NAND_V16QI_UNS, NAND_V8HI_UNS, NAND_V4SI_UNS, NAND_V2DI_UNS,
+	NAND_V1TI_UNS, ORC_V16QI_UNS, ORC_V8HI_UNS, ORC_V4SI_UNS, ORC_V2DI_UNS,
+	ORC_V1TI_UNS, VAND_V16QI_UNS, VAND_V16QI, VAND_V8HI_UNS, VAND_V8HI,
+	VAND_V4SI_UNS, VAND_V4SI, VAND_V2DI_UNS, VAND_V2DI, VAND_V4SF,
+	VAND_V2DF, VANDC_V16QI_UNS, VANDC_V16QI, VANDC_V8HI_UNS, VANDC_V8HI,
+	VANDC_V4SI_UNS, VANDC_V4SI, VANDC_V2DI_UNS, VANDC_V2DI, VANDC_V4SF,
+	VANDC_V2DF, VNOR_V16QI_UNS, VNOR_V16QI, VNOR_V8HI_UNS, VNOR_V8HI,
+	VNOR_V4SI_UNS, VNOR_V4SI, VNOR_V2DI_UNS, VNOR_V2DI, VNOR_V4SF,
+	VNOR_V2DF, VOR_V16QI_UNS, VOR_V16QI, VOR_V8HI_UNS, VOR_V8HI,
+	VOR_V4SI_UNS, VOR_V4SI, VOR_V2DI_UNS, VOR_V2DI, VOR_V4SF, VOR_V2DF,
+	VXOR_V16QI_UNS, VXOR_V16QI, VXOR_V8HI_UNS, VXOR_V8HI,
+	VXOR_V4SI_UNS, VXOR_V4SI, VXOR_V2DI_UNS, VXOR_V2DI, VXOR_V4SF,
+	VXOR_V2DF): Add definitions.
+	* config/rs6000/rs6000-call.c (altivec_overloaded_builtins)
+	<ALTIVEC_BUILTIN_VAND, ALTIVEC_BUILTIN_VANDC, ALTIVEC_BUILTIN_VNOR,
+	ALTIVEC_BUILTIN_VOR, ALTIVEC_BUILTIN_VXOR>: Remove.
+	<ALTIVEC_BUILTIN_VAND_V4SF, ALTIVEC_BUILTIN_VAND_V2DF,
+	ALTIVEC_BUILTIN_VAND_V2DI, ALTIVEC_BUILTIN_VAND_V2DI_UNS,
+	ALTIVEC_BUILTIN_VAND_V4SI_UNS, ALTIVEC_BUILTIN_VAND_V4SI,
+	ALTIVEC_BUILTIN_VAND_V8HI_UNS, ALTIVEC_BUILTIN_VAND_V8HI,
+	ALTIVEC_BUILTIN_VAND_V16QI, ALTIVEC_BUILTIN_VAND_V16QI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V4SF, ALTIVEC_BUILTIN_VANDC_V2DF,
+	ALTIVEC_BUILTIN_VANDC_V2DI, ALTIVEC_BUILTIN_VANDC_V2DI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V4SI_UNS, ALTIVEC_BUILTIN_VANDC_V4SI,
+	ALTIVEC_BUILTIN_VANDC_V8HI_UNS, ALTIVEC_BUILTIN_VANDC_V8HI,
+	ALTIVEC_BUILTIN_VANDC_V16QI, ALTIVEC_BUILTIN_VANDC_V16QI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V4SF, ALTIVEC_BUILTIN_VNOR_V2DF,
+	ALTIVEC_BUILTIN_VNOR_V2DI, ALTIVEC_BUILTIN_VNOR_V2DI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V4SI, ALTIVEC_BUILTIN_VNOR_V4SI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V8HI, ALTIVEC_BUILTIN_VNOR_V8HI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V16QI, ALTIVEC_BUILTIN_VNOR_V16QI_UNS,
+	ALTIVEC_BUILTIN_VOR_V4SF, ALTIVEC_BUILTIN_VOR_V2DF,
+	ALTIVEC_BUILTIN_VOR_V2DI, ALTIVEC_BUILTIN_VOR_V2DI_UNS,
+	ALTIVEC_BUILTIN_VOR_V4SI_UNS, ALTIVEC_BUILTIN_VOR_V4SI,
+	ALTIVEC_BUILTIN_VOR_V8HI_UNS, ALTIVEC_BUILTIN_VOR_V8HI,
+	ALTIVEC_BUILTIN_VOR_V16QI, ALTIVEC_BUILTIN_VOR_V16QI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V4SF, ALTIVEC_BUILTIN_VXOR_V2DF,
+	ALTIVEC_BUILTIN_VXOR_V2DI, ALTIVEC_BUILTIN_VXOR_V2DI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V4SI_UNS, ALTIVEC_BUILTIN_VXOR_V4SI,
+	ALTIVEC_BUILTIN_VXOR_V8HI, ALTIVEC_BUILTIN_VXOR_V8HI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V16QI, ALTIVEC_BUILTIN_VXOR_V16QI_UNS>: Add
+	definitions.
+	<P8V_BUILTIN_EQV_V16QI, P8V_BUILTIN_EQV_V8HI, P8V_BUILTIN_EQV_V4SI,
+	P8V_BUILTIN_EQV_V2DI, P8V_BUILTIN_NAND_V16QI, P8V_BUILTIN_NAND_V8HI,
+	P8V_BUILTIN_NAND_V4SI, P8V_BUILTIN_NAND_V2DI, P8V_BUILTIN_ORC_V16QI,
+	P8V_BUILTIN_ORC_V8HI, P8V_BUILTIN_ORC_V4SI,
+	P8V_BUILTIN_ORC_V2DI>: Change unsigned usages to use the new *_UNS
+	definition names.
+	(rs6000_gimple_fold_builtin) <ALTIVEC_BUILTIN_VAND_V16QI_UNS,
+	ALTIVEC_BUILTIN_VAND_V16QI, ALTIVEC_BUILTIN_VAND_V8HI_UNS,
+	ALTIVEC_BUILTIN_VAND_V8HI, ALTIVEC_BUILTIN_VAND_V4SI_UNS,
+	ALTIVEC_BUILTIN_VAND_V4SI, ALTIVEC_BUILTIN_VAND_V2DI_UNS,
+	ALTIVEC_BUILTIN_VAND_V2DI, ALTIVEC_BUILTIN_VAND_V4SF,
+	ALTIVEC_BUILTIN_VAND_V2DF, ALTIVEC_BUILTIN_VANDC_V16QI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V16QI, ALTIVEC_BUILTIN_VANDC_V8HI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V8HI, ALTIVEC_BUILTIN_VANDC_V4SI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V4SI, ALTIVEC_BUILTIN_VANDC_V2DI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V2DI, ALTIVEC_BUILTIN_VANDC_V4SF,
+	ALTIVEC_BUILTIN_VANDC_V2DF, P8V_BUILTIN_NAND_V16QI_UNS,
+	P8V_BUILTIN_NAND_V8HI_UNS, P8V_BUILTIN_NAND_V4SI_UNS,
+	P8V_BUILTIN_NAND_V2DI_UNS, P8V_BUILTIN_NAND_V2DI,
+	ALTIVEC_BUILTIN_VOR_V16QI_UNS, ALTIVEC_BUILTIN_VOR_V16QI,
+	ALTIVEC_BUILTIN_VOR_V8HI_UNS, ALTIVEC_BUILTIN_VOR_V8HI,
+	ALTIVEC_BUILTIN_VOR_V4SI_UNS, ALTIVEC_BUILTIN_VOR_V4SI,
+	ALTIVEC_BUILTIN_VOR_V2DI_UNS, ALTIVEC_BUILTIN_VOR_V2DI,
+	ALTIVEC_BUILTIN_VOR_V4SF, ALTIVEC_BUILTIN_VOR_V2DF,
+	P8V_BUILTIN_ORC_V16QI_UNS, P8V_BUILTIN_ORC_V8HI_UNS,
+	P8V_BUILTIN_ORC_V4SI_UNS, P8V_BUILTIN_ORC_V2DI_UNS,
+	P8V_BUILTIN_ORC_V2DI, ALTIVEC_BUILTIN_VXOR_V16QI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V16QI, ALTIVEC_BUILTIN_VXOR_V8HI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V8HI, ALTIVEC_BUILTIN_VXOR_V4SI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V4SI, ALTIVEC_BUILTIN_VXOR_V2DI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V2DI, ALTIVEC_BUILTIN_VXOR_V4SF,
+	ALTIVEC_BUILTIN_VXOR_V2DF, ALTIVEC_BUILTIN_VNOR_V16QI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V16QI, ALTIVEC_BUILTIN_VNOR_V8HI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V8HI, ALTIVEC_BUILTIN_VNOR_V4SI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V4SI, ALTIVEC_BUILTIN_VNOR_V2DI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V2DI, ALTIVEC_BUILTIN_VNOR_V4SF,
+	ALTIVEC_BUILTIN_VNOR_V2DF>: Use new definition names.
+	(builtin_function_type) <ALTIVEC_BUILTIN_VAND_V16QI_UNS,
+	ALTIVEC_BUILTIN_VAND_V8HI_UNS, ALTIVEC_BUILTIN_VAND_V4SI_UNS,
+	ALTIVEC_BUILTIN_VAND_V2DI_UNS, ALTIVEC_BUILTIN_VANDC_V16QI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V8HI_UNS, ALTIVEC_BUILTIN_VANDC_V4SI_UNS,
+	ALTIVEC_BUILTIN_VANDC_V2DI_UNS, ALTIVEC_BUILTIN_VNOR_V16QI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V8HI_UNS, ALTIVEC_BUILTIN_VNOR_V4SI_UNS,
+	ALTIVEC_BUILTIN_VNOR_V2DI_UNS, ALTIVEC_BUILTIN_VOR_V16QI_UNS,
+	ALTIVEC_BUILTIN_VOR_V8HI_UNS, ALTIVEC_BUILTIN_VOR_V4SI_UNS,
+	ALTIVEC_BUILTIN_VOR_V2DI_UNS, ALTIVEC_BUILTIN_VXOR_V16QI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V8HI_UNS, ALTIVEC_BUILTIN_VXOR_V4SI_UNS,
+	ALTIVEC_BUILTIN_VXOR_V2DI_UNS, P8V_BUILTIN_EQV_V16QI_UNS,
+	P8V_BUILTIN_EQV_V8HI_UNS, P8V_BUILTIN_EQV_V4SI_UNS,
+	P8V_BUILTIN_EQV_V2DI_UNS, P8V_BUILTIN_EQV_V1TI_UNS,
+	P8V_BUILTIN_NAND_V16QI_UNS, P8V_BUILTIN_NAND_V8HI_UNS,
+	P8V_BUILTIN_NAND_V4SI_UNS, P8V_BUILTIN_NAND_V2DI_UNS,
+	P8V_BUILTIN_NAND_V1TI_UNS, P8V_BUILTIN_ORC_V16QI_UNS,
+	P8V_BUILTIN_ORC_V8HI_UNS, P8V_BUILTIN_ORC_V4SI_UNS,
+	P8V_BUILTIN_ORC_V2DI_UNS, P8V_BUILTIN_ORC_V1TI_UNS>: Handle unsigned
+	builtins.
+
+2019-12-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/93078
+	* config/i386/i386-builtins.c (ix86_builtin_vectorized_function):
+	Remove CASE_CFN_RINT handling.
+	* config/i386/i386-builtin.def (IX86_BUILTIN_RINTPD,
+	IX86_BUILTIN_RINTPS, IX86_BUILTIN_RINTPD256, IX86_BUILTIN_RINTPS256):
+	Remove.
+	* config/i386/sse.md (nearbyint<mode>2, rint<mode>2): New expanders
+	with VF iterator.
+
+2019-12-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-stmts.c (vect_get_strided_load_store_ops): Copy
+	DR_STEP before gimplifying it.
+
+2019-12-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-stmts.c (vectorizable_condition): For extract-last
+	reductions, check that the target supports the required comparison
+	operation.
+
+2019-12-27  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/iterators.md (V_INT_CONTAINER): Fix VNx2SF entry.
+
+2019-12-27  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-loop.c (vectorizable_reduction): Check whether the
+	target supports the required VEC_COND_EXPR operation before
+	allowing the fallback handling of masked fold-left reductions.
+
+2019-12-24  Jiufu Guo  <guojiufu@linux.ibm.com>
+
+	* config/rs6000/rs6000.c (rs6000_option_override_internal): Enable
+	-fweb and -frename-registers with -funroll-loops
+
 2019-12-22  Gerald Pfeifer  <gerald@pfeifer.com>
 
 	* doc/invoke.texi (-flto): Use "compile time" as a noun.
