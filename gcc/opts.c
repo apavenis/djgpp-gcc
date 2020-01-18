@@ -1,5 +1,5 @@
 /* Command line option handling.
-   Copyright (C) 2002-2019 Free Software Foundation, Inc.
+   Copyright (C) 2002-2020 Free Software Foundation, Inc.
    Contributed by Neil Booth.
 
 This file is part of GCC.
@@ -2409,6 +2409,14 @@ common_handle_option (struct gcc_options *opts,
 
     case OPT_fdiagnostics_show_cwe:
       dc->show_cwe = value;
+      break;
+
+    case OPT_fdiagnostics_path_format_:
+      dc->path_format = (enum diagnostic_path_format)value;
+      break;
+
+    case OPT_fdiagnostics_show_path_depths:
+      dc->show_path_depths = value;
       break;
 
     case OPT_fdiagnostics_show_option:

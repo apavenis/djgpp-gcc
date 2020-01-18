@@ -1,5 +1,5 @@
 /* General-purpose hooks.
-   Copyright (C) 2002-2019 Free Software Foundation, Inc.
+   Copyright (C) 2002-2020 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
@@ -45,6 +45,7 @@ extern bool hook_bool_uint_uint_mode_false (unsigned int, unsigned int,
 extern bool hook_bool_uint_mode_true (unsigned int, machine_mode);
 extern bool hook_bool_tree_false (tree);
 extern bool hook_bool_const_tree_false (const_tree);
+extern bool hook_bool_const_tree_const_tree_true (const_tree, const_tree);
 extern bool hook_bool_tree_true (tree);
 extern bool hook_bool_const_tree_true (const_tree);
 extern bool hook_bool_gsiptr_false (gimple_stmt_iterator *);

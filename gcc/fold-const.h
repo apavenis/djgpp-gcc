@@ -1,5 +1,5 @@
 /* Fold a constant sub-tree into a single node for C-compiler
-   Copyright (C) 1987-2019 Free Software Foundation, Inc.
+   Copyright (C) 1987-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -26,7 +26,10 @@ extern int folding_initializer;
 
 /* Convert between trees and native memory representation.  */
 extern int native_encode_expr (const_tree, unsigned char *, int, int off = -1);
+extern int native_encode_initializer (tree, unsigned char *, int,
+				      int off = -1);
 extern tree native_interpret_expr (tree, const unsigned char *, int);
+extern bool can_native_interpret_type_p (tree);
 
 /* Fold constants as much as possible in an expression.
    Returns the simplified expression.

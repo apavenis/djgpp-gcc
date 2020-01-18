@@ -1,6 +1,6 @@
 // <extptr_allocator.h> -*- C++ -*-
 
-// Copyright (C) 2008-2019 Free Software Foundation, Inc.
+// Copyright (C) 2008-2020 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -131,20 +131,20 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       template<typename _Up>
         inline bool
-        operator==(const _ExtPtr_allocator<_Up>& __rarg)
+        operator==(const _ExtPtr_allocator<_Up>& __rarg) const
         { return _M_real_alloc == __rarg._M_getUnderlyingImp(); }
 
       inline bool
-      operator==(const _ExtPtr_allocator& __rarg)
+      operator==(const _ExtPtr_allocator& __rarg) const
       { return _M_real_alloc == __rarg._M_real_alloc; }
 
       template<typename _Up>
         inline bool
-        operator!=(const _ExtPtr_allocator<_Up>& __rarg)
+        operator!=(const _ExtPtr_allocator<_Up>& __rarg) const
         { return _M_real_alloc != __rarg._M_getUnderlyingImp(); }
 
       inline bool
-      operator!=(const _ExtPtr_allocator& __rarg)
+      operator!=(const _ExtPtr_allocator& __rarg) const
       { return _M_real_alloc != __rarg._M_real_alloc; }
 
       template<typename _Up>

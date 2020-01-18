@@ -2,7 +2,7 @@
    This file is consumed by genmatch which produces gimple-match.c
    and generic-match.c from it.
 
-   Copyright (C) 2014-2019 Free Software Foundation, Inc.
+   Copyright (C) 2014-2020 Free Software Foundation, Inc.
    Contributed by Richard Biener <rguenther@suse.de>
    and Prathamesh Kulkarni  <bilbotheelffriend@gmail.com>
 
@@ -2738,9 +2738,26 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 
 /* Optimize (x >> c) << c into x & (-1<<c).  */
 (simplify
- (lshift (rshift @0 INTEGER_CST@1) @1)
+ (lshift (nop_convert? (rshift @0 INTEGER_CST@1)) @1)
  (if (wi::ltu_p (wi::to_wide (@1), element_precision (type)))
-  (bit_and @0 (lshift { build_minus_one_cst (type); } @1))))
+  /* It doesn't matter if the right shift is arithmetic or logical.  */
+  (bit_and (view_convert @0) (lshift { build_minus_one_cst (type); } @1))))
+
+(simplify
+ (lshift (convert (convert@2 (rshift @0 INTEGER_CST@1))) @1)
+ (if (wi::ltu_p (wi::to_wide (@1), element_precision (type))
+      /* Allow intermediate conversion to integral type with whatever sign, as
+	 long as the low TYPE_PRECISION (type)
+	 - TYPE_PRECISION (TREE_TYPE (@2)) bits are preserved.  */
+      && INTEGRAL_TYPE_P (type)
+      && INTEGRAL_TYPE_P (TREE_TYPE (@2))
+      && INTEGRAL_TYPE_P (TREE_TYPE (@0))
+      && TYPE_PRECISION (type) == TYPE_PRECISION (TREE_TYPE (@0))
+      && (TYPE_PRECISION (TREE_TYPE (@2)) >= TYPE_PRECISION (type)
+	  || wi::geu_p (wi::to_wide (@1),
+			TYPE_PRECISION (type)
+			- TYPE_PRECISION (TREE_TYPE (@2)))))
+  (bit_and (convert @0) (lshift { build_minus_one_cst (type); } @1))))
 
 /* Optimize (x << c) >> c into x & ((unsigned)-1 >> c) for unsigned
    types.  */
@@ -5786,43 +5803,50 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
      return (x * 0x01010101) >> 24;
    }  */
 (simplify
-  (rshift
-    (mult
-      (bit_and
-	(plus:c
-	  (rshift @8 INTEGER_CST@5)
-	  (plus:c@8
-	    (bit_and @6 INTEGER_CST@7)
-	    (bit_and
-	      (rshift
-		(minus@6
-		  @0
-		  (bit_and
-		    (rshift @0 INTEGER_CST@4)
-		    INTEGER_CST@11))
-	      INTEGER_CST@10)
-	    INTEGER_CST@9)))
-	INTEGER_CST@3)
-      INTEGER_CST@2)
-    INTEGER_CST@1)
+ (rshift
+  (mult
+   (bit_and
+    (plus:c
+     (rshift @8 INTEGER_CST@5)
+      (plus:c@8
+       (bit_and @6 INTEGER_CST@7)
+	(bit_and
+	 (rshift
+	  (minus@6 @0
+	   (bit_and (rshift @0 INTEGER_CST@4) INTEGER_CST@11))
+	  INTEGER_CST@10)
+	 INTEGER_CST@9)))
+    INTEGER_CST@3)
+   INTEGER_CST@2)
+  INTEGER_CST@1)
   /* Check constants and optab.  */
-  (with
-     {
-       unsigned prec = TYPE_PRECISION (type);
-       int shift = 64 - prec;
-       const unsigned HOST_WIDE_INT c1 = 0x0101010101010101ULL >> shift,
-				    c2 = 0x0F0F0F0F0F0F0F0FULL >> shift,
-				    c3 = 0x3333333333333333ULL >> shift,
-				    c4 = 0x5555555555555555ULL >> shift;
-     }
-    (if (prec <= 64 && TYPE_UNSIGNED (type) && tree_to_uhwi (@4) == 1
-          && tree_to_uhwi (@10) == 2 && tree_to_uhwi (@5) == 4
-          && tree_to_uhwi (@1) == prec - 8 && tree_to_uhwi (@2) == c1
-          && tree_to_uhwi (@3) == c2 && tree_to_uhwi (@9) == c3
-          && tree_to_uhwi (@7) == c3 && tree_to_uhwi (@11) == c4
-          && direct_internal_fn_supported_p (IFN_POPCOUNT, type,
-	    OPTIMIZE_FOR_BOTH))
-        (convert (IFN_POPCOUNT:type @0)))))
+  (with { unsigned prec = TYPE_PRECISION (type);
+	  int shift = (64 - prec) & 63;
+	  unsigned HOST_WIDE_INT c1
+	    = HOST_WIDE_INT_UC (0x0101010101010101) >> shift;
+	  unsigned HOST_WIDE_INT c2
+	    = HOST_WIDE_INT_UC (0x0F0F0F0F0F0F0F0F) >> shift;
+	  unsigned HOST_WIDE_INT c3
+	    = HOST_WIDE_INT_UC (0x3333333333333333) >> shift;
+	  unsigned HOST_WIDE_INT c4
+	    = HOST_WIDE_INT_UC (0x5555555555555555) >> shift;
+   }
+   (if (prec >= 16
+	&& prec <= 64
+	&& pow2p_hwi (prec)
+	&& TYPE_UNSIGNED (type)
+	&& integer_onep (@4)
+	&& wi::to_widest (@10) == 2
+	&& wi::to_widest (@5) == 4
+	&& wi::to_widest (@1) == prec - 8
+	&& tree_to_uhwi (@2) == c1
+	&& tree_to_uhwi (@3) == c2
+	&& tree_to_uhwi (@9) == c3
+	&& tree_to_uhwi (@7) == c3
+	&& tree_to_uhwi (@11) == c4
+	&& direct_internal_fn_supported_p (IFN_POPCOUNT, type,
+					   OPTIMIZE_FOR_BOTH))
+    (convert (IFN_POPCOUNT:type @0)))))
 #endif
 
 /* Simplify:
@@ -6128,3 +6152,11 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 (simplify
  (vec_perm vec_same_elem_p@0 @0 @1)
  @0)
+
+/* Match count trailing zeroes for simplify_count_trailing_zeroes in fwprop.
+   The canonical form is array[((x & -x) * C) >> SHIFT] where C is a magic
+   constant which when multiplied by a power of 2 contains a unique value
+   in the top 5 or 6 bits.  This is then indexed into a table which maps it
+   to the number of trailing zeroes.  */
+(match (ctz_table_index @1 @2 @3)
+  (rshift (mult (bit_and:c (negate @1) @1) INTEGER_CST@2) INTEGER_CST@3))

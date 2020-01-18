@@ -1,3 +1,43 @@
+2020-01-10  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* libgomp-plugin.h (enum goacc_property): New.  Adjust all users
+	to use this instead of 'enum gomp_device_property'.
+	(GOMP_OFFLOAD_get_property): Rename to...
+	(GOMP_OFFLOAD_openacc_get_property): ... this.  Adjust all users.
+	* libgomp.h (struct gomp_device_descr): Move
+	'GOMP_OFFLOAD_openacc_get_property'...
+	(struct acc_dispatch_t): ... here.  Adjust all users.
+	* plugin/plugin-hsa.c (GOMP_OFFLOAD_get_property): Remove.
+
+	* target.c (gomp_map_vars_internal)
+	<GOMP_MAP_USE_DEVICE_PTR_IF_PRESENT>: Clean up/elaborate code
+	paths.
+
+2020-01-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/93219
+	* libgomp.h (gomp_print_string): Change return type from void to int.
+	* affinity-fmt.c (gomp_print_string): Likewise.  Return true if
+	not all characters have been written.
+
+2020-01-08  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi: Fix typos, use https.
+
+2020-01-03  Tobias Burnus  <tobias@codesourcery.com>
+
+	* testsuite/libgomp.fortran/optional-map.f90: Add test for
+	unallocated/disassociated actual arguments to nonallocatable/nonpointer
+	dummy arguments; those are/shall be regarded as absent arguments.
+	* testsuite/libgomp.fortran/use_device_ptr-optional-2.f90: Ditto.
+	* testsuite/libgomp.fortran/use_device_ptr-optional-3.f90: New.
+
+2020-01-01  Jakub Jelinek  <jakub@redhat.com>
+
+	Update copyright years.
+
+	* libgomp.texi: Bump @copying's copyright year.
+
 2019-12-31  Ayush Mittal  <ayush.m@samsung.com>
 
 	PR libgomp/93065
@@ -12874,7 +12914,7 @@
 
 	Initial implementation and checkin.
 
-Copyright (C) 2005-2019 Free Software Foundation, Inc.
+Copyright (C) 2005-2020 Free Software Foundation, Inc.
 
 Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright

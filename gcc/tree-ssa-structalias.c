@@ -1,5 +1,5 @@
 /* Tree based points-to analysis
-   Copyright (C) 2005-2019 Free Software Foundation, Inc.
+   Copyright (C) 2005-2020 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dberlin@dberlin.org>
 
    This file is part of GCC.
@@ -8157,7 +8157,8 @@ ipa_pta_execute (void)
 	  && from != constraints.length ())
 	{
 	  fprintf (dump_file,
-		   "Generating intial constraints for %s", node->name ());
+		   "Generating initial constraints for %s",
+		   node->dump_name ());
 	  if (DECL_ASSEMBLER_NAME_SET_P (node->decl))
 	    fprintf (dump_file, " (%s)",
 		     IDENTIFIER_POINTER
@@ -8214,7 +8215,7 @@ ipa_pta_execute (void)
       if (dump_file)
 	{
 	  fprintf (dump_file,
-		   "Generating constraints for %s", node->name ());
+		   "Generating constraints for %s", node->dump_name ());
 	  if (DECL_ASSEMBLER_NAME_SET_P (node->decl))
 	    fprintf (dump_file, " (%s)",
 		     IDENTIFIER_POINTER

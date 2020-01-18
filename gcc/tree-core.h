@@ -1,5 +1,5 @@
 /* Core data structures for the 'tree' type.
-   Copyright (C) 1989-2019 Free Software Foundation, Inc.
+   Copyright (C) 1989-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1174,6 +1174,9 @@ struct GTY(()) tree_base {
 
        OMP_CLAUSE_REDUCTION_OMP_ORIG_REF in
 	   OMP_CLAUSE_{,TASK_,IN_}REDUCTION
+
+       OMP_CLAUSE_USE_DEVICE_PTR_IF_PRESENT in
+	   OMP_CLAUSE_USE_DEVICE_PTR
 
        TRANSACTION_EXPR_RELAXED in
 	   TRANSACTION_EXPR

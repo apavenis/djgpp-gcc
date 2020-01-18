@@ -1,5 +1,5 @@
 /* General-purpose hooks.
-   Copyright (C) 2002-2019 Free Software Foundation, Inc.
+   Copyright (C) 2002-2020 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
@@ -310,6 +310,12 @@ bool
 hook_bool_const_tree_false (const_tree)
 {
   return false;
+}
+
+bool
+hook_bool_const_tree_const_tree_true (const_tree, const_tree)
+{
+  return true;
 }
 
 bool

@@ -4,7 +4,7 @@
 
    Contributed by Diego Novillo <dnovillo@redhat.com>
 
-   Copyright (C) 2005-2019 Free Software Foundation, Inc.
+   Copyright (C) 2005-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -12006,6 +12006,15 @@ lower_omp_target (gimple_stmt_iterator *gsi_p, omp_context *ctx)
 		tkind = GOMP_MAP_FIRSTPRIVATE_INT;
 		x = build_sender_ref (ovar, ctx);
 	      }
+
+	    if (is_gimple_omp_oacc (ctx->stmt))
+	      {
+		gcc_assert (tkind == GOMP_MAP_USE_DEVICE_PTR);
+
+		if (OMP_CLAUSE_USE_DEVICE_PTR_IF_PRESENT (c))
+		  tkind = GOMP_MAP_USE_DEVICE_PTR_IF_PRESENT;
+	      }
+
 	    type = TREE_TYPE (ovar);
 	    if (lang_hooks.decls.omp_array_data (ovar, true))
 	      var = lang_hooks.decls.omp_array_data (ovar, false);

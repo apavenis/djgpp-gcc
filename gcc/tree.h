@@ -1,5 +1,5 @@
 /* Definitions for the ubiquitous 'tree' type for GNU compilers.
-   Copyright (C) 1989-2019 Free Software Foundation, Inc.
+   Copyright (C) 1989-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1627,6 +1627,11 @@ class auto_suppress_location_wrappers
 #define OMP_CLAUSE_MAP_IN_REDUCTION(NODE) \
   TREE_PRIVATE (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_MAP))
 
+/* True on an OMP_CLAUSE_USE_DEVICE_PTR with an OpenACC 'if_present'
+   clause.  */
+#define OMP_CLAUSE_USE_DEVICE_PTR_IF_PRESENT(NODE) \
+  (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_USE_DEVICE_PTR)->base.public_flag)
+
 #define OMP_CLAUSE_PROC_BIND_KIND(NODE) \
   (OMP_CLAUSE_SUBCODE_CHECK (NODE, OMP_CLAUSE_PROC_BIND)->omp_clause.subcode.proc_bind_kind)
 
@@ -2903,8 +2908,8 @@ extern void decl_value_expr_insert (tree, tree);
 #define DECL_VISIBILITY(NODE) \
   (DECL_WITH_VIS_CHECK (NODE)->decl_with_vis.visibility)
 
-/* Nonzero means that the decl had its visibility specified rather than
-   being inferred.  */
+/* Nonzero means that the decl (or an enclosing scope) had its
+   visibility specified rather than being inferred.  */
 #define DECL_VISIBILITY_SPECIFIED(NODE) \
   (DECL_WITH_VIS_CHECK (NODE)->decl_with_vis.visibility_specified)
 

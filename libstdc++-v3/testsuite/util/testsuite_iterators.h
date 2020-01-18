@@ -1,7 +1,7 @@
 // -*- C++ -*-
 // Iterator Wrappers for the C++ library testsuite.
 //
-// Copyright (C) 2004-2019 Free Software Foundation, Inc.
+// Copyright (C) 2004-2020 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -759,10 +759,13 @@ namespace __gnu_test
     using test_output_sized_range
       = test_sized_range<T, output_iterator_wrapper>;
 
-// test_container, test_range and test_sized_range do not own their elements,
-// so they all model std::ranges::safe_range. This file does not define
-// specializations of std::ranges::enable_safe_range, so that individual
-// test can decide whether or not to do so.
+// test_range and test_sized_range do not own their elements, so they model
+// std::ranges::safe_range.  This file does not define specializations of
+// std::ranges::enable_safe_range, so that individual tests can decide
+// whether or not to do so.
+// This is also true for test_container, although only when it has forward
+// iterators (because output_iterator_wrapper and input_iterator_wrapper are
+// not default constructible so do not model std::input_or_output_iterator).
 #endif // C++20
 } // namespace __gnu_test
 #endif // _TESTSUITE_ITERATORS

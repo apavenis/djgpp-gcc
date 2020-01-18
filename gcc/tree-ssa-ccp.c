@@ -1,5 +1,5 @@
 /* Conditional constant propagation pass for the GNU compiler.
-   Copyright (C) 2000-2019 Free Software Foundation, Inc.
+   Copyright (C) 2000-2020 Free Software Foundation, Inc.
    Adapted from original RTL SSA-CCP by Daniel Berlin <dberlin@dberlin.org>
    Adapted to GIMPLE trees by Diego Novillo <dnovillo@redhat.com>
 
@@ -1649,6 +1649,17 @@ bit_value_binop (enum tree_code code, tree type, tree rhs1, tree rhs2)
 		   value_to_wide_int (r1val), r1val.mask,
 		   TYPE_SIGN (TREE_TYPE (rhs2)), TYPE_PRECISION (TREE_TYPE (rhs2)),
 		   value_to_wide_int (r2val), r2val.mask);
+
+  /* (x * x) & 2 == 0.  */
+  if (code == MULT_EXPR && rhs1 == rhs2 && TYPE_PRECISION (type) > 1)
+    {
+      widest_int m = 2;
+      if (wi::sext (mask, TYPE_PRECISION (type)) != -1)
+	value = wi::bit_and_not (value, m);
+      else
+	value = 0;
+      mask = wi::bit_and_not (mask, m);
+    }
 
   if (wi::sext (mask, TYPE_PRECISION (type)) != -1)
     {

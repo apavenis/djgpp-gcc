@@ -1,6 +1,6 @@
 ; Options for the language- and target-independent parts of the compiler.
 
-; Copyright (C) 2003-2019 Free Software Foundation, Inc.
+; Copyright (C) 2003-2020 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -617,7 +617,7 @@ Common Var(warn_implicit_fallthrough) RejectNegative Joined UInteger Warning Int
 Warn when a switch case falls through.
 
 Winline
-Common Var(warn_inline) Warning
+Common Var(warn_inline) Warning Optimization
 Warn when an inlined function cannot be inlined.
 
 Winvalid-memory-model
@@ -1337,6 +1337,26 @@ Amend appropriate diagnostic messages with the command line option that controls
 fdiagnostics-show-cwe
 Common Var(flag_diagnostics_show_cwe) Init(1)
 Print CWE identifiers for diagnostic messages, where available.
+
+fdiagnostics-path-format=
+Common Joined RejectNegative Var(flag_diagnostics_path_format) Enum(diagnostic_path_format) Init(DPF_INLINE_EVENTS)
+Specify how to print any control-flow path associated with a diagnostic.
+
+Enum
+Name(diagnostic_path_format) Type(int)
+
+EnumValue
+Enum(diagnostic_path_format) String(none) Value(DPF_NONE)
+
+EnumValue
+Enum(diagnostic_path_format) String(separate-events) Value(DPF_SEPARATE_EVENTS)
+
+EnumValue
+Enum(diagnostic_path_format) String(inline-events) Value(DPF_INLINE_EVENTS)
+
+fdiagnostics-show-path-depths
+Common Var(flag_diagnostics_show_path_depths) Init(0)
+Show stack depths of events in paths.
 
 fdiagnostics-minimum-margin-width=
 Common Joined UInteger Var(diagnostics_minimum_margin_width) Init(6)
@@ -2426,7 +2446,7 @@ Common Ignore
 Does nothing.  Preserved for backward compatibility.
 
 free
-Common Report Var(flag_ree) Init(0)
+Common Report Var(flag_ree) Init(0) Optimization
 Turn on Redundant Extensions Elimination pass.
 
 fshow-column

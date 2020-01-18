@@ -1,5 +1,5 @@
 /* Functions related to building classes and their related objects.
-   Copyright (C) 1987-2019 Free Software Foundation, Inc.
+   Copyright (C) 1987-2020 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -3141,7 +3141,6 @@ one_inherited_ctor (tree ctor, tree t, tree using_decl)
       ctor = implicitly_declare_fn (sfk_inheriting_constructor,
 				    t, /*const*/false, ctor, parms);
       add_method (t, ctor, using_decl != NULL_TREE);
-      TYPE_HAS_USER_CONSTRUCTOR (t) = true;
       return;
     }
 

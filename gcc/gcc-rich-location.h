@@ -1,5 +1,5 @@
 /* Declarations relating to class gcc_rich_location
-   Copyright (C) 2014-2019 Free Software Foundation, Inc.
+   Copyright (C) 2014-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -62,7 +62,9 @@ class gcc_rich_location : public rich_location
 
      Implemented in diagnostic-show-locus.c.  */
 
-  bool add_location_if_nearby (location_t loc);
+  bool add_location_if_nearby (location_t loc,
+			       bool restrict_to_current_line_spans = true,
+			       const range_label *label = NULL);
 
   /* Add a fix-it hint suggesting the insertion of CONTENT before
      INSERTION_POINT.

@@ -1,5 +1,5 @@
 /* Unit tests for hash-map.h.
-   Copyright (C) 2015-2019 Free Software Foundation, Inc.
+   Copyright (C) 2015-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -101,6 +101,8 @@ test_map_of_strings_to_int ()
   ASSERT_EQ (1, string_map.elements ());
   ASSERT_EQ (true, string_map.put (another_ant, 5));
   ASSERT_EQ (1, string_map.elements ());
+
+  free (another_ant);
 }
 
 /* Construct a hash_map using int_hash and verify that

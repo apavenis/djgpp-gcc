@@ -1,5 +1,5 @@
 /* SLP - Basic Block Vectorization
-   Copyright (C) 2007-2019 Free Software Foundation, Inc.
+   Copyright (C) 2007-2020 Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
    and Ira Rosen <irar@il.ibm.com>
 
@@ -885,7 +885,8 @@ vect_build_slp_tree_1 (unsigned char *swap,
 	  && !vect_update_shared_vectype (stmt_info, vectype))
 	continue;
 
-      if (gcall *call_stmt = dyn_cast <gcall *> (stmt))
+      gcall *call_stmt = dyn_cast <gcall *> (stmt);
+      if (call_stmt)
 	{
 	  rhs_code = CALL_EXPR;
 
@@ -971,6 +972,12 @@ vect_build_slp_tree_1 (unsigned char *swap,
               need_same_oprnds = true;
               first_op1 = gimple_assign_rhs2 (stmt);
             }
+	  else if (call_stmt
+		   && gimple_call_internal_p (call_stmt, IFN_DIV_POW2))
+	    {
+	      need_same_oprnds = true;
+	      first_op1 = gimple_call_arg (call_stmt, 1);
+	    }
 	}
       else
 	{
@@ -1008,15 +1015,20 @@ vect_build_slp_tree_1 (unsigned char *swap,
 	      continue;
 	    }
 
-	  if (need_same_oprnds
-	      && !operand_equal_p (first_op1, gimple_assign_rhs2 (stmt), 0))
+	  if (need_same_oprnds)
 	    {
-	      if (dump_enabled_p ())
-		dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-				 "Build SLP failed: different shift "
-				 "arguments in %G", stmt);
-	      /* Mismatch.  */
-	      continue;
+	      tree other_op1 = (call_stmt
+				? gimple_call_arg (call_stmt, 1)
+				: gimple_assign_rhs2 (stmt));
+	      if (!operand_equal_p (first_op1, other_op1, 0))
+		{
+		  if (dump_enabled_p ())
+		    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				     "Build SLP failed: different shift "
+				     "arguments in %G", stmt);
+		  /* Mismatch.  */
+		  continue;
+		}
 	    }
 
 	  if (!load_p && rhs_code == CALL_EXPR)

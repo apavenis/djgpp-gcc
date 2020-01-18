@@ -1,5 +1,5 @@
 /* Definitions for C++ parsing and type checking.
-   Copyright (C) 1987-2019 Free Software Foundation, Inc.
+   Copyright (C) 1987-2020 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -6720,9 +6720,10 @@ extern tree throw_bad_array_new_length		(void);
 extern bool type_has_new_extended_alignment	(tree);
 extern unsigned malloc_alignment		(void);
 extern tree build_new_constexpr_heap_type	(tree, tree, tree);
-extern tree build_new				(vec<tree, va_gc> **, tree, tree,
-						 vec<tree, va_gc> **, int,
-                                                 tsubst_flags_t);
+extern tree build_new				(location_t,
+						 vec<tree, va_gc> **, tree,
+						 tree, vec<tree, va_gc> **,
+						 int, tsubst_flags_t);
 extern tree get_temp_regvar			(tree, tree);
 extern tree build_vec_init			(tree, tree, tree, bool, int,
                                                  tsubst_flags_t);

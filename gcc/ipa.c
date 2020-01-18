@@ -1,5 +1,5 @@
 /* Basic IPA optimizations and utilities.
-   Copyright (C) 2003-2019 Free Software Foundation, Inc.
+   Copyright (C) 2003-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -242,11 +242,12 @@ walk_polymorphic_call_targets (hash_set<void *> *reachable_call_targets,
 			       edge->caller->dump_name (),
 			       target->dump_name ());
 	    }
-	  edge = edge->make_direct (target);
+	  edge = cgraph_edge::make_direct (edge, target);
 	  if (ipa_fn_summaries)
-	    ipa_update_overall_fn_summary (node);
+	    ipa_update_overall_fn_summary (node->inlined_to
+					   ? node->inlined_to : node);
 	  else if (edge->call_stmt)
-	    edge->redirect_call_stmt_to_callee ();
+	    cgraph_edge::redirect_call_stmt_to_callee (edge);
 	}
     }
 }
@@ -615,7 +616,7 @@ symbol_table::remove_unreachable_nodes (FILE *file)
 	  if (vnode->definition)
 	    {
 	      if (file)
-		fprintf (file, " %s", vnode->name ());
+		fprintf (file, " %s", vnode->dump_name ());
 	      changed = true;
 	    }
 	  /* Keep body if it may be useful for constant folding.  */
@@ -648,7 +649,7 @@ symbol_table::remove_unreachable_nodes (FILE *file)
 	    (has_addr_references_p, NULL, true))
 	  {
 	    if (file)
-	      fprintf (file, " %s", node->name ());
+	      fprintf (file, " %s", node->dump_name ());
 	    node->address_taken = false;
 	    changed = true;
 	    if (node->local_p ()
@@ -793,7 +794,8 @@ ipa_discover_variable_flags (void)
 	if (!address_taken)
 	  {
 	    if (TREE_ADDRESSABLE (vnode->decl) && dump_file)
-	      fprintf (dump_file, " %s (non-addressable)", vnode->name ());
+	      fprintf (dump_file, " %s (non-addressable)",
+		       vnode->dump_name ());
 	    vnode->call_for_symbol_and_aliases (clear_addressable_bit, NULL,
 					        true);
 	  }
@@ -804,13 +806,13 @@ ipa_discover_variable_flags (void)
 	    && vnode->get_section () == NULL)
 	  {
 	    if (!TREE_READONLY (vnode->decl) && dump_file)
-	      fprintf (dump_file, " %s (read-only)", vnode->name ());
+	      fprintf (dump_file, " %s (read-only)", vnode->dump_name ());
 	    vnode->call_for_symbol_and_aliases (set_readonly_bit, NULL, true);
 	  }
 	if (!vnode->writeonly && !read && !address_taken && written)
 	  {
 	    if (dump_file)
-	      fprintf (dump_file, " %s (write-only)", vnode->name ());
+	      fprintf (dump_file, " %s (write-only)", vnode->dump_name ());
 	    vnode->call_for_symbol_and_aliases (set_writeonly_bit, &remove_p, 
 					        true);
 	  }

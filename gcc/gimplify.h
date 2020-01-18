@@ -1,5 +1,5 @@
 /* Header file for gimplification.
-   Copyright (C) 2013-2019 Free Software Foundation, Inc.
+   Copyright (C) 2013-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -62,6 +62,7 @@ extern tree get_initialized_tmp_var (tree, gimple_seq *, gimple_seq * = NULL,
 extern void declare_vars (tree, gimple *, bool);
 extern void gimple_add_tmp_var (tree);
 extern void gimple_add_tmp_var_fn (struct function *, tree);
+extern void copy_if_shared (tree *, void * = NULL);
 extern tree unshare_expr (tree);
 extern tree unshare_expr_without_location (tree);
 extern tree voidify_wrapper_expr (tree, tree);

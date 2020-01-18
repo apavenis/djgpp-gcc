@@ -1,6 +1,6 @@
 /* Basic IPA utilities for type inheritance graph construction and
    devirtualization.
-   Copyright (C) 2013-2019 Free Software Foundation, Inc.
+   Copyright (C) 2013-2020 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -3350,8 +3350,7 @@ dump_targets (FILE *f, vec <cgraph_node *> targets, bool verbose)
       char *name = NULL;
       if (in_lto_p)
 	name = cplus_demangle_v3 (targets[i]->asm_name (), 0);
-      fprintf (f, " %s/%i", name ? name : targets[i]->name (),
-	       targets[i]->order);
+      fprintf (f, " %s", name ? name : targets[i]->dump_name ());
       if (in_lto_p)
 	free (name);
       if (!targets[i]->definition)

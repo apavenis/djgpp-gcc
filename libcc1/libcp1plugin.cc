@@ -1,5 +1,5 @@
 /* Library interface to C++ front end.
-   Copyright (C) 2014-2019 Free Software Foundation, Inc.
+   Copyright (C) 2014-2020 Free Software Foundation, Inc.
 
    This file is part of GCC.  As it interacts with GDB through libcc1,
    they all become a single program as regards the GNU GPL's requirements.
@@ -3258,8 +3258,8 @@ plugin_build_new_expr (cc1_plugin::connection *self,
   if (!template_dependent_p)
     processing_template_decl--;
 
-  tree result = build_new (&placement, type, nelts, &initializer,
-			   global_scope_p, tf_error);
+  tree result = build_new (input_location, &placement, type, nelts,
+			   &initializer, global_scope_p, tf_error);
 
   if (template_dependent_p)
     processing_template_decl--;

@@ -1,6 +1,6 @@
 // Core algorithmic facilities -*- C++ -*-
 
-// Copyright (C) 2001-2019 Free Software Foundation, Inc.
+// Copyright (C) 2001-2020 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -1667,7 +1667,6 @@ _GLIBCXX_BEGIN_NAMESPACE_ALGO
     }
 
 #if __cpp_lib_three_way_comparison
-#if __cpp_lib_concepts
   // Iter points to a contiguous range of unsigned narrow character type
   // or std::byte, suitable for comparison by memcmp.
   template<typename _Iter>
@@ -1690,7 +1689,6 @@ _GLIBCXX_BEGIN_NAMESPACE_ALGO
 	return _Res{__y, __c};
       return _Res{__x, __c};
     }
-#endif
 
   /**
    *  @brief Performs dictionary comparison on ranges.
@@ -1718,7 +1716,7 @@ _GLIBCXX_BEGIN_NAMESPACE_ALGO
       __glibcxx_requires_valid_range(__first1, __last1);
       __glibcxx_requires_valid_range(__first2, __last2);
 
-#if __cpp_lib_concepts && __cpp_lib_is_constant_evaluated
+#if __cpp_lib_is_constant_evaluated
       using _Cat = decltype(__comp(*__first1, *__first2));
       static_assert(same_as<common_comparison_category_t<_Cat>, _Cat>);
 
@@ -1739,7 +1737,7 @@ _GLIBCXX_BEGIN_NAMESPACE_ALGO
 		  }
 		return __lencmp;
 	      }
-#endif // concepts && is_constant_evaluated
+#endif // is_constant_evaluated
       while (__first1 != __last1 && __first2 != __last2)
 	{
 	  if (auto __cmp = __comp(*__first1, *__first2); __cmp != 0)

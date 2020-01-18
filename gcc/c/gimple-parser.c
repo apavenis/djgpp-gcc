@@ -1,5 +1,5 @@
 /* Parser for GIMPLE.
-   Copyright (C) 2016-2019 Free Software Foundation, Inc.
+   Copyright (C) 2016-2020 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -327,7 +327,7 @@ c_parser_parse_gimple_body (c_parser *cparser, char *gimple_pass,
 		      add_phi_arg (phi, gimple_call_arg (stmt, i + 1), e,
 				   UNKNOWN_LOCATION);
 		  }
-		gsi_remove (&gsi, false);
+		gsi_remove (&gsi, true);
 	      }
 	  /* Fill SSA name gaps, putting them on the freelist.  */
 	  for (unsigned i = 1; i < num_ssa_names; ++i)

@@ -1,4 +1,4 @@
-@c Copyright (C) 1988-2019 Free Software Foundation, Inc.
+@c Copyright (C) 1988-2020 Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
 
@@ -3364,6 +3364,8 @@ stack.
 @hook TARGET_SCALAR_MODE_SUPPORTED_P
 
 @hook TARGET_VECTOR_MODE_SUPPORTED_P
+
+@hook TARGET_COMPATIBLE_VECTOR_TYPES_P
 
 @hook TARGET_ARRAY_MODE
 

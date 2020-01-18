@@ -1,6 +1,6 @@
 !  OpenACC Runtime Library Definitions.
 
-!  Copyright (C) 2014-2019 Free Software Foundation, Inc.
+!  Copyright (C) 2014-2020 Free Software Foundation, Inc.
 
 !  Contributed by Tobias Burnus <burnus@net-b.de>
 !              and Mentor Embedded.
@@ -53,7 +53,7 @@ module openacc_kinds
 
   integer, parameter :: acc_device_property = c_size_t
 
-  ! Keep in sync with include/gomp-constants.h.
+  ! Keep in sync with 'libgomp/libgomp-plugin.h:goacc_property'.
   integer (acc_device_property), parameter :: acc_property_memory = 1
   integer (acc_device_property), parameter :: acc_property_free_memory = 2
   integer (acc_device_property), parameter :: acc_property_name = int(Z'10001')
