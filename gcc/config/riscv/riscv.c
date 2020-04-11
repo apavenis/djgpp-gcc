@@ -1612,7 +1612,10 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 
     case ZERO_EXTRACT:
       /* This is an SImode shift.  */
-      if (outer_code == SET && (INTVAL (XEXP (x, 2)) > 0)
+      if (outer_code == SET
+	  && CONST_INT_P (XEXP (x, 1))
+	  && CONST_INT_P (XEXP (x, 2))
+	  && (INTVAL (XEXP (x, 2)) > 0)
 	  && (INTVAL (XEXP (x, 1)) + INTVAL (XEXP (x, 2)) == 32))
 	{
 	  *total = COSTS_N_INSNS (SINGLE_SHIFT_COST);
@@ -3089,7 +3092,8 @@ riscv_print_operand_reloc (FILE *file, rtx op, bool hi_reloc)
 	break;
 
       default:
-	gcc_unreachable ();
+	output_operand_lossage ("invalid use of '%%%c'", hi_reloc ? 'h' : 'R');
+	return;
     }
 
   fprintf (file, "%s(", reloc);
@@ -4901,6 +4905,19 @@ riscv_promote_function_mode (const_tree type ATTRIBUTE_UNUSED,
   PROMOTE_MODE (mode, unsignedp, type);
   *punsignedp = unsignedp;
   return mode;
+}
+
+/* Return nonzero if register FROM_REGNO can be renamed to register
+   TO_REGNO.  */
+
+bool
+riscv_hard_regno_rename_ok (unsigned from_regno ATTRIBUTE_UNUSED,
+			    unsigned to_regno)
+{
+  /* Interrupt functions can only use registers that have already been
+     saved by the prologue, even if they would normally be
+     call-clobbered.  */
+  return !cfun->machine->interrupt_handler_p || df_regs_ever_live_p (to_regno);
 }
 
 /* Initialize the GCC target structure.  */

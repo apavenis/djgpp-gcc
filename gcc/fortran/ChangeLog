@@ -1,3 +1,176 @@
+2020-03-12  Release Manager
+
+	* GCC 9.3.0 released.
+
+2020-03-05  Paul Thomas  <pault@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/92976
+	* match.c (select_type_set_tmp): Variable 'selector' to replace
+	select_type_stack->selector. If the selector array spec has
+	explicit bounds, make the temporary's bounds deferred.
+
+2020-02-19  Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+	Backported from mainline
+	2020-02-18  Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+	PR fortran/93714
+	* expr.c (gfc_check_pointer_assign): Move check for
+	matching character length to after checking the lvalue
+	attributes for target or pointer.
+
+2020-02-18  Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+	Backported from mainline
+	2020-02-18  Steven G. Kargl  <kargl@gcc.gnu.org>
+	            Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+	PR fortran/93580
+	* primary.c (gfc_match_varspec): If the symbol following %
+	is re or im and the primary expression type is not BT_COMPLEX
+	issue an error. If the symbol is len and the primary
+	expression type is not BT_CHARACTER is an error.
+
+2020-02-13  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2020-01-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/93463
+	* openmp.c (oacc_code_to_statement): Handle
+	EXEC_OACC_{ROUTINE,UPDATE,WAIT,CACHE,{ENTER,EXIT}_DATA,DECLARE}.
+
+2020-02-03  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from mainline
+	2020-02-03  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/93541
+	* intrinisic.texi (OpenMP Modules OMP_LIB and OMP_LIB_KINDS):
+	Add undocumented parameters from omp_lib.f90.in.
+
+2020-02-03  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from mainline
+	2020-01-31  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/93462
+	* frontend-passes.c (gfc_code_walker): For EXEC_OACC_ATOMIC, set
+	in_omp_atomic to true prevent front-end optimization.
+
+2020-02-03  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from mainline
+	2020-01-21  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/93309
+	* interface.c (gfc_procedure_use): Also check parent namespace for
+	'implict none (external)'.
+	* symbol.c (gfc_get_namespace): Don't set has_implicit_none_export
+	to parent namespace's setting.
+
+2020-01-22  Jakub Jelinek  <jakub@redhat.com>
+
+	* parse.c (parse_omp_structured_block): Handle ST_OMP_TARGET_PARALLEL.
+	* trans-openmp.c (gfc_trans_omp_target)
+	<case EXEC_OMP_TARGET_PARALLEL>: Call pushlevel first.
+
+	PR fortran/93329
+	* openmp.c (omp_code_to_statement): Handle remaining EXEC_OMP_*
+	cases.
+
+2020-01-17  Mark Eggleston  <mark.eggleston@codethink.com>
+
+	Backport from mainline
+	Mark Eggleston  <mark.eggleston@codethink.com>
+
+	PR fortran/93236
+	* resolve.c (resolve_types): Declare boolean recursive and set with the
+	value of the recursive attribute of namespace proc_name symbol
+	structure if it exists.  Call gfc_save_all if both flag_automatic and
+	recursive are false or ns->save_all is true.
+
+2020-01-10  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from mainline
+	2020-01-09  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/84135
+	* array.c (gfc_set_array_spec): Fix shifting of codimensions
+	when adding a dimension.
+	* decl.c (merge_array_spec): Ditto. Fix using correct codimensions.
+
+2019-12-30  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/92961
+	* gfortran.h (gfc_seen_div0): Add declaration.
+	* arith.h (gfc_seen_div0): Add definition.
+	(eval_intrinsic): For integer division by zero, set gfc_seen_div0.
+	* decl.c (variable_decl):  If resolution resp. simplification
+	fails for array spec and a division of zero error has been
+	seen, return MATCH_ERROR.
+
+2019-12-21  Paul Thomas  <pault@gcc.gnu.org>
+
+	Backported from mainline
+	PR fortran/92753
+	* expr.c (find_inquiry_ref): Catch INQUIRY_LEN case, where the
+	temporary expression has been converted to a constant and make
+	the new expression accordingly. Correct the error in INQUIRY_RE
+	and INQUIRY_IM cases. The original rather than the resolved
+	expression was being used as the source in mpfr_set.
+
+2019-12-20  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2019-12-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/92977
+	* frontend-passes.c (call_external_blas): Use || instead of |.
+
+	PR fortran/92977
+	* frontend-passes.c (in_omp_atomic): New variable.
+	(cfe_expr_0, matmul_to_var_expr, matmul_temp_args,
+	inline_matmul_assign, call_external_blas): Don't optimize in
+	EXEC_OMP_ATOMIC.
+	(optimize_namespace): Clear in_omp_atomic.
+	(gfc_code_walker): Set in_omp_atomic for EXEC_OMP_ATOMIC, save/restore
+	it around.
+
+	2019-12-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/92899
+	* trans-openmp.c (gfc_trans_omp_atomic): For GFC_OMP_ATOMIC_SWAP,
+	do look through conversion on expr2 if any.
+
+	2019-12-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/92775
+	* trans.h (struct lang_type, struct lang_decl): Remove span member.
+	(GFC_DECL_SPAN, GFC_TYPE_ARRAY_SPAN): Remove macros.
+	* trans-array.h (gfc_get_descriptor_offsets_for_info): Add another
+	argument.
+	* trans-array.c (gfc_get_descriptor_offsets_for_info): Add SPAN_OFF
+	argument and initialize *SPAN_OFF to the offset of span field.
+	* trans-types.c (gfc_get_array_descr_info): Adjust
+	gfc_get_descriptor_offsets_for_info caller.  Compute elem_size
+	as base->span instead of TYPE_SIZE_UNIT (etype) constant.
+
+	2019-12-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/92781
+	* trans-decl.c (gfc_get_symbol_decl): If sym->backend_decl is
+	current_function_decl, add length to current rather than parent
+	function and expect DECL_CONTEXT (length) to be current_function_decl.
+
+	2019-11-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/91944
+	* simplify.c (gfc_simplify_spread): Check gfc_init_expr_flag instead
+	of gfc_current_ns->sym_root->n.sym->attr.flavor == FL_PARAMETER.
+
 2019-12-12  Harald Anlauf  <anlauf@gmx.de>
 
 	Backport from mainline
@@ -425,7 +598,7 @@
 
 	PR fortran/42546
 	* check.c(gfc_check_allocated): Add comment pointing to ...
- 	* intrinsic.c(sort_actual): ... the checking done here.
+	* intrinsic.c(sort_actual): ... the checking done here.
 
 2019-08-12  Release Manager
 

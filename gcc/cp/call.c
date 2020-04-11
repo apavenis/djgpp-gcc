@@ -4034,6 +4034,8 @@ build_user_type_conversion_1 (tree totype, tree expr, int flags,
 						       EXPR_LOCATION (expr));
 	    }
 	  else if (TYPE_REF_P (totype) && !ics->rvaluedness_matches_p
+		   /* Limit this to non-templates for now (PR90546).  */
+		   && !cand->template_decl
 		   && TREE_CODE (TREE_TYPE (totype)) != FUNCTION_TYPE)
 	    {
 	      /* If we are called to convert to a reference type, we are trying
@@ -7543,7 +7545,12 @@ convert_arg_to_ellipsis (tree arg, tsubst_flags_t complain)
       arg = convert_to_real_nofold (double_type_node, arg);
     }
   else if (NULLPTR_TYPE_P (arg_type))
-    arg = null_pointer_node;
+    {
+      if (TREE_SIDE_EFFECTS (arg))
+	arg = cp_build_compound_expr (arg, null_pointer_node, complain);
+      else
+	arg = null_pointer_node;
+    }
   else if (INTEGRAL_OR_ENUMERATION_TYPE_P (arg_type))
     {
       if (SCOPED_ENUM_P (arg_type))
@@ -11424,6 +11431,8 @@ make_temporary_var_for_ref_to_temp (tree decl, tree type)
 
       TREE_STATIC (var) = TREE_STATIC (decl);
       TREE_PUBLIC (var) = TREE_PUBLIC (decl);
+      if (decl_anon_ns_mem_p (decl))
+	TREE_PUBLIC (var) = 0;
       if (vague_linkage_p (decl))
 	comdat_linkage (var);
 
@@ -11449,7 +11458,7 @@ make_temporary_var_for_ref_to_temp (tree decl, tree type)
 
 static tree
 set_up_extended_ref_temp (tree decl, tree expr, vec<tree, va_gc> **cleanups,
-			  tree *initp)
+			  tree *initp, tree *cond_guard)
 {
   tree init;
   tree type;
@@ -11480,7 +11489,8 @@ set_up_extended_ref_temp (tree decl, tree expr, vec<tree, va_gc> **cleanups,
 
   /* Recursively extend temps in this initializer.  */
   TARGET_EXPR_INITIAL (expr)
-    = extend_ref_init_temps (decl, TARGET_EXPR_INITIAL (expr), cleanups);
+    = extend_ref_init_temps (decl, TARGET_EXPR_INITIAL (expr), cleanups,
+			     cond_guard);
 
   /* Any reference temp has a non-trivial initializer.  */
   DECL_NONTRIVIALLY_INITIALIZED_P (var) = true;
@@ -11521,7 +11531,29 @@ set_up_extended_ref_temp (tree decl, tree expr, vec<tree, va_gc> **cleanups,
 	{
 	  tree cleanup = cxx_maybe_build_cleanup (var, tf_warning_or_error);
 	  if (cleanup)
-	    vec_safe_push (*cleanups, cleanup);
+	    {
+	      if (cond_guard && cleanup != error_mark_node)
+		{
+		  if (*cond_guard == NULL_TREE)
+		    {
+		      *cond_guard = build_decl (input_location, VAR_DECL,
+						NULL_TREE, boolean_type_node);
+		      DECL_ARTIFICIAL (*cond_guard) = 1;
+		      DECL_IGNORED_P (*cond_guard) = 1;
+		      DECL_CONTEXT (*cond_guard) = current_function_decl;
+		      layout_decl (*cond_guard, 0);
+		      add_decl_expr (*cond_guard);
+		      tree set = cp_build_modify_expr (UNKNOWN_LOCATION,
+						       *cond_guard, NOP_EXPR,
+						       boolean_false_node,
+						       tf_warning_or_error);
+		      finish_expr_stmt (set);
+		    }
+		  cleanup = build3 (COND_EXPR, void_type_node,
+				    *cond_guard, cleanup, NULL_TREE);
+		}
+	      vec_safe_push (*cleanups, cleanup);
+	    }
 	}
 
       /* We must be careful to destroy the temporary only
@@ -11626,7 +11658,8 @@ initialize_reference (tree type, tree expr,
    which is bound either to a reference or a std::initializer_list.  */
 
 static tree
-extend_ref_init_temps_1 (tree decl, tree init, vec<tree, va_gc> **cleanups)
+extend_ref_init_temps_1 (tree decl, tree init, vec<tree, va_gc> **cleanups,
+			 tree *cond_guard)
 {
   tree sub = init;
   tree *p;
@@ -11634,20 +11667,52 @@ extend_ref_init_temps_1 (tree decl, tree init, vec<tree, va_gc> **cleanups)
   if (TREE_CODE (sub) == COMPOUND_EXPR)
     {
       TREE_OPERAND (sub, 1)
-        = extend_ref_init_temps_1 (decl, TREE_OPERAND (sub, 1), cleanups);
+	= extend_ref_init_temps_1 (decl, TREE_OPERAND (sub, 1), cleanups,
+				   cond_guard);
+      return init;
+    }
+  if (TREE_CODE (sub) == COND_EXPR)
+    {
+      tree cur_cond_guard = NULL_TREE;
+      if (TREE_OPERAND (sub, 1))
+	TREE_OPERAND (sub, 1)
+	  = extend_ref_init_temps_1 (decl, TREE_OPERAND (sub, 1), cleanups,
+				     &cur_cond_guard);
+      if (cur_cond_guard)
+	{
+	  tree set = cp_build_modify_expr (UNKNOWN_LOCATION, cur_cond_guard,
+					   NOP_EXPR, boolean_true_node,
+					   tf_warning_or_error);
+	  TREE_OPERAND (sub, 1)
+	    = cp_build_compound_expr (set, TREE_OPERAND (sub, 1),
+				      tf_warning_or_error);
+	}
+      cur_cond_guard = NULL_TREE;
+      if (TREE_OPERAND (sub, 2))
+	TREE_OPERAND (sub, 2)
+	  = extend_ref_init_temps_1 (decl, TREE_OPERAND (sub, 2), cleanups,
+				     &cur_cond_guard);
+      if (cur_cond_guard)
+	{
+	  tree set = cp_build_modify_expr (UNKNOWN_LOCATION, cur_cond_guard,
+					   NOP_EXPR, boolean_true_node,
+					   tf_warning_or_error);
+	  TREE_OPERAND (sub, 2)
+	    = cp_build_compound_expr (set, TREE_OPERAND (sub, 2),
+				      tf_warning_or_error);
+	}
       return init;
     }
   if (TREE_CODE (sub) != ADDR_EXPR)
     return init;
   /* Deal with binding to a subobject.  */
   for (p = &TREE_OPERAND (sub, 0);
-       (TREE_CODE (*p) == COMPONENT_REF
-	|| TREE_CODE (*p) == ARRAY_REF); )
+       TREE_CODE (*p) == COMPONENT_REF || TREE_CODE (*p) == ARRAY_REF; )
     p = &TREE_OPERAND (*p, 0);
   if (TREE_CODE (*p) == TARGET_EXPR)
     {
       tree subinit = NULL_TREE;
-      *p = set_up_extended_ref_temp (decl, *p, cleanups, &subinit);
+      *p = set_up_extended_ref_temp (decl, *p, cleanups, &subinit, cond_guard);
       recompute_tree_invariant_for_addr_expr (sub);
       if (init != sub)
 	init = fold_convert (TREE_TYPE (init), sub);
@@ -11662,13 +11727,14 @@ extend_ref_init_temps_1 (tree decl, tree init, vec<tree, va_gc> **cleanups)
    lifetime to match that of DECL.  */
 
 tree
-extend_ref_init_temps (tree decl, tree init, vec<tree, va_gc> **cleanups)
+extend_ref_init_temps (tree decl, tree init, vec<tree, va_gc> **cleanups,
+		       tree *cond_guard)
 {
   tree type = TREE_TYPE (init);
   if (processing_template_decl)
     return init;
   if (TYPE_REF_P (type))
-    init = extend_ref_init_temps_1 (decl, init, cleanups);
+    init = extend_ref_init_temps_1 (decl, init, cleanups, cond_guard);
   else
     {
       tree ctor = init;
@@ -11681,7 +11747,8 @@ extend_ref_init_temps (tree decl, tree init, vec<tree, va_gc> **cleanups)
 	      /* The temporary array underlying a std::initializer_list
 		 is handled like a reference temporary.  */
 	      tree array = CONSTRUCTOR_ELT (ctor, 0)->value;
-	      array = extend_ref_init_temps_1 (decl, array, cleanups);
+	      array = extend_ref_init_temps_1 (decl, array, cleanups,
+					       cond_guard);
 	      CONSTRUCTOR_ELT (ctor, 0)->value = array;
 	    }
 	  else
@@ -11690,7 +11757,8 @@ extend_ref_init_temps (tree decl, tree init, vec<tree, va_gc> **cleanups)
 	      constructor_elt *p;
 	      vec<constructor_elt, va_gc> *elts = CONSTRUCTOR_ELTS (ctor);
 	      FOR_EACH_VEC_SAFE_ELT (elts, i, p)
-		p->value = extend_ref_init_temps (decl, p->value, cleanups);
+		p->value = extend_ref_init_temps (decl, p->value, cleanups,
+						  cond_guard);
 	    }
 	  recompute_constructor_flags (ctor);
 	  if (decl_maybe_constant_var_p (decl) && TREE_CONSTANT (ctor))

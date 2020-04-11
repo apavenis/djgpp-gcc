@@ -1,3 +1,49 @@
+2020-03-12  Release Manager
+
+	* GCC 9.3.0 released.
+
+2020-02-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/93576
+	* c-decl.c (grokdeclarator): If this_size_varies, only push size into
+	*expr if it has side effects.
+
+2020-01-22  Joseph Myers  <joseph@codesourcery.com>
+
+	Backport from mainline:
+	2020-01-22  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/93348
+	* c-typeck.c (build_c_cast): Call remove_c_maybe_const_expr on
+	argument with integer operands.
+
+2020-01-15  Joseph Myers  <joseph@codesourcery.com>
+
+	Backport from mainline:
+	2020-01-15  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/93072
+	* c-decl.c (pushdecl): Use TREE_PUBLIC, not DECL_EXTERNAL, to
+	determine whether to set DECL_CONTEXT.
+
+2020-01-13  Joseph Myers  <joseph@codesourcery.com>
+
+	Backport from mainline:
+	2020-01-13  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c/93241
+	* c-typeck.c (build_c_cast): Check for expressions with integer
+	operands that can occur in an unevaluated part of an integer
+	constant expression and call note_integer_operands as needed.
+
+2019-12-20  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2019-11-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/90677
+	* c-decl.c (identifier_global_tag): Define.
+
 2019-12-02  Sandra Loosemore  <sandra@codesourcery.com>
 
 	Fix bugs relating to flexibly-sized objects in nios2 backend.

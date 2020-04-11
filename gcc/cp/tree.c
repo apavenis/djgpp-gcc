@@ -3123,6 +3123,11 @@ replace_placeholders_r (tree* t, int* walk_subtrees, void* data_)
 	    tree type = TREE_TYPE (*valp);
 	    tree subob = obj;
 
+	    /* Elements with RANGE_EXPR index shouldn't have any
+	       placeholders in them.  */
+	    if (ce->index && TREE_CODE (ce->index) == RANGE_EXPR)
+	      continue;
+
 	    if (TREE_CODE (*valp) == CONSTRUCTOR
 		&& AGGREGATE_TYPE_P (type))
 	      {
@@ -5504,7 +5509,15 @@ type_initializer_zero_p (tree type, tree init)
     return TREE_CODE (init) != STRING_CST && initializer_zerop (init);
 
   if (TREE_CODE (init) != CONSTRUCTOR)
-    return initializer_zerop (init);
+    {
+      /* A class can only be initialized by a non-class type if it has
+	 a ctor that converts from that type.  Such classes are excluded
+	 since their semantics are unknown.  */
+      if (RECORD_OR_UNION_TYPE_P (type)
+	  && !RECORD_OR_UNION_TYPE_P (TREE_TYPE (init)))
+	return false;
+      return initializer_zerop (init);
+    }
 
   if (TREE_CODE (type) == ARRAY_TYPE)
     {
