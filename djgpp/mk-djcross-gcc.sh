@@ -15,9 +15,23 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=gcc-9-branch
-dj_branch=gcc_9_djgpp
-djn_branch=gcc_9_djgpp_native
+devphase=$(cat ../gcc/DEV-PHASE)
+if [ "$devphase" == "" ] ; then
+    upstream=tags/releases/gcc-$basever
+    dj_branch=tags/djgpp/gcc-$basever
+    djn_branch=tags/djgpp/native/gcc-$basever
+else
+    upstream=releases/gcc-9
+    dj_branch=djgpp/gcc-9
+    djn_branch=djgpp/native/gcc-9
+fi
+
+for ref in $upstream $dj_branch $djn_branch; do
+    if ! git log -1 $ref 2>/dev/null >/dev/null ; then
+        echo "$ref not found"
+        exit 1
+    fi
+done
 
 sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 
