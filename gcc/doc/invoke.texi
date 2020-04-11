@@ -713,7 +713,7 @@ Objective-C and Objective-C++ Dialects}.
 -mn_flash=@var{size}  -mno-interrupts @gol
 -mmain-is-OS_task  -mrelax  -mrmw  -mstrict-X  -mtiny-stack @gol
 -mfract-convert-truncate @gol
--mshort-calls  -nodevicelib @gol
+-mshort-calls -nodevicelib  -nodevicespecs @gol
 -Waddr-space-convert  -Wmisspelled-isr}
 
 @emph{Blackfin Options}
@@ -17920,8 +17920,7 @@ provided for use in debugging the compiler.
 Do not allow constant data to be placed in code sections.
 Additionally, when compiling for ELF object format give all text sections the
 ELF processor-specific section attribute @code{SHF_ARM_PURECODE}.  This option
-is only available when generating non-pic code for M-profile targets with the
-MOVT instruction.
+is only available when generating non-pic code for M-profile targets.
 
 @item -mcmse
 @opindex mcmse
@@ -18091,6 +18090,13 @@ Allow to use truncation instead of rounding towards zero for fractional fixed-po
 @item -nodevicelib
 @opindex nodevicelib
 Don't link against AVR-LibC's device specific library @code{lib<mcu>.a}.
+
+@item -nodevicespecs
+@opindex nodevicespecs
+Don't add @option{-specs=device-specs/specs-<mcu>} to the compiler driver's
+command line.  The user takes responsibility for supplying the sub-processes
+like compiler proper, assembler and linker with appropriate command line
+options.
 
 @item -Waddr-space-convert
 @opindex Waddr-space-convert

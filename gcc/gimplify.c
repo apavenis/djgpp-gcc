@@ -4831,6 +4831,7 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	    && num_nonzero_elements > 1
 	    && TREE_READONLY (object)
 	    && VAR_P (object)
+	    && !DECL_REGISTER (object)
 	    && (flag_merge_constants >= 2 || !TREE_ADDRESSABLE (object))
 	    /* For ctors that have many repeated nonzero elements
 	       represented through RANGE_EXPRs, prefer initializing
@@ -9081,9 +9082,13 @@ gimplify_scan_omp_clauses (tree *list_p, gimple_seq *pre_p,
 				  == POINTER_TYPE))))
 		    omp_firstprivatize_variable (outer_ctx, decl);
 		  else
-		    omp_add_variable (outer_ctx, decl,
-				      GOVD_SEEN | GOVD_SHARED);
-		  omp_notice_variable (outer_ctx, decl, true);
+		    {
+		      omp_add_variable (outer_ctx, decl,
+					GOVD_SEEN | GOVD_SHARED);
+		      if (outer_ctx->outer_context)
+			omp_notice_variable (outer_ctx->outer_context, decl,
+					     true);
+		    }
 		}
 	    }
 	  if (outer_ctx)
@@ -13521,7 +13526,8 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	{
 	  /* Avoid the extra copy if possible.  */
 	  *expr_p = create_tmp_reg (TREE_TYPE (name));
-	  gimple_set_lhs (SSA_NAME_DEF_STMT (name), *expr_p);
+	  if (!gimple_nop_p (SSA_NAME_DEF_STMT (name)))
+	    gimple_set_lhs (SSA_NAME_DEF_STMT (name), *expr_p);
 	  release_ssa_name (name);
 	}
     }

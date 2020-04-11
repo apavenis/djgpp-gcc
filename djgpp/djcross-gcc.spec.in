@@ -1,6 +1,4 @@
 # Specs file to building RPM of Linux to DJGPP cross-compiler
-# Tested on CentOS-6.8, Fedora 25. One may need
-# to modify this file for other RPM based Linux distribution
 
 %define gcc_version @__GCCVER__@
 @__SNAPSHOT_SPEC__@
@@ -463,6 +461,11 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Apr 11 2020 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-9.3.0
+- Use GMP-6.2.0
+- Use MPFR-4.0.2
+
 * Mon Aug 12 2019 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-9.2.0
 

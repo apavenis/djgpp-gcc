@@ -10121,22 +10121,11 @@ uses_template_parms (tree t)
 		   || uses_template_parms (TREE_CHAIN (t)));
   else if (TREE_CODE (t) == TYPE_DECL)
     dependent_p = dependent_type_p (TREE_TYPE (t));
-  else if (DECL_P (t)
-	   || EXPR_P (t)
-	   || TREE_CODE (t) == TEMPLATE_PARM_INDEX
-	   || TREE_CODE (t) == OVERLOAD
-	   || BASELINK_P (t)
-	   || identifier_p (t)
-	   || TREE_CODE (t) == TRAIT_EXPR
-	   || TREE_CODE (t) == CONSTRUCTOR
-	   || CONSTANT_CLASS_P (t))
+  else if (t == error_mark_node)
+    dependent_p = false;
+  else
     dependent_p = (type_dependent_expression_p (t)
 		   || value_dependent_expression_p (t));
-  else
-    {
-      gcc_assert (t == error_mark_node);
-      dependent_p = false;
-    }
 
   processing_template_decl = saved_processing_template_decl;
 
@@ -13506,7 +13495,7 @@ tsubst_decl (tree t, tree args, tsubst_flags_t complain)
 
                 /* Zero-length parameter packs are boring. Just substitute
                    into the chain.  */
-                if (len == 0)
+		if (len == 0 && !cp_unevaluated_operand)
                   RETURN (tsubst (TREE_CHAIN (t), args, complain,
 				  TREE_CHAIN (t)));
               }
@@ -14641,6 +14630,11 @@ tsubst (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 	     about the template parameter in question.  */
 	  return t;
 
+	/* Like with 'auto', don't reduce the level of template parameters
+	   to avoid mismatches when deducing their types.  */
+	if (complain & tf_partial)
+	  return t;
+
 	/* If we get here, we must have been looking at a parm for a
 	   more deeply nested template.  Make a new version of this
 	   template parameter, but with a lower level.  */
@@ -14755,6 +14749,71 @@ tsubst (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 
 	if (t == void_list_node)
 	  return t;
+
+	if ((TREE_PURPOSE (t) && PACK_EXPANSION_P (TREE_PURPOSE (t)))
+	    || (TREE_VALUE (t) && PACK_EXPANSION_P (TREE_VALUE (t))))
+	  {
+	    /* We have pack expansions, so expand those and
+	       create a new list out of it.  */
+
+	    /* Expand the argument expressions.  */
+	    tree purposevec = NULL_TREE;
+	    if (TREE_PURPOSE (t))
+	      purposevec = tsubst_pack_expansion (TREE_PURPOSE (t), args,
+						  complain, in_decl);
+	    if (purposevec == error_mark_node)
+	      return error_mark_node;
+
+	    tree valuevec = NULL_TREE;
+	    if (TREE_VALUE (t))
+	      valuevec = tsubst_pack_expansion (TREE_VALUE (t), args,
+						complain, in_decl);
+	    if (valuevec == error_mark_node)
+	      return error_mark_node;
+
+	    /* Build the rest of the list.  */
+	    tree chain = TREE_CHAIN (t);
+	    if (chain && chain != void_type_node)
+	      chain = tsubst (chain, args, complain, in_decl);
+	    if (chain == error_mark_node)
+	      return error_mark_node;
+
+	    /* Determine the number of arguments.  */
+	    int len = -1;
+	    if (purposevec && TREE_CODE (purposevec) == TREE_VEC)
+	      {
+		len = TREE_VEC_LENGTH (purposevec);
+		gcc_assert (!valuevec || len == TREE_VEC_LENGTH (valuevec));
+	      }
+	    else if (TREE_CODE (valuevec) == TREE_VEC)
+	      len = TREE_VEC_LENGTH (valuevec);
+	    else
+	      {
+		/* Since we only performed a partial substitution into
+		   the argument pack, we only RETURN (a single list
+		   node.  */
+		if (purposevec == TREE_PURPOSE (t)
+		    && valuevec == TREE_VALUE (t)
+		    && chain == TREE_CHAIN (t))
+		  return t;
+
+		return tree_cons (purposevec, valuevec, chain);
+	      }
+
+	    /* Convert the argument vectors into a TREE_LIST.  */
+	    for (int i = len; i-- > 0; )
+	      {
+		purpose = (purposevec ? TREE_VEC_ELT (purposevec, i)
+			   : NULL_TREE);
+		value = (valuevec ? TREE_VEC_ELT (valuevec, i)
+			 : NULL_TREE);
+
+		/* Build the list (backwards).  */
+		chain = hash_tree_cons (purpose, value, chain);
+	      }
+
+	    return chain;
+	  }
 
 	purpose = TREE_PURPOSE (t);
 	if (purpose)
@@ -15775,6 +15834,14 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 		  return op;
 		}
 	    }
+	  /* force_paren_expr can also create a VIEW_CONVERT_EXPR.  */
+	  else if (code == VIEW_CONVERT_EXPR && REF_PARENTHESIZED_P (t))
+	    {
+	      op = tsubst_copy (op, args, complain, in_decl);
+	      op = build1 (code, TREE_TYPE (op), op);
+	      REF_PARENTHESIZED_P (op) = true;
+	      return op;
+	    }
 	  /* We shouldn't see any other uses of these in templates.  */
 	  gcc_unreachable ();
 	}
@@ -16133,13 +16200,24 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 
     case INTEGER_CST:
     case REAL_CST:
-    case STRING_CST:
     case COMPLEX_CST:
       {
 	/* Instantiate any typedefs in the type.  */
 	tree type = tsubst (TREE_TYPE (t), args, complain, in_decl);
 	r = fold_convert (type, t);
 	gcc_assert (TREE_CODE (r) == code);
+	return r;
+      }
+
+    case STRING_CST:
+      {
+	tree type = tsubst (TREE_TYPE (t), args, complain, in_decl);
+	r = t;
+	if (type != TREE_TYPE (t))
+	  {
+	    r = copy_node (t);
+	    TREE_TYPE (r) = type;
+	  }
 	return r;
       }
 
@@ -18065,6 +18143,36 @@ tsubst_lambda_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl)
        cap = TREE_CHAIN (cap))
     {
       tree ofield = TREE_PURPOSE (cap);
+      tree init = TREE_VALUE (cap);
+      if (PACK_EXPANSION_P (init))
+	init = tsubst_pack_expansion (init, args, complain, in_decl);
+      else
+	init = tsubst_copy_and_build (init, args, complain, in_decl,
+				      /*fn*/false, /*constexpr*/false);
+
+      if (init == error_mark_node)
+	return error_mark_node;
+
+      if (init && TREE_CODE (init) == TREE_LIST)
+	init = build_x_compound_expr_from_list (init, ELK_INIT, complain);
+
+      if (!processing_template_decl
+	  && init && TREE_CODE (init) != TREE_VEC
+	  && variably_modified_type_p (TREE_TYPE (init), NULL_TREE))
+	{
+	  /* For a VLA, simply tsubsting the field type won't work, we need to
+	     go through add_capture again.  XXX do we want to do this for all
+	     captures?  */
+	  tree name = (get_identifier
+		       (IDENTIFIER_POINTER (DECL_NAME (ofield)) + 2));
+	  tree ftype = TREE_TYPE (ofield);
+	  bool by_ref = (TYPE_REF_P (ftype)
+			 || (TREE_CODE (ftype) == DECLTYPE_TYPE
+			     && DECLTYPE_FOR_REF_CAPTURE (ftype)));
+	  add_capture (r, name, init, by_ref, !DECL_NORMAL_CAPTURE_P (ofield));
+	  continue;
+	}
+
       if (PACK_EXPANSION_P (ofield))
 	ofield = PACK_EXPANSION_PATTERN (ofield);
       tree field = tsubst_decl (ofield, args, complain);
@@ -18078,13 +18186,6 @@ tsubst_lambda_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 
       if (field == error_mark_node)
 	return error_mark_node;
-
-      tree init = TREE_VALUE (cap);
-      if (PACK_EXPANSION_P (init))
-	init = tsubst_pack_expansion (init, args, complain, in_decl);
-      else
-	init = tsubst_copy_and_build (init, args, complain, in_decl,
-				      /*fn*/false, /*constexpr*/false);
 
       if (TREE_CODE (field) == TREE_VEC)
 	{
@@ -19529,13 +19630,8 @@ tsubst_copy_and_build (tree t,
       {
 	tree type1 = tsubst (TRAIT_EXPR_TYPE1 (t), args,
 			     complain, in_decl);
-
-	tree type2 = TRAIT_EXPR_TYPE2 (t);
-	if (type2 && TREE_CODE (type2) == TREE_LIST)
-	  type2 = RECUR (type2);
-	else if (type2)
-	  type2 = tsubst (type2, args, complain, in_decl);
-	
+	tree type2 = tsubst (TRAIT_EXPR_TYPE2 (t), args,
+			     complain, in_decl);
 	RETURN (finish_trait_expr (TRAIT_EXPR_KIND (t), type1, type2));
       }
 
@@ -25245,15 +25341,20 @@ invalid_nontype_parm_type_p (tree type, tsubst_flags_t complain)
 	return true;
       if (!literal_type_p (type))
 	{
-	  error ("%qT is not a valid type for a template non-type parameter "
-		 "because it is not literal", type);
-	  explain_non_literal_class (type);
+	  if (complain & tf_error)
+	    {
+	      auto_diagnostic_group d;
+	      error ("%qT is not a valid type for a template non-type parameter "
+		     "because it is not literal", type);
+	      explain_non_literal_class (type);
+	    }
 	  return true;
 	}
       if (cp_has_mutable_p (type))
 	{
-	  error ("%qT is not a valid type for a template non-type parameter "
-		 "because it has a mutable member", type);
+	  if (complain & tf_error)
+	    error ("%qT is not a valid type for a template non-type parameter "
+		   "because it has a mutable member", type);
 	  return true;
 	}
       /* FIXME check op<=> and strong structural equality once spaceship is

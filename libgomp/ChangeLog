@@ -1,3 +1,44 @@
+2020-03-12  Release Manager
+
+	* GCC 9.3.0 released.
+
+2020-02-13  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2020-02-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/93515
+	* testsuite/libgomp.c-c++-common/pr93515.c: New test.
+
+2020-01-22  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2020-01-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/93219
+	* libgomp.h (gomp_print_string): Change return type from void to int.
+	* affinity-fmt.c (gomp_print_string): Likewise.  Return true if
+	not all characters have been written.
+
+	2019-12-31  Ayush Mittal  <ayush.m@samsung.com>
+
+	PR libgomp/93065
+	* oacc-init.c (goacc_runtime_deinitialize): New function.
+
+2019-12-20  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2019-12-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/92899
+	* testsuite/libgomp.fortran/atomic1.f90: New test.
+
+	2019-11-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/60228
+	* testsuite/libgomp.c++/udr-20.C: New test.
+	* testsuite/libgomp.c++/udr-21.C: New test.
+
 2019-12-11  Thomas Schwinge  <thomas@codesourcery.com>
 	    Julian Brown  <julian@codesourcery.com>
 

@@ -2577,7 +2577,6 @@ finish_call_expr (tree fn, vec<tree, va_gc> **args, bool disallow_virtual,
 	      tree arg2 = (*orig_args)[2];
 	      int literal_mask = ((literal_integer_zerop (arg1) << 1)
 				  | (literal_integer_zerop (arg2) << 2));
-	      arg2 = instantiate_non_dependent_expr (arg2);
 	      warn_for_memset (input_location, arg0, arg2, literal_mask);
 	    }
 
@@ -4338,7 +4337,7 @@ expand_or_defer_fn_1 (tree fn)
       if (DECL_INTERFACE_KNOWN (fn))
 	/* We've already made a decision as to how this function will
 	   be handled.  */;
-      else if (!at_eof)
+      else if (!at_eof || DECL_OMP_DECLARE_REDUCTION_P (fn))
 	tentative_decl_linkage (fn);
       else
 	import_export_decl (fn);
@@ -4349,6 +4348,7 @@ expand_or_defer_fn_1 (tree fn)
 	 be emitted; there may be callers in other DLLs.  */
       if (DECL_DECLARED_INLINE_P (fn)
 	  && !DECL_REALLY_EXTERN (fn)
+	  && !DECL_OMP_DECLARE_REDUCTION_P (fn)
 	  && (flag_keep_inline_functions
 	      || (flag_keep_inline_dllexport
 		  && lookup_attribute ("dllexport", DECL_ATTRIBUTES (fn)))))
@@ -4380,6 +4380,9 @@ expand_or_defer_fn_1 (tree fn)
       TREE_ASM_WRITTEN (fn) = 1;
       return false;
     }
+
+  if (DECL_OMP_DECLARE_REDUCTION_P (fn))
+    return false;
 
   return true;
 }
@@ -10032,7 +10035,8 @@ cp_build_vec_convert (tree arg, location_t loc, tree type,
 
   tree ret = NULL_TREE;
   if (!type_dependent_expression_p (arg) && !dependent_type_p (type))
-    ret = c_build_vec_convert (cp_expr_loc_or_loc (arg, input_location), arg,
+    ret = c_build_vec_convert (cp_expr_loc_or_loc (arg, input_location),
+			       decay_conversion (arg, complain),
 			       loc, type, (complain & tf_error) != 0);
 
   if (!processing_template_decl)

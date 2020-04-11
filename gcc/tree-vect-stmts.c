@@ -2166,6 +2166,56 @@ perm_mask_for_reverse (tree vectype)
   return vect_gen_perm_mask_checked (vectype, indices);
 }
 
+/* A subroutine of get_load_store_type, with a subset of the same
+   arguments.  Handle the case where STMT_INFO is a load or store that
+   accesses consecutive elements with a negative step.  */
+
+static vect_memory_access_type
+get_negative_load_store_type (stmt_vec_info stmt_info, tree vectype,
+			      vec_load_store_type vls_type,
+			      unsigned int ncopies)
+{
+  dr_vec_info *dr_info = STMT_VINFO_DR_INFO (stmt_info);
+  dr_alignment_support alignment_support_scheme;
+
+  if (ncopies > 1)
+    {
+      if (dump_enabled_p ())
+	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			 "multiple types with negative step.\n");
+      return VMAT_ELEMENTWISE;
+    }
+
+  alignment_support_scheme = vect_supportable_dr_alignment (dr_info, false);
+  if (alignment_support_scheme != dr_aligned
+      && alignment_support_scheme != dr_unaligned_supported)
+    {
+      if (dump_enabled_p ())
+	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			 "negative step but alignment required.\n");
+      return VMAT_ELEMENTWISE;
+    }
+
+  if (vls_type == VLS_STORE_INVARIANT)
+    {
+      if (dump_enabled_p ())
+	dump_printf_loc (MSG_NOTE, vect_location,
+			 "negative step with invariant source;"
+			 " no permute needed.\n");
+      return VMAT_CONTIGUOUS_DOWN;
+    }
+
+  if (!perm_mask_for_reverse (vectype))
+    {
+      if (dump_enabled_p ())
+	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			 "negative step and reversing not supported.\n");
+      return VMAT_ELEMENTWISE;
+    }
+
+  return VMAT_CONTIGUOUS_REVERSE;
+}
+
 /* STMT_INFO is either a masked or unconditional store.  Return the value
    being stored.  */
 
@@ -2268,7 +2318,15 @@ get_group_load_store_type (stmt_vec_info stmt_info, tree vectype, bool slp,
 				 "Peeling for outer loop is not supported\n");
 	      return false;
 	    }
-	  *memory_access_type = VMAT_CONTIGUOUS;
+	  int cmp = compare_step_with_zero (stmt_info);
+	  if (cmp < 0)
+	    *memory_access_type = get_negative_load_store_type
+	      (stmt_info, vectype, vls_type, 1);
+	  else
+	    {
+	      gcc_assert (!loop_vinfo || cmp > 0);
+	      *memory_access_type = VMAT_CONTIGUOUS;
+	    }
 	}
     }
   else
@@ -2368,56 +2426,6 @@ get_group_load_store_type (stmt_vec_info stmt_info, tree vectype, bool slp,
     }
 
   return true;
-}
-
-/* A subroutine of get_load_store_type, with a subset of the same
-   arguments.  Handle the case where STMT_INFO is a load or store that
-   accesses consecutive elements with a negative step.  */
-
-static vect_memory_access_type
-get_negative_load_store_type (stmt_vec_info stmt_info, tree vectype,
-			      vec_load_store_type vls_type,
-			      unsigned int ncopies)
-{
-  dr_vec_info *dr_info = STMT_VINFO_DR_INFO (stmt_info);
-  dr_alignment_support alignment_support_scheme;
-
-  if (ncopies > 1)
-    {
-      if (dump_enabled_p ())
-	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-			 "multiple types with negative step.\n");
-      return VMAT_ELEMENTWISE;
-    }
-
-  alignment_support_scheme = vect_supportable_dr_alignment (dr_info, false);
-  if (alignment_support_scheme != dr_aligned
-      && alignment_support_scheme != dr_unaligned_supported)
-    {
-      if (dump_enabled_p ())
-	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-			 "negative step but alignment required.\n");
-      return VMAT_ELEMENTWISE;
-    }
-
-  if (vls_type == VLS_STORE_INVARIANT)
-    {
-      if (dump_enabled_p ())
-	dump_printf_loc (MSG_NOTE, vect_location,
-			 "negative step with invariant source;"
-			 " no permute needed.\n");
-      return VMAT_CONTIGUOUS_DOWN;
-    }
-
-  if (!perm_mask_for_reverse (vectype))
-    {
-      if (dump_enabled_p ())
-	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-			 "negative step and reversing not supported.\n");
-      return VMAT_ELEMENTWISE;
-    }
-
-  return VMAT_CONTIGUOUS_REVERSE;
 }
 
 /* Analyze load or store statement STMT_INFO of type VLS_TYPE.  Return true
@@ -3907,7 +3915,16 @@ vectorizable_simd_clone_call (stmt_vec_info stmt_info,
 	  || thisarginfo.dt == vect_external_def)
 	gcc_assert (thisarginfo.vectype == NULL_TREE);
       else
-	gcc_assert (thisarginfo.vectype != NULL_TREE);
+	{
+	  gcc_assert (thisarginfo.vectype != NULL_TREE);
+	  if (VECTOR_BOOLEAN_TYPE_P (thisarginfo.vectype))
+	    {
+	      if (dump_enabled_p ())
+		dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				 "vector mask arguments are not supported\n");
+	      return false;
+	    }
+	}
 
       /* For linear arguments, the analyze phase should have saved
 	 the base and step in STMT_VINFO_SIMD_CLONE_INFO.  */
