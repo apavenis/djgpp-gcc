@@ -637,7 +637,8 @@ Objective-C and Objective-C++ Dialects}.
 -march=@var{name}  -mcpu=@var{name}  -mtune=@var{name}  @gol
 -moverride=@var{string}  -mverbose-cost-dump @gol
 -mstack-protector-guard=@var{guard} -mstack-protector-guard-reg=@var{sysreg} @gol
--mstack-protector-guard-offset=@var{offset} -mtrack-speculation }
+-mstack-protector-guard-offset=@var{offset} -mtrack-speculation @gol
+-moutline-atomics }
 
 @emph{Adapteva Epiphany Options}
 @gccoptlist{-mhalf-reg-file  -mprefer-short-insn-regs @gol
@@ -4312,6 +4313,11 @@ produced for @option{-Wno-unknown-warning} unless other diagnostics
 are being produced.  This allows the use of new @option{-Wno-} options
 with old compilers, but if something goes wrong, the compiler
 warns that an unrecognized option is present.
+
+The effectiveness of some warnings depends on optimizations also being
+enabled. For example @option{-Wsuggest-final-types} is more effective
+with link-time optimization and @option{-Wmaybe-uninitialized} will not
+warn at all unless optimization is enabled.
 
 @table @gcctabopt
 @item -Wpedantic
@@ -11792,6 +11798,11 @@ speed
 (@option{sra-max-scalarization-size-Ospeed}) or size
 (@option{sra-max-scalarization-size-Osize}) respectively.
 
+@item sra-max-propagations
+The maximum number of artificial accesses that Scalar Replacement of
+Aggregates (SRA) will track, per one local variable, in order to
+facilitate copy propagation.
+
 @item tm-max-aggregate-size
 When making copies of thread-local variables in a transaction, this
 parameter specifies the size in bytes after which variables are
@@ -15776,6 +15787,19 @@ execution through conditional branches.  The tracking state can then
 be used by the compiler when expanding calls to
 @code{__builtin_speculation_safe_copy} to permit a more efficient code
 sequence to be generated.
+
+@item -moutline-atomics
+@itemx -mno-outline-atomics
+Enable or disable calls to out-of-line helpers to implement atomic operations.
+These helpers will, at runtime, determine if the LSE instructions from
+ARMv8.1-A can be used; if not, they will use the load/store-exclusive
+instructions that are present in the base ARMv8.0 ISA.
+
+This option is only applicable when compiling for the base ARMv8.0
+instruction set.  If using a later revision, e.g. @option{-march=armv8.1-a}
+or @option{-march=armv8-a+lse}, the ARMv8.1-Atomics instructions will be
+used directly.  The same applies when using @option{-mcpu=} when the
+selected cpu supports the @samp{lse} feature.
 
 @item -march=@var{name}
 @opindex march

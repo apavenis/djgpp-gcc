@@ -4099,6 +4099,14 @@ rs6000_option_override_internal (bool global_init_p)
       rs6000_isa_flags &= ~OPTION_MASK_CRYPTO;
     }
 
+  if (!TARGET_FPRND && TARGET_VSX)
+    {
+      if (rs6000_isa_flags_explicit & OPTION_MASK_FPRND)
+	/* TARGET_VSX = 1 implies Power 7 and newer */
+	error ("%qs requires %qs", "-mvsx", "-mfprnd");
+      rs6000_isa_flags &= ~OPTION_MASK_FPRND;
+    }
+
   if (TARGET_DIRECT_MOVE && !TARGET_VSX)
     {
       if (rs6000_isa_flags_explicit & OPTION_MASK_DIRECT_MOVE)
@@ -4715,11 +4723,6 @@ rs6000_option_override_internal (bool global_init_p)
 		  str_align_loops = "16";
 		}
 	    }
-
-	  if (flag_align_jumps && !str_align_jumps)
-	    str_align_jumps = "16";
-	  if (flag_align_loops && !str_align_loops)
-	    str_align_loops = "16";
 	}
 
       /* Arrange to save and restore machine status around nested functions.  */
@@ -17056,7 +17059,6 @@ altivec_init_builtins (void)
   size_t i;
   tree ftype;
   tree decl;
-  HOST_WIDE_INT builtin_mask = rs6000_builtin_mask;
 
   tree pvoid_type_node = build_pointer_type (void_type_node);
 
@@ -17418,17 +17420,8 @@ altivec_init_builtins (void)
   d = bdesc_dst;
   for (i = 0; i < ARRAY_SIZE (bdesc_dst); i++, d++)
     {
-      HOST_WIDE_INT mask = d->mask;
-
       /* It is expected that these dst built-in functions may have
 	 d->icode equal to CODE_FOR_nothing.  */
-      if ((mask & builtin_mask) != mask)
-	{
-	  if (TARGET_DEBUG_BUILTIN)
-	    fprintf (stderr, "altivec_init_builtins, skip dst %s\n",
-		     d->name);
-	  continue;
-	}
       def_builtin (d->name, void_ftype_pcvoid_int_int, d->code);
     }
 
@@ -17438,15 +17431,6 @@ altivec_init_builtins (void)
     {
       machine_mode mode1;
       tree type;
-      HOST_WIDE_INT mask = d->mask;
-
-      if ((mask & builtin_mask) != mask)
-	{
-	  if (TARGET_DEBUG_BUILTIN)
-	    fprintf (stderr, "altivec_init_builtins, skip predicate %s\n",
-		     d->name);
-	  continue;
-	}
 
       if (rs6000_overloaded_builtin_p (d->code))
 	mode1 = VOIDmode;
@@ -17493,15 +17477,6 @@ altivec_init_builtins (void)
     {
       machine_mode mode0;
       tree type;
-      HOST_WIDE_INT mask = d->mask;
-
-      if ((mask & builtin_mask) != mask)
-	{
-	  if (TARGET_DEBUG_BUILTIN)
-	    fprintf (stderr, "altivec_init_builtins, skip abs %s\n",
-		     d->name);
-	  continue;
-	}
 
       /* Cannot define builtin if the instruction is disabled.  */
       gcc_assert (d->icode != CODE_FOR_nothing);
@@ -23092,7 +23067,11 @@ rs6000_emit_p9_fp_minmax (rtx dest, rtx op, rtx true_cond, rtx false_cond)
   if (rtx_equal_p (op0, true_cond) && rtx_equal_p (op1, false_cond))
     ;
 
-  else if (rtx_equal_p (op1, true_cond) && rtx_equal_p (op0, false_cond))
+  /* Only when NaNs and signed-zeros are not in effect, smax could be
+     used for `op0 < op1 ? op1 : op0`, and smin could be used for
+     `op0 > op1 ? op1 : op0`.  */
+  else if (rtx_equal_p (op1, true_cond) && rtx_equal_p (op0, false_cond)
+	   && !HONOR_NANS (compare_mode) && !HONOR_SIGNED_ZEROS (compare_mode))
     max_p = !max_p;
 
   else
@@ -37399,6 +37378,7 @@ rs6000_disable_incompatible_switches (void)
     { OPTION_MASK_P9_VECTOR,	OTHER_P9_VECTOR_MASKS,	"power9-vector"	},
     { OPTION_MASK_P8_VECTOR,	OTHER_P8_VECTOR_MASKS,	"power8-vector"	},
     { OPTION_MASK_VSX,		OTHER_VSX_VECTOR_MASKS,	"vsx"		},
+    { OPTION_MASK_ALTIVEC,	OTHER_ALTIVEC_MASKS,	"altivec"	},
   };
 
   for (i = 0; i < ARRAY_SIZE (flags); i++)

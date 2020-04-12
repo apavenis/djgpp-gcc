@@ -1,3 +1,489 @@
+2020-04-11  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/94494
+	* config/i386/sse.md (REDUC_SSE_SMINMAX_MODE): Use TARGET_SSE2
+	condition for V4SI, V8HI and V16QI modes.
+
+2020-04-10  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	Backport from trunk
+	2020-0-31  Vineet Gupta <vgupta@synopsys.com>
+	* config/arc/linux.h: GLIBC_DYNAMIC_LINKER support BE/arc700.
+
+2020-04-09  Michael Meissner  <meissner@linux.ibm.com>
+
+	Back port from trunk
+	2020-02-26  Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/93932
+	* config/rs6000/vsx.md (vsx_extract_<mode>_var, VSX_D iterator):
+	Split the insn into two parts.  This insn only does variable
+	extract from a register.
+	(vsx_extract_<mode>_var_load, VSX_D iterator): New insn, do
+	variable extract from memory.
+	(vsx_extract_v4sf_var): Split the insn into two parts.  This insn
+	only does variable extract from a register.
+	(vsx_extract_v4sf_var_load): New insn, do variable extract from
+	memory.
+	(vsx_extract_<mode>_var, VSX_EXTRACT_I iterator): Split the insn
+	into two parts.  This insn only does variable extract from a
+	register.
+	(vsx_extract_<mode>_var_load, VSX_EXTRACT_I iterator): New insn,
+	do variable extract from memory.
+
+2020-04-07  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+Backport from mainline.
+	2020-03-23  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	* config/rs6000/rs6000-call.c altivec_init_builtins(): Remove
+	code to skip defining builtins based on builtin_mask.
+
+2020-04-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94509
+	* config/i386/i386.c (expand_vec_perm_pshufb): Fix the check
+	for inter-lane permutation for 64-byte modes.
+
+	PR target/94488
+	* config/aarch64/aarch64-simd.md (ashl<mode>3, lshr<mode>3,
+	ashr<mode>3): Force operands[2] into reg whenever it is not CONST_INT.
+	Assume it is a REG after that instead of testing it and doing FAIL
+	otherwise.  Formatting fix.
+
+	Backported from mainline
+	2020-04-04  Hannes Domani  <ssbssa@yahoo.de>
+		    Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/94459
+	* dwarf2out.c (gen_subprogram_die): Look through references, pointers,
+	arrays, pointer-to-members, function types and qualifiers when
+	checking if in-class DIE had an 'auto' or 'decltype(auto)' return type
+	to emit type again on definition.
+
+	2020-04-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94460
+	* config/i386/sse.md (avx2_ph<plusminus_mnemonic>wv16hi3,
+	avx2_ph<plusminus_mnemonic>dv8si3): Fix up RTL pattern to do
+	second half of first lane from first lane of second operand and
+	first half of second lane from second lane of first operand.
+
+	2020-04-01  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94423
+	* tree-object-size.c (pass_object_sizes::execute): Don't call
+	replace_uses_by for SSA_NAME_OCCURS_IN_ABNORMAL_PHI lhs, instead
+	call replace_call_with_value.
+
+	2020-03-31  Marc Glisse  <marc.glisse@inria.fr>
+		    Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94412
+	* fold-const.c (fold_binary_loc) <case TRUNC_DIV_EXPR>: Use
+	ANY_INTEGRAL_TYPE_P instead of INTEGRAL_TYPE_P.
+
+	2020-03-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/93069
+	* config/i386/sse.md (vec_extract_lo_<mode><mask_name>): Use
+	<store_mask_constraint> instead of m in output operand constraint.
+	(vec_extract_hi_<mode><mask_name>): Use <mask_operand2> instead of
+	%{%3%}.
+
+	2020-03-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/94329
+	* tree-ssa-reassoc.c (reassociate_bb): When calling reassoc_remove_stmt
+	on the last stmt in a bb, make sure gsi_prev isn't done immediately
+	after gsi_last_bb.
+
+	2020-03-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94303
+	* varasm.c (output_constructor_array_range): If local->index
+	RANGE_EXPR doesn't start at the current location in the constructor,
+	skip needed number of bytes using assemble_zeros or assert we don't
+	go backwards.
+
+	2020-03-25  Richard Biener  <rguenther@suse.de>
+		    Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/94283
+	* tree-if-conv.c (ifcvt_local_dce): Delete dead statements backwards.
+
+	2020-03-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/94283
+	* tree-if-conv.c (ifcvt_local_dce): For gimple debug stmts, just set
+	GF_PLF_2, but don't add them to worklist.  Don't add an assigment to
+	worklist or set GF_PLF_2 just because it is used in a debug stmt in
+	another bb.  Formatting improvements.
+
+	PR debug/94277
+	* cgraphunit.c (check_global_declaration): For DECL_EXTERNAL and
+	non-TREE_PUBLIC non-DECL_ARTIFICIAL FUNCTION_DECLs, set TREE_PUBLIC
+	regardless of whether TREE_NO_WARNING is set on it or whether
+	warn_unused_function is true or not.
+
+	2020-03-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/94211
+	* tree-ssa-phiopt.c (value_replacement): Use estimate_num_insns_seq
+	instead of estimate_num_insns for bb_seq (middle_bb).  Rename
+	emtpy_or_with_defined_p variable to empty_or_with_defined_p, adjust
+	all uses.
+
+2020-04-07  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	PR target/94518
+	2019-09-23  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/atomics.md (aarch64_store_exclusive_pair): Fix
+	memmodel index.
+
+2020-04-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94500
+	* config/i386/i386.c (emit_reduc_half): For V{64QI,32HI}mode
+	handle i < 64 using avx512bw_lshrv4ti3.  Formatting fixes.
+
+2020-04-02  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/93435
+	* params.def (PARAM_SRA_MAX_PROPAGATIONS): New parameter.
+	* tree-sra.c (propagation_budget): New variable.
+	(budget_for_propagation_access): New function.
+	(propagate_subaccesses_across_link): Use it.
+	(propagate_all_subaccesses): Set up and destroy propagation_budget.
+	* doc/invoke.texi (sra-max-propagations): New.
+
+2020-04-03  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2020-04-03  Martin Liska  <mliska@suse.cz>
+
+	PR ipa/94445
+	* ipa-icf-gimple.c (func_checker::compare_gimple_call):
+	  Compare type attributes for gimple_call_fntypes.
+
+2020-04-02  Fritz Reese  <foreese@gcc.gnu.org>
+
+	Backport from master.
+	2020-04-02  Fritz Reese  <foreese@gcc.gnu.org>
+
+	PR fortran/85982
+	* fortran/decl.c (match_attr_spec): Lump COMP_STRUCTURE/COMP_MAP into
+	attribute checking used by TYPE.
+
+2020-04-02  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-03-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/94103
+	* tree-ssa-sccvn.c (visit_reference_op_load): Avoid type
+	punning when the mode precision is not sufficient.
+
+	2020-03-18  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/94206
+	* gimple-fold.c (gimple_fold_builtin_memset): Avoid using
+	partial int modes or not mode-precision integer types for
+	the store.
+
+2020-04-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94435
+	* config/aarch64/aarch64.c (aarch64_gen_compare_reg_maybe_ze): For
+	y_mode E_[QH]Imode and y being a CONST_INT, change y_mode to SImode.
+
+2020-04-01  Zackery Spytz  <zspytz@gmail.com>
+
+	* doc/extend.texi: Fix a typo in the documentation of the
+	copy function attribute.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2020-03-31  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94368
+	* config/aarch64/constraints.md (Uph): New constraint.
+	* config/aarch64/atomics.md (cas_short_expected_imm): New mode attr.
+	(@aarch64_compare_and_swap<mode>): Use it instead of n in operand 2's
+	constraint.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2020-01-17  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	PR target/92692
+	* config/aarch64/atomics.md (aarch64_compare_and_swap<mode>)
+	Use epilogue_completed rather than reload_completed.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2019-09-19  Richard Henderson  <richard.henderson@linaro.org>
+
+	* config/aarch64/aarch64.opt (-moutline-atomics): New.
+	* config/aarch64/aarch64.c (aarch64_atomic_ool_func): New.
+	(aarch64_ool_cas_names, aarch64_ool_swp_names): New.
+	(aarch64_ool_ldadd_names, aarch64_ool_ldset_names): New.
+	(aarch64_ool_ldclr_names, aarch64_ool_ldeor_names): New.
+	(aarch64_expand_compare_and_swap): Honor TARGET_OUTLINE_ATOMICS.
+	* config/aarch64/atomics.md (atomic_exchange<ALLI>): Likewise.
+	(atomic_<atomic_op><ALLI>): Likewise.
+	(atomic_fetch_<atomic_op><ALLI>): Likewise.
+	(atomic_<atomic_op>_fetch<ALLI>): Likewise.
+	* doc/invoke.texi: Document -moutline-atomics.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2019-09-19  Richard Henderson  <richard.henderson@linaro.org>
+
+	* config/aarch64/aarch64 (aarch64_split_compare_and_swap): Disable
+	strong_zero_p for aarch64_track_speculation; unify some code paths;
+	use aarch64_gen_compare_reg instead of open-coding.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2019-09-19  Richard Henderson  <richard.henderson@linaro.org>
+
+	* config/aarch64/aarch64.c (aarch64_gen_compare_reg): Add support
+	for NE comparison of TImode values.
+	(aarch64_emit_load_exclusive): Add support for TImode.
+	(aarch64_emit_store_exclusive): Likewise.
+	(aarch64_split_compare_and_swap): Disable strong_zero_p for TImode.
+	* config/aarch64/atomics.md (@atomic_compare_and_swap<ALLI_TI>):
+	Change iterator from ALLI to ALLI_TI.
+	(@atomic_compare_and_swap<JUST_TI>): New.
+	(@atomic_compare_and_swap<JUST_TI>_lse): New.
+	(aarch64_load_exclusive_pair): New.
+	(aarch64_store_exclusive_pair): New.
+	* config/aarch64/iterators.md (JUST_TI): New.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2019-09-19  Richard Henderson  <richard.henderson@linaro.org>
+
+	* config/aarch64/aarch64.c (aarch64_print_operand): Allow integer
+	registers with %R.
+
+2020-03-31  Carl Love  <cel@us.ibm.com>
+
+	Backport of:
+	  commit e97929e20b2f52e6cfc046c1302324d1b24d95e3
+	  Author: Carl Love <carll@us.ibm.com>
+	  Date:   Wed Mar 25 18:33:37 2020 -0500
+
+	PR target/93819
+        * gcc/config/rs6000/altivec.h:
+        Fixed swapped arguments for vec_rlnm define.
+
+2020-03-31  Carl Love  <cel@us.ibm.com>
+
+	Backport from mainline
+	  commit 68dd57808f7c0147acdb5ca72c88ff655afcb0ce
+	  Author: Carl Love <carll@us.ibm.com>
+	  Date:   Fri Mar 20 18:15:05 2020 -0500
+	with ChangeLog typo fixed.
+
+	PR target/87583
+	* gcc/config/rs6000/rs6000.c (rs6000_option_override_internal):
+	Add check for TARGET_FPRND for Power 7 or newer.
+
+2020-03-24  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR lto/94249
+	* config/pa/pa.h (TARGET_CPU_CPP_BUILTINS): Define __BIG_ENDIAN__.
+
+2020-03-24  Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/94052
+	* config/aarch64/aarch64-simd.md (mov<mode>): Remove paradoxical
+	subregs of VSTRUCT modes.
+
+2020-03-24  Bin Cheng  <bin.cheng@linux.alibaba.com>
+
+	Backport from mainline
+	2020-03-16  Bin Cheng  <bin.cheng@linux.alibaba.com>
+
+	PR tree-optimization/94125
+	* tree-loop-distribution.c
+	(loop_distribution::break_alias_scc_partitions): Update post order
+	number for merged scc.
+
+2020-03-23  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	Backport from mainline
+	2020-03-10  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	PR target/90763
+	    * config/rs6000/rs6000-c.c (altivec_resolve_overloaded_builtin):
+	    Add clause to handle P9V_BUILTIN_VEC_LXVL with const arguments.
+
+2020-03-23  Iain Sandoe  <iain@sandoe.co.uk>
+
+	Backport from master.
+	2020-03-22  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* config/i386/darwin.h (JUMP_TABLES_IN_TEXT_SECTION): Remove
+	references to Darwin.
+	* config/i386/i386.h (JUMP_TABLES_IN_TEXT_SECTION): Define this
+	unconditionally and comment on why.
+
+2020-03-19  Jonathan Wakely  <jwakely@redhat.com>
+
+	Backport from mainline
+	2020-01-13  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR driver/92757
+	* doc/invoke.texi (Warning Options): Add caveat about some warnings
+	depending on optimization settings.
+
+2020-03-19  Jiufu Guo  <guojiufu@linux.ibm.com>
+
+	PR target/93709
+	* gcc/config/rs6000/rs6000.c (rs6000_emit_p9_fp_minmax): Check
+	NAN and SIGNED_ZEROR for smax/smin.
+
+2020-03-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94189
+	* builtins.c (expand_builtin_strnlen): Do return NULL_RTX if we would
+	emit a warning if it was enabled and don't depend on TREE_NO_WARNING
+	for code-generation.
+
+	Backported from mainline
+	2020-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/94167
+	* tree-inline.c (insert_init_stmt): Don't gimple_regimplify_operands
+	DEBUG_STMTs.
+
+	2020-03-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/93566
+	* tree-nested.c (convert_nonlocal_omp_clauses,
+	convert_local_omp_clauses): Handle {,in_,task_}reduction clauses
+	with C/C++ array sections.
+
+	2020-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94121
+	* config/aarch64/aarch64.c (aarch64_add_offset_1): Use gen_int_mode
+	instead of GEN_INT.
+
+	2020-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	* doc/tm.texi.in (ASM_OUTPUT_ALIGNED_DECL_LOCAL): Change
+	ASM_OUTPUT_ALIGNED_DECL in description to ASM_OUTPUT_ALIGNED_LOCAL
+	and ASM_OUTPUT_DECL to ASM_OUTPUT_LOCAL.
+	* doc/tm.texi: Regenerated.
+
+	PR tree-optimization/94130
+	* tree-ssa-dse.c: Include gimplify.h.
+	(increment_start_addr): If stmt has lhs, drop the lhs from call and
+	set it after the call to the original value of the first argument.
+	Formatting fixes.
+	(decrement_count): Formatting fix.
+
+	2020-03-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94134
+	* config/pdp11/pdp11.c (pdp11_asm_output_var): Call switch_to_section
+	at the start to switch to data section.  Don't print extra newline if
+	.globl directive has not been emitted.
+
+	PR target/94121
+	* config/aarch64/aarch64.c (aarch64_add_offset_1): Use absu_hwi
+	instead of abs_hwi, change moffset type to unsigned HOST_WIDE_INT.
+
+	PR middle-end/94111
+	* dfp.c (decimal_to_binary): Only use decimal128ToString if from->cl
+	is rvc_normal, otherwise use real_to_decimal to print the number to
+	string.
+
+	PR tree-optimization/94114
+	* tree-loop-distribution.c (generate_memset_builtin): Call
+	rewrite_to_non_trapping_overflow even on mem.
+	(generate_memcpy_builtin): Call rewrite_to_non_trapping_overflow even
+	on dest and src.
+
+	2020-03-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/93399
+	* tree-pretty-print.h (pretty_print_string): Declare.
+	* tree-pretty-print.c (pretty_print_string): Remove forward
+	declaration, no longer static.  Change nbytes parameter type
+	from unsigned to size_t.
+	* print-rtl.c (print_value) <case CONST_STRING>: Use
+	pretty_print_string and for shrink way too long strings.
+
+	2020-03-04  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/93888
+	* tree-inline.c (copy_decl_to_var): Copy DECL_BY_REFERENCE flag.
+
+	PR tree-optimization/94001
+	* tree-tailcall.c (process_assignment): Before comparing op1 to
+	*ass_var, verify *ass_var is non-NULL.
+
+2020-03-13  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/94163
+	* tree-ssa-pre.c (create_expression_by_pieces): Check
+	whether alignment would be zero.
+
+2020-03-13  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR rtl-optimization/94119
+	* resource.h (clear_hashed_info_until_next_barrier): Declare.
+	* resource.c (clear_hashed_info_until_next_barrier): New function.
+	* reorg.c (add_to_delay_list): Fix formatting.
+	(relax_delay_slots): Call clear_hashed_info_until_next_barrier on
+	the next instruction after removing a BARRIER.
+
+2020-03-12  Bill Schmidt  <wschmidt@linux.ibm.com>
+
+	Backport from master
+	2020-03-02  Bill Schmidt  <wschmidt@linux.ibm.com>
+
+	PR target/87560
+	* rs6000-cpus.def (OTHER_ALTIVEC_MASKS): New #define.
+	* rs6000.c (rs6000_disable_incompatible_switches): Add table entry
+	for OPTION_MASK_ALTIVEC.
+
+2020-03-12  Richard Earnshaw  <rearnsha@arm.com>
+
+	Backport from master
+	2020-02-10  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/91913
+	* config/arm/arm.md (movsi_compare0): Allow SP as a source register
+	in Thumb state and also as a destination in Arm state.  Add T16
+	variants.
+
+2020-03-12  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2020-03-09  Martin Liska  <mliska@suse.cz>
+
+	PR target/93800
+	* config/rs6000/rs6000.c (rs6000_option_override_internal):
+	Remove set of str_align_loops and str_align_jumps as these
+	should be set in previous 2 conditions in the function.
+
+2020-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	* BASE-VER: Set to 9.3.1.
+
 2020-03-12  Release Manager
 
 	* GCC 9.3.0 released.
