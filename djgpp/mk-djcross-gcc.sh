@@ -15,16 +15,22 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-devphase=$(cat ../gcc/DEV-PHASE)
-if [ "$devphase" == "" ] ; then
-    upstream=tags/releases/gcc-$basever
-    dj_branch=tags/djgpp/gcc-$basever
-    djn_branch=tags/djgpp/native/gcc-$basever
-else
-    upstream=master
-    dj_branch=djgpp/master
-    djn_branch=djgpp/native/master
-fi
+case $basever in
+    8.[1-9].0)
+        upstream=tags/releases/gcc-$basever
+        dj_branch=tags/djgpp/gcc-$basever
+        djn_branch=tags/djgpp/native/gcc-$basever
+        ;;
+    8.0.* | 8.[1-9].[1-9])
+        upstream=master
+        dj_branch=djgpp/master
+        djn_branch=djgpp/native/master
+        test -z "$devphase" && devphase=prerelease
+        ;;
+    *)
+        echo Unsupported version $basever
+        exit 1
+esac
 
 for ref in $upstream $dj_branch $djn_branch; do
     if ! git log -1 $ref 2>/dev/null >/dev/null ; then
