@@ -1,3 +1,51 @@
+2020-04-06  Fritz Reese  <foreese@gcc.gnu.org>
+
+	Backport from master
+	Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/93686
+	* decl.c (gfc_match_data): Handle data matching for derived type
+	pointers.
+
+2020-04-02  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	Backport from master
+	Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/93498
+	* check.c (gfc_check_findloc):  If the kinds of the arguments
+	differ goto label "incompat".
+
+2020-04-02  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	Backport from master
+	2020-04-02  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/94030
+	* resolve.c (resolve_equivalence): Correct formatting
+	around the label "identical_types".  Instead of using
+	gfc_resolve_array_spec use is_non_constants_shape_array
+	to determine whether the array can be used in a in an
+	equivalence statement.
+
+2020-03-28  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backport from mainline
+	2020-03-28  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/94348
+	* decl.c (gfc_match_submod_proc): Add result var to the
+	proc's namespace.
+
+2020-03-25  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	Backport from master
+	2020-03-25  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	PR fortran/93484
+	* match.c (gfc_match_type_spec): Replace gfc_match_init_expr with
+	gfc_match_expr. Return m if m is MATCH_NO or MATCH_ERROR.
+
 2020-03-12  Release Manager
 
 	* GCC 9.3.0 released.

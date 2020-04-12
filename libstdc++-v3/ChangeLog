@@ -1,3 +1,67 @@
+2020-04-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	Backport from mainline
+	2020-04-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/93960
+	* include/bits/ptr_traits.h (__to_address): Add special case for debug
+	iterators, to avoid dereferenceable check.
+	* testsuite/20_util/to_address/1_neg.cc: Adjust dg-error line number.
+	* testsuite/20_util/to_address/debug.cc: New test.
+
+2020-03-16  Jonathan Wakely  <jwakely@redhat.com>
+
+	Backport from mainline
+	2020-03-16  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/94199
+	* include/experimental/executor (service_already_exists): Add default
+	constructor. Declare make_service to be a friend.
+	* testsuite/experimental/net/execution_context/make_service.cc: New
+	test.
+
+2020-03-12  Jonathan Wakely  <jwakely@redhat.com>
+
+	Backport from mainline
+	2020-03-09  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/94063
+	* src/c++17/fs_path.cc (path::operator+=(const path&)): Add kluge to
+	handle concatenations that change the type of the first component.
+	(path::operator+=(basic_string_view<value_type>)): Likewise.
+	* testsuite/27_io/filesystem/path/concat/94063.cc: New test.
+
+	Backport from mainline
+	2020-02-04  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/std/functional (_GLIBCXX_NOT_FN_CALL_OP): Un-define after
+	use.
+
+	Backport from mainline
+	2020-03-12  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/tr1/8_c_compatibility/cstdlib/functions.cc: Do not pass
+	a null pointer to functions with nonnull(1) attribute.
+
+	Backport from mainline
+	2020-02-28  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/27_io/filesystem/operations/last_write_time.cc: Fixes for
+	filesystems that silently truncate timestamps.
+	* testsuite/experimental/filesystem/operations/last_write_time.cc:
+	Likewise.
+
+	Backport from mainline
+	2020-01-13  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/93244
+	* include/bits/fs_path.h (path::generic_string<C,A>)
+	[_GLIBCXX_FILESYSTEM_IS_WINDOWS]: Convert root-dir to forward-slash.
+	* testsuite/27_io/filesystem/path/generic/generic_string.cc: Check
+	root-dir is converted to forward slash in generic pathname.
+	* testsuite/27_io/filesystem/path/generic/utf.cc: New test.
+	* testsuite/27_io/filesystem/path/generic/wchar_t.cc: New test.
+
 2020-03-12  Release Manager
 
 	* GCC 9.3.0 released.

@@ -3773,10 +3773,18 @@ find_parameter_packs_r (tree *tp, int *walk_subtrees, void* data)
       return NULL_TREE;
 
     case DECL_EXPR:
-      /* Ignore the declaration of a capture proxy for a parameter pack.  */
-      if (is_capture_proxy (DECL_EXPR_DECL (t)))
-	*walk_subtrees = 0;
-      return NULL_TREE;
+      {
+	tree decl = DECL_EXPR_DECL (t);
+	/* Ignore the declaration of a capture proxy for a parameter pack.  */
+	if (is_capture_proxy (decl))
+	  *walk_subtrees = 0;
+	if (is_typedef_decl (decl) && TYPE_ALIAS_P (TREE_TYPE (decl)))
+	  /* Since we stop at aliases above, we need to look through them at
+	     the point of the DECL_EXPR.  */
+	  cp_walk_tree (&DECL_ORIGINAL_TYPE (decl),
+			&find_parameter_packs_r, ppd, ppd->visited);
+	return NULL_TREE;
+      }
 
     case RECORD_TYPE:
       if (TYPE_PTRMEMFUNC_P (t))
@@ -4877,6 +4885,14 @@ process_partial_specialization (tree decl)
       return decl;
     }
 
+  else if (nargs > DECL_NTPARMS (maintmpl))
+    {
+      error ("too many arguments for partial specialization %qT", type);
+      inform (DECL_SOURCE_LOCATION (maintmpl), "primary template here");
+      /* Avoid crash below.  */
+      return decl;
+    }
+
   /* If we aren't in a dependent class, we can actually try deduction.  */
   else if (tpd.level == 1
 	   /* FIXME we should be able to handle a partial specialization of a
@@ -4903,7 +4919,6 @@ process_partial_specialization (tree decl)
 
      Also, we verify that pack expansions only occur at the
      end of the argument list.  */
-  gcc_assert (nargs == DECL_NTPARMS (maintmpl));
   tpd2.parms = 0;
   for (i = 0; i < nargs; ++i)
     {
@@ -6137,6 +6152,33 @@ uses_all_template_parms_r (tree t, void *data_)
   return 0;
 }
 
+/* for_each_template_parm any_fn callback for complex_alias_template_p.  */
+
+static int
+complex_pack_expansion_r (tree t, void *data_)
+{
+  /* An alias template with a pack expansion that expands a pack from the
+     enclosing class needs to be considered complex, to avoid confusion with
+     the same pack being used as an argument to the alias's own template
+     parameter (91966).  */
+  if (!PACK_EXPANSION_P (t))
+    return 0;
+  struct uses_all_template_parms_data &data
+    = *(struct uses_all_template_parms_data*)data_;
+  for (tree pack = PACK_EXPANSION_PARAMETER_PACKS (t); pack;
+       pack = TREE_CHAIN (pack))
+    {
+      tree parm_pack = TREE_VALUE (pack);
+      if (!TEMPLATE_PARM_P (parm_pack))
+	continue;
+      int idx, level;
+      template_parm_level_and_index (parm_pack, &level, &idx);
+      if (level < data.level)
+	return 1;
+    }
+  return 0;
+}
+
 static bool
 complex_alias_template_p (const_tree tmpl)
 {
@@ -6149,7 +6191,9 @@ complex_alias_template_p (const_tree tmpl)
   for (int i = 0; i < len; ++i)
     data.seen[i] = false;
 
-  for_each_template_parm (pat, uses_all_template_parms_r, &data, NULL, true);
+  if (for_each_template_parm (pat, uses_all_template_parms_r, &data,
+			      NULL, true, complex_pack_expansion_r))
+    return true;
   for (int i = 0; i < len; ++i)
     if (!data.seen[i])
       return true;
@@ -17838,8 +17882,10 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
       add_stmt (t);
       break;
 
-    case OMP_SECTION:
     case OMP_MASTER:
+      omp_parallel_combined_clauses = NULL;
+      /* FALLTHRU */
+    case OMP_SECTION:
       stmt = push_stmt_list ();
       RECUR (OMP_BODY (t));
       stmt = pop_stmt_list (stmt);
@@ -27376,10 +27422,13 @@ build_deduction_guide (tree ctor, tree outer_args, tsubst_flags_t complain)
 				     complain, ctor);
 	  if (fparms == error_mark_node)
 	    ok = false;
-	  fargs = tsubst (fargs, tsubst_args, complain, ctor);
 	  if (ci)
 	    ci = tsubst_constraint_info (ci, tsubst_args, complain, ctor);
 
+	  /* Parms are to have DECL_CHAIN tsubsted, which would be skipped if
+	     cp_unevaluated_operand.  */
+	  cp_evaluated ev;
+	  fargs = tsubst (fargs, tsubst_args, complain, ctor);
 	  current_template_parms = save_parms;
 	}
 

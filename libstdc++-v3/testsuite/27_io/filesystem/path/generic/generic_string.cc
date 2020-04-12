@@ -1,7 +1,7 @@
 // { dg-options "-std=gnu++17" }
 // { dg-do run { target c++17 } }
 
-// Copyright (C) 2017-2019 Free Software Foundation, Inc.
+// Copyright (C) 2017-2020 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -46,8 +46,20 @@ test01()
   VERIFY( path("/a//b//.").generic_string() == "/a/b/." );
 }
 
+void
+test02()
+{
+  if constexpr (path::preferred_separator == L'\\')
+  {
+    // PR libstdc++/93244
+    VERIFY( path("C:\\foo\\bar").generic_string() == "C:/foo/bar" );
+    VERIFY( path("C://foo//bar").generic_string() == "C:/foo/bar" );
+  }
+}
+
 int
 main()
 {
   test01();
+  test02();
 }

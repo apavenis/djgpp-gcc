@@ -1,3 +1,341 @@
+2020-04-11  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/94494
+	* gcc.target/i386/pr94494.c: New test.
+
+2020-04-07  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	Backport from mainline.
+	2020-03-23  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	    * gcc.target/powerpc/pragma_power6.c: New.
+	    * gcc.target/powerpc/pragma_power7.c: New.
+	    * gcc.target/powerpc/pragma_power8.c: New.
+	    * gcc.target/powerpc/pragma_power9.c: New.
+	    * gcc.target/powerpc/pragma_misc9.c: New.
+	    * gcc.target/powerpc/vsu/pragma_misc9.c: New.
+	    * gcc.target/powerpc/vsu/vec-all-nez-7.c: Update.
+	    * gcc.target/powerpc/vsu/vec-any-eqz-7.c: Update.
+
+2020-04-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94509
+	* gcc.target/i386/avx512bw-pr94509-1.c: New test.
+	* gcc.target/i386/avx512bw-pr94509-2.c: New test.
+
+	PR c++/94512
+	* g++.dg/gomp/pr94512.C: New test.
+
+	PR target/94488
+	* gcc.c-torture/compile/pr94488.c: New test.
+
+	Backported from mainline
+	2020-04-04  Hannes Domani  <ssbssa@yahoo.de>
+		    Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/94459
+	* g++.dg/debug/pr94459.C: New test.
+
+	2020-04-04  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/94477
+	* g++.dg/gomp/pr94477.C: New test.
+
+	2020-04-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94460
+	* gcc.target/i386/avx2-pr94460.c: New test.
+
+	2020-04-01  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94423
+	* gcc.dg/ubsan/pr94423.c: New test.
+
+	2020-03-31  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94412
+	* gcc.c-torture/execute/pr94412.c: New test.
+
+	2020-03-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/94385
+	* c-c++-common/pr94385.c: New test.
+
+	PR target/93069
+	* gcc.target/i386/avx512vl-pr93069.c: New test.
+	* gcc.dg/vect/pr93069.c: New test.
+
+	2020-03-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/94329
+	* gfortran.dg/pr94329.f90: New test.
+
+	2020-03-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94303
+	* g++.dg/torture/pr94303.C: New test.
+
+	PR debug/94283
+	* gcc.dg/pr94283.c: New test.
+
+	2020-03-24  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/94283
+	* gcc.target/i386/pr94283.c: New test.
+
+	PR debug/94277
+	* gcc.dg/pr94277.c: New test.
+
+	2020-03-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR gcov-profile/94029
+	* gcc.misc-tests/gcov-pr94029.c: New test.
+
+	PR tree-optimization/94211
+	* gcc.dg/pr94211.c: New test.
+
+	2020-03-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/94172
+	* gcc.dg/pr94172-1.c: New test.
+	* gcc.dg/pr94172-2.c: New test.
+
+	PR c++/90995
+	* g++.dg/cpp0x/enum40.C: New test.
+
+2020-04-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94500
+	* gcc.target/i386/avx512bw-pr94500.c: New test.
+
+2020-04-06  Fritz Reese  <foreese@gcc.gnu.org>
+
+	Backport from master.
+	Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/93686
+	* gfortran.dg/pr93686_1.f90: New test.
+	* gfortran.dg/pr93686_2.f90: Likewise.
+	* gfortran.dg/pr93686_3.f90: Likewise.
+	* gfortran.dg/pr93686_4.f90: Likewise.
+
+2020-04-05  Marek Polacek  <polacek@redhat.com>
+
+	2020-02-06  Marek Polacek  <polacek@redhat.com>
+	Backport from mainline
+
+	PR c++/93597 - ICE with lambda in operator function.
+	* g++.dg/cpp0x/lambda/lambda-93597.C: New test.
+
+2020-04-02  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/93435
+	* gcc.dg/tree-ssa/pr93435.c: New test.
+
+2020-04-02  Fritz Reese  <foreese@gcc.gnu.org>
+
+	Backport from master.
+	2020-04-02  Fritz Reese  <foreese@gcc.gnu.org>
+
+	PR fortran/85982
+	* gfortran.dg/dec_structure_28.f90: New test.
+
+2020-04-02  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-03-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/94103
+	* gcc.target/i386/pr94103.c: New testcase.
+
+	2020-03-18  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/94206
+	* gcc.dg/torture/pr94206.c: New testcase.
+
+2020-04-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94435
+	* gcc.target/aarch64/pr94435.c: New test.
+
+2020-04-02  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	Backport from master
+	Mark Eggleston  <mark.eggleston@codethink.com>
+
+	PR fortran/93498
+	* gfortran.dg/pr93498_1.f90:  New test.
+	* gfortran.dg/pr93498_2.f90:  New test.
+
+2020-04-02  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	Backport from master
+	2020-04-02  Mark Eggleston <markeggleston@gcc.gnu.org>
+	Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/94030
+	* gfortran.dg/pr94030_1.f90: New test.
+	* gfortran.dg/pr94030_2.f90: New test.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2020-03-31  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.dg/pr94368.c: New test.
+
+2020-04-01  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	Backport from mainline
+	2019-09-19  Richard Henderson  <richard.henderson@linaro.org>
+
+	* gcc.target/aarch64/atomic-op-acq_rel.c: Use -mno-outline-atomics.
+	* gcc.target/aarch64/atomic-comp-swap-release-acquire.c: Likewise.
+	* gcc.target/aarch64/atomic-op-acquire.c: Likewise.
+	* gcc.target/aarch64/atomic-op-char.c: Likewise.
+	* gcc.target/aarch64/atomic-op-consume.c: Likewise.
+	* gcc.target/aarch64/atomic-op-imm.c: Likewise.
+	* gcc.target/aarch64/atomic-op-int.c: Likewise.
+	* gcc.target/aarch64/atomic-op-long.c: Likewise.
+	* gcc.target/aarch64/atomic-op-relaxed.c: Likewise.
+	* gcc.target/aarch64/atomic-op-release.c: Likewise.
+	* gcc.target/aarch64/atomic-op-seq_cst.c: Likewise.
+	* gcc.target/aarch64/atomic-op-short.c: Likewise.
+	* gcc.target/aarch64/atomic_cmp_exchange_zero_reg_1.c: Likewise.
+	* gcc.target/aarch64/atomic_cmp_exchange_zero_strong_1.c: Likewise.
+	* gcc.target/aarch64/sync-comp-swap.c: Likewise.
+	* gcc.target/aarch64/sync-op-acquire.c: Likewise.
+	* gcc.target/aarch64/sync-op-full.c: Likewise.
+
+2020-03-28  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backport from mainline
+	2020-03-28  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/94348
+	* gfortran.dg/module_procedure_3.f90: New.
+
+2020-03-25  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	Backport from master
+	2020-03-25  Mark Eggleston <markeggleston@gcc.gnu.org>
+
+	PR fortran/93484
+	* gfortran.dg/pr93484_1.f90: New test.
+	* gfortran.dg/pr93484_2.f90: New test.
+
+2020-03-25  Kewen Lin  <linkw@gcc.gnu.org>
+
+	Backport from master
+	2020-03-13  Kewen Lin  <linkw@gcc.gnu.org>
+
+	PR testsuite/93935
+	* gcc.dg/vect/bb-slp-over-widen-2.c: Expect basic block vectorized
+	messages only on vect_hw_misalign targets.
+
+2020-03-24  Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/94052
+	* g++.target/aarch64/pr94052.C: New test.
+
+2020-03-24  Bin Cheng  <bin.cheng@linux.alibaba.com>
+
+	Backport from mainline
+	2020-03-16  Bin Cheng  <bin.cheng@linux.alibaba.com>
+
+	PR tree-optimization/94125
+	* gcc.dg/tree-ssa/pr94125.c: New test.
+
+2020-03-23  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	Backport from mainline
+	2020-03-10  Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+	PR target/90763
+	* gcc.target/powerpc/pr90763.c: New.
+
+2020-03-19  Jiufu Guo  <guojiufu@linux.ibm.com>
+
+	PR target/93709
+	* gcc.target/powerpc/p9-minmax-3.c: New test.
+
+2020-03-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/94189
+	* gcc.dg/pr94189.c: New test.
+
+	Backported from mainline
+	2020-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/94167
+	* gcc.dg/pr94167.c: New test.
+
+	2020-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/94130
+	* gcc.c-torture/execute/pr94130.c: New test.
+
+	2020-03-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94134
+	* gcc.c-torture/execute/pr94134.c: New test.
+
+	PR target/94121
+	* gcc.dg/pr94121.c: New test.
+
+	PR middle-end/94111
+	* gcc.dg/dfp/pr94111.c: New test.
+
+	PR tree-optimization/94114
+	* gcc.dg/pr94114.c: New test.
+
+	2020-03-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/93399
+	* gcc.dg/pr93399.c: New test.
+
+	2020-03-04  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/93888
+	* g++.dg/guality/pr93888.C: New test.
+
+	PR tree-optimization/94001
+	* gcc.dg/pr94001.c: New test.
+
+2020-03-17  Kewen Lin  <linkw@gcc.gnu.org>
+
+	Backport from master
+	2020-03-09  Kewen Lin  <linkw@gcc.gnu.org>
+
+	PR testsuite/94019
+	* gcc.dg/vect/vect-over-widen-17.c: Don't expect vector char if it's
+	without misaligned vector access support.
+
+2020-03-17  Kewen Lin  <linkw@gcc.gnu.org>
+
+	Backport from master
+	2020-03-09  Kewen Lin  <linkw@gcc.gnu.org>
+
+	PR testsuite/94023
+	* gcc.dg/vect/slp-perm-12.c: Expect loop vectorized messages only on
+	vect_hw_misalign targets.
+
+2020-03-12  Richard Earnshaw  <rearnsha@arm.com>
+
+	Backport from master
+	2020-02-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/91913
+	* gfortran.dg/pr91913.f90: New test.
+
+2020-03-12  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2020-03-09  Martin Liska  <mliska@suse.cz>
+
+	PR target/93800
+	* gcc.target/powerpc/pr93800.c: New test.
+
 2020-03-12  Release Manager
 
 	* GCC 9.3.0 released.

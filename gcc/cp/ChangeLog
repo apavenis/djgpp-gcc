@@ -1,3 +1,95 @@
+2020-04-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/94512
+	* parser.c (cp_parser_omp_parallel): Set OMP_PARALLEL_COMBINED
+	if cp_parser_omp_master succeeded.
+
+	Backported from mainline
+	2020-04-04  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/94477
+	* pt.c (tsubst_expr) <case OMP_MASTER>: Clear
+	omp_parallel_combined_clauses.
+
+	2020-03-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/94385
+	* semantics.c (add_stmt): Only set STMT_IS_FULL_EXPR_P on trees with
+	STATEMENT_CODE_P code.
+
+	2020-03-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/93931
+	* parser.c (cp_parser_omp_var_list_no_open): Call process_outer_var_ref
+	on outer_automatic_var_p decls.
+	* cp-gimplify.c (cxx_omp_disregard_value_expr): Return true also for
+	capture proxy decls.
+
+	2020-03-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/90995
+	* parser.c (cp_parser_enum_specifier): Use temp_override for
+	parser->colon_corrects_to_scope_p, replace goto out with return.
+	If scoped enum or enum with underlying type is not followed by
+	{ or ;, call cp_parser_commit_to_tentative_parse before calling
+	cp_parser_error and make sure to return error_mark_node instead of
+	NULL_TREE.  Formatting fixes.
+
+2020-04-05  Marek Polacek  <polacek@redhat.com>
+
+	2020-02-06  Marek Polacek  <polacek@redhat.com>
+	Backport from mainline
+
+	PR c++/93597 - ICE with lambda in operator function.
+	* name-lookup.c (maybe_save_operator_binding): Check is_overloaded_fn.
+
+2020-04-04  Jason Merrill  <jason@redhat.com>
+
+	PR c++/91377
+	* mangle.c (write_expression): Skip IMPLICIT_CONV_EXPR.
+
+2020-04-04  Jason Merrill  <jason@redhat.com>
+
+	PR c++/94453
+	* constexpr.c (maybe_constant_value): Use break_out_target_exprs.
+	* expr.c (mark_use) [VIEW_CONVERT_EXPR]: Don't wrap a TARGET_EXPR in
+	NON_LVALUE_EXPR.
+
+2020-04-03  Jason Merrill  <jason@redhat.com>
+
+	PR c++/91966
+	* pt.c (complex_pack_expansion_r): New.
+	(complex_alias_template_p): Use it.
+
+2020-03-30  Jason Merrill  <jason@redhat.com>
+
+	PR c++/90711
+	* tree.c (cp_tree_equal) [CALL_EXPR]: Compare KOENIG_LOOKUP_P.
+	(called_fns_equal): Check DECL_CONTEXT.
+
+2020-03-27  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/84733
+	* name-lookup.c (do_pushdecl): Look through cleanp levels.
+
+2020-03-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/92909
+	* pt.c (find_parameter_packs_r): [DECL_EXPR]: Walk
+	DECL_ORIGINAL_TYPE of a typedef.
+
+2020-03-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/92068
+	* pt.c (process_partial_specialization): Error rather than crash on
+	extra pack expansion.
+
+2020-03-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/93248
+	* pt.c (build_deduction_guide): Clear cp_unevaluated_operand for
+	substituting DECL_ARGUMENTS.
+
 2020-03-12  Release Manager
 
 	* GCC 9.3.0 released.
