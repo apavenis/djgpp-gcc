@@ -1,3 +1,13 @@
+2020-03-11  Richard Wai  <richard@annexi-strayline.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_entity): Also test Is_Public on
+	the Alias of the entitiy, if it is present, in the main assertion.
+
+2020-02-06  Alexandre Oliva <oliva@adacore.com>
+
+	* raise-gcc.c (personality_body) [__ARM_EABI_UNWINDER__]:
+	Initialize barrier_cache.sp when ending phase1.
+
 2020-01-04  Eric Botcazou  <ebotcazou@adacore.com>
 
 	* gnatvsn.ads: Bump copyright year.

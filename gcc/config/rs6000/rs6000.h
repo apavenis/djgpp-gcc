@@ -2490,6 +2490,10 @@ extern GTY(()) tree rs6000_builtin_types[RS6000_BTI_MAX];
 extern GTY(()) tree rs6000_builtin_decls[RS6000_BUILTIN_COUNT];
 
 #ifndef USED_FOR_TARGET
+extern GTY(()) tree builtin_mode_to_type[MAX_MACHINE_MODE][2];
+extern GTY(()) tree altivec_builtin_mask_for_load;
+extern GTY(()) section *toc_section;
+
 /* A C structure for machine-specific, per-function data.
    This is added to the cfun structure.  */
 typedef struct GTY(()) machine_function
@@ -2558,7 +2562,7 @@ typedef struct GTY(()) machine_function
 #define FINAL_PRESCAN_INSN(INSN, OPERANDS, NOPERANDS)			\
 do									\
   {									\
-    if (TARGET_PREFIXED_ADDR)						\
+    if (TARGET_PREFIXED)						\
       rs6000_final_prescan_insn (INSN, OPERANDS, NOPERANDS);		\
   }									\
 while (0)
@@ -2568,7 +2572,7 @@ while (0)
 #define ASM_OUTPUT_OPCODE(STREAM, OPCODE)				\
   do									\
     {									\
-     if (TARGET_PREFIXED_ADDR)						\
+     if (TARGET_PREFIXED)						\
        rs6000_asm_output_opcode (STREAM);				\
     }									\
   while (0)

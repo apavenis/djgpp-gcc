@@ -120,6 +120,7 @@ struct mangled_decl_hash : ggc_remove <tree>
     return candidate == name;
   }
 
+  static const bool empty_zero_p = true;
   static inline void mark_empty (value_type &p) {p = NULL_TREE;}
   static inline bool is_empty (value_type p) {return !p;}
 
@@ -1190,8 +1191,7 @@ is_late_template_attribute (tree attr, tree decl)
 	  && identifier_p (t))
 	continue;
 
-      if (value_dependent_expression_p (t)
-	  || type_dependent_expression_p (t))
+      if (value_dependent_expression_p (t))
 	return true;
     }
 
@@ -3213,6 +3213,33 @@ build_cleanup (tree decl)
   return clean;
 }
 
+/* GUARD is a helper variable for DECL; make them have the same linkage and
+   visibility.  */
+
+void
+copy_linkage (tree guard, tree decl)
+{
+  TREE_PUBLIC (guard) = TREE_PUBLIC (decl);
+  TREE_STATIC (guard) = TREE_STATIC (decl);
+  DECL_COMMON (guard) = DECL_COMMON (decl);
+  DECL_COMDAT (guard) = DECL_COMDAT (decl);
+  if (TREE_STATIC (guard))
+    {
+      CP_DECL_THREAD_LOCAL_P (guard) = CP_DECL_THREAD_LOCAL_P (decl);
+      set_decl_tls_model (guard, DECL_TLS_MODEL (decl));
+      if (DECL_ONE_ONLY (decl))
+	make_decl_one_only (guard, cxx_comdat_group (guard));
+      if (TREE_PUBLIC (decl))
+	DECL_WEAK (guard) = DECL_WEAK (decl);
+      /* Also check vague_linkage_p, as DECL_WEAK and DECL_ONE_ONLY might not
+	 be set until import_export_decl at EOF.  */
+      if (vague_linkage_p (decl))
+	comdat_linkage (guard);
+      DECL_VISIBILITY (guard) = DECL_VISIBILITY (decl);
+      DECL_VISIBILITY_SPECIFIED (guard) = DECL_VISIBILITY_SPECIFIED (decl);
+    }
+}
+
 /* Returns the initialization guard variable for the variable DECL,
    which has static storage duration.  */
 
@@ -3235,18 +3262,7 @@ get_guard (tree decl)
 			  VAR_DECL, sname, guard_type);
 
       /* The guard should have the same linkage as what it guards.  */
-      TREE_PUBLIC (guard) = TREE_PUBLIC (decl);
-      TREE_STATIC (guard) = TREE_STATIC (decl);
-      DECL_COMMON (guard) = DECL_COMMON (decl);
-      DECL_COMDAT (guard) = DECL_COMDAT (decl);
-      CP_DECL_THREAD_LOCAL_P (guard) = CP_DECL_THREAD_LOCAL_P (decl);
-      set_decl_tls_model (guard, DECL_TLS_MODEL (decl));
-      if (DECL_ONE_ONLY (decl))
-	make_decl_one_only (guard, cxx_comdat_group (guard));
-      if (TREE_PUBLIC (decl))
-	DECL_WEAK (guard) = DECL_WEAK (decl);
-      DECL_VISIBILITY (guard) = DECL_VISIBILITY (decl);
-      DECL_VISIBILITY_SPECIFIED (guard) = DECL_VISIBILITY_SPECIFIED (decl);
+      copy_linkage (guard, decl);
 
       DECL_ARTIFICIAL (guard) = 1;
       DECL_IGNORED_P (guard) = 1;
@@ -5633,7 +5649,7 @@ mark_used (tree decl, tsubst_flags_t complain)
       /* Remember the current location for a function we will end up
 	 synthesizing.  Then we can inform the user where it was
 	 required in the case of error.  */
-      if (DECL_ARTIFICIAL (decl))
+      if (decl_remember_implicit_trigger_p (decl))
 	DECL_SOURCE_LOCATION (decl) = input_location;
 
       /* Synthesizing an implicitly defined member function will result in

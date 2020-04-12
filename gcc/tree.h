@@ -1203,6 +1203,7 @@ get_expr_source_range (tree expr)
 }
 
 extern void protected_set_expr_location (tree, location_t);
+extern void protected_set_expr_location_if_unset (tree, location_t);
 
 extern tree maybe_wrap_with_location (tree, location_t);
 
@@ -3036,6 +3037,11 @@ set_function_decl_type (tree decl, function_decl_type t, bool set)
     FUNCTION_DECL_DECL_TYPE (decl) = NONE;
 }
 
+/* Nonzero in a FUNCTION_DECL means this function is a replaceable
+   function (like replaceable operators new or delete).  */
+#define DECL_IS_REPLACEABLE_OPERATOR(NODE)\
+   (FUNCTION_DECL_CHECK (NODE)->function_decl.replaceable_operator)
+
 /* Nonzero in a FUNCTION_DECL means this function should be treated as
    C++ operator new, meaning that it returns a pointer for which we
    should not use type based aliasing.  */
@@ -3043,7 +3049,7 @@ set_function_decl_type (tree decl, function_decl_type t, bool set)
   (FUNCTION_DECL_CHECK (NODE)->function_decl.decl_type == OPERATOR_NEW)
 
 #define DECL_IS_REPLACEABLE_OPERATOR_NEW_P(NODE) \
-  (DECL_IS_OPERATOR_NEW_P (NODE) && DECL_IS_MALLOC (NODE))
+  (DECL_IS_OPERATOR_NEW_P (NODE) && DECL_IS_REPLACEABLE_OPERATOR (NODE))
 
 #define DECL_SET_IS_OPERATOR_NEW(NODE, VAL) \
   set_function_decl_type (FUNCTION_DECL_CHECK (NODE), OPERATOR_NEW, VAL)
@@ -3052,6 +3058,9 @@ set_function_decl_type (tree decl, function_decl_type t, bool set)
    C++ operator delete.  */
 #define DECL_IS_OPERATOR_DELETE_P(NODE) \
   (FUNCTION_DECL_CHECK (NODE)->function_decl.decl_type == OPERATOR_DELETE)
+
+#define DECL_IS_REPLACEABLE_OPERATOR_DELETE_P(NODE) \
+  (DECL_IS_OPERATOR_DELETE_P (NODE) && DECL_IS_REPLACEABLE_OPERATOR (NODE))
 
 #define DECL_SET_IS_OPERATOR_DELETE(NODE, VAL) \
   set_function_decl_type (FUNCTION_DECL_CHECK (NODE), OPERATOR_DELETE, VAL)
@@ -5609,6 +5618,31 @@ builtin_decl_declared_p (enum built_in_function fncode)
   gcc_checking_assert (BUILTIN_VALID_P (fncode));
   return (builtin_info[uns_fncode].decl != NULL_TREE
 	  && builtin_info[uns_fncode].declared_p);
+}
+
+/* Determine if the function identified by FNDECL is one that
+   makes sense to match by name, for those places where we detect
+   "magic" functions by name.
+
+   Return true if FNDECL has a name and is an extern fndecl at file scope.
+   FNDECL must be a non-NULL decl.
+
+   Avoid using this, as it's generally better to use attributes rather
+   than to check for functions by name.  */
+
+static inline bool
+maybe_special_function_p (const_tree fndecl)
+{
+  tree name_decl = DECL_NAME (fndecl);
+  if (name_decl
+      /* Exclude functions not at the file scope, or not `extern',
+	 since they are not the magic functions we would otherwise
+	 think they are.  */
+      && (DECL_CONTEXT (fndecl) == NULL_TREE
+	  || TREE_CODE (DECL_CONTEXT (fndecl)) == TRANSLATION_UNIT_DECL)
+      && TREE_PUBLIC (fndecl))
+    return true;
+  return false;
 }
 
 /* Return true if T (assumed to be a DECL) is a global variable.

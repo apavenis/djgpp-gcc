@@ -2223,7 +2223,7 @@ argument_rank_mismatch (const char *name, locus *where,
 		       where, where_formal, rank1);
       else
 	gfc_error_opt (0, "Rank mismatch between actual argument at %L "
-		       "and actual argument at %L (rank-%d and rank-%d", where,
+		       "and actual argument at %L (rank-%d and rank-%d)", where,
 		       where_formal, rank1, rank2);
     }
 }
@@ -2660,8 +2660,8 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
 	{
 	  if (formal->attr.artificial)
 	    gfc_error ("Element of assumed-shape or pointer array "
-		       "as actual argument at %L can not correspond to "
-		       "actual argument at %L ",
+		       "as actual argument at %L cannot correspond to "
+		       "actual argument at %L",
 		       &actual->where, &formal->declared_at);
 	  else
 	    gfc_error ("Element of assumed-shape or pointer "
@@ -3798,8 +3798,16 @@ gfc_procedure_use (gfc_symbol *sym, gfc_actual_arglist **ap, locus *where)
      explicitly declared at all if requested.  */
   if (sym->attr.if_source == IFSRC_UNKNOWN && !sym->attr.is_iso_c)
     {
+      bool has_implicit_none_export = false;
       implicit = true;
-      if (sym->ns->has_implicit_none_export && sym->attr.proc == PROC_UNKNOWN)
+      if (sym->attr.proc == PROC_UNKNOWN)
+	for (gfc_namespace *ns = sym->ns; ns; ns = ns->parent)
+	  if (ns->has_implicit_none_export)
+	    {
+	      has_implicit_none_export = true;
+	      break;
+	    }
+      if (has_implicit_none_export)
 	{
 	  const char *guessed
 	    = gfc_lookup_function_fuzzy (sym->name, sym->ns->sym_root);
@@ -4999,6 +5007,9 @@ check_dtio_interface1 (gfc_symbol *derived, gfc_symtree *tb_io_st,
     gfc_error ("DTIO procedure %qs at %L must be a subroutine",
 	       dtio_sub->name, &dtio_sub->declared_at);
 
+  if (!dtio_sub->resolved)
+    gfc_resolve_formal_arglist (dtio_sub);
+
   arg_num = 0;
   for (formal = dtio_sub->formal; formal; formal = formal->next)
     arg_num++;
@@ -5016,7 +5027,6 @@ check_dtio_interface1 (gfc_symbol *derived, gfc_symtree *tb_io_st,
 		 dtio_sub->name, &dtio_sub->declared_at);
       return;
     }
-
 
   /* Now go through the formal arglist.  */
   arg_num = 1;

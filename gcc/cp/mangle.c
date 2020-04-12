@@ -628,6 +628,8 @@ find_substitution (tree node)
 	    {
 	      tree args = CLASSTYPE_TI_ARGS (type);
 	      if (TREE_VEC_LENGTH (args) == 3
+		  && (TREE_CODE (TREE_VEC_ELT (args, 0))
+		      == TREE_CODE (char_type_node))
 		  && same_type_p (TREE_VEC_ELT (args, 0), char_type_node)
 		  && is_std_substitution_char (TREE_VEC_ELT (args, 1),
 					       SUBID_CHAR_TRAITS)
@@ -652,7 +654,7 @@ find_substitution (tree node)
 	 args <char, std::char_traits<char> > .  */
       tree args = CLASSTYPE_TI_ARGS (type);
       if (TREE_VEC_LENGTH (args) == 2
-	  && TYPE_P (TREE_VEC_ELT (args, 0))
+	  && TREE_CODE (TREE_VEC_ELT (args, 0)) == TREE_CODE (char_type_node)
 	  && same_type_p (TREE_VEC_ELT (args, 0), char_type_node)
 	  && is_std_substitution_char (TREE_VEC_ELT (args, 1),
 				       SUBID_CHAR_TRAITS))
@@ -2569,11 +2571,11 @@ write_builtin_type (tree type)
 	write_char ('d');
       else if (type == long_double_type_node)
 	write_char ('e');
-      else if (type == dfloat32_type_node)
+      else if (type == dfloat32_type_node || type == fallback_dfloat32_type)
 	write_string ("Df");
-      else if (type == dfloat64_type_node)
+      else if (type == dfloat64_type_node || type == fallback_dfloat64_type)
 	write_string ("Dd");
-      else if (type == dfloat128_type_node)
+      else if (type == dfloat128_type_node || type == fallback_dfloat128_type)
 	write_string ("De");
       else
 	gcc_unreachable ();
@@ -2873,6 +2875,7 @@ write_expression (tree expr)
   /* Skip NOP_EXPR and CONVERT_EXPR.  They can occur when (say) a pointer
      argument is converted (via qualification conversions) to another type.  */
   while (CONVERT_EXPR_CODE_P (code)
+	 || code == IMPLICIT_CONV_EXPR
 	 || location_wrapper_p (expr)
 	 /* Parentheses aren't mangled.  */
 	 || code == PAREN_EXPR

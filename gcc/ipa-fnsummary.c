@@ -503,6 +503,32 @@ evaluate_conditions_for_known_args (struct cgraph_node *node,
     *ret_nonspec_clause = nonspec_clause;
 }
 
+/* Return true if VRP will be exectued on the function.
+   We do not want to anticipate optimizations that will not happen.
+
+   FIXME: This can be confused with -fdisable and debug counters and thus
+   it should not be used for correctness (only to make heuristics work).
+   This means that inliner should do its own optimizations of expressions
+   that it predicts to be constant so wrong code can not be triggered by
+   builtin_constant_p.  */
+
+static bool
+vrp_will_run_p (struct cgraph_node *node)
+{
+  return (opt_for_fn (node->decl, optimize)
+	  && !opt_for_fn (node->decl, optimize_debug)
+	  && opt_for_fn (node->decl, flag_tree_vrp));
+}
+
+/* Similarly about FRE.  */
+
+static bool
+fre_will_run_p (struct cgraph_node *node)
+{
+  return (opt_for_fn (node->decl, optimize)
+	  && !opt_for_fn (node->decl, optimize_debug)
+	  && opt_for_fn (node->decl, flag_tree_fre));
+}
 
 /* Work out what conditions might be true at invocation of E.
    Compute costs for inlined edge if INLINE_P is true.
@@ -594,6 +620,7 @@ evaluate_properties_for_edge (struct cgraph_edge *e, bool inline_p,
 
 		/* If we failed to get simple constant, try value range.  */
 		if ((!cst || TREE_CODE (cst) != INTEGER_CST)
+		    && vrp_will_run_p (caller)
 		    && ipa_is_param_used_by_ipa_predicates (callee_pi, i))
 		  {
 		    value_range vr 
@@ -609,14 +636,17 @@ evaluate_properties_for_edge (struct cgraph_edge *e, bool inline_p,
 		  }
 
 		/* Determine known aggregate values.  */
-		ipa_agg_value_set agg
-		    = ipa_agg_value_set_from_jfunc (caller_parms_info,
-						    caller, &jf->agg);
-		if (agg.items.length ())
+		if (fre_will_run_p (caller))
 		  {
-		    if (!known_aggs_ptr->length ())
-		      vec_safe_grow_cleared (known_aggs_ptr, count);
-		    (*known_aggs_ptr)[i] = agg;
+		    ipa_agg_value_set agg
+			= ipa_agg_value_set_from_jfunc (caller_parms_info,
+							caller, &jf->agg);
+		    if (agg.items.length ())
+		      {
+			if (!known_aggs_ptr->length ())
+			  vec_safe_grow_cleared (known_aggs_ptr, count);
+			(*known_aggs_ptr)[i] = agg;
+		      }
 		  }
 	      }
 
@@ -2604,14 +2634,26 @@ analyze_function_body (struct cgraph_node *node, bool early)
 	      edge_set_predicate (edge, &bb_predicate);
 	      if (edge->speculative)
 		{
-		  cgraph_edge *direct, *indirect;
-		  ipa_ref *ref;
-		  edge->speculative_call_info (direct, indirect, ref);
-		  gcc_assert (direct == edge);
+		  cgraph_edge *indirect
+			= edge->speculative_call_indirect_edge ();
 	          ipa_call_summary *es2
 			 = ipa_call_summaries->get_create (indirect);
 		  ipa_call_summaries->duplicate (edge, indirect,
 						 es, es2);
+
+		  /* Edge is the first direct call.
+		     create and duplicate call summaries for multiple
+		     speculative call targets.  */
+		  for (cgraph_edge *direct
+			 = edge->next_speculative_call_target ();
+		       direct;
+		       direct = direct->next_speculative_call_target ())
+		    {
+		      ipa_call_summary *es3
+			= ipa_call_summaries->get_create (direct);
+		      ipa_call_summaries->duplicate (edge, direct,
+						     es, es3);
+		    }
 		}
 	    }
 
@@ -2932,10 +2974,6 @@ compute_fn_summary (struct cgraph_node *node, bool early)
        analyze_function_body (node, early);
        pop_cfun ();
      }
-  for (e = node->callees; e; e = e->next_callee)
-    if (e->callee->comdat_local_p ())
-      break;
-  node->calls_comdat_local = (e != NULL);
 
   /* Inlining characteristics are maintained by the cgraph_mark_inline.  */
   size_info->size = size_info->self_size;
@@ -3238,7 +3276,7 @@ estimate_calls_size_and_time (struct cgraph_node *node, int *size,
 	  gcc_assert (*size == old_size);
 	  if (time && (*time - old_time > 1 || *time - old_time < -1)
 	      && dump_file)
-	    fprintf (dump_file, "Time mismatch in call summary %f!=%f",
+	    fprintf (dump_file, "Time mismatch in call summary %f!=%f\n",
 		     old_time.to_double (),
 		     time->to_double ());
 	}

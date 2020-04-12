@@ -41,6 +41,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-pass.h"
 #include "dbgcnt.h"
 #include "function-abi.h"
+#include "rtl-iter.h"
 
 static int reload_cse_noop_set_p (rtx);
 static bool reload_cse_simplify (rtx_insn *, rtx);
@@ -1078,6 +1079,10 @@ reload_combine_recognize_pattern (rtx_insn *insn)
       struct reg_use *use = reg_state[regno].reg_use + i;
       if (GET_MODE (*use->usep) != mode)
 	return false;
+      /* Don't try to adjust (use (REGX)).  */
+      if (GET_CODE (PATTERN (use->insn)) == USE
+	  && &XEXP (PATTERN (use->insn), 0) == use->usep)
+	return false;
     }
 
   /* Look for (set (REGX) (CONST_INT))
@@ -2086,6 +2091,21 @@ reload_cse_move2add (rtx_insn *first)
 		}
 	    }
 	}
+
+      /* There are no REG_INC notes for SP autoinc.  */
+      subrtx_var_iterator::array_type array;
+      FOR_EACH_SUBRTX_VAR (iter, array, PATTERN (insn), NONCONST)
+	{
+	  rtx mem = *iter;
+	  if (mem
+	      && MEM_P (mem)
+	      && GET_RTX_CLASS (GET_CODE (XEXP (mem, 0))) == RTX_AUTOINC)
+	    {
+	      if (XEXP (XEXP (mem, 0), 0) == stack_pointer_rtx)
+		reg_mode[STACK_POINTER_REGNUM] = VOIDmode;
+	    }
+	}
+
       note_stores (insn, move2add_note_store, insn);
 
       /* If INSN is a conditional branch, we try to extract an
@@ -2139,17 +2159,6 @@ move2add_note_store (rtx dst, const_rtx set, void *data)
   rtx_insn *insn = (rtx_insn *) data;
   unsigned int regno = 0;
   scalar_int_mode mode;
-
-  /* Some targets do argument pushes without adding REG_INC notes.  */
-
-  if (MEM_P (dst))
-    {
-      dst = XEXP (dst, 0);
-      if (GET_CODE (dst) == PRE_INC || GET_CODE (dst) == POST_INC
-	  || GET_CODE (dst) == PRE_DEC || GET_CODE (dst) == POST_DEC)
-	reg_mode[REGNO (XEXP (dst, 0))] = VOIDmode;
-      return;
-    }
 
   if (GET_CODE (dst) == SUBREG)
     regno = subreg_regno (dst);

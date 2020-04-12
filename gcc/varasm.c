@@ -2589,20 +2589,16 @@ assemble_name_raw (FILE *file, const char *name)
     ASM_OUTPUT_LABELREF (file, name);
 }
 
-/* Like assemble_name_raw, but should be used when NAME might refer to
-   an entity that is also represented as a tree (like a function or
-   variable).  If NAME does refer to such an entity, that entity will
-   be marked as referenced.  */
-
-void
-assemble_name (FILE *file, const char *name)
+/* Return NAME that should actually be emitted, looking through
+   transparent aliases.  If NAME refers to an entity that is also
+   represented as a tree (like a function or variable), mark the entity
+   as referenced.  */
+const char *
+assemble_name_resolve (const char *name)
 {
-  const char *real_name;
-  tree id;
+  const char *real_name = targetm.strip_name_encoding (name);
+  tree id = maybe_get_identifier (real_name);
 
-  real_name = targetm.strip_name_encoding (name);
-
-  id = maybe_get_identifier (real_name);
   if (id)
     {
       tree id_orig = id;
@@ -2614,7 +2610,18 @@ assemble_name (FILE *file, const char *name)
       gcc_assert (! TREE_CHAIN (id));
     }
 
-  assemble_name_raw (file, name);
+  return name;
+}
+
+/* Like assemble_name_raw, but should be used when NAME might refer to
+   an entity that is also represented as a tree (like a function or
+   variable).  If NAME does refer to such an entity, that entity will
+   be marked as referenced.  */
+
+void
+assemble_name (FILE *file, const char *name)
+{
+  assemble_name_raw (file, assemble_name_resolve (name));
 }
 
 /* Allocate SIZE bytes writable static space with a gensym name
@@ -5145,6 +5152,26 @@ struct oc_local_state {
 static void
 output_constructor_array_range (oc_local_state *local)
 {
+  /* Perform the index calculation in modulo arithmetic but
+     sign-extend the result because Ada has negative DECL_FIELD_OFFSETs
+     but we are using an unsigned sizetype.  */
+  unsigned prec = TYPE_PRECISION (sizetype);
+  offset_int idx = wi::sext (wi::to_offset (TREE_OPERAND (local->index, 0))
+			     - wi::to_offset (local->min_index), prec);
+  tree valtype = TREE_TYPE (local->val);
+  HOST_WIDE_INT fieldpos
+    = (idx * wi::to_offset (TYPE_SIZE_UNIT (valtype))).to_short_addr ();
+
+  /* Advance to offset of this element.  */
+  if (fieldpos > local->total_bytes)
+    {
+      assemble_zeros (fieldpos - local->total_bytes);
+      local->total_bytes = fieldpos;
+    }
+  else
+    /* Must not go backwards.  */
+    gcc_assert (fieldpos == local->total_bytes);
+
   unsigned HOST_WIDE_INT fieldsize
     = int_size_in_bytes (TREE_TYPE (local->type));
 

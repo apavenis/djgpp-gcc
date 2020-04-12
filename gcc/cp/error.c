@@ -1037,14 +1037,13 @@ dump_simple_decl (cxx_pretty_printer *pp, tree t, tree type, int flags)
 
   if (flags & TFF_DECL_SPECIFIERS)
     {
-      if (VAR_P (t) && DECL_DECLARED_CONSTEXPR_P (t))
-        {
-	  if (DECL_LANG_SPECIFIC (t) && DECL_DECLARED_CONCEPT_P (t))
-	    pp_cxx_ws_string (pp, "concept");
-	  else
-	    pp_cxx_ws_string (pp, "constexpr");
-	}
-      dump_type_prefix (pp, type, flags & ~TFF_UNQUALIFIED_NAME);
+      if (concept_definition_p (t))
+	pp_cxx_ws_string (pp, "concept");
+      else if (VAR_P (t) && DECL_DECLARED_CONSTEXPR_P (t))
+	pp_cxx_ws_string (pp, "constexpr");
+
+      if (!standard_concept_p (t))
+	dump_type_prefix (pp, type, flags & ~TFF_UNQUALIFIED_NAME);
       pp_maybe_space (pp);
     }
   if (! (flags & TFF_UNQUALIFIED_NAME)
@@ -1098,7 +1097,7 @@ dump_decl_name (cxx_pretty_printer *pp, tree t, int flags)
     }
 
   const char *str = IDENTIFIER_POINTER (t);
-  if (!strncmp (str, "_ZGR", 3))
+  if (!strncmp (str, "_ZGR", 4))
     {
       pp_cxx_ws_string (pp, "<temporary>");
       return;
@@ -1296,8 +1295,7 @@ dump_decl (cxx_pretty_printer *pp, tree t, int flags)
       break;
 
     case CONCEPT_DECL:
-      pp_cxx_ws_string (pp, "concept");
-      dump_decl_name (pp, DECL_NAME (t), flags);
+      dump_simple_decl (pp, t, TREE_TYPE (t), flags);
       break;
 
     case WILDCARD_DECL:
@@ -1525,12 +1523,6 @@ find_typenames_r (tree *tp, int *walk_subtrees, void *data)
 
   if (mv && (mv == *tp || !d->p_set->add (mv)))
     vec_safe_push (d->typenames, mv);
-
-  /* Search into class template arguments, which cp_walk_subtrees
-     doesn't do.  */
-  if (CLASS_TYPE_P (*tp) && CLASSTYPE_TEMPLATE_INFO (*tp))
-    cp_walk_tree (&CLASSTYPE_TI_ARGS (*tp), find_typenames_r,
-		  data, d->p_set);
 
   return NULL_TREE;
 }
@@ -3688,27 +3680,6 @@ print_location (diagnostic_context *context, location_t loc)
                  "locus", xloc.file, xloc.line);
 }
 
-/* Instantiate the concept check for the purpose of diagnosing an error.  */
-
-static tree
-rebuild_concept_check (tree expr, tree map, tree args)
-{
-  /* Instantiate the parameter mapping for the template-id.  */
-  map = tsubst_parameter_mapping (map, args, tf_none, NULL_TREE);
-  if (map == error_mark_node)
-    return error_mark_node;
-  args = get_mapped_args (map);
-
-  /* Rebuild the template id using substituted arguments. Substituting
-     directly through the expression will trigger recursive satisfaction,
-     so don't do that.  */
-  tree id = unpack_concept_check (expr);
-  args = tsubst_template_args (TREE_OPERAND (id, 1), args, tf_none, NULL_TREE);
-  if (args == error_mark_node)
-    return error_mark_node;
-  return build_nt (TEMPLATE_ID_EXPR, TREE_OPERAND (id, 0), args);
-}
-
 static void
 print_constrained_decl_info (diagnostic_context *context, tree decl)
 {
@@ -3725,12 +3696,18 @@ print_concept_check_info (diagnostic_context *context, tree expr, tree map, tree
   tree tmpl = TREE_OPERAND (id, 0);
   if (OVL_P (tmpl))
     tmpl = OVL_FIRST (tmpl);
-  tree check = rebuild_concept_check (expr, map, args);
-  if (check == error_mark_node)
-    check = expr;
 
   print_location (context, DECL_SOURCE_LOCATION (tmpl));
-  pp_verbatim (context->printer, "required for the satisfaction of %qE\n", check);
+
+  cxx_pretty_printer *pp = (cxx_pretty_printer *)context->printer;
+  pp_verbatim (pp, "required for the satisfaction of %qE", expr);
+  if (map && map != error_mark_node)
+    {
+      tree subst_map = tsubst_parameter_mapping (map, args, tf_none, NULL_TREE);
+      pp_cxx_parameter_mapping (pp, (subst_map != error_mark_node
+				     ? subst_map : map));
+    }
+  pp_newline (pp);
 }
 
 /* Diagnose the entry point into the satisfaction error. Returns the next

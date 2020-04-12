@@ -129,6 +129,8 @@ struct sanopt_tree_triplet_hash : typed_noop_remove <sanopt_tree_triplet>
     ref.t1 = reinterpret_cast<tree> (1);
   }
 
+  static const bool empty_zero_p = true;
+
   static void
   mark_empty (sanopt_tree_triplet &ref)
   {
@@ -183,6 +185,8 @@ struct sanopt_tree_couple_hash : typed_noop_remove <sanopt_tree_couple>
   {
     ref.ptr = reinterpret_cast<tree> (1);
   }
+
+  static const bool empty_zero_p = true;
 
   static void
   mark_empty (sanopt_tree_couple &ref)
@@ -1170,9 +1174,12 @@ sanitize_rewrite_addressable_params (function *fun)
 	    continue;
 
 	  if (dump_file)
-	    fprintf (dump_file,
-		     "Rewriting parameter whose address is taken: %s\n",
-		     IDENTIFIER_POINTER (DECL_NAME (arg)));
+	    {
+	      fprintf (dump_file,
+		       "Rewriting parameter whose address is taken: ");
+	      print_generic_expr (dump_file, arg, dump_flags);
+	      fputc ('\n', dump_file);
+	    }
 
 	  SET_DECL_PT_UID (var, DECL_PT_UID (arg));
 

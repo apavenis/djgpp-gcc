@@ -1,3 +1,63 @@
+2020-04-09  Tom Tromey  <tom@tromey.com>
+
+	* configure: Rebuild.
+	* Makefile.in: Rebuild.
+	* Makefile.def (gdbsupport, gdbserver): New host modules.
+	(configure-gdb): Depend on all-gdbsupport.
+	(all-gdb): Depend on all-gdbsupport, all-libctf.
+	* configure.ac (host_tools): Add gdbserver.
+	Conditionally build gdbserver and gdbsupport.
+
+2020-03-09  Tobias Burnus  <tobias@codesourcery.com>
+
+	* configure.ac: Build libgomp by default for amdgcn.
+	* configure: Regenerate.
+
+2020-03-05  Srinath Parvathaneni  <srinath.parvathaneni@arm.com>
+
+	* MAINTAINERS (Write After Approval): Add myself.
+
+2020-02-28  Joel Hutton  <joel.hutton@arm.com>
+
+	* MAINTAINERS (Write After Approval) : Add myself.
+
+2020-02-20  Palmer Dabbelt  <palmer@sifive.com>
+
+	* MAINTAINERS: Change palmer@sifive.com to palmer@dabbelt.com.
+
+2020-02-14  Martin Sebor  <msebor@redhat.com>
+
+	* doc/extend.texi (attribute alias): Mention type requirement.
+	(attribute weak): Same.
+	(attribute weakref): Correct invalid example.
+
+2020-02-03  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* doc/md.texi (PowerPC and IBM RS6000): Improve documentation.
+
+2020-01-15  Segher Boessenkool  <segher@kernel.crashing.org>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	* .gitattributes: Add *.md diff=md.
+
+2020-01-14  Georg-Johann Lay  <avr@gjlay.de>
+
+	The mentioned auto-generated file is no more part of the
+
+	GCC sources, it's auto-generated in $(builddir) during build.
+
+	PR target/92055
+	* contrib/gcc_update (files_and_dependencies): Remove
+	entry for gcc/config/avr/t-multilib.
+
+2020-01-14  Anatoly Sokolov <aesok@dol.ru>
+
+	* MAINTAINERS: Update my email address.
+
+2020-01-13  Joseph Myers  <joseph@codesourcery.com>
+
+	* README.MOVED_TO_GIT: Remove.
+
 2020-01-11  Joseph Myers  <joseph@codesourcery.com>
 
 	* README.MOVED_TO_GIT: New file.

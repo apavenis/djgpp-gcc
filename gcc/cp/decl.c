@@ -942,6 +942,8 @@ function_requirements_equivalent_p (tree newfn, tree oldfn)
   tree reqs2 = get_trailing_function_requirements (oldfn);
   if ((reqs1 != NULL_TREE) != (reqs2 != NULL_TREE))
     return false;
+  reqs1 = maybe_substitute_reqs_for (reqs1, newfn);
+  reqs2 = maybe_substitute_reqs_for (reqs2, oldfn);
   return cp_tree_equal (reqs1, reqs2);
 }
 
@@ -1449,9 +1451,10 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
 
   /* Check for redeclaration and other discrepancies.  */
   if (TREE_CODE (olddecl) == FUNCTION_DECL
-      && DECL_ARTIFICIAL (olddecl))
+      && DECL_ARTIFICIAL (olddecl)
+      /* A C++20 implicit friend operator== uses the normal path (94462).  */
+      && !DECL_HIDDEN_FRIEND_P (olddecl))
     {
-      gcc_assert (!DECL_HIDDEN_FRIEND_P (olddecl));
       if (TREE_CODE (newdecl) != FUNCTION_DECL)
 	{
 	  /* Avoid warnings redeclaring built-ins which have not been
@@ -2365,6 +2368,8 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
 	    DECL_SET_IS_OPERATOR_NEW (newdecl, true);
 	  DECL_LOOPING_CONST_OR_PURE_P (newdecl)
 	    |= DECL_LOOPING_CONST_OR_PURE_P (olddecl);
+	  DECL_IS_REPLACEABLE_OPERATOR (newdecl)
+	    |= DECL_IS_REPLACEABLE_OPERATOR (olddecl);
 
 	  if (merge_attr)
 	    merge_attribute_bits (newdecl, olddecl);
@@ -4435,13 +4440,17 @@ cxx_init_decl_processing (void)
     tree opnew = push_cp_library_fn (NEW_EXPR, newtype, 0);
     DECL_IS_MALLOC (opnew) = 1;
     DECL_SET_IS_OPERATOR_NEW (opnew, true);
+    DECL_IS_REPLACEABLE_OPERATOR (opnew) = 1;
     opnew = push_cp_library_fn (VEC_NEW_EXPR, newtype, 0);
     DECL_IS_MALLOC (opnew) = 1;
     DECL_SET_IS_OPERATOR_NEW (opnew, true);
+    DECL_IS_REPLACEABLE_OPERATOR (opnew) = 1;
     tree opdel = push_cp_library_fn (DELETE_EXPR, deltype, ECF_NOTHROW);
     DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+    DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
     opdel = push_cp_library_fn (VEC_DELETE_EXPR, deltype, ECF_NOTHROW);
     DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+    DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
     if (flag_sized_deallocation)
       {
 	/* Also push the sized deallocation variants:
@@ -4455,8 +4464,10 @@ cxx_init_decl_processing (void)
 	deltype = build_exception_variant (deltype, empty_except_spec);
 	opdel = push_cp_library_fn (DELETE_EXPR, deltype, ECF_NOTHROW);
 	DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+	DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
 	opdel = push_cp_library_fn (VEC_DELETE_EXPR, deltype, ECF_NOTHROW);
 	DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+	DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
       }
 
     if (aligned_new_threshold)
@@ -4475,9 +4486,11 @@ cxx_init_decl_processing (void)
 	opnew = push_cp_library_fn (NEW_EXPR, newtype, 0);
 	DECL_IS_MALLOC (opnew) = 1;
 	DECL_SET_IS_OPERATOR_NEW (opnew, true);
+	DECL_IS_REPLACEABLE_OPERATOR (opnew) = 1;
 	opnew = push_cp_library_fn (VEC_NEW_EXPR, newtype, 0);
 	DECL_IS_MALLOC (opnew) = 1;
 	DECL_SET_IS_OPERATOR_NEW (opnew, true);
+	DECL_IS_REPLACEABLE_OPERATOR (opnew) = 1;
 
 	/* operator delete (void *, align_val_t); */
 	deltype = build_function_type_list (void_type_node, ptr_type_node,
@@ -4486,8 +4499,10 @@ cxx_init_decl_processing (void)
 	deltype = build_exception_variant (deltype, empty_except_spec);
 	opdel = push_cp_library_fn (DELETE_EXPR, deltype, ECF_NOTHROW);
 	DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+	DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
 	opdel = push_cp_library_fn (VEC_DELETE_EXPR, deltype, ECF_NOTHROW);
 	DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+	DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
 
 	if (flag_sized_deallocation)
 	  {
@@ -4499,8 +4514,10 @@ cxx_init_decl_processing (void)
 	    deltype = build_exception_variant (deltype, empty_except_spec);
 	    opdel = push_cp_library_fn (DELETE_EXPR, deltype, ECF_NOTHROW);
 	    DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+	    DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
 	    opdel = push_cp_library_fn (VEC_DELETE_EXPR, deltype, ECF_NOTHROW);
 	    DECL_SET_IS_OPERATOR_DELETE (opdel, true);
+	    DECL_IS_REPLACEABLE_OPERATOR (opdel) = 1;
 	  }
       }
 
@@ -5551,9 +5568,22 @@ grok_reference_init (tree decl, tree type, tree init, int flags)
 	  && !DECL_DECOMPOSITION_P (decl)
 	  && (cxx_dialect >= cxx2a))
 	{
-	  init = build_constructor_from_list (init_list_type_node, init);
-	  CONSTRUCTOR_IS_DIRECT_INIT (init) = true;
-	  CONSTRUCTOR_IS_PAREN_INIT (init) = true;
+	  /* We don't know yet if we should treat const A& r(1) as
+	     const A& r{1}.  */
+	  if (list_length (init) == 1)
+	    {
+	      flags |= LOOKUP_AGGREGATE_PAREN_INIT;
+	      init = build_x_compound_expr_from_list (init, ELK_INIT,
+						      tf_warning_or_error);
+	    }
+	  /* If the list had more than one element, the code is ill-formed
+	     pre-C++20, so we can build a constructor right away.  */
+	  else
+	    {
+	      init = build_constructor_from_list (init_list_type_node, init);
+	      CONSTRUCTOR_IS_DIRECT_INIT (init) = true;
+	      CONSTRUCTOR_IS_PAREN_INIT (init) = true;
+	    }
 	}
       else
 	init = build_x_compound_expr_from_list (init, ELK_INIT,
@@ -5929,7 +5959,7 @@ struct reshape_iter
   constructor_elt *end;
 };
 
-static tree reshape_init_r (tree, reshape_iter *, bool, tsubst_flags_t);
+static tree reshape_init_r (tree, reshape_iter *, tree, tsubst_flags_t);
 
 /* FIELD is a FIELD_DECL or NULL.  In the former case, the value
    returned is the next FIELD_DECL (possibly FIELD itself) that can be
@@ -5977,15 +6007,23 @@ is_direct_enum_init (tree type, tree init)
 
 static tree
 reshape_init_array_1 (tree elt_type, tree max_index, reshape_iter *d,
-		      tsubst_flags_t complain)
+		      tree first_initializer_p, tsubst_flags_t complain)
 {
   tree new_init;
   bool sized_array_p = (max_index && TREE_CONSTANT (max_index));
   unsigned HOST_WIDE_INT max_index_cst = 0;
   unsigned HOST_WIDE_INT index;
 
-  /* The initializer for an array is always a CONSTRUCTOR.  */
-  new_init = build_constructor (init_list_type_node, NULL);
+  /* The initializer for an array is always a CONSTRUCTOR.  If this is the
+     outermost CONSTRUCTOR and the element type is non-aggregate, we don't need
+     to build a new one.  */
+  bool reuse = (first_initializer_p
+		&& !CP_AGGREGATE_TYPE_P (elt_type)
+		&& !TREE_SIDE_EFFECTS (first_initializer_p));
+  if (reuse)
+    new_init = first_initializer_p;
+  else
+    new_init = build_constructor (init_list_type_node, NULL);
 
   if (sized_array_p)
     {
@@ -6012,12 +6050,20 @@ reshape_init_array_1 (tree elt_type, tree max_index, reshape_iter *d,
       constructor_elt *old_cur = d->cur;
 
       check_array_designated_initializer (d->cur, index);
-      elt_init = reshape_init_r (elt_type, d, /*first_initializer_p=*/false,
+      elt_init = reshape_init_r (elt_type, d,
+				 /*first_initializer_p=*/NULL_TREE,
 				 complain);
       if (elt_init == error_mark_node)
 	return error_mark_node;
-      CONSTRUCTOR_APPEND_ELT (CONSTRUCTOR_ELTS (new_init),
-			      size_int (index), elt_init);
+      tree idx = size_int (index);
+      if (reuse)
+	{
+	  old_cur->index = idx;
+	  old_cur->value = elt_init;
+	}
+      else
+	CONSTRUCTOR_APPEND_ELT (CONSTRUCTOR_ELTS (new_init),
+				idx, elt_init);
       if (!TREE_CONSTANT (elt_init))
 	TREE_CONSTANT (new_init) = false;
 
@@ -6044,7 +6090,25 @@ reshape_init_array_1 (tree elt_type, tree max_index, reshape_iter *d,
       else if (last_nonzero < nelts - 1)
 	nelts = last_nonzero + 1;
 
-      vec_safe_truncate (CONSTRUCTOR_ELTS (new_init), nelts);
+      /* Sharing a stripped constructor can get in the way of
+	 overload resolution.  E.g., initializing a class from
+	 {{0}} might be invalid while initializing the same class
+	 from {{}} might be valid.  */
+      if (reuse && nelts < CONSTRUCTOR_NELTS (new_init))
+	{
+	  vec<constructor_elt, va_gc> *v;
+	  vec_alloc (v, nelts);
+	  for (unsigned int i = 0; i < nelts; i++)
+	    {
+	      constructor_elt elt = *CONSTRUCTOR_ELT (new_init, i);
+	      if (TREE_CODE (elt.value) == CONSTRUCTOR)
+		elt.value = unshare_constructor (elt.value);
+	      v->quick_push (elt);
+	    }
+	  new_init = build_constructor (TREE_TYPE (new_init), v);
+	}
+      else
+	vec_safe_truncate (CONSTRUCTOR_ELTS (new_init), nelts);
     }
 
   return new_init;
@@ -6054,7 +6118,8 @@ reshape_init_array_1 (tree elt_type, tree max_index, reshape_iter *d,
    Parameters are the same of reshape_init_r.  */
 
 static tree
-reshape_init_array (tree type, reshape_iter *d, tsubst_flags_t complain)
+reshape_init_array (tree type, reshape_iter *d, tree first_initializer_p,
+		    tsubst_flags_t complain)
 {
   tree max_index = NULL_TREE;
 
@@ -6063,7 +6128,8 @@ reshape_init_array (tree type, reshape_iter *d, tsubst_flags_t complain)
   if (TYPE_DOMAIN (type))
     max_index = array_type_nelts (type);
 
-  return reshape_init_array_1 (TREE_TYPE (type), max_index, d, complain);
+  return reshape_init_array_1 (TREE_TYPE (type), max_index, d,
+			       first_initializer_p, complain);
 }
 
 /* Subroutine of reshape_init_r, processes the initializers for vectors.
@@ -6094,7 +6160,8 @@ reshape_init_vector (tree type, reshape_iter *d, tsubst_flags_t complain)
   if (VECTOR_TYPE_P (type))
     max_index = size_int (TYPE_VECTOR_SUBPARTS (type) - 1);
 
-  return reshape_init_array_1 (TREE_TYPE (type), max_index, d, complain);
+  return reshape_init_array_1 (TREE_TYPE (type), max_index, d,
+			       NULL_TREE, complain);
 }
 
 /* Subroutine of reshape_init_r, processes the initializers for classes
@@ -6177,7 +6244,8 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 	break;
 
       field_init = reshape_init_r (TREE_TYPE (field), d,
-				   /*first_initializer_p=*/false, complain);
+				   /*first_initializer_p=*/NULL_TREE,
+				   complain);
       if (field_init == error_mark_node)
 	return error_mark_node;
 
@@ -6228,11 +6296,11 @@ has_designator_problem (reshape_iter *d, tsubst_flags_t complain)
 /* Subroutine of reshape_init, which processes a single initializer (part of
    a CONSTRUCTOR). TYPE is the type of the variable being initialized, D is the
    iterator within the CONSTRUCTOR which points to the initializer to process.
-   FIRST_INITIALIZER_P is true if this is the first initializer of the
-   outermost CONSTRUCTOR node.  */
+   If this is the first initializer of the outermost CONSTRUCTOR node,
+   FIRST_INITIALIZER_P is that CONSTRUCTOR; otherwise, it is NULL_TREE.  */
 
 static tree
-reshape_init_r (tree type, reshape_iter *d, bool first_initializer_p,
+reshape_init_r (tree type, reshape_iter *d, tree first_initializer_p,
 		tsubst_flags_t complain)
 {
   tree init = d->cur->value;
@@ -6429,7 +6497,7 @@ reshape_init_r (tree type, reshape_iter *d, bool first_initializer_p,
   if (CLASS_TYPE_P (type))
     return reshape_init_class (type, d, first_initializer_p, complain);
   else if (TREE_CODE (type) == ARRAY_TYPE)
-    return reshape_init_array (type, d, complain);
+    return reshape_init_array (type, d, first_initializer_p, complain);
   else if (VECTOR_TYPE_P (type))
     return reshape_init_vector (type, d, complain);
   else
@@ -6493,7 +6561,7 @@ reshape_init (tree type, tree init, tsubst_flags_t complain)
   d.cur = &(*v)[0];
   d.end = d.cur + v->length ();
 
-  new_init = reshape_init_r (type, &d, true, complain);
+  new_init = reshape_init_r (type, &d, init, complain);
   if (new_init == error_mark_node)
     return error_mark_node;
 
@@ -7657,6 +7725,14 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
       TREE_READONLY (decl) = 0;
     }
 
+  /* This needs to happen before extend_ref_init_temps.  */
+  if (VAR_OR_FUNCTION_DECL_P (decl))
+    {
+      if (VAR_P (decl))
+	maybe_commonize_var (decl);
+      determine_visibility (decl);
+    }
+
   if (VAR_P (decl))
     {
       duration_kind dk = decl_storage_duration (decl);
@@ -7786,11 +7862,10 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
       if (VAR_P (decl))
 	{
 	  layout_var_decl (decl);
-	  maybe_commonize_var (decl);
+	  if (!flag_weak)
+	    /* Check again now that we have an initializer.  */
+	    maybe_commonize_var (decl);
 	}
-
-      /* This needs to happen after the linkage is set. */
-      determine_visibility (decl);
 
       if (var_definition_p && TREE_STATIC (decl))
 	{
@@ -8328,23 +8403,7 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 	    }
 	  if (!processing_template_decl)
 	    {
-	      TREE_PUBLIC (v[i]) = TREE_PUBLIC (decl);
-	      TREE_STATIC (v[i]) = TREE_STATIC (decl);
-	      DECL_COMMON (v[i]) = DECL_COMMON (decl);
-	      DECL_COMDAT (v[i]) = DECL_COMDAT (decl);
-	      if (TREE_STATIC (v[i]))
-		{
-		  CP_DECL_THREAD_LOCAL_P (v[i])
-		    = CP_DECL_THREAD_LOCAL_P (decl);
-		  set_decl_tls_model (v[i], DECL_TLS_MODEL (decl));
-		  if (DECL_ONE_ONLY (decl))
-		    make_decl_one_only (v[i], cxx_comdat_group (v[i]));
-		  if (TREE_PUBLIC (decl))
-		    DECL_WEAK (v[i]) = DECL_WEAK (decl);
-		  DECL_VISIBILITY (v[i]) = DECL_VISIBILITY (decl);
-		  DECL_VISIBILITY_SPECIFIED (v[i])
-		    = DECL_VISIBILITY_SPECIFIED (decl);
-		}
+	      copy_linkage (v[i], decl);
 	      cp_finish_decl (v[i], init, /*constexpr*/false,
 			      /*asm*/NULL_TREE, LOOKUP_NORMAL);
 	    }
@@ -9613,6 +9672,15 @@ grokfndecl (tree ctype,
 		    "namespace scope", decl);
 	  return NULL_TREE;
 	}
+      tree type = TREE_TYPE (DECL_NAME (decl));
+      if (in_namespace == NULL_TREE
+	  && CP_DECL_CONTEXT (decl) != CP_TYPE_CONTEXT (type))
+	{
+	  error_at (location, "deduction guide %qD must be declared in the "
+			      "same scope as %qT", decl, type);
+	  inform (location_of (type), "  declared here");
+	  return NULL_TREE;
+	}
       if (funcdef_flag)
 	error_at (location,
 		  "deduction guide %qD must not have a function body", decl);
@@ -10263,13 +10331,12 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
 	   NOP_EXPR with TREE_SIDE_EFFECTS; don't fold in that case.  */;
       else
 	{
-	  size = instantiate_non_dependent_expr_sfinae (size, complain);
 	  size = build_converted_constant_expr (size_type_node, size, complain);
 	  /* Pedantically a constant expression is required here and so
 	     __builtin_is_constant_evaluated () should fold to true if it
 	     is successfully folded into a constant.  */
-	  size = maybe_constant_value (size, NULL_TREE,
-				       /*manifestly_const_eval=*/true);
+	  size = fold_non_dependent_expr (size, complain,
+					  /*manifestly_const_eval=*/true);
 
 	  if (!TREE_CONSTANT (size))
 	    size = origsize;
@@ -10299,8 +10366,7 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
   /* We can only call value_dependent_expression_p on integral constant
      expressions; treat non-constant expressions as dependent, too.  */
   if (processing_template_decl
-      && (type_dependent_expression_p (size)
-	  || !TREE_CONSTANT (size) || value_dependent_expression_p (size)))
+      && (!TREE_CONSTANT (size) || value_dependent_expression_p (size)))
     {
       /* We cannot do any checking for a SIZE that isn't known to be
 	 constant. Just build the index type and mark that it requires
@@ -10325,9 +10391,14 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
 	    pedwarn (loc, OPT_Wpedantic,
 		     "size of array is not an integral constant-expression");
 	}
-      /* Use the folded result for VLAs, too; it will have resolved
-	 SIZEOF_EXPR.  */
-      size = folded;
+      if (TREE_CONSTANT (size) && !TREE_CONSTANT (folded))
+	/* We might have lost the TREE_CONSTANT flag e.g. when we are
+	   folding a conversion from a pointer to integral type.  In that
+	   case issue an error below and don't treat this as a VLA.  */;
+      else
+	/* Use the folded result for VLAs, too; it will have resolved
+	   SIZEOF_EXPR.  */
+	size = folded;
     }
 
   /* Normally, the array-bound will be a constant.  */
@@ -11238,7 +11309,7 @@ grokdeclarator (const cp_declarator *declarator,
   if (constinit_p && typedef_p)
     {
       error_at (declspecs->locations[ds_constinit],
-		"%<constinit%> cannot appear in a typedef declaration");
+		"%qs cannot appear in a typedef declaration", "constinit");
       return error_mark_node;
     }
 
@@ -12307,7 +12378,7 @@ grokdeclarator (const cp_declarator *declarator,
 
 		 The optional attribute-specifier-seq appertains to
 		 the function type.  */
-	      decl_attributes (&type, attrs, 0);
+	      cplus_decl_attributes (&type, attrs, 0);
 
 	    if (raises)
 	      type = build_exception_variant (type, raises);
@@ -12855,6 +12926,7 @@ grokdeclarator (const cp_declarator *declarator,
 	  memfn_quals |= type_memfn_quals (type);
 	  rqual = type_memfn_rqual (type);
 	  type_quals = TYPE_UNQUALIFIED;
+	  raises = TYPE_RAISES_EXCEPTIONS (type);
 	}
     }
 
@@ -13247,10 +13319,13 @@ grokdeclarator (const cp_declarator *declarator,
 	    if (declspecs->explicit_specifier)
 	      store_explicit_specifier (decl, declspecs->explicit_specifier);
 	  }
-	else if (!staticp && !dependent_type_p (type)
-		 && !COMPLETE_TYPE_P (complete_type (type))
-		 && (!complete_or_array_type_p (type)
-		     || initialized == 0))
+	else if (!staticp
+		 && ((current_class_type
+		      && same_type_p (type, current_class_type))
+		     || (!dependent_type_p (type)
+			 && !COMPLETE_TYPE_P (complete_type (type))
+			 && (!complete_or_array_type_p (type)
+			     || initialized == 0))))
 	  {
 	    if (TREE_CODE (type) != ARRAY_TYPE
 		|| !COMPLETE_TYPE_P (TREE_TYPE (type)))
@@ -16615,14 +16690,20 @@ begin_destructor_body (void)
 	    /* If the vptr is shared with some virtual nearly empty base,
 	       don't clear it if not in charge, the dtor of the virtual
 	       nearly empty base will do that later.  */
-	    if (CLASSTYPE_VBASECLASSES (current_class_type)
-		&& CLASSTYPE_PRIMARY_BINFO (current_class_type)
-		&& BINFO_VIRTUAL_P
-			  (CLASSTYPE_PRIMARY_BINFO (current_class_type)))
+	    if (CLASSTYPE_VBASECLASSES (current_class_type))
 	      {
-		stmt = convert_to_void (stmt, ICV_STATEMENT,
-					tf_warning_or_error);
-		stmt = build_if_in_charge (stmt);
+		tree c = current_class_type;
+		while (CLASSTYPE_PRIMARY_BINFO (c))
+		  {
+		    if (BINFO_VIRTUAL_P (CLASSTYPE_PRIMARY_BINFO (c)))
+		      {
+			stmt = convert_to_void (stmt, ICV_STATEMENT,
+						tf_warning_or_error);
+			stmt = build_if_in_charge (stmt);
+			break;
+		      }
+		    c = BINFO_TYPE (CLASSTYPE_PRIMARY_BINFO (c));
+		  }
 	      }
 	    finish_decl_cleanup (NULL_TREE, stmt);
 	  }
@@ -16783,6 +16864,36 @@ add_return_star_this_fixit (gcc_rich_location *richloc, tree fndecl)
 				       indent);
 }
 
+/* This function carries out the subset of finish_function operations needed
+   to emit the compiler-generated outlined helper functions used by the
+   coroutines implementation.  */
+
+static void
+emit_coro_helper (tree helper)
+{
+  /* This is a partial set of the operations done by finish_function()
+     plus emitting the result.  */
+  set_cfun (NULL);
+  current_function_decl = helper;
+  begin_scope (sk_function_parms, NULL);
+  store_parm_decls (DECL_ARGUMENTS (helper));
+  announce_function (helper);
+  allocate_struct_function (helper, false);
+  cfun->language = ggc_cleared_alloc<language_function> ();
+  poplevel (1, 0, 1);
+  maybe_save_function_definition (helper);
+  /* We must start each function with a clear fold cache.  */
+  clear_fold_cache ();
+  cp_fold_function (helper);
+  DECL_CONTEXT (DECL_RESULT (helper)) = helper;
+  BLOCK_SUPERCONTEXT (DECL_INITIAL (helper)) = helper;
+  /* This function has coroutine IFNs that we should handle in middle
+     end lowering.  */
+  cfun->coroutine_component = true;
+  cp_genericize (helper);
+  expand_or_defer_fn (helper);
+}
+
 /* Finish up a function declaration and compile that function
    all the way to assembler language output.  The free the storage
    for the function definition. INLINE_P is TRUE if we just
@@ -16795,6 +16906,10 @@ finish_function (bool inline_p)
 {
   tree fndecl = current_function_decl;
   tree fntype, ctype = NULL_TREE;
+  tree resumer = NULL_TREE, destroyer = NULL_TREE;
+  bool coro_p = flag_coroutines
+		&& !processing_template_decl
+		&& DECL_COROUTINE_P (fndecl);
 
   /* When we get some parse errors, we can end up without a
      current_function_decl, so cope.  */
@@ -16821,6 +16936,25 @@ finish_function (bool inline_p)
      error_mark_node.  */
   gcc_assert (DECL_INITIAL (fndecl) == error_mark_node);
 
+  if (coro_p)
+    {
+      if (!morph_fn_to_coro (fndecl, &resumer, &destroyer))
+	{
+	  DECL_SAVED_TREE (fndecl) = pop_stmt_list (DECL_SAVED_TREE (fndecl));
+	  poplevel (1, 0, 1);
+	  DECL_SAVED_TREE (fndecl) = error_mark_node;
+	  return fndecl;
+	}
+
+      /* We should handle coroutine IFNs in middle end lowering.  */
+      cfun->coroutine_component = true;
+
+      if (use_eh_spec_block (fndecl))
+	finish_eh_spec_block (TYPE_RAISES_EXCEPTIONS
+			      (TREE_TYPE (fndecl)),
+			      current_eh_spec_block);
+    }
+  else
   /* For a cloned function, we've already got all the code we need;
      there's no need to add any extra bits.  */
   if (!DECL_CLONED_FUNCTION_P (fndecl))
@@ -17063,6 +17197,13 @@ finish_function (bool inline_p)
       && !DECL_IMMEDIATE_FUNCTION_P (fndecl)
       && !DECL_OMP_DECLARE_REDUCTION_P (fndecl))
     cp_genericize (fndecl);
+
+  /* Emit the resumer and destroyer functions now.  */
+  if (coro_p)
+    {
+      emit_coro_helper (resumer);
+      emit_coro_helper (destroyer);
+    }
 
  cleanup:
   /* We're leaving the context of this function, so zap cfun.  It's still in
@@ -17342,6 +17483,10 @@ cxx_maybe_build_cleanup (tree decl, tsubst_flags_t complain)
       && !mark_used (decl, complain) && !(complain & tf_error))
     return error_mark_node;
 
+  if (cleanup && cfun && !processing_template_decl
+      && !expr_noexcept_p (cleanup, tf_none))
+    cp_function_chain->throwing_cleanup = true;
+
   return cleanup;
 }
 
@@ -17521,10 +17666,8 @@ build_explicit_specifier (tree expr, tsubst_flags_t complain)
     /* Wait for instantiation, tsubst_function_decl will handle it.  */
     return expr;
 
-  expr = instantiate_non_dependent_expr_sfinae (expr, complain);
-  /* Don't let convert_like_real create more template codes.  */
-  processing_template_decl_sentinel s;
   expr = build_converted_constant_bool_expr (expr, complain);
+  expr = instantiate_non_dependent_expr_sfinae (expr, complain);
   expr = cxx_constant_value (expr);
   return expr;
 }

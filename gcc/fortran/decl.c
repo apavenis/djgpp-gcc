@@ -696,6 +696,10 @@ gfc_match_data (void)
 	  /* F2008:C567 (R536) A data-i-do-object or a variable that appears
 	     as a data-stmt-object shall not be an object designator in which
 	     a pointer appears other than as the entire rightmost part-ref.  */
+	  if (!e->ref && e->ts.type == BT_DERIVED
+	      && e->symtree->n.sym->attr.pointer)
+	    goto partref;
+
 	  ref = e->ref;
 	  if (e->symtree->n.sym->ts.type == BT_DERIVED
 	      && e->symtree->n.sym->attr.pointer
@@ -715,6 +719,22 @@ gfc_match_data (void)
 
       new_data->next = gfc_current_ns->data;
       gfc_current_ns->data = new_data;
+
+      /* A BOZ literal constant cannot appear in a structure constructor.
+	 Check for that here for a data statement value.  */
+      if (new_data->value->expr->ts.type == BT_DERIVED
+	  && new_data->value->expr->value.constructor)
+	{
+	  gfc_constructor *c;
+	  c = gfc_constructor_first (new_data->value->expr->value.constructor);
+	  for (; c; c = gfc_constructor_next (c))
+	    if (c->expr->ts.type == BT_BOZ)
+	      {
+		gfc_error ("BOZ literal constant at %L cannot appear in a "
+			   "structure constructor", &c->expr->where);
+		return MATCH_ERROR;
+	      }
+	}
 
       if (gfc_match_eos () == MATCH_YES)
 	break;
@@ -2913,7 +2933,16 @@ variable_decl (int elem)
 	  goto cleanup;
 	}
       else if (param && initializer)
-	param->value = gfc_copy_expr (initializer);
+	{
+	  if (initializer->ts.type == BT_BOZ)
+	    {
+	      gfc_error ("BOZ literal constant at %L cannot appear as an "
+			 "initializer", &initializer->where);
+	      m = MATCH_ERROR;
+      	      goto cleanup;
+	    }
+	  param->value = gfc_copy_expr (initializer);
+	}
     }
 
   /* Before adding a possible initilizer, do a simple check for compatibility
@@ -5383,15 +5412,19 @@ match_attr_spec (void)
       if (d == DECL_STATIC && seen[DECL_SAVE])
 	continue;
 
-      if (gfc_current_state () == COMP_DERIVED
+      if (gfc_comp_struct (gfc_current_state ())
 	  && d != DECL_DIMENSION && d != DECL_CODIMENSION
 	  && d != DECL_POINTER   && d != DECL_PRIVATE
 	  && d != DECL_PUBLIC && d != DECL_CONTIGUOUS && d != DECL_NONE)
 	{
+	  bool is_derived = gfc_current_state () == COMP_DERIVED;
 	  if (d == DECL_ALLOCATABLE)
 	    {
-	      if (!gfc_notify_std (GFC_STD_F2003, "ALLOCATABLE "
-				   "attribute at %C in a TYPE definition"))
+	      if (!gfc_notify_std (GFC_STD_F2003, is_derived
+				   ? G_("ALLOCATABLE attribute at %C in a "
+					"TYPE definition")
+				   : G_("ALLOCATABLE attribute at %C in a "
+					"STRUCTURE definition")))
 		{
 		  m = MATCH_ERROR;
 		  goto cleanup;
@@ -5399,8 +5432,11 @@ match_attr_spec (void)
 	    }
 	  else if (d == DECL_KIND)
 	    {
-	      if (!gfc_notify_std (GFC_STD_F2003, "KIND "
-				   "attribute at %C in a TYPE definition"))
+	      if (!gfc_notify_std (GFC_STD_F2003, is_derived
+				   ? G_("KIND attribute at %C in a "
+					"TYPE definition")
+				   : G_("KIND attribute at %C in a "
+					"STRUCTURE definition")))
 		{
 		  m = MATCH_ERROR;
 		  goto cleanup;
@@ -5423,8 +5459,11 @@ match_attr_spec (void)
 	    }
 	  else if (d == DECL_LEN)
 	    {
-	      if (!gfc_notify_std (GFC_STD_F2003, "LEN "
-				   "attribute at %C in a TYPE definition"))
+	      if (!gfc_notify_std (GFC_STD_F2003, is_derived
+				   ? G_("LEN attribute at %C in a "
+					"TYPE definition")
+				   : G_("LEN attribute at %C in a "
+					"STRUCTURE definition")))
 		{
 		  m = MATCH_ERROR;
 		  goto cleanup;
@@ -5447,8 +5486,10 @@ match_attr_spec (void)
 	    }
 	  else
 	    {
-	      gfc_error ("Attribute at %L is not allowed in a TYPE definition",
-			 &seen_at[d]);
+	      gfc_error (is_derived ? G_("Attribute at %L is not allowed in a "
+					 "TYPE definition")
+				    : G_("Attribute at %L is not allowed in a "
+					 "STRUCTURE definition"), &seen_at[d]);
 	      m = MATCH_ERROR;
 	      goto cleanup;
 	    }
@@ -9674,13 +9715,20 @@ gfc_match_submod_proc (void)
   if (get_proc_name (name, &sym, false))
     return MATCH_ERROR;
 
-  /* Make sure that the result field is appropriately filled, even though
-     the result symbol will be replaced later on.  */
+  /* Make sure that the result field is appropriately filled.  */
   if (sym->tlink && sym->tlink->attr.function)
     {
-      if (sym->tlink->result
-	  && sym->tlink->result != sym->tlink)
-	sym->result= sym->tlink->result;
+      if (sym->tlink->result && sym->tlink->result != sym->tlink)
+	{
+	  sym->result = sym->tlink->result;
+	  if (!sym->result->attr.use_assoc)
+	    {
+	      gfc_symtree *st = gfc_new_symtree (&gfc_current_ns->sym_root,
+						 sym->result->name);
+	      st->n.sym = sym->result;
+	      sym->result->refs++;
+	    }
+	}
       else
 	sym->result = sym;
     }

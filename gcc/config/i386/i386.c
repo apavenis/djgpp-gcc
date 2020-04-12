@@ -751,8 +751,9 @@ x86_64_elf_section_type_flags (tree decl, const char *name, int reloc)
     flags |= SECTION_RELRO;
 
   if (strcmp (name, ".lbss") == 0
-      || strncmp (name, ".lbss.", 5) == 0
-      || strncmp (name, ".gnu.linkonce.lb.", 16) == 0)
+      || strncmp (name, ".lbss.", sizeof (".lbss.") - 1) == 0
+      || strncmp (name, ".gnu.linkonce.lb.",
+		  sizeof (".gnu.linkonce.lb.") - 1) == 0)
     flags |= SECTION_BSS;
 
   return flags;
@@ -3153,7 +3154,7 @@ function_arg_64 (const CUMULATIVE_ARGS *cum, machine_mode mode,
 
 static rtx
 function_arg_ms_64 (const CUMULATIVE_ARGS *cum, machine_mode mode,
-		    machine_mode orig_mode, bool named,
+		    machine_mode orig_mode, bool named, const_tree type,
 		    HOST_WIDE_INT bytes)
 {
   unsigned int regno;
@@ -3173,7 +3174,10 @@ function_arg_ms_64 (const CUMULATIVE_ARGS *cum, machine_mode mode,
   if (TARGET_SSE && (mode == SFmode || mode == DFmode))
     {
       if (named)
-	regno = cum->regno + FIRST_SSE_REG;
+	{
+	  if (type == NULL_TREE || !AGGREGATE_TYPE_P (type))
+	    regno = cum->regno + FIRST_SSE_REG;
+	}
       else
 	{
 	  rtx t1, t2;
@@ -3253,7 +3257,8 @@ ix86_function_arg (cumulative_args_t cum_v, const function_arg_info &arg)
       enum calling_abi call_abi = cum ? cum->call_abi : ix86_abi;
 
       if (call_abi == MS_ABI)
-	reg = function_arg_ms_64 (cum, mode, arg.mode, arg.named, bytes);
+	reg = function_arg_ms_64 (cum, mode, arg.mode, arg.named,
+				  arg.type, bytes);
       else
 	reg = function_arg_64 (cum, mode, arg.mode, arg.type, arg.named);
     }
@@ -4908,6 +4913,248 @@ ix86_pre_reload_split (void)
 {
   return (can_create_pseudo_p ()
 	  && !(cfun->curr_properties & PROP_rtl_split_insns));
+}
+
+/* Return the opcode of the TYPE_SSEMOV instruction.  To move from
+   or to xmm16-xmm31/ymm16-ymm31 registers, we either require
+   TARGET_AVX512VL or it is a register to register move which can
+   be done with zmm register move. */
+
+static const char *
+ix86_get_ssemov (rtx *operands, unsigned size,
+		 enum attr_mode insn_mode, machine_mode mode)
+{
+  char buf[128];
+  bool misaligned_p = (misaligned_operand (operands[0], mode)
+		       || misaligned_operand (operands[1], mode));
+  bool evex_reg_p = (size == 64
+		     || EXT_REX_SSE_REG_P (operands[0])
+		     || EXT_REX_SSE_REG_P (operands[1]));
+  machine_mode scalar_mode;
+
+  const char *opcode = NULL;
+  enum
+    {
+      opcode_int,
+      opcode_float,
+      opcode_double
+    } type = opcode_int;
+
+  switch (insn_mode)
+    {
+    case MODE_V16SF:
+    case MODE_V8SF:
+    case MODE_V4SF:
+      scalar_mode = E_SFmode;
+      type = opcode_float;
+      break;
+    case MODE_V8DF:
+    case MODE_V4DF:
+    case MODE_V2DF:
+      scalar_mode = E_DFmode;
+      type = opcode_double;
+      break;
+    case MODE_XI:
+    case MODE_OI:
+    case MODE_TI:
+      scalar_mode = GET_MODE_INNER (mode);
+      break;
+    default:
+      gcc_unreachable ();
+    }
+
+  /* NB: To move xmm16-xmm31/ymm16-ymm31 registers without AVX512VL,
+     we can only use zmm register move without memory operand.  */
+  if (evex_reg_p
+      && !TARGET_AVX512VL
+      && GET_MODE_SIZE (mode) < 64)
+    {
+      /* NB: Since ix86_hard_regno_mode_ok only allows xmm16-xmm31 or
+	 ymm16-ymm31 in 128/256 bit modes when AVX512VL is enabled,
+	 we get here only for xmm16-xmm31 or ymm16-ymm31 in 32/64 bit
+	 modes.  */
+      if (GET_MODE_SIZE (mode) >= 16
+	  || memory_operand (operands[0], mode)
+	  || memory_operand (operands[1], mode))
+	gcc_unreachable ();
+      size = 64;
+      switch (type)
+	{
+	case opcode_int:
+	  opcode = misaligned_p ? "vmovdqu32" : "vmovdqa32";
+	  break;
+	case opcode_float:
+	  opcode = misaligned_p ? "vmovups" : "vmovaps";
+	  break;
+	case opcode_double:
+	  opcode = misaligned_p ? "vmovupd" : "vmovapd";
+	  break;
+	}
+    }
+  else if (SCALAR_FLOAT_MODE_P (scalar_mode))
+    {
+      switch (scalar_mode)
+	{
+	case E_SFmode:
+	  opcode = misaligned_p ? "%vmovups" : "%vmovaps";
+	  break;
+	case E_DFmode:
+	  opcode = misaligned_p ? "%vmovupd" : "%vmovapd";
+	  break;
+	case E_TFmode:
+	  if (evex_reg_p)
+	    opcode = misaligned_p ? "vmovdqu64" : "vmovdqa64";
+	  else
+	    opcode = misaligned_p ? "%vmovdqu" : "%vmovdqa";
+	  break;
+	default:
+	  gcc_unreachable ();
+	}
+    }
+  else if (SCALAR_INT_MODE_P (scalar_mode))
+    {
+      switch (scalar_mode)
+	{
+	case E_QImode:
+	  if (evex_reg_p)
+	    opcode = (misaligned_p
+		      ? (TARGET_AVX512BW
+			 ? "vmovdqu8"
+			 : "vmovdqu64")
+		      : "vmovdqa64");
+	  else
+	    opcode = (misaligned_p
+		      ? (TARGET_AVX512BW
+			 ? "vmovdqu8"
+			 : "%vmovdqu")
+		      : "%vmovdqa");
+	  break;
+	case E_HImode:
+	  if (evex_reg_p)
+	    opcode = (misaligned_p
+		      ? (TARGET_AVX512BW
+			 ? "vmovdqu16"
+			 : "vmovdqu64")
+		      : "vmovdqa64");
+	  else
+	    opcode = (misaligned_p
+		      ? (TARGET_AVX512BW
+			 ? "vmovdqu16"
+			 : "%vmovdqu")
+		      : "%vmovdqa");
+	  break;
+	case E_SImode:
+	  if (evex_reg_p)
+	    opcode = misaligned_p ? "vmovdqu32" : "vmovdqa32";
+	  else
+	    opcode = misaligned_p ? "%vmovdqu" : "%vmovdqa";
+	  break;
+	case E_DImode:
+	case E_TImode:
+	case E_OImode:
+	  if (evex_reg_p)
+	    opcode = misaligned_p ? "vmovdqu64" : "vmovdqa64";
+	  else
+	    opcode = misaligned_p ? "%vmovdqu" : "%vmovdqa";
+	  break;
+	case E_XImode:
+	  opcode = misaligned_p ? "vmovdqu64" : "vmovdqa64";
+	  break;
+	default:
+	  gcc_unreachable ();
+	}
+    }
+  else
+    gcc_unreachable ();
+
+  switch (size)
+    {
+    case 64:
+      snprintf (buf, sizeof (buf), "%s\t{%%g1, %%g0|%%g0, %%g1}",
+		opcode);
+      break;
+    case 32:
+      snprintf (buf, sizeof (buf), "%s\t{%%t1, %%t0|%%t0, %%t1}",
+		opcode);
+      break;
+    case 16:
+      snprintf (buf, sizeof (buf), "%s\t{%%x1, %%x0|%%x0, %%x1}",
+		opcode);
+      break;
+    default:
+      gcc_unreachable ();
+    }
+  output_asm_insn (buf, operands);
+  return "";
+}
+
+/* Return the template of the TYPE_SSEMOV instruction to move
+   operands[1] into operands[0].  */
+
+const char *
+ix86_output_ssemov (rtx_insn *insn, rtx *operands)
+{
+  machine_mode mode = GET_MODE (operands[0]);
+  if (get_attr_type (insn) != TYPE_SSEMOV
+      || mode != GET_MODE (operands[1]))
+    gcc_unreachable ();
+
+  enum attr_mode insn_mode = get_attr_mode (insn);
+
+  switch (insn_mode)
+    {
+    case MODE_XI:
+    case MODE_V8DF:
+    case MODE_V16SF:
+      return ix86_get_ssemov (operands, 64, insn_mode, mode);
+
+    case MODE_OI:
+    case MODE_V4DF:
+    case MODE_V8SF:
+      return ix86_get_ssemov (operands, 32, insn_mode, mode);
+
+    case MODE_TI:
+    case MODE_V2DF:
+    case MODE_V4SF:
+      return ix86_get_ssemov (operands, 16, insn_mode, mode);
+
+    case MODE_DI:
+      /* Handle broken assemblers that require movd instead of movq. */
+      if (!HAVE_AS_IX86_INTERUNIT_MOVQ
+	  && (GENERAL_REG_P (operands[0])
+	      || GENERAL_REG_P (operands[1])))
+	return "%vmovd\t{%1, %0|%0, %1}";
+      else
+	return "%vmovq\t{%1, %0|%0, %1}";
+
+    case MODE_SI:
+      return "%vmovd\t{%1, %0|%0, %1}";
+
+    case MODE_DF:
+      if (TARGET_AVX && REG_P (operands[0]) && REG_P (operands[1]))
+	return "vmovsd\t{%d1, %0|%0, %d1}";
+      else
+	return "%vmovsd\t{%1, %0|%0, %1}";
+
+    case MODE_SF:
+      if (TARGET_AVX && REG_P (operands[0]) && REG_P (operands[1]))
+	return "vmovss\t{%d1, %0|%0, %d1}";
+      else
+	return "%vmovss\t{%1, %0|%0, %1}";
+
+    case MODE_V1DF:
+      gcc_assert (!TARGET_AVX);
+      return "movlpd\t{%1, %0|%0, %1}";
+
+    case MODE_V2SF:
+      if (TARGET_AVX && REG_P (operands[0]))
+	return "vmovlps\t{%1, %d0|%d0, %1}";
+      else
+	return "%vmovlps\t{%1, %0|%0, %1}";
+
+    default:
+      gcc_unreachable ();
+    }
 }
 
 /* Returns true if OP contains a symbol reference */
@@ -10717,7 +10964,7 @@ ix86_tls_module_base (void)
   if (!ix86_tls_module_base_symbol)
     {
       ix86_tls_module_base_symbol
-	= gen_rtx_SYMBOL_REF (Pmode, "_TLS_MODULE_BASE_");
+	= gen_rtx_SYMBOL_REF (ptr_mode, "_TLS_MODULE_BASE_");
 
       SYMBOL_REF_FLAGS (ix86_tls_module_base_symbol)
 	|= TLS_MODEL_GLOBAL_DYNAMIC << SYMBOL_FLAG_TLS_SHIFT;
@@ -10748,8 +10995,6 @@ legitimize_tls_address (rtx x, enum tls_model model, bool for_mov)
   switch (model)
     {
     case TLS_MODEL_GLOBAL_DYNAMIC:
-      dest = gen_reg_rtx (Pmode);
-
       if (!TARGET_64BIT)
 	{
 	  if (flag_pic && !TARGET_PECOFF)
@@ -10763,13 +11008,17 @@ legitimize_tls_address (rtx x, enum tls_model model, bool for_mov)
 
       if (TARGET_GNU2_TLS)
 	{
+	  dest = gen_reg_rtx (ptr_mode);
 	  if (TARGET_64BIT)
-	    emit_insn (gen_tls_dynamic_gnu2_64 (dest, x));
+	    emit_insn (gen_tls_dynamic_gnu2_64 (ptr_mode, dest, x));
 	  else
 	    emit_insn (gen_tls_dynamic_gnu2_32 (dest, x, pic));
 
-	  tp = get_thread_pointer (Pmode, true);
-	  dest = force_reg (Pmode, gen_rtx_PLUS (Pmode, tp, dest));
+	  tp = get_thread_pointer (ptr_mode, true);
+	  dest = gen_rtx_PLUS (ptr_mode, tp, dest);
+	  if (GET_MODE (dest) != Pmode)
+	     dest = gen_rtx_ZERO_EXTEND (Pmode, dest);
+	  dest = force_reg (Pmode, dest);
 
 	  if (GET_MODE (x) != Pmode)
 	    x = gen_rtx_ZERO_EXTEND (Pmode, x);
@@ -10780,6 +11029,7 @@ legitimize_tls_address (rtx x, enum tls_model model, bool for_mov)
 	{
 	  rtx caddr = ix86_tls_get_addr ();
 
+	  dest = gen_reg_rtx (Pmode);
 	  if (TARGET_64BIT)
 	    {
 	      rtx rax = gen_rtx_REG (Pmode, AX_REG);
@@ -10803,8 +11053,6 @@ legitimize_tls_address (rtx x, enum tls_model model, bool for_mov)
       break;
 
     case TLS_MODEL_LOCAL_DYNAMIC:
-      base = gen_reg_rtx (Pmode);
-
       if (!TARGET_64BIT)
 	{
 	  if (flag_pic)
@@ -10820,19 +11068,22 @@ legitimize_tls_address (rtx x, enum tls_model model, bool for_mov)
 	{
 	  rtx tmp = ix86_tls_module_base ();
 
+	  base = gen_reg_rtx (ptr_mode);
 	  if (TARGET_64BIT)
-	    emit_insn (gen_tls_dynamic_gnu2_64 (base, tmp));
+	    emit_insn (gen_tls_dynamic_gnu2_64 (ptr_mode, base, tmp));
 	  else
 	    emit_insn (gen_tls_dynamic_gnu2_32 (base, tmp, pic));
 
-	  tp = get_thread_pointer (Pmode, true);
-	  set_unique_reg_note (get_last_insn (), REG_EQUAL,
-			       gen_rtx_MINUS (Pmode, tmp, tp));
+	  tp = get_thread_pointer (ptr_mode, true);
+	  if (GET_MODE (base) != Pmode)
+	    base = gen_rtx_ZERO_EXTEND (Pmode, base);
+	  base = force_reg (Pmode, base);
 	}
       else
 	{
 	  rtx caddr = ix86_tls_get_addr ();
 
+	  base = gen_reg_rtx (Pmode);
 	  if (TARGET_64BIT)
 	    {
 	      rtx rax = gen_rtx_REG (Pmode, AX_REG);
@@ -10864,7 +11115,15 @@ legitimize_tls_address (rtx x, enum tls_model model, bool for_mov)
 
       if (TARGET_GNU2_TLS)
 	{
-	  dest = force_reg (Pmode, gen_rtx_PLUS (Pmode, dest, tp));
+	  if (GET_MODE (tp) != Pmode)
+	    {
+	      dest = lowpart_subreg (ptr_mode, dest, Pmode);
+	      dest = gen_rtx_PLUS (ptr_mode, tp, dest);
+	      dest = gen_rtx_ZERO_EXTEND (Pmode, dest);
+	    }
+	  else
+	    dest = gen_rtx_PLUS (Pmode, tp, dest);
+	  dest = force_reg (Pmode, dest);
 
 	  if (GET_MODE (x) != Pmode)
 	    x = gen_rtx_ZERO_EXTEND (Pmode, x);
@@ -14447,8 +14706,17 @@ ix86_lea_outperforms (rtx_insn *insn, unsigned int regno0, unsigned int regno1,
       return true;
     }
 
+  rtx_insn *rinsn = recog_data.insn;
+
   dist_define = distance_non_agu_define (regno1, regno2, insn);
   dist_use = distance_agu_use (regno0, insn);
+
+  /* distance_non_agu_define can call extract_insn_cached.  If this function
+     is called from define_split conditions, that can break insn splitting,
+     because split_insns works by clearing recog_data.insn and then modifying
+     recog_data.operand array and match the various split conditions.  */
+  if (recog_data.insn != rinsn)
+    recog_data.insn = NULL;
 
   if (dist_define < 0 || dist_define >= LEA_MAX_STALL)
     {
@@ -16813,9 +17081,14 @@ ix86_trampoline_init (rtx m_tramp, tree fndecl, rtx chain_value)
 	 the stack, we need to skip the first insn which pushes the
 	 (call-saved) register static chain; this push is 1 byte.  */
       offset += 5;
+      int skip = MEM_P (chain) ? 1 : 0;
+      /* Skip ENDBR32 at the entry of the target function.  */
+      if (need_endbr
+	  && !cgraph_node::get (fndecl)->only_called_directly_p ())
+	skip += 4;
       disp = expand_binop (SImode, sub_optab, fnaddr,
 			   plus_constant (Pmode, XEXP (m_tramp, 0),
-					  offset - (MEM_P (chain) ? 1 : 0)),
+					  offset - skip),
 			   NULL_RTX, 1, OPTAB_DIRECT);
       emit_move_insn (mem, disp);
     }
@@ -17266,8 +17539,13 @@ ix86_fold_builtin (tree fndecl, int n_args,
 		    countt = build_int_cst (integer_type_node, count);
 		}
 	      tree_vector_builder builder;
-	      builder.new_unary_operation (TREE_TYPE (args[0]), args[0],
-					   false);
+	      if (mask != HOST_WIDE_INT_M1U || is_vshift)
+		builder.new_vector (TREE_TYPE (args[0]),
+				    TYPE_VECTOR_SUBPARTS (TREE_TYPE (args[0])),
+				    1);
+	      else
+		builder.new_unary_operation (TREE_TYPE (args[0]), args[0],
+					     false);
 	      unsigned int cnt = builder.encoded_nelts ();
 	      for (unsigned int i = 0; i < cnt; ++i)
 		{
@@ -21493,7 +21771,9 @@ ix86_get_mask_mode (machine_mode data_mode)
   if ((TARGET_AVX512F && vector_size == 64)
       || (TARGET_AVX512VL && (vector_size == 32 || vector_size == 16)))
     {
-      if (elem_size == 4 || elem_size == 8 || TARGET_AVX512BW)
+      if (elem_size == 4
+	  || elem_size == 8
+	  || (TARGET_AVX512BW && (elem_size == 1 || elem_size == 2)))
 	return smallest_int_mode_for_size (nunits);
     }
 
@@ -22650,7 +22930,7 @@ ix86_test_loading_unspec ()
   /* Verify that the two mems are thus treated as equal.  */
   ASSERT_TRUE (rtx_equal_p (dst, v0));
 
-  /* Verify the the insn is recognized.  */
+  /* Verify that the insn is recognized.  */
   ASSERT_NE(-1, recog_memoized (insn));
 
   /* Test of an UNSPEC_VOLATILE, which has its own enum values.  */

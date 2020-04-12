@@ -184,8 +184,15 @@ CONSTEXPR const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1] = {
 /*     _f16 _f32 _f64
    _s8 _s16 _s32 _s64
    _u8 _u16 _u32 _u64.  */
-#define TYPES_all_data(S, D) \
+#define TYPES_all_arith(S, D) \
   TYPES_all_float (S, D), TYPES_all_integer (S, D)
+
+/*     _bf16
+	_f16 _f32 _f64
+   _s8  _s16 _s32 _s64
+   _u8  _u16 _u32 _u64.  */
+#define TYPES_all_data(S, D) \
+  S (bf16), TYPES_all_arith (S, D)
 
 /* _b only.  */
 #define TYPES_b(S, D) \
@@ -253,17 +260,25 @@ CONSTEXPR const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1] = {
 #define TYPES_hsd_integer(S, D) \
   TYPES_hsd_signed (S, D), S (u16), S (u32), S (u64)
 
+/* _f32.  */
+#define TYPES_s_float(S, D) \
+  S (f32)
+
 /*      _f32
    _s16 _s32 _s64
    _u16 _u32 _u64.  */
 #define TYPES_s_float_hsd_integer(S, D) \
-  S (f32), TYPES_hsd_integer (S, D)
+  TYPES_s_float (S, D), TYPES_hsd_integer (S, D)
 
 /* _f32
    _s32 _s64
    _u32 _u64.  */
 #define TYPES_s_float_sd_integer(S, D) \
-  S (f32), TYPES_sd_integer (S, D)
+  TYPES_s_float (S, D), TYPES_sd_integer (S, D)
+
+/* _s32.  */
+#define TYPES_s_signed(S, D) \
+  S (s32)
 
 /* _u32.  */
 #define TYPES_s_unsigned(S, D) \
@@ -271,7 +286,7 @@ CONSTEXPR const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1] = {
 
 /* _s32 _u32.  */
 #define TYPES_s_integer(S, D) \
-  S (s32), TYPES_s_unsigned (S, D)
+  TYPES_s_signed (S, D), TYPES_s_unsigned (S, D)
 
 /* _s32 _s64.  */
 #define TYPES_sd_signed(S, D) \
@@ -298,6 +313,10 @@ CONSTEXPR const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1] = {
 #define TYPES_all_float_and_sd_integer(S, D) \
   TYPES_all_float (S, D), TYPES_sd_integer (S, D)
 
+/* _f64.  */
+#define TYPES_d_float(S, D) \
+  S (f64)
+
 /* _u64.  */
 #define TYPES_d_unsigned(S, D) \
   S (u64)
@@ -311,7 +330,7 @@ CONSTEXPR const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1] = {
    _s64
    _u64.  */
 #define TYPES_d_data(S, D) \
-  S (f64), TYPES_d_integer (S, D)
+  TYPES_d_float (S, D), TYPES_d_integer (S, D)
 
 /* All the type combinations allowed by svcvt.  */
 #define TYPES_cvt(S, D) \
@@ -334,6 +353,10 @@ CONSTEXPR const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1] = {
   D (u16, f16), \
   D (u32, f16), D (u32, f32), D (u32, f64), \
   D (u64, f16), D (u64, f32), D (u64, f64)
+
+/* _bf16_f32.  */
+#define TYPES_cvt_bfloat(S, D) \
+  D (bf16, f32)
 
 /* _f32_f16
    _f64_f32.  */
@@ -359,14 +382,17 @@ CONSTEXPR const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1] = {
   TYPES_inc_dec_n1 (D, u32), \
   TYPES_inc_dec_n1 (D, u64)
 
-/* {     _f16 _f32 _f64 }   {     _f16 _f32 _f64 }
-   { _s8 _s16 _s32 _s64 } x { _s8 _s16 _s32 _s64 }
-   { _u8 _u16 _u32 _u64 }   { _u8 _u16 _u32 _u64 }.  */
+/* {     _bf16           }   {     _bf16           }
+   {      _f16 _f32 _f64 }   {      _f16 _f32 _f64 }
+   { _s8  _s16 _s32 _s64 } x { _s8  _s16 _s32 _s64 }
+   { _u8  _u16 _u32 _u64 }   { _u8  _u16 _u32 _u64 }.  */
 #define TYPES_reinterpret1(D, A) \
+  D (A, bf16), \
   D (A, f16), D (A, f32), D (A, f64), \
   D (A, s8), D (A, s16), D (A, s32), D (A, s64), \
   D (A, u8), D (A, u16), D (A, u32), D (A, u64)
 #define TYPES_reinterpret(S, D) \
+  TYPES_reinterpret1 (D, bf16), \
   TYPES_reinterpret1 (D, f16), \
   TYPES_reinterpret1 (D, f32), \
   TYPES_reinterpret1 (D, f64), \
@@ -416,6 +442,7 @@ DEF_SVE_TYPES_ARRAY (all_signed);
 DEF_SVE_TYPES_ARRAY (all_float_and_signed);
 DEF_SVE_TYPES_ARRAY (all_unsigned);
 DEF_SVE_TYPES_ARRAY (all_integer);
+DEF_SVE_TYPES_ARRAY (all_arith);
 DEF_SVE_TYPES_ARRAY (all_data);
 DEF_SVE_TYPES_ARRAY (b);
 DEF_SVE_TYPES_ARRAY (b_unsigned);
@@ -432,8 +459,10 @@ DEF_SVE_TYPES_ARRAY (hs_float);
 DEF_SVE_TYPES_ARRAY (hd_unsigned);
 DEF_SVE_TYPES_ARRAY (hsd_signed);
 DEF_SVE_TYPES_ARRAY (hsd_integer);
+DEF_SVE_TYPES_ARRAY (s_float);
 DEF_SVE_TYPES_ARRAY (s_float_hsd_integer);
 DEF_SVE_TYPES_ARRAY (s_float_sd_integer);
+DEF_SVE_TYPES_ARRAY (s_signed);
 DEF_SVE_TYPES_ARRAY (s_unsigned);
 DEF_SVE_TYPES_ARRAY (s_integer);
 DEF_SVE_TYPES_ARRAY (sd_signed);
@@ -441,10 +470,12 @@ DEF_SVE_TYPES_ARRAY (sd_unsigned);
 DEF_SVE_TYPES_ARRAY (sd_integer);
 DEF_SVE_TYPES_ARRAY (sd_data);
 DEF_SVE_TYPES_ARRAY (all_float_and_sd_integer);
+DEF_SVE_TYPES_ARRAY (d_float);
 DEF_SVE_TYPES_ARRAY (d_unsigned);
 DEF_SVE_TYPES_ARRAY (d_integer);
 DEF_SVE_TYPES_ARRAY (d_data);
 DEF_SVE_TYPES_ARRAY (cvt);
+DEF_SVE_TYPES_ARRAY (cvt_bfloat);
 DEF_SVE_TYPES_ARRAY (cvt_long);
 DEF_SVE_TYPES_ARRAY (cvt_narrow_s);
 DEF_SVE_TYPES_ARRAY (cvt_narrow);
@@ -554,6 +585,43 @@ lookup_sve_type_attribute (const_tree type)
   return lookup_attribute ("SVE type", TYPE_ATTRIBUTES (type));
 }
 
+/* Force TYPE to be a sizeless type.  */
+static void
+make_type_sizeless (tree type)
+{
+  TYPE_ATTRIBUTES (type) = tree_cons (get_identifier ("SVE sizeless type"),
+				      NULL_TREE, TYPE_ATTRIBUTES (type));
+}
+
+/* Return true if TYPE is a sizeless type.  */
+static bool
+sizeless_type_p (const_tree type)
+{
+  if (type == error_mark_node)
+    return NULL_TREE;
+  return lookup_attribute ("SVE sizeless type", TYPE_ATTRIBUTES (type));
+}
+
+/* Return true if CANDIDATE is equivalent to MODEL_TYPE for overloading
+   purposes.  */
+static bool
+matches_type_p (const_tree model_type, const_tree candidate)
+{
+  if (VECTOR_TYPE_P (model_type))
+    {
+      if (!VECTOR_TYPE_P (candidate)
+	  || maybe_ne (TYPE_VECTOR_SUBPARTS (model_type),
+		       TYPE_VECTOR_SUBPARTS (candidate))
+	  || TYPE_MODE (model_type) != TYPE_MODE (candidate))
+	return false;
+
+      model_type = TREE_TYPE (model_type);
+      candidate = TREE_TYPE (candidate);
+    }
+  return (candidate != error_mark_node
+	  && TYPE_MAIN_VARIANT (model_type) == TYPE_MAIN_VARIANT (candidate));
+}
+
 /* If TYPE is a valid SVE element type, return the corresponding type
    suffix, otherwise return NUM_TYPE_SUFFIXES.  */
 static type_suffix_index
@@ -561,12 +629,11 @@ find_type_suffix_for_scalar_type (const_tree type)
 {
   /* A linear search should be OK here, since the code isn't hot and
      the number of types is only small.  */
-  type = TYPE_MAIN_VARIANT (type);
   for (unsigned int suffix_i = 0; suffix_i < NUM_TYPE_SUFFIXES; ++suffix_i)
     if (!type_suffixes[suffix_i].bool_p)
       {
 	vector_type_index vector_i = type_suffixes[suffix_i].vector_type;
-	if (type == TYPE_MAIN_VARIANT (scalar_types[vector_i]))
+	if (matches_type_p (scalar_types[vector_i], type))
 	  return type_suffix_index (suffix_i);
       }
   return NUM_TYPE_SUFFIXES;
@@ -1225,7 +1292,7 @@ function_resolver::infer_vector_or_tuple_type (unsigned int argno,
       {
 	vector_type_index type_i = type_suffixes[suffix_i].vector_type;
 	tree type = acle_vector_types[size_i][type_i];
-	if (type && TYPE_MAIN_VARIANT (actual) == TYPE_MAIN_VARIANT (type))
+	if (type && matches_type_p (type, actual))
 	  {
 	    if (size_i + 1 == num_vectors)
 	      return type_suffix_index (suffix_i);
@@ -1363,8 +1430,7 @@ function_resolver::require_vector_type (unsigned int argno,
 {
   tree expected = acle_vector_types[0][type];
   tree actual = get_argument_type (argno);
-  if (actual != error_mark_node
-      && TYPE_MAIN_VARIANT (expected) != TYPE_MAIN_VARIANT (actual))
+  if (!matches_type_p (expected, actual))
     {
       error_at (location, "passing %qT to argument %d of %qE, which"
 		" expects %qT", actual, argno + 1, fndecl, expected);
@@ -2602,12 +2668,21 @@ function_expander::overlaps_input_p (rtx x)
   return false;
 }
 
+/* Convert ptr_mode value X to Pmode.  */
+rtx
+function_expander::convert_to_pmode (rtx x)
+{
+  if (ptr_mode == SImode)
+    x = simplify_gen_unary (ZERO_EXTEND, DImode, x, SImode);
+  return x;
+}
+
 /* Return the base address for a contiguous load or store function.
    MEM_MODE is the mode of the addressed memory.  */
 rtx
 function_expander::get_contiguous_base (machine_mode mem_mode)
 {
-  rtx base = args[1];
+  rtx base = convert_to_pmode (args[1]);
   if (mode_suffix_id == MODE_vnum)
     {
       /* Use the size of the memory mode for extending loads and truncating
@@ -2734,7 +2809,11 @@ function_expander::add_integer_operand (HOST_WIDE_INT x)
 void
 function_expander::add_mem_operand (machine_mode mode, rtx addr)
 {
-  gcc_assert (VECTOR_MODE_P (mode));
+  /* Exception for OImode for the ld1ro intrinsics.
+     They act on 256 bit octaword data, and it's just easier to use a scalar
+     mode to represent that than add a new vector mode solely for the purpose
+     of this intrinsic.  */
+  gcc_assert (VECTOR_MODE_P (mode) || mode == OImode);
   rtx mem = gen_rtx_MEM (mode, memory_address (mode, addr));
   /* The memory is only guaranteed to be element-aligned.  */
   set_mem_align (mem, GET_MODE_ALIGNMENT (GET_MODE_INNER (mode)));
@@ -2810,9 +2889,7 @@ function_expander::prepare_gather_address_operands (unsigned int argno,
     {
       /* Scalar base, vector displacement.  This is the order that the md
 	 pattern wants.  */
-      if (Pmode == SImode)
-	args[argno] = simplify_gen_unary (ZERO_EXTEND, DImode,
-					  args[argno], SImode);
+      args[argno] = convert_to_pmode (args[argno]);
       vector_type = displacement_vector_type ();
       if (units == UNITS_elements && !scaled_p)
 	shift_idx = argno + 1;
@@ -3251,6 +3328,7 @@ register_builtin_types ()
       TYPE_INDIVISIBLE_P (vectype) = 1;
       add_sve_type_attribute (vectype, num_zr, num_pr,
 			      vector_types[i].mangled_name);
+      make_type_sizeless (vectype);
       abi_vector_types[i] = vectype;
       lang_hooks.types.register_builtin_type (vectype,
 					      vector_types[i].abi_name);
@@ -3319,13 +3397,14 @@ register_tuple_type (unsigned int num_vectors, vector_type_index type)
   DECL_FIELD_CONTEXT (field) = tuple_type;
   TYPE_FIELDS (tuple_type) = field;
   add_sve_type_attribute (tuple_type, num_vectors, 0, NULL);
+  make_type_sizeless (tuple_type);
   layout_type (tuple_type);
   gcc_assert (VECTOR_MODE_P (TYPE_MODE (tuple_type))
 	      && TYPE_MODE_RAW (tuple_type) == TYPE_MODE (tuple_type)
 	      && TYPE_ALIGN (tuple_type) == 128);
 
   /* Work out the structure name.  */
-  char buffer[sizeof ("svfloat64x4_t")];
+  char buffer[sizeof ("svbfloat16x4_t")];
   const char *vector_type_name = vector_types[type].acle_name;
   snprintf (buffer, sizeof (buffer), "%.*sx%d_t",
 	    (int) strlen (vector_type_name) - 2, vector_type_name,
@@ -3531,12 +3610,67 @@ builtin_type_p (const_tree type, unsigned int *num_zr, unsigned int *num_pr)
   return false;
 }
 
+/* An attribute callback for the "arm_sve_vector_bits" attribute.  */
+tree
+handle_arm_sve_vector_bits_attribute (tree *node, tree, tree args, int,
+				      bool *no_add_attrs)
+{
+  *no_add_attrs = true;
+
+  tree type = *node;
+  if (!VECTOR_TYPE_P (type) || !builtin_type_p (type))
+    {
+      error ("%qs applied to non-SVE type %qT", "arm_sve_vector_bits", type);
+      return NULL_TREE;
+    }
+
+  tree size = TREE_VALUE (args);
+  if (TREE_CODE (size) != INTEGER_CST)
+    {
+      error ("%qs requires an integer constant expression",
+	     "arm_sve_vector_bits");
+      return NULL_TREE;
+    }
+
+  unsigned HOST_WIDE_INT value = tree_to_uhwi (size);
+  if (maybe_ne (value, BITS_PER_SVE_VECTOR))
+    {
+      warning (OPT_Wattributes, "unsupported SVE vector size");
+      return NULL_TREE;
+    }
+
+  /* FIXME: The type ought to be a distinct copy in all cases, but
+     currently that makes the C frontend reject conversions between
+     svbool_t and its fixed-length variants.  Using a type variant
+     avoids that but means that we treat some ambiguous combinations
+     as valid.  */
+  if (lang_GNU_C () && VECTOR_BOOLEAN_TYPE_P (type))
+    type = build_variant_type_copy (type);
+  else
+    type = build_distinct_type_copy (type);
+
+  /* The new type is a normal sized type; it doesn't have the same
+     restrictions as sizeless types.  */
+  TYPE_ATTRIBUTES (type)
+    = remove_attribute ("SVE sizeless type",
+			copy_list (TYPE_ATTRIBUTES (type)));
+
+  /* Allow the GNU vector extensions to be applied to vectors.
+     The extensions aren't yet defined for packed predicates,
+     so continue to treat them as abstract entities for now.  */
+  if (!VECTOR_BOOLEAN_TYPE_P (type))
+    TYPE_INDIVISIBLE_P (type) = 0;
+
+  *node = type;
+  return NULL_TREE;
+}
+
 /* Implement TARGET_VERIFY_TYPE_CONTEXT for SVE types.  */
 bool
 verify_type_context (location_t loc, type_context_kind context,
 		     const_tree type, bool silent_p)
 {
-  if (!builtin_type_p (type))
+  if (!sizeless_type_p (type))
     return true;
 
   switch (context)

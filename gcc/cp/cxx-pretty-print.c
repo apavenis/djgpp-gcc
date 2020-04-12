@@ -1214,12 +1214,14 @@ cxx_pretty_printer::expression (tree t)
       {
 	tree args = ARGUMENT_PACK_ARGS (t);
 	int i, len = TREE_VEC_LENGTH (args);
+	pp_cxx_left_brace (this);
 	for (i = 0; i < len; ++i)
 	  {
 	    if (i > 0)
 	      pp_cxx_separate_with (this, ',');
 	    expression (TREE_VEC_ELT (args, i));
 	  }
+	pp_cxx_right_brace (this);
       }
       break;
 
@@ -1358,7 +1360,7 @@ cxx_pretty_printer::simple_type_specifier (tree t)
     case TYPENAME_TYPE:
       pp_cxx_ws_string (this, "typename");
       pp_cxx_nested_name_specifier (this, TYPE_CONTEXT (t));
-      pp_cxx_unqualified_id (this, TYPE_NAME (t));
+      pp_cxx_unqualified_id (this, TYPENAME_TYPE_FULLNAME (t));
       break;
 
     default:
@@ -1837,6 +1839,21 @@ cxx_pretty_printer::type_id (tree t)
     case TYPE_PACK_EXPANSION:
       type_id (PACK_EXPANSION_PATTERN (t));
       pp_cxx_ws_string (this, "...");
+      break;
+
+    case TYPE_ARGUMENT_PACK:
+      {
+	tree args = ARGUMENT_PACK_ARGS (t);
+	int len = TREE_VEC_LENGTH (args);
+	pp_cxx_left_brace (this);
+	for (int i = 0; i < len; ++i)
+	  {
+	    if (i > 0)
+	      pp_cxx_separate_with (this, ',');
+	    type_id (TREE_VEC_ELT (args, i));
+	  }
+	pp_cxx_right_brace (this);
+      }
       break;
 
     default:
@@ -2861,9 +2878,14 @@ pp_cxx_check_constraint (cxx_pretty_printer *pp, tree t)
 /* Output the "[with ...]" clause for a parameter mapping of an atomic
    constraint.   */
 
-static void
+void
 pp_cxx_parameter_mapping (cxx_pretty_printer *pp, tree map)
 {
+  pp_cxx_whitespace (pp);
+  pp_cxx_left_bracket (pp);
+  pp->translate_string ("with");
+  pp_cxx_whitespace (pp);
+
   for (tree p = map; p; p = TREE_CHAIN (p))
     {
       tree parm = TREE_VALUE (p);
@@ -2886,6 +2908,8 @@ pp_cxx_parameter_mapping (cxx_pretty_printer *pp, tree map)
       if (TREE_CHAIN (p) != NULL_TREE)
 	pp_cxx_separate_with (pp, ';');
     }
+
+  pp_cxx_right_bracket (pp);
 }
 
 void
@@ -2897,14 +2921,7 @@ pp_cxx_atomic_constraint (cxx_pretty_printer *pp, tree t)
   /* Emit the parameter mapping.  */
   tree map = ATOMIC_CONSTR_MAP (t);
   if (map && map != error_mark_node)
-    {
-      pp_cxx_whitespace (pp);
-      pp_cxx_left_bracket (pp);
-      pp->translate_string ("with");
-      pp_cxx_whitespace (pp);
-      pp_cxx_parameter_mapping (pp, map);
-      pp_cxx_right_bracket (pp);
-   }
+    pp_cxx_parameter_mapping (pp, map);
 }
 
 void

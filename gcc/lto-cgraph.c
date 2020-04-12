@@ -257,11 +257,13 @@ lto_output_edge (struct lto_simple_output_block *ob, struct cgraph_edge *edge,
   edge->count.stream_out (ob->main_stream);
 
   bp = bitpack_create (ob->main_stream);
-  uid = (!gimple_has_body_p (edge->caller->decl) || edge->caller->thunk.thunk_p
-	 ? edge->lto_stmt_uid : gimple_uid (edge->call_stmt) + 1);
+  uid = !edge->call_stmt ? edge->lto_stmt_uid
+			 : gimple_uid (edge->call_stmt) + 1;
   bp_pack_enum (&bp, cgraph_inline_failed_t,
 	        CIF_N_REASONS, edge->inline_failed);
+  gcc_checking_assert (uid || edge->caller->thunk.thunk_p);
   bp_pack_var_len_unsigned (&bp, uid);
+  bp_pack_value (&bp, edge->speculative_id, 16);
   bp_pack_value (&bp, edge->indirect_inlining_edge, 1);
   bp_pack_value (&bp, edge->speculative, 1);
   bp_pack_value (&bp, edge->call_stmt_cannot_inline_p, 1);
@@ -284,16 +286,11 @@ lto_output_edge (struct lto_simple_output_block *ob, struct cgraph_edge *edge,
 			     | ECF_SIBCALL
 			     | ECF_LEAF
 			     | ECF_NOVOPS)));
+
+      bp_pack_value (&bp, edge->indirect_info->num_speculative_call_targets,
+		     16);
     }
   streamer_write_bitpack (&bp);
-  if (edge->indirect_unknown_callee)
-    {
-      streamer_write_hwi_stream (ob->main_stream,
-			         edge->indirect_info->common_target_id);
-      if (edge->indirect_info->common_target_id)
-	streamer_write_hwi_stream
-	   (ob->main_stream, edge->indirect_info->common_target_probability);
-    }
 }
 
 /* Return if NODE contain references from other partitions.  */
@@ -673,7 +670,7 @@ lto_output_ref (struct lto_simple_output_block *ob, struct ipa_ref *ref,
 {
   struct bitpack_d bp;
   int nref;
-  int uid = ref->lto_stmt_uid;
+  int uid = !ref->stmt ? ref->lto_stmt_uid : gimple_uid (ref->stmt) + 1;
   struct cgraph_node *node;
 
   bp = bitpack_create (ob->main_stream);
@@ -690,6 +687,8 @@ lto_output_ref (struct lto_simple_output_block *ob, struct ipa_ref *ref,
       if (ref->stmt)
 	uid = gimple_uid (ref->stmt) + 1;
       streamer_write_hwi_stream (ob->main_stream, uid);
+      bp_pack_value (&bp, ref->speculative_id, 16);
+      streamer_write_bitpack (&bp);
     }
 }
 
@@ -1428,7 +1427,11 @@ input_ref (class lto_input_block *ib,
   ref = referring_node->create_reference (node, use);
   ref->speculative = speculative;
   if (is_a <cgraph_node *> (referring_node))
-    ref->lto_stmt_uid = streamer_read_hwi (ib);
+    {
+      ref->lto_stmt_uid = streamer_read_hwi (ib);
+      bp = streamer_read_bitpack (ib);
+      ref->speculative_id = bp_unpack_value (&bp, 16);
+    }
 }
 
 /* Read an edge from IB.  NODES points to a vector of previously read nodes for
@@ -1442,7 +1445,7 @@ input_edge (class lto_input_block *ib, vec<symtab_node *> nodes,
 {
   struct cgraph_node *caller, *callee;
   struct cgraph_edge *edge;
-  unsigned int stmt_id;
+  unsigned int stmt_id, speculative_id;
   profile_count count;
   cgraph_inline_failed_t inline_failed;
   struct bitpack_d bp;
@@ -1466,6 +1469,7 @@ input_edge (class lto_input_block *ib, vec<symtab_node *> nodes,
   bp = streamer_read_bitpack (ib);
   inline_failed = bp_unpack_enum (&bp, cgraph_inline_failed_t, CIF_N_REASONS);
   stmt_id = bp_unpack_var_len_unsigned (&bp);
+  speculative_id = bp_unpack_value (&bp, 16);
 
   if (indirect)
     edge = caller->create_indirect_edge (NULL, 0, count);
@@ -1475,6 +1479,7 @@ input_edge (class lto_input_block *ib, vec<symtab_node *> nodes,
   edge->indirect_inlining_edge = bp_unpack_value (&bp, 1);
   edge->speculative = bp_unpack_value (&bp, 1);
   edge->lto_stmt_uid = stmt_id;
+  edge->speculative_id = speculative_id;
   edge->inline_failed = inline_failed;
   edge->call_stmt_cannot_inline_p = bp_unpack_value (&bp, 1);
   edge->can_throw_external = bp_unpack_value (&bp, 1);
@@ -1494,9 +1499,9 @@ input_edge (class lto_input_block *ib, vec<symtab_node *> nodes,
       if (bp_unpack_value (&bp, 1))
 	ecf_flags |= ECF_RETURNS_TWICE;
       edge->indirect_info->ecf_flags = ecf_flags;
-      edge->indirect_info->common_target_id = streamer_read_hwi (ib);
-      if (edge->indirect_info->common_target_id)
-        edge->indirect_info->common_target_probability = streamer_read_hwi (ib);
+
+      edge->indirect_info->num_speculative_call_targets
+	= bp_unpack_value (&bp, 16);
     }
 }
 

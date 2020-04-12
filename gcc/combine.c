@@ -4351,25 +4351,29 @@ try_combine (rtx_insn *i3, rtx_insn *i2, rtx_insn *i1, rtx_insn *i0,
       if (GET_CODE (x) == PARALLEL)
 	x = XVECEXP (newi2pat, 0, 0);
 
-      /* It can only be a SET of a REG or of a SUBREG of a REG.  */
-      unsigned int regno = reg_or_subregno (SET_DEST (x));
-
-      bool done = false;
-      for (rtx_insn *insn = NEXT_INSN (i3);
-	   !done
-	   && insn
-	   && NONDEBUG_INSN_P (insn)
-	   && BLOCK_FOR_INSN (insn) == this_basic_block;
-	   insn = NEXT_INSN (insn))
+      if (REG_P (SET_DEST (x))
+	  || (GET_CODE (SET_DEST (x)) == SUBREG
+	      && REG_P (SUBREG_REG (SET_DEST (x)))))
 	{
-	  struct insn_link *link;
-	  FOR_EACH_LOG_LINK (link, insn)
-	    if (link->insn == i3 && link->regno == regno)
-	      {
-		link->insn = i2;
-		done = true;
-		break;
-	      }
+	  unsigned int regno = reg_or_subregno (SET_DEST (x));
+
+	  bool done = false;
+	  for (rtx_insn *insn = NEXT_INSN (i3);
+	       !done
+	       && insn
+	       && NONDEBUG_INSN_P (insn)
+	       && BLOCK_FOR_INSN (insn) == this_basic_block;
+	       insn = NEXT_INSN (insn))
+	    {
+	      struct insn_link *link;
+	      FOR_EACH_LOG_LINK (link, insn)
+		if (link->insn == i3 && link->regno == regno)
+		  {
+		    link->insn = i2;
+		    done = true;
+		    break;
+		  }
+	    }
 	}
     }
 
@@ -5130,10 +5134,9 @@ find_split_point (rtx *loc, rtx_insn *insn, bool set_src)
 	{
 	  HOST_WIDE_INT pos = INTVAL (XEXP (SET_DEST (x), 2));
 	  unsigned HOST_WIDE_INT len = INTVAL (XEXP (SET_DEST (x), 1));
-	  unsigned HOST_WIDE_INT src = INTVAL (SET_SRC (x));
 	  rtx dest = XEXP (SET_DEST (x), 0);
-	  unsigned HOST_WIDE_INT mask
-	    = (HOST_WIDE_INT_1U << len) - 1;
+	  unsigned HOST_WIDE_INT mask = (HOST_WIDE_INT_1U << len) - 1;
+	  unsigned HOST_WIDE_INT src = INTVAL (SET_SRC (x)) & mask;
 	  rtx or_mask;
 
 	  if (BITS_BIG_ENDIAN)
@@ -12410,7 +12413,8 @@ simplify_comparison (enum rtx_code code, rtx *pop0, rtx *pop1)
 	     bit.  This will be converted into a ZERO_EXTRACT.  */
 	  if (const_op == 0 && sign_bit_comparison_p
 	      && CONST_INT_P (XEXP (op0, 1))
-	      && mode_width <= HOST_BITS_PER_WIDE_INT)
+	      && mode_width <= HOST_BITS_PER_WIDE_INT
+	      && UINTVAL (XEXP (op0, 1)) < mode_width)
 	    {
 	      op0 = simplify_and_const_int (NULL_RTX, mode, XEXP (op0, 0),
 					    (HOST_WIDE_INT_1U

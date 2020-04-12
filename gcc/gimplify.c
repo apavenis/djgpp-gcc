@@ -1599,6 +1599,14 @@ gimplify_return_expr (tree stmt, gimple_seq *pre_p)
 
   if (VOID_TYPE_P (TREE_TYPE (TREE_TYPE (current_function_decl))))
     result_decl = NULL_TREE;
+  else if (TREE_CODE (ret_expr) == COMPOUND_EXPR)
+    {
+      /* Used in C++ for handling EH cleanup of the return value if a local
+	 cleanup throws.  Assume the front-end knows what it's doing.  */
+      result_decl = DECL_RESULT (current_function_decl);
+      /* But crash if we end up trying to modify ret_expr below.  */
+      ret_expr = NULL_TREE;
+    }
   else
     {
       result_decl = TREE_OPERAND (ret_expr, 0);
@@ -1624,7 +1632,7 @@ gimplify_return_expr (tree stmt, gimple_seq *pre_p)
     result = NULL_TREE;
   else if (aggregate_value_p (result_decl, TREE_TYPE (current_function_decl)))
     {
-      if (TREE_CODE (DECL_SIZE (result_decl)) != INTEGER_CST)
+      if (!poly_int_tree_p (DECL_SIZE (result_decl)))
 	{
 	  if (!TYPE_SIZES_GIMPLIFIED (TREE_TYPE (result_decl)))
 	    gimplify_type_sizes (TREE_TYPE (result_decl), pre_p);
@@ -4915,6 +4923,7 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	    && num_nonzero_elements > 1
 	    && TREE_READONLY (object)
 	    && VAR_P (object)
+	    && !DECL_REGISTER (object)
 	    && (flag_merge_constants >= 2 || !TREE_ADDRESSABLE (object))
 	    /* For ctors that have many repeated nonzero elements
 	       represented through RANGE_EXPRs, prefer initializing
@@ -6172,7 +6181,9 @@ gimplify_addr_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p)
 
       /* For various reasons, the gimplification of the expression
 	 may have made a new INDIRECT_REF.  */
-      if (TREE_CODE (op0) == INDIRECT_REF)
+      if (TREE_CODE (op0) == INDIRECT_REF
+	  || (TREE_CODE (op0) == MEM_REF
+	      && integer_zerop (TREE_OPERAND (op0, 1))))
 	goto do_indirect_ref;
 
       mark_addressable (TREE_OPERAND (expr, 0));
@@ -6706,7 +6717,7 @@ gimplify_target_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p)
 
       /* TARGET_EXPR temps aren't part of the enclosing block, so add it
 	 to the temps list.  Handle also variable length TARGET_EXPRs.  */
-      if (TREE_CODE (DECL_SIZE (temp)) != INTEGER_CST)
+      if (!poly_int_tree_p (DECL_SIZE (temp)))
 	{
 	  if (!TYPE_SIZES_GIMPLIFIED (TREE_TYPE (temp)))
 	    gimplify_type_sizes (TREE_TYPE (temp), pre_p);
@@ -7913,7 +7924,7 @@ gimplify_omp_depend (tree *list_p, gimple_seq *pre_p)
   tree type = build_array_type (ptr_type_node, build_index_type (totalpx));
   tree array = create_tmp_var_raw (type);
   TREE_ADDRESSABLE (array) = 1;
-  if (TREE_CODE (totalpx) != INTEGER_CST)
+  if (!poly_int_tree_p (totalpx))
     {
       if (!TYPE_SIZES_GIMPLIFIED (TREE_TYPE (array)))
 	gimplify_type_sizes (TREE_TYPE (array), pre_p);
@@ -9456,9 +9467,13 @@ gimplify_scan_omp_clauses (tree *list_p, gimple_seq *pre_p,
 				  == POINTER_TYPE))))
 		    omp_firstprivatize_variable (outer_ctx, decl);
 		  else
-		    omp_add_variable (outer_ctx, decl,
-				      GOVD_SEEN | GOVD_SHARED);
-		  omp_notice_variable (outer_ctx, decl, true);
+		    {
+		      omp_add_variable (outer_ctx, decl,
+					GOVD_SEEN | GOVD_SHARED);
+		      if (outer_ctx->outer_context)
+			omp_notice_variable (outer_ctx->outer_context, decl,
+					     true);
+		    }
 		}
 	    }
 	  if (outer_ctx)
@@ -9893,6 +9908,22 @@ gimplify_adjust_omp_clauses_1 (splay_tree_node n, void *data)
 	{
 	  error ("%<_Atomic%> %qD in implicit %<map%> clause", decl);
 	  return 0;
+	}
+      if (VAR_P (decl)
+	  && DECL_IN_CONSTANT_POOL (decl)
+          && !lookup_attribute ("omp declare target",
+				DECL_ATTRIBUTES (decl)))
+	{
+	  tree id = get_identifier ("omp declare target");
+	  DECL_ATTRIBUTES (decl)
+	    = tree_cons (id, NULL_TREE, DECL_ATTRIBUTES (decl));
+	  varpool_node *node = varpool_node::get (decl);
+	  if (node)
+	    {
+	      node->offloadable = 1;
+	      if (ENABLE_OFFLOADING)
+		g->have_offload = true;
+	    }
 	}
     }
   else if (flags & GOVD_SHARED)
@@ -14820,7 +14851,7 @@ gimplify_body (tree fndecl, bool do_parms)
   /* Gimplify the function's body.  */
   seq = NULL;
   gimplify_stmt (&DECL_SAVED_TREE (fndecl), &seq);
-  outer_stmt = gimple_seq_first_stmt (seq);
+  outer_stmt = gimple_seq_first_nondebug_stmt (seq);
   if (!outer_stmt)
     {
       outer_stmt = gimple_build_nop ();
@@ -14830,8 +14861,37 @@ gimplify_body (tree fndecl, bool do_parms)
   /* The body must contain exactly one statement, a GIMPLE_BIND.  If this is
      not the case, wrap everything in a GIMPLE_BIND to make it so.  */
   if (gimple_code (outer_stmt) == GIMPLE_BIND
-      && gimple_seq_first (seq) == gimple_seq_last (seq))
-    outer_bind = as_a <gbind *> (outer_stmt);
+      && (gimple_seq_first_nondebug_stmt (seq)
+	  == gimple_seq_last_nondebug_stmt (seq)))
+    {
+      outer_bind = as_a <gbind *> (outer_stmt);
+      if (gimple_seq_first_stmt (seq) != outer_stmt
+	  || gimple_seq_last_stmt (seq) != outer_stmt)
+	{
+	  /* If there are debug stmts before or after outer_stmt, move them
+	     inside of outer_bind body.  */
+	  gimple_stmt_iterator gsi = gsi_for_stmt (outer_stmt, &seq);
+	  gimple_seq second_seq = NULL;
+	  if (gimple_seq_first_stmt (seq) != outer_stmt
+	      && gimple_seq_last_stmt (seq) != outer_stmt)
+	    {
+	      second_seq = gsi_split_seq_after (gsi);
+	      gsi_remove (&gsi, false);
+	    }
+	  else if (gimple_seq_first_stmt (seq) != outer_stmt)
+	    gsi_remove (&gsi, false);
+	  else
+	    {
+	      gsi_remove (&gsi, false);
+	      second_seq = seq;
+	      seq = NULL;
+	    }
+	  gimple_seq_add_seq_without_update (&seq,
+					     gimple_bind_body (outer_bind));
+	  gimple_seq_add_seq_without_update (&seq, second_seq);
+	  gimple_bind_set_body (outer_bind, seq);
+	}
+    }
   else
     outer_bind = gimple_build_bind (NULL_TREE, seq, NULL);
 

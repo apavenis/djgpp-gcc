@@ -8354,6 +8354,70 @@ can_native_interpret_type_p (tree type)
     }
 }
 
+/* Routines for manipulation of native_encode_expr encoded data if the encoded
+   or extracted constant positions and/or sizes aren't byte aligned.  */
+
+/* Shift left the bytes in PTR of SZ elements by AMNT bits, carrying over the
+   bits between adjacent elements.  AMNT should be within
+   [0, BITS_PER_UNIT).
+   Example, AMNT = 2:
+   00011111|11100000 << 2 = 01111111|10000000
+   PTR[1]  | PTR[0]         PTR[1]  | PTR[0].  */
+
+void
+shift_bytes_in_array_left (unsigned char *ptr, unsigned int sz,
+			   unsigned int amnt)
+{
+  if (amnt == 0)
+    return;
+
+  unsigned char carry_over = 0U;
+  unsigned char carry_mask = (~0U) << (unsigned char) (BITS_PER_UNIT - amnt);
+  unsigned char clear_mask = (~0U) << amnt;
+
+  for (unsigned int i = 0; i < sz; i++)
+    {
+      unsigned prev_carry_over = carry_over;
+      carry_over = (ptr[i] & carry_mask) >> (BITS_PER_UNIT - amnt);
+
+      ptr[i] <<= amnt;
+      if (i != 0)
+	{
+	  ptr[i] &= clear_mask;
+	  ptr[i] |= prev_carry_over;
+	}
+    }
+}
+
+/* Like shift_bytes_in_array_left but for big-endian.
+   Shift right the bytes in PTR of SZ elements by AMNT bits, carrying over the
+   bits between adjacent elements.  AMNT should be within
+   [0, BITS_PER_UNIT).
+   Example, AMNT = 2:
+   00011111|11100000 >> 2 = 00000111|11111000
+   PTR[0]  | PTR[1]         PTR[0]  | PTR[1].  */
+
+void
+shift_bytes_in_array_right (unsigned char *ptr, unsigned int sz,
+			    unsigned int amnt)
+{
+  if (amnt == 0)
+    return;
+
+  unsigned char carry_over = 0U;
+  unsigned char carry_mask = ~(~0U << amnt);
+
+  for (unsigned int i = 0; i < sz; i++)
+    {
+      unsigned prev_carry_over = carry_over;
+      carry_over = ptr[i] & carry_mask;
+
+      carry_over <<= (unsigned char) BITS_PER_UNIT - amnt;
+      ptr[i] >>= amnt;
+      ptr[i] |= prev_carry_over;
+    }
+}
+
 /* Try to view-convert VECTOR_CST EXPR to VECTOR_TYPE TYPE by operating
    directly on the VECTOR_CST encoding, in a way that works for variable-
    length vectors.  Return the resulting VECTOR_CST on success or null
@@ -8459,7 +8523,12 @@ build_fold_addr_expr_with_type_loc (location_t loc, tree t, tree ptrtype)
     }
   else if (TREE_CODE (t) == MEM_REF
 	   && integer_zerop (TREE_OPERAND (t, 1)))
-    return TREE_OPERAND (t, 0);
+    {
+      t = TREE_OPERAND (t, 0);
+
+      if (TREE_TYPE (t) != ptrtype)
+	t = fold_convert_loc (loc, ptrtype, t);
+    }
   else if (TREE_CODE (t) == MEM_REF
 	   && TREE_CODE (TREE_OPERAND (t, 0)) == INTEGER_CST)
     return fold_binary (POINTER_PLUS_EXPR, ptrtype,
@@ -10215,7 +10284,7 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 	  if (!base)
 	    return NULL_TREE;
 	  return fold_build2 (MEM_REF, type,
-			      build_fold_addr_expr (base),
+			      build1 (ADDR_EXPR, TREE_TYPE (arg0), base),
 			      int_const_binop (PLUS_EXPR, arg1,
 					       size_int (coffset)));
 	}
@@ -11079,11 +11148,11 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 
       /* Convert -A / -B to A / B when the type is signed and overflow is
 	 undefined.  */
-      if ((!INTEGRAL_TYPE_P (type) || TYPE_OVERFLOW_UNDEFINED (type))
+      if ((!ANY_INTEGRAL_TYPE_P (type) || TYPE_OVERFLOW_UNDEFINED (type))
 	  && TREE_CODE (op0) == NEGATE_EXPR
 	  && negate_expr_p (op1))
 	{
-	  if (INTEGRAL_TYPE_P (type))
+	  if (ANY_INTEGRAL_TYPE_P (type))
 	    fold_overflow_warning (("assuming signed overflow does not occur "
 				    "when distributing negation across "
 				    "division"),
@@ -11093,11 +11162,11 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 						    TREE_OPERAND (arg0, 0)),
 				  negate_expr (op1));
 	}
-      if ((!INTEGRAL_TYPE_P (type) || TYPE_OVERFLOW_UNDEFINED (type))
+      if ((!ANY_INTEGRAL_TYPE_P (type) || TYPE_OVERFLOW_UNDEFINED (type))
 	  && TREE_CODE (arg1) == NEGATE_EXPR
 	  && negate_expr_p (op0))
 	{
-	  if (INTEGRAL_TYPE_P (type))
+	  if (ANY_INTEGRAL_TYPE_P (type))
 	    fold_overflow_warning (("assuming signed overflow does not occur "
 				    "when distributing negation across "
 				    "division"),

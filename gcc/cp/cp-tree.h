@@ -59,7 +59,10 @@ public:
     m_value (value), m_loc (cp_expr_location (m_value)) {}
 
   cp_expr (tree value, location_t loc):
-    m_value (value), m_loc (loc) {}
+    m_value (value), m_loc (loc)
+  {
+    protected_set_expr_location (value, loc);
+  }
 
   /* Implicit conversions to tree.  */
   operator tree () const { return m_value; }
@@ -205,6 +208,10 @@ enum cp_tree_index
     CPTI_ANY_TARG,
 
     CPTI_SOURCE_LOCATION_IMPL,
+
+    CPTI_FALLBACK_DFLOAT32_TYPE,
+    CPTI_FALLBACK_DFLOAT64_TYPE,
+    CPTI_FALLBACK_DFLOAT128_TYPE,
 
     CPTI_MAX
 };
@@ -365,6 +372,12 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
    access nodes in tree.h.  */
 
 #define access_default_node		null_node
+
+/* Variant of dfloat{32,64,128}_type_node only used for fundamental
+   rtti purposes if DFP is disabled.  */
+#define fallback_dfloat32_type		cp_global_trees[CPTI_FALLBACK_DFLOAT32_TYPE]
+#define fallback_dfloat64_type		cp_global_trees[CPTI_FALLBACK_DFLOAT64_TYPE]
+#define fallback_dfloat128_type		cp_global_trees[CPTI_FALLBACK_DFLOAT128_TYPE]
 
 
 #include "name-lookup.h"
@@ -900,6 +913,7 @@ struct named_decl_hash : ggc_remove <tree>
   inline static hashval_t hash (const value_type decl);
   inline static bool equal (const value_type existing, compare_type candidate);
 
+  static const bool empty_zero_p = true;
   static inline void mark_empty (value_type &p) {p = NULL_TREE;}
   static inline bool is_empty (value_type p) {return !p;}
 
@@ -1870,6 +1884,7 @@ struct named_label_hash : ggc_remove <named_label_entry *>
   inline static hashval_t hash (value_type);
   inline static bool equal (const value_type, compare_type);
 
+  static const bool empty_zero_p = true;
   inline static void mark_empty (value_type &p) {p = NULL;}
   inline static bool is_empty (value_type p) {return !p;}
 
@@ -1902,6 +1917,7 @@ struct GTY(()) language_function {
   BOOL_BITFIELD can_throw : 1;
 
   BOOL_BITFIELD invalid_constexpr : 1;
+  BOOL_BITFIELD throwing_cleanup : 1;
 
   hash_table<named_label_hash> *x_named_labels;
 
@@ -1951,6 +1967,13 @@ struct GTY(()) language_function {
    constructors and destructors.  */
 
 #define current_vtt_parm cp_function_chain->x_vtt_parm
+
+/* A boolean flag to control whether we need to clean up the return value if a
+   local destructor throws.  Only used in functions that return by value a
+   class with a destructor.  Which 'tors don't, so we can use the same
+   field as current_vtt_parm.  */
+
+#define current_retval_sentinel current_vtt_parm
 
 /* Set to 0 at beginning of a function definition, set to 1 if
    a return statement that specifies a return value is seen.  */
@@ -2701,7 +2724,9 @@ struct GTY(()) lang_decl_fn {
   unsigned has_dependent_explicit_spec_p : 1;
   unsigned immediate_fn_p : 1;
   unsigned maybe_deleted : 1;
-  unsigned spare : 10;
+  unsigned coroutine_p : 1;
+
+  unsigned spare : 9;
 
   /* 32-bits padding on 64-bit host.  */
 
@@ -3470,7 +3495,7 @@ struct GTY(()) lang_decl {
    for the alias template (if any).  Otherwise behave as
    TYPE_TEMPLATE_INFO.  */
 #define TYPE_TEMPLATE_INFO_MAYBE_ALIAS(NODE)				\
-  (TYPE_ALIAS_P (NODE)							\
+  (typedef_variant_p (NODE)						\
    ? TYPE_ALIAS_TEMPLATE_INFO (NODE)					\
    : TYPE_TEMPLATE_INFO (NODE))
 
@@ -4992,6 +5017,13 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
 #define QUALIFIED_NAME_IS_TEMPLATE(NODE) \
   (TREE_LANG_FLAG_1 (SCOPE_REF_CHECK (NODE)))
 
+/* [coroutines]
+*/
+
+/* True if NODE is a co-routine FUNCTION_DECL.  */
+#define DECL_COROUTINE_P(NODE) \
+  (LANG_DECL_FN_CHECK (DECL_COMMON_CHECK (NODE))->coroutine_p)
+
 /* True for an OMP_ATOMIC that has dependent parameters.  These are stored
    as an expr in operand 1, and integer_zero_node or clauses in operand 0.  */
 #define OMP_ATOMIC_DEPENDENT_P(NODE) \
@@ -5116,6 +5148,7 @@ more_aggr_init_expr_args_p (const aggr_init_expr_arg_iterator *iter)
    the initializer has void type, it's doing something more complicated.  */
 #define SIMPLE_TARGET_EXPR_P(NODE)				\
   (TREE_CODE (NODE) == TARGET_EXPR				\
+   && TARGET_EXPR_INITIAL (NODE)				\
    && !VOID_TYPE_P (TREE_TYPE (TARGET_EXPR_INITIAL (NODE))))
 
 /* True if EXPR expresses direct-initialization of a TYPE.  */
@@ -6328,6 +6361,7 @@ extern tree make_temporary_var_for_ref_to_temp	(tree, tree);
 extern bool type_has_extended_temps		(tree);
 extern tree strip_top_quals			(tree);
 extern bool reference_related_p			(tree, tree);
+extern bool reference_compatible_p		(tree, tree);
 extern int remaining_arguments			(tree);
 extern tree perform_implicit_conversion		(tree, tree, tsubst_flags_t);
 extern tree perform_implicit_conversion_flags	(tree, tree, tsubst_flags_t, int);
@@ -6409,6 +6443,7 @@ extern bool type_has_constexpr_destructor	(tree);
 extern bool type_has_virtual_destructor		(tree);
 extern bool classtype_has_move_assign_or_move_ctor_p (tree, bool user_declared);
 extern bool classtype_has_non_deleted_move_ctor (tree);
+extern bool classtype_has_non_deleted_copy_ctor (tree);
 extern tree classtype_has_depr_implicit_copy	(tree);
 extern bool classtype_has_op (tree, tree_code);
 extern tree classtype_has_defaulted_op (tree, tree_code);
@@ -6617,6 +6652,7 @@ extern bool mark_used				(tree);
 extern bool mark_used			        (tree, tsubst_flags_t);
 extern void finish_static_data_member_decl	(tree, tree, bool, tree, int);
 extern tree cp_build_parm_decl			(tree, tree, tree);
+extern void copy_linkage			(tree, tree);
 extern tree get_guard				(tree);
 extern tree get_guard_cond			(tree, bool);
 extern tree set_guard				(tree);
@@ -6675,6 +6711,9 @@ extern tree begin_eh_spec_block			(void);
 extern void finish_eh_spec_block		(tree, tree);
 extern tree build_eh_type_type			(tree);
 extern tree cp_protect_cleanup_actions		(void);
+extern void maybe_splice_retval_cleanup		(tree);
+extern tree maybe_set_retval_sentinel		(void);
+
 extern tree template_parms_to_args		(tree);
 extern tree template_parms_level_to_args	(tree);
 extern tree generic_targs_for			(tree);
@@ -6778,6 +6817,7 @@ extern void after_nsdmi_defaulted_late_checks   (tree);
 extern bool maybe_explain_implicit_delete	(tree);
 extern void explain_implicit_non_constexpr	(tree);
 extern void deduce_inheriting_ctor		(tree);
+extern bool decl_remember_implicit_trigger_p	(tree);
 extern void synthesize_method			(tree);
 extern tree lazily_declare_fn			(special_function_kind,
 						 tree);
@@ -6907,6 +6947,7 @@ extern int comp_template_args			(tree, tree, tree * = NULL,
 extern int template_args_equal                  (tree, tree, bool = false);
 extern tree maybe_process_partial_specialization (tree);
 extern tree most_specialized_instantiation	(tree);
+extern tree most_specialized_partial_spec       (tree, tsubst_flags_t);
 extern void print_candidates			(tree);
 extern void instantiate_pending_templates	(int);
 extern tree tsubst_default_argument		(tree, int, tree, tree,
@@ -6980,6 +7021,7 @@ extern tree resolve_nondeduced_context_or_error	(tree, tsubst_flags_t);
 extern hashval_t iterative_hash_template_arg (tree arg, hashval_t val);
 extern tree coerce_template_parms               (tree, tree, tree);
 extern tree coerce_template_parms               (tree, tree, tree, tsubst_flags_t);
+extern tree canonicalize_type_argument		(tree, tsubst_flags_t);
 extern void register_local_specialization       (tree, tree);
 extern tree retrieve_local_specialization       (tree);
 extern tree extract_fnparm_pack                 (tree, tree *);
@@ -7401,6 +7443,7 @@ extern tree build_exception_variant		(tree, tree);
 extern tree bind_template_template_parm		(tree, tree);
 extern tree array_type_nelts_total		(tree);
 extern tree array_type_nelts_top		(tree);
+extern bool array_of_unknown_bound_p		(const_tree);
 extern tree break_out_target_exprs		(tree, bool = false);
 extern tree build_ctor_subob_ref		(tree, tree, tree);
 extern tree replace_placeholders		(tree, tree, bool * = NULL);
@@ -7791,6 +7834,7 @@ struct diagnosing_failed_constraint
 {
   diagnosing_failed_constraint (tree, tree, bool);
   ~diagnosing_failed_constraint ();
+  static bool replay_errors_p ();
 
   bool diagnosing_error;
 };
@@ -7809,6 +7853,7 @@ extern void remove_constraints                  (tree);
 extern tree current_template_constraints	(void);
 extern tree associate_classtype_constraints     (tree);
 extern tree build_constraints                   (tree, tree);
+extern tree maybe_substitute_reqs_for		(tree, const_tree);
 extern tree get_template_head_requirements	(tree);
 extern tree get_trailing_function_requirements	(tree);
 extern tree get_shorthand_constraints           (tree);
@@ -7858,7 +7903,7 @@ extern bool constraints_satisfied_p		(tree, tree);
 extern void clear_satisfaction_cache		();
 extern bool* lookup_subsumption_result          (tree, tree);
 extern bool save_subsumption_result             (tree, tree, bool);
-extern tree find_template_parameters		(tree, int);
+extern tree find_template_parameters		(tree, tree);
 extern bool equivalent_constraints              (tree, tree);
 extern bool equivalently_constrained            (tree, tree);
 extern bool subsumes_constraints                (tree, tree);
@@ -7906,7 +7951,7 @@ extern bool require_potential_rvalue_constant_expression (tree);
 extern tree cxx_constant_value			(tree, tree = NULL_TREE);
 extern void cxx_constant_dtor			(tree, tree);
 extern tree cxx_constant_init			(tree, tree = NULL_TREE);
-extern tree maybe_constant_value		(tree, tree = NULL_TREE, bool = false);
+extern tree maybe_constant_value		(tree, tree = NULL_TREE, bool = false, bool = false);
 extern tree maybe_constant_init			(tree, tree = NULL_TREE, bool = false);
 extern tree fold_non_dependent_expr		(tree,
 						 tsubst_flags_t = tf_warning_or_error,
@@ -7931,6 +7976,14 @@ extern void cp_ubsan_instrument_member_accesses (tree *);
 extern tree cp_ubsan_maybe_instrument_downcast	(location_t, tree, tree, tree);
 extern tree cp_ubsan_maybe_instrument_cast_to_vbase (location_t, tree, tree);
 extern void cp_ubsan_maybe_initialize_vtbl_ptrs (tree);
+
+/* In coroutines.cc */
+extern tree finish_co_return_stmt		(location_t, tree);
+extern tree finish_co_await_expr		(location_t, tree);
+extern tree finish_co_yield_expr		(location_t, tree);
+extern tree coro_validate_builtin_call		(tree,
+						 tsubst_flags_t = tf_warning_or_error);
+extern bool morph_fn_to_coro			(tree, tree *, tree *);
 
 /* Inline bodies.  */
 
@@ -8065,6 +8118,14 @@ concept_check_p (const_tree t)
   if (t && TREE_CODE (t) == TEMPLATE_ID_EXPR)
     return concept_definition_p (TREE_OPERAND (t, 0));
   return false;
+}
+
+/* True if t is a "constrained auto" type-specifier.  */
+
+inline bool
+is_constrained_auto (const_tree t)
+{
+  return is_auto (t) && PLACEHOLDER_TYPE_CONSTRAINTS (t);
 }
 
 #if CHECKING_P

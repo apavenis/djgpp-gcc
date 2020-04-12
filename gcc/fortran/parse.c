@@ -5231,6 +5231,9 @@ parse_omp_structured_block (gfc_statement omp_st, bool workshare_stmts_only)
     case ST_OMP_TARGET_DATA:
       omp_end_st = ST_OMP_END_TARGET_DATA;
       break;
+    case ST_OMP_TARGET_PARALLEL:
+      omp_end_st = ST_OMP_END_TARGET_PARALLEL;
+      break;
     case ST_OMP_TARGET_TEAMS:
       omp_end_st = ST_OMP_END_TARGET_TEAMS;
       break;
@@ -6042,8 +6045,9 @@ set_syms_host_assoc (gfc_symbol *sym)
 {
   gfc_component *c;
   const char dot[2] = ".";
-  char parent1[GFC_MAX_SYMBOL_LEN + 1];
-  char parent2[GFC_MAX_SYMBOL_LEN + 1];
+  /* Symbols take the form module.submodule_ or module.name_. */
+  char parent1[2 * GFC_MAX_SYMBOL_LEN + 2];
+  char parent2[2 * GFC_MAX_SYMBOL_LEN + 2];
 
   if (sym == NULL)
     return;

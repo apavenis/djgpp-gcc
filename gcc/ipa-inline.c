@@ -485,6 +485,7 @@ can_inline_edge_by_limits_p (struct cgraph_edge *e, bool report,
      else if (check_match (flag_wrapv)
 	      || check_match (flag_trapv)
 	      || check_match (flag_pcc_struct_return)
+	      || check_maybe_down (optimize_debug)
 	      /* When caller or callee does FP math, be sure FP codegen flags
 		 compatible.  */
 	      || ((caller_info->fp_expressions && callee_info->fp_expressions)
@@ -1778,8 +1779,6 @@ speculation_useful_p (struct cgraph_edge *e, bool anticipate_inlining)
   enum availability avail;
   struct cgraph_node *target = e->callee->ultimate_alias_target (&avail,
 								 e->caller);
-  struct cgraph_edge *direct, *indirect;
-  struct ipa_ref *ref;
 
   gcc_assert (e->speculative && !e->indirect_unknown_callee);
 
@@ -1794,14 +1793,14 @@ speculation_useful_p (struct cgraph_edge *e, bool anticipate_inlining)
       int ecf_flags = flags_from_decl_or_type (target->decl);
       if (ecf_flags & ECF_CONST)
         {
-	  e->speculative_call_info (direct, indirect, ref);
-	  if (!(indirect->indirect_info->ecf_flags & ECF_CONST))
+	  if (!(e->speculative_call_indirect_edge ()->indirect_info
+		->ecf_flags & ECF_CONST))
 	    return true;
         }
       else if (ecf_flags & ECF_PURE)
         {
-	  e->speculative_call_info (direct, indirect, ref);
-	  if (!(indirect->indirect_info->ecf_flags & ECF_PURE))
+	  if (!(e->speculative_call_indirect_edge ()->indirect_info
+		->ecf_flags & ECF_PURE))
 	    return true;
         }
     }
@@ -2636,6 +2635,9 @@ ipa_inline (void)
     {
       node = order[i];
       if (node->definition
+	  /* Do not try to flatten aliases.  These may happen for example when
+	     creating local aliases.  */
+	  && !node->alias
 	  && lookup_attribute ("flatten",
 			       DECL_ATTRIBUTES (node->decl)) != NULL)
 	order[j--] = order[i];

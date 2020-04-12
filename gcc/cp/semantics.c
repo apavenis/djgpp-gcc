@@ -380,7 +380,8 @@ add_stmt (tree t)
 
       /* When we expand a statement-tree, we must know whether or not the
 	 statements are full-expressions.  We record that fact here.  */
-      STMT_IS_FULL_EXPR_P (t) = stmts_are_full_exprs_p ();
+      if (STATEMENT_CODE_P (TREE_CODE (t)))
+	STMT_IS_FULL_EXPR_P (t) = stmts_are_full_exprs_p ();
     }
 
   if (code == LABEL_EXPR || code == CASE_LABEL_EXPR)
@@ -734,6 +735,9 @@ is_std_constant_evaluated_p (tree fn)
     return false;
 
   tree fndecl = cp_get_callee_fndecl_nofold (fn);
+  if (fndecl == NULL_TREE)
+    return false;
+
   if (fndecl_built_in_p (fndecl, CP_BUILT_IN_IS_CONSTANT_EVALUATED,
 			 BUILT_IN_FRONTEND))
     return true;
@@ -2661,7 +2665,6 @@ finish_call_expr (tree fn, vec<tree, va_gc> **args, bool disallow_virtual,
 	      tree arg2 = (*orig_args)[2];
 	      int literal_mask = ((literal_integer_zerop (arg1) << 1)
 				  | (literal_integer_zerop (arg2) << 2));
-	      arg2 = instantiate_non_dependent_expr (arg2);
 	      warn_for_memset (input_location, arg0, arg2, literal_mask);
 	    }
 
@@ -3522,8 +3525,15 @@ tree
 process_outer_var_ref (tree decl, tsubst_flags_t complain, bool odr_use)
 {
   if (cp_unevaluated_operand)
-    /* It's not a use (3.2) if we're in an unevaluated context.  */
-    return decl;
+    {
+      tree type = TREE_TYPE (decl);
+      if (!dependent_type_p (type)
+	  && variably_modified_type_p (type, NULL_TREE))
+	/* VLAs are used even in unevaluated context.  */;
+      else
+	/* It's not a use (3.2) if we're in an unevaluated context.  */
+	return decl;
+    }
   if (decl == error_mark_node)
     return decl;
 
@@ -9678,8 +9688,10 @@ finish_static_assert (tree condition, tree message, location_t location,
             error ("static assertion failed: %s",
 		   TREE_STRING_POINTER (message));
 
-	  /* Actually explain the failure if this is a concept check.  */
-	  if (concept_check_p (orig_condition))
+	  /* Actually explain the failure if this is a concept check or a
+	     requires-expression.  */
+	  if (concept_check_p (orig_condition)
+	      || TREE_CODE (orig_condition) == REQUIRES_EXPR)
 	    diagnose_constraints (location, orig_condition, NULL_TREE);
 	}
       else if (condition && condition != error_mark_node)
@@ -10380,7 +10392,8 @@ cp_build_vec_convert (tree arg, location_t loc, tree type,
 
   tree ret = NULL_TREE;
   if (!type_dependent_expression_p (arg) && !dependent_type_p (type))
-    ret = c_build_vec_convert (cp_expr_loc_or_input_loc (arg), arg,
+    ret = c_build_vec_convert (cp_expr_loc_or_input_loc (arg),
+			       decay_conversion (arg, complain),
 			       loc, type, (complain & tf_error) != 0);
 
   if (!processing_template_decl)

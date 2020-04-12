@@ -478,7 +478,6 @@ static const struct default_options default_options_table[] =
     { OPT_LEVELS_2_PLUS, OPT_fdevirtualize, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_fdevirtualize_speculatively, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_fexpensive_optimizations, NULL, 1 },
-    { OPT_LEVELS_2_PLUS, OPT_ffinite_loops, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_fgcse, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_fhoist_adjacent_loads, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_findirect_inlining, NULL, 1 },
@@ -1285,6 +1284,14 @@ print_filtered_help (unsigned int include_flags,
 			       | CL_COMMON | CL_TARGET)) == 0)
 	continue;
 
+      /* If an option contains a language specification,
+	 exclude it from common unless all languages are present.  */
+      if ((include_flags & CL_COMMON)
+	  && !(option->flags & CL_DRIVER)
+	  && (option->flags & CL_LANG_ALL)
+	  && (option->flags & CL_LANG_ALL) != CL_LANG_ALL)
+	continue;
+
       found = true;
       /* Skip switches that have already been printed.  */
       if (opts->x_help_printed[i])
@@ -1301,17 +1308,37 @@ print_filtered_help (unsigned int include_flags,
 	  help = undocumented_msg;
 	}
 
+      /* Get the translation.  */
+      help = _(help);
+
       if (option->alias_target < N_OPTS
 	  && cl_options [option->alias_target].help)
 	{
-	  if (help == undocumented_msg)
+	  const struct cl_option *target = cl_options + option->alias_target;
+	  if (option->help == NULL)
 	    {
-	      /* For undocumented options that are aliases for other options
-		 that are documented, point the reader to the other option in
-		 preference of the former.  */
-	      snprintf (new_help, sizeof new_help,
-			_("Same as %s.  Use the latter option instead."),
-			cl_options [option->alias_target].opt_text);
+	      /* The option is undocumented but is an alias for an option that
+		 is documented.  If the option has alias arguments, then its
+		 purpose is to provide certain arguments to the other option, so
+		 inform the reader of this.  Otherwise, point the reader to the
+		 other option in preference to the former.  */
+
+	      if (option->alias_arg)
+		{
+		  if (option->neg_alias_arg)
+		    snprintf (new_help, sizeof new_help,
+			      _("Same as %s%s (or, in negated form, %s%s)."),
+			      target->opt_text, option->alias_arg,
+			      target->opt_text, option->neg_alias_arg);
+		  else
+		    snprintf (new_help, sizeof new_help,
+			      _("Same as %s%s."),
+			      target->opt_text, option->alias_arg);
+		}
+	      else
+		snprintf (new_help, sizeof new_help,
+			  _("Same as %s."),
+			  target->opt_text);
 	    }
 	  else
 	    {
@@ -1338,9 +1365,6 @@ print_filtered_help (unsigned int include_flags,
 
 	  help = new_help;
 	}
-
-      /* Get the translation.  */
-      help = _(help);
 
       /* Find the gap between the name of the
 	 option and its descriptive text.  */
@@ -2136,6 +2160,13 @@ print_help (struct gcc_options *opts, unsigned int lang_mask,
 	break;
       a = comma + 1;
     }
+
+  /* We started using PerFunction/Optimization for parameters and
+     a warning.  We should exclude these from optimization options.  */
+  if (include_flags & CL_OPTIMIZATION)
+    exclude_flags |= CL_WARNING;
+  if (!(include_flags & CL_PARAMS))
+    exclude_flags |= CL_PARAMS;
 
   if (include_flags)
     print_specific_help (include_flags, exclude_flags, 0, opts,

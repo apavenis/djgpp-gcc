@@ -538,6 +538,9 @@ valid_src_p (rtx src, rtx_insn *insn, struct loop *loop, bool *pre_post,
   if (!aarch64_classify_address (&addr, XEXP (x, 0), mode, true))
     return false;
 
+  if (!REG_P (addr.base))
+    return false;
+
   unsigned regno = REGNO (addr.base);
   if (global_regs[regno] || fixed_regs[regno])
     return false;
@@ -699,7 +702,7 @@ in_same_chain (rtx_insn *insn, rtx_insn *cand, unsigned regno)
 
 
 /* Callback function to traverse the tag map and drop loads that have the same
-   destination and and in the same chain of occurrence.  Routine always returns
+   destination and are in the same chain of occurrence.  Routine always returns
    true to allow traversal through all of TAG_MAP.  */
 bool
 single_dest_per_chain (const rtx &t ATTRIBUTE_UNUSED, insn_info_list_t *v,

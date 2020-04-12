@@ -478,6 +478,8 @@ extern gimple_opt_pass *make_pass_gen_hsail (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_warn_nonnull_compare (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_sprintf_length (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_walloca (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_coroutine_lower_builtins (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_coroutine_early_expand_ifns (gcc::context *ctxt);
 
 /* IPA Passes */
 extern simple_ipa_opt_pass *make_pass_ipa_lower_emutls (gcc::context *ctxt);
@@ -490,6 +492,7 @@ extern simple_ipa_opt_pass *make_pass_build_ssa_passes (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_local_optimization_passes (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_remove_symbols (gcc::context *ctxt);
 
+extern ipa_opt_pass_d *make_pass_analyzer (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_whole_program_visibility (gcc::context
 							       *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_increase_alignment (gcc::context

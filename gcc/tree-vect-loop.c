@@ -6026,10 +6026,18 @@ vectorizable_reduction (stmt_vec_info stmt_info, slp_tree slp_node,
 	 info_for_reduction to work.  */
       if (STMT_VINFO_LIVE_P (vdef))
 	STMT_VINFO_REDUC_DEF (def) = phi_info;
-      if (CONVERT_EXPR_CODE_P (gimple_assign_rhs_code (vdef->stmt)))
+      gassign *assign = dyn_cast <gassign *> (vdef->stmt);
+      if (!assign)
 	{
-	  if (!tree_nop_conversion_p (TREE_TYPE (gimple_assign_lhs (vdef->stmt)),
-				      TREE_TYPE (gimple_assign_rhs1 (vdef->stmt))))
+	  if (dump_enabled_p ())
+	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			     "reduction chain includes calls.\n");
+	  return false;
+	}
+      if (CONVERT_EXPR_CODE_P (gimple_assign_rhs_code (assign)))
+	{
+	  if (!tree_nop_conversion_p (TREE_TYPE (gimple_assign_lhs (assign)),
+				      TREE_TYPE (gimple_assign_rhs1 (assign))))
 	    {
 	      if (dump_enabled_p ())
 		dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
@@ -6533,7 +6541,7 @@ vectorizable_reduction (stmt_vec_info stmt_info, slp_tree slp_node,
 	}
       /* The epilogue code relies on the number of elements being a multiple
 	 of the group size.  The duplicate-and-interleave approach to setting
-	 up the the initial vector does too.  */
+	 up the initial vector does too.  */
       if (!multiple_p (nunits_out, group_size))
 	{
 	  if (dump_enabled_p ())
@@ -7990,6 +7998,25 @@ vectorizable_live_operation (stmt_vec_info stmt_info,
       bitstart = int_const_binop (MINUS_EXPR, vec_bitsize, bitsize);
     }
 
+  /* Ensure the VEC_LHS for lane extraction stmts satisfy loop-closed PHI
+     requirement, insert one phi node for it.  It looks like:
+	 loop;
+       BB:
+	 # lhs' = PHI <lhs>
+     ==>
+	 loop;
+       BB:
+	 # vec_lhs' = PHI <vec_lhs>
+	 new_tree = lane_extract <vec_lhs', ...>;
+	 lhs' = new_tree;  */
+
+  basic_block exit_bb = single_exit (loop)->dest;
+  gcc_assert (single_pred_p (exit_bb));
+
+  tree vec_lhs_phi = copy_ssa_name (vec_lhs);
+  gimple *phi = create_phi_node (vec_lhs_phi, exit_bb);
+  SET_PHI_ARG_DEF (phi, single_exit (loop)->dest_idx, vec_lhs);
+
   gimple_seq stmts = NULL;
   tree new_tree;
   if (LOOP_VINFO_FULLY_MASKED_P (loop_vinfo))
@@ -8002,10 +8029,10 @@ vectorizable_live_operation (stmt_vec_info stmt_info,
 	 the loop mask for the final iteration.  */
       gcc_assert (ncopies == 1 && !slp_node);
       tree scalar_type = TREE_TYPE (STMT_VINFO_VECTYPE (stmt_info));
-      tree mask = vect_get_loop_mask (gsi, &LOOP_VINFO_MASKS (loop_vinfo),
-				      1, vectype, 0);
-      tree scalar_res = gimple_build (&stmts, CFN_EXTRACT_LAST,
-				      scalar_type, mask, vec_lhs);
+      tree mask = vect_get_loop_mask (gsi, &LOOP_VINFO_MASKS (loop_vinfo), 1,
+				      vectype, 0);
+      tree scalar_res = gimple_build (&stmts, CFN_EXTRACT_LAST, scalar_type,
+				      mask, vec_lhs_phi);
 
       /* Convert the extracted vector element to the required scalar type.  */
       new_tree = gimple_convert (&stmts, lhs_type, scalar_res);
@@ -8015,13 +8042,32 @@ vectorizable_live_operation (stmt_vec_info stmt_info,
       tree bftype = TREE_TYPE (vectype);
       if (VECTOR_BOOLEAN_TYPE_P (vectype))
 	bftype = build_nonstandard_integer_type (tree_to_uhwi (bitsize), 1);
-      new_tree = build3 (BIT_FIELD_REF, bftype, vec_lhs, bitsize, bitstart);
+      new_tree = build3 (BIT_FIELD_REF, bftype, vec_lhs_phi, bitsize, bitstart);
       new_tree = force_gimple_operand (fold_convert (lhs_type, new_tree),
 				       &stmts, true, NULL_TREE);
     }
 
   if (stmts)
-    gsi_insert_seq_on_edge_immediate (single_exit (loop), stmts);
+    {
+      gimple_stmt_iterator exit_gsi = gsi_after_labels (exit_bb);
+      gsi_insert_seq_before (&exit_gsi, stmts, GSI_SAME_STMT);
+
+      /* Remove existing phi from lhs and create one copy from new_tree.  */
+      tree lhs_phi = NULL_TREE;
+      gimple_stmt_iterator gsi;
+      for (gsi = gsi_start_phis (exit_bb); !gsi_end_p (gsi); gsi_next (&gsi))
+	{
+	  gimple *phi = gsi_stmt (gsi);
+	  if ((gimple_phi_arg_def (phi, 0) == lhs))
+	    {
+	      remove_phi_node (&gsi, false);
+	      lhs_phi = gimple_phi_result (phi);
+	      gimple *copy = gimple_build_assign (lhs_phi, new_tree);
+	      gsi_insert_before (&exit_gsi, copy, GSI_SAME_STMT);
+	      break;
+	    }
+	}
+    }
 
   /* Replace use of lhs with newly computed result.  If the use stmt is a
      single arg PHI, just replace all uses of PHI result.  It's necessary
@@ -8434,8 +8480,13 @@ update_epilogue_loop_vinfo (class loop *epilogue, tree advance)
 	    gimple_set_op (stmt, j, *new_op);
 	  else
 	    {
+	      /* PR92429: The last argument of simplify_replace_tree disables
+		 folding when replacing arguments.  This is required as
+		 otherwise you might end up with different statements than the
+		 ones analyzed in vect_loop_analyze, leading to different
+		 vectorization.  */
 	      op = simplify_replace_tree (op, NULL_TREE, NULL_TREE,
-				     &find_in_mapping, &mapping);
+					  &find_in_mapping, &mapping, false);
 	      gimple_set_op (stmt, j, op);
 	    }
 	}
@@ -8452,7 +8503,8 @@ update_epilogue_loop_vinfo (class loop *epilogue, tree advance)
 	 updated offset we set using ADVANCE.  Instead we have to make sure the
 	 reference in the data references point to the corresponding copy of
 	 the original in the epilogue.  */
-      if (STMT_VINFO_MEMORY_ACCESS_TYPE (stmt_vinfo) == VMAT_GATHER_SCATTER)
+      if (STMT_VINFO_MEMORY_ACCESS_TYPE (vect_stmt_to_vectorize (stmt_vinfo))
+	  == VMAT_GATHER_SCATTER)
 	{
 	  DR_REF (dr)
 	    = simplify_replace_tree (DR_REF (dr), NULL_TREE, NULL_TREE,
@@ -8481,7 +8533,7 @@ update_epilogue_loop_vinfo (class loop *epilogue, tree advance)
    Returns scalar epilogue loop if any.  */
 
 class loop *
-vect_transform_loop (loop_vec_info loop_vinfo)
+vect_transform_loop (loop_vec_info loop_vinfo, gimple *loop_vectorized_call)
 {
   class loop *loop = LOOP_VINFO_LOOP (loop_vinfo);
   class loop *epilogue = NULL;
@@ -8532,7 +8584,7 @@ vect_transform_loop (loop_vec_info loop_vinfo)
   if (LOOP_REQUIRES_VERSIONING (loop_vinfo))
     {
       class loop *sloop
-	= vect_loop_versioning (loop_vinfo);
+	= vect_loop_versioning (loop_vinfo, loop_vectorized_call);
       sloop->force_vectorize = false;
       check_profitability = false;
     }

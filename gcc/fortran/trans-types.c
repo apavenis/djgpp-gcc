@@ -1595,7 +1595,7 @@ gfc_get_nodesc_array_type (tree etype, gfc_array_spec * as, gfc_packed packed,
   mpz_init_set_ui (stride, 1);
   mpz_init (delta);
 
-  /* We don't use build_array_type because this does not include include
+  /* We don't use build_array_type because this does not include
      lang-specific information (i.e. the bounds of the array) when checking
      for duplicates.  */
   if (as->rank)
@@ -3098,6 +3098,16 @@ gfc_get_function_type (gfc_symbol * sym, gfc_actual_arglist *actual_args)
 
 	  vec_safe_push (typelist, type);
 	}
+      /* For noncharacter scalar intrinsic types, VALUE passes the value,
+	 hence, the optional status cannot be transferred via a NULL pointer.
+	 Thus, we will use a hidden argument in that case.  */
+      else if (arg
+	       && arg->attr.optional
+	       && arg->attr.value
+	       && !arg->attr.dimension
+	       && arg->ts.type != BT_CLASS
+	       && !gfc_bt_struct (arg->ts.type))
+	vec_safe_push (typelist, boolean_type_node);
     }
 
   if (!vec_safe_is_empty (typelist)

@@ -1642,7 +1642,10 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 
     case ZERO_EXTRACT:
       /* This is an SImode shift.  */
-      if (outer_code == SET && (INTVAL (XEXP (x, 2)) > 0)
+      if (outer_code == SET
+	  && CONST_INT_P (XEXP (x, 1))
+	  && CONST_INT_P (XEXP (x, 2))
+	  && (INTVAL (XEXP (x, 2)) > 0)
 	  && (INTVAL (XEXP (x, 1)) + INTVAL (XEXP (x, 2)) == 32))
 	{
 	  *total = COSTS_N_INSNS (SINGLE_SHIFT_COST);
@@ -1700,10 +1703,15 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
       return false;
 
     case UNEQ:
-    case LTGT:
       /* (FEQ(A, A) & FEQ(B, B)) compared against FEQ(A, B).  */
       mode = GET_MODE (XEXP (x, 0));
       *total = tune_info->fp_add[mode == DFmode] + COSTS_N_INSNS (3);
+      return false;
+
+    case LTGT:
+      /* (FLT(A, A) || FGT(B, B)).  */
+      mode = GET_MODE (XEXP (x, 0));
+      *total = tune_info->fp_add[mode == DFmode] + COSTS_N_INSNS (2);
       return false;
 
     case UNGE:
@@ -1914,7 +1922,7 @@ riscv_output_move (rtx dest, rtx src)
   if (dest_code == REG && GP_REG_P (REGNO (dest)))
     {
       if (src_code == REG && FP_REG_P (REGNO (src)))
-	return dbl_p ? "fmv.x.d\t%0,%1" : "fmv.x.s\t%0,%1";
+	return dbl_p ? "fmv.x.d\t%0,%1" : "fmv.x.w\t%0,%1";
 
       if (src_code == MEM)
 	switch (GET_MODE_SIZE (mode))
@@ -1951,7 +1959,7 @@ riscv_output_move (rtx dest, rtx src)
 	  if (FP_REG_P (REGNO (dest)))
 	    {
 	      if (!dbl_p)
-		return "fmv.s.x\t%0,%z1";
+		return "fmv.w.x\t%0,%z1";
 	      if (TARGET_64BIT)
 		return "fmv.d.x\t%0,%z1";
 	      /* in RV32, we can emulate fmv.d.x %0, x0 using fcvt.d.w */
@@ -2236,9 +2244,8 @@ riscv_emit_float_compare (enum rtx_code *code, rtx *op0, rtx *op1)
       break;
 
     case UNEQ:
-    case LTGT:
       /* ordered(a, b) > (a == b) */
-      *code = fp_code == LTGT ? GTU : EQ;
+      *code = EQ;
       tmp0 = riscv_force_binary (word_mode, EQ, cmp_op0, cmp_op0);
       tmp1 = riscv_force_binary (word_mode, EQ, cmp_op1, cmp_op1);
       *op0 = riscv_force_binary (word_mode, AND, tmp0, tmp1);
@@ -2287,6 +2294,14 @@ riscv_emit_float_compare (enum rtx_code *code, rtx *op0, rtx *op1)
     case GT:
       /* We have instructions for these cases.  */
       *op0 = riscv_force_binary (word_mode, fp_code, cmp_op0, cmp_op1);
+      *op1 = const0_rtx;
+      break;
+
+    case LTGT:
+      /* (a < b) | (a > b) */
+      tmp0 = riscv_force_binary (word_mode, LT, cmp_op0, cmp_op1);
+      tmp1 = riscv_force_binary (word_mode, GT, cmp_op0, cmp_op1);
+      *op0 = riscv_force_binary (word_mode, IOR, tmp0, tmp1);
       *op1 = const0_rtx;
       break;
 
@@ -5019,6 +5034,19 @@ riscv_reorg (void)
   /* Do nothing unless we have -msave-restore */
   if (TARGET_SAVE_RESTORE)
     riscv_remove_unneeded_save_restore_calls ();
+}
+
+/* Return nonzero if register FROM_REGNO can be renamed to register
+   TO_REGNO.  */
+
+bool
+riscv_hard_regno_rename_ok (unsigned from_regno ATTRIBUTE_UNUSED,
+			    unsigned to_regno)
+{
+  /* Interrupt functions can only use registers that have already been
+     saved by the prologue, even if they would normally be
+     call-clobbered.  */
+  return !cfun->machine->interrupt_handler_p || df_regs_ever_live_p (to_regno);
 }
 
 /* Initialize the GCC target structure.  */

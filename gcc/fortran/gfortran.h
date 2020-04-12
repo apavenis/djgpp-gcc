@@ -357,6 +357,7 @@ enum gfc_isym_id
   GFC_ISYM_ACCESS,
   GFC_ISYM_ACHAR,
   GFC_ISYM_ACOS,
+  GFC_ISYM_ACOSD,
   GFC_ISYM_ACOSH,
   GFC_ISYM_ADJUSTL,
   GFC_ISYM_ADJUSTR,
@@ -369,10 +370,13 @@ enum gfc_isym_id
   GFC_ISYM_ANINT,
   GFC_ISYM_ANY,
   GFC_ISYM_ASIN,
+  GFC_ISYM_ASIND,
   GFC_ISYM_ASINH,
   GFC_ISYM_ASSOCIATED,
   GFC_ISYM_ATAN,
   GFC_ISYM_ATAN2,
+  GFC_ISYM_ATAN2D,
+  GFC_ISYM_ATAND,
   GFC_ISYM_ATANH,
   GFC_ISYM_ATOMIC_ADD,
   GFC_ISYM_ATOMIC_AND,
@@ -410,8 +414,10 @@ enum gfc_isym_id
   GFC_ISYM_CONJG,
   GFC_ISYM_CONVERSION,
   GFC_ISYM_COS,
+  GFC_ISYM_COSD,
   GFC_ISYM_COSH,
   GFC_ISYM_COTAN,
+  GFC_ISYM_COTAND,
   GFC_ISYM_COUNT,
   GFC_ISYM_CPU_TIME,
   GFC_ISYM_CSHIFT,
@@ -598,6 +604,7 @@ enum gfc_isym_id
   GFC_ISYM_SIGNAL,
   GFC_ISYM_SI_KIND,
   GFC_ISYM_SIN,
+  GFC_ISYM_SIND,
   GFC_ISYM_SINH,
   GFC_ISYM_SIZE,
   GFC_ISYM_SLEEP,
@@ -618,6 +625,7 @@ enum gfc_isym_id
   GFC_ISYM_SYSTEM,
   GFC_ISYM_SYSTEM_CLOCK,
   GFC_ISYM_TAN,
+  GFC_ISYM_TAND,
   GFC_ISYM_TANH,
   GFC_ISYM_TEAM_NUMBER,
   GFC_ISYM_THIS_IMAGE,
@@ -1592,9 +1600,11 @@ typedef struct gfc_symbol
      current statement have the mark member nonzero.  Of these symbols,
      symbols with old_symbol equal to NULL are symbols created within
      the current statement.  Otherwise, old_symbol points to a copy of
-     the old symbol. gfc_new is used in symbol.c to flag new symbols.  */
+     the old symbol. gfc_new is used in symbol.c to flag new symbols.
+     comp_mark is used to indicate variables which have component accesses
+     in OpenMP/OpenACC directive clauses.  */
   struct gfc_symbol *old_symbol;
-  unsigned mark:1, gfc_new:1;
+  unsigned mark:1, comp_mark:1, gfc_new:1;
 
   /* The tlink field is used in the front end to carry the module
      declaration of separate module procedures so that the characteristics
@@ -2843,6 +2853,13 @@ bool gfc_insert_parameter_exprs (gfc_expr *, gfc_actual_arglist *);
 match gfc_get_pdt_instance (gfc_actual_arglist *, gfc_symbol **,
 			    gfc_actual_arglist **);
 
+
+/* Given a symbol, test whether it is a module procedure in a submodule */
+#define gfc_submodule_procedure(attr)				     \
+  (gfc_state_stack->previous && gfc_state_stack->previous->previous  \
+   && gfc_state_stack->previous->previous->state == COMP_SUBMODULE   \
+   && attr->module_procedure)
+
 /* scanner.c */
 void gfc_scanner_done_1 (void);
 void gfc_scanner_init_1 (void);
@@ -3360,6 +3377,7 @@ bool gfc_resolve_expr (gfc_expr *);
 void gfc_resolve (gfc_namespace *);
 void gfc_resolve_code (gfc_code *, gfc_namespace *);
 void gfc_resolve_blocks (gfc_code *, gfc_namespace *);
+void gfc_resolve_formal_arglist (gfc_symbol *);
 int gfc_impure_variable (gfc_symbol *);
 int gfc_pure (gfc_symbol *);
 int gfc_implicit_pure (gfc_symbol *);
@@ -3458,18 +3476,17 @@ bool gfc_compare_actual_formal (gfc_actual_arglist **, gfc_formal_arglist *,
 extern gfc_st_label format_asterisk;
 
 void gfc_free_open (gfc_open *);
-bool gfc_resolve_open (gfc_open *);
+bool gfc_resolve_open (gfc_open *, locus *);
 void gfc_free_close (gfc_close *);
-bool gfc_resolve_close (gfc_close *);
+bool gfc_resolve_close (gfc_close *, locus *);
 void gfc_free_filepos (gfc_filepos *);
 bool gfc_resolve_filepos (gfc_filepos *, locus *);
 void gfc_free_inquire (gfc_inquire *);
 bool gfc_resolve_inquire (gfc_inquire *);
 void gfc_free_dt (gfc_dt *);
-bool gfc_resolve_dt (gfc_dt *, locus *);
+bool gfc_resolve_dt (gfc_code *, gfc_dt *, locus *);
 void gfc_free_wait (gfc_wait *);
 bool gfc_resolve_wait (gfc_wait *);
-extern bool async_io_dt;
 
 /* module.c */
 void gfc_module_init_2 (void);

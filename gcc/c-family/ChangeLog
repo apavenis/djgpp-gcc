@@ -1,3 +1,153 @@
+2020-04-02  Richard Biener  <rguenther@suse.de>
+
+	PR c/94392
+	* c-opts.c (c_common_post_options): Enable -ffinite-loops
+	for -O2 and C++11 or newer.
+
+2020-03-28  Patrick Palka  <ppalka@redhat.com>
+
+	* c.opt: Add -fconcepts-diagnostics-depth.
+
+2020-03-27  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/94346
+	* c-attribs.c (handle_copy_attribute): Avoid passing expressions
+	to decl_attributes.  Make handling of different kinds of entities
+	more robust.
+
+2020-03-27  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/94098
+	* c-attribs.c (handle_access_attribute): Avoid setting TYPE_ATTRIBUTES
+	here.
+
+2020-03-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/91993
+	* c-warn.c (warnings_for_convert_and_check): For expr and/or
+	result being COMPOUND_EXPRs, skip to ultimate rhs.
+
+2020-03-20  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR middle-end/94072
+	* c-common.c (c_common_type_for_mode): Before using a registered
+	built-in type, check that the vectorness of the type matches
+	the vectorness of the mode.
+
+2020-03-17  Jakub Jelinek  <jakub@redhat.com>
+
+	* c-common.c (resolve_overloaded_builtin): Fix up duplicated word
+	issue in a diagnostic message.
+
+2020-03-15  Lewis Hyatt  <lhyatt@gmail.com>
+
+	* c.opt: Avoid redundancy in the help text.
+
+2020-03-02  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/93958 - add missing -std=gnu++20.
+	* c.opt: Add -std=gnu++20.
+
+2020-03-01  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/92721
+	* c-attribs.c (append_access_attrs): Correctly handle attribute.
+	(handle_access_attribute): Same.
+
+2020-02-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/93858
+	* c-pragma.c (handle_pragma_diagnostic): Add missing ? after
+	"did you mean" hint in diagnostics.
+
+2020-02-15  Jason Merrill  <jason@redhat.com>
+
+	* c.opt: Add -std=c++20.
+
+2020-02-14  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* c-ada-spec.c: Include bitmap.h.
+	(dump_ada_double_name): Rename into...
+	(dump_anonymous_type_name): ...this.  Always use the TYPE_UID.
+	(dump_ada_array_type): Adjust to above renaming.  Robustify.
+	(dump_nested_types_1): New function copied from...  Add dumped_types
+	parameter and pass it down to dump_nested_type.
+	(dump_nested_types): ...this.  Remove parent parameter.  Just call
+	dump_nested_types_1 on an automatic bitmap.
+	(dump_nested_type): Add dumped_types parameter.
+	<ARRAY_TYPE>: Do not dump it if already present in dumped_types.
+	Adjust recursive calls and adjust to above renaming.
+	(dump_ada_declaration): Adjust call to dump_nested_types.
+	Tidy up and adjust to above renaming.
+	(dump_ada_specs): Initialize and release bitmap obstack.
+
+2020-02-10  Martin Sebor  <msebor@redhat.com>
+
+	PR c/93640
+	* c-attribs.c (handle_access_attribute): Correct off-by-one mistakes.
+
+2020-02-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR other/93641
+	* c-format.c (check_plain): Fix up last argument of strncasecmp.
+	Remove useless extra test.
+
+2020-02-03  Julian Brown  <julian@codesourcery.com>
+	    Tobias Burnus  <tobias@codesourcery.com>
+
+	* c-cppbuiltin.c (c_cpp_builtins): Update _OPENACC define to 201711.
+
+2020-01-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/89357
+	* c-attribs.c (check_cxx_fundamental_alignment_constraints): Remove.
+
+2020-01-23  Jason Merrill  <jason@redhat.com>
+
+	* c-warn.c (conversion_warning): Change -Wsign-conversion handling.
+
+2020-01-23  Martin Sebor  <msebor@redhat.com>
+
+	PR c/84919
+	* c-common.c (check_function_arguments): Avoid overlap checking
+	of sprintf functions.
+
+2020-01-22  Jason Merrill  <jason@redhat.com>
+
+	PR testsuite/93391 - PR 40752 test fails with unsigned plain char.
+	PR c++/40752
+	* c-warn.c (conversion_warning): Check operands only after checking
+	the whole expression.  Don't check second operand of + for sign.
+
+2020-01-21  Jason Merrill  <jason@redhat.com>
+	    Manuel López-Ibáñez  <manu@gcc.gnu.org>
+
+	PR c++/40752 - useless -Wconversion with short +=.
+	* c.opt (-Warith-conversion): New.
+	* c-warn.c (conversion_warning): Recurse for operands of
+	operators.  Only warn about the whole expression with
+	-Warith-conversion.
+
+2020-01-21  Jason Merrill  <jason@redhat.com>
+
+	* c-common.c (unsafe_conversion_p): Don't warn, return UNSAFE_SIGN.
+	* c-warn.c (conversion_warning): Warn about UNSAFE_SIGN.
+
+2020-01-20  Nathan Sidwell  <nathan@acm.org>
+
+	PR preprocessor/80005
+	* c-cppbuiltins.c (c_cpp_builtins): Don't define __has_include{,_next}.
+
+2020-01-18  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* c-common.c (co_await, co_yield, co_return): New.
+	* c-common.h (RID_CO_AWAIT, RID_CO_YIELD,
+	RID_CO_RETURN): New enumeration values.
+	(D_CXX_COROUTINES): Bit to identify coroutines are active.
+	(D_CXX_COROUTINES_FLAGS): Guard for coroutine keywords.
+	* c-cppbuiltin.c (__cpp_coroutines): New cpp define.
+	* c.opt (fcoroutines): New command-line switch.
+
 2020-01-10  David Malcolm  <dmalcolm@redhat.com>
 
 	* c-format.c (local_event_ptr_node): New.

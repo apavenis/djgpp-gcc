@@ -268,6 +268,13 @@ along with GCC; see the file COPYING3.  If not see
   1, 1									\
 }
 
+/* Select a register mode required for caller save of hard regno REGNO.
+   Contrary to what is documented, the default is not the smallest suitable
+   mode but the largest suitable mode for the given (REGNO, NREGS) pair and
+   it quickly creates paradoxical subregs that can be problematic.  */
+#define HARD_REGNO_CALLER_SAVE_MODE(REGNO, NREGS, MODE) \
+  ((MODE) == VOIDmode ? choose_hard_reg_mode (REGNO, NREGS, NULL) : (MODE))
+
 /* Internal macros to classify an ISA register's type.  */
 
 #define GP_REG_FIRST 0
@@ -925,5 +932,7 @@ extern unsigned riscv_stack_boundary;
 /* Called from RISCV_REORG, this is defined in riscv-sr.c.  */
 
 extern void riscv_remove_unneeded_save_restore_calls (void);
+
+#define HARD_REGNO_RENAME_OK(FROM, TO) riscv_hard_regno_rename_ok (FROM, TO)
 
 #endif /* ! GCC_RISCV_H */

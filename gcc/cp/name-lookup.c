@@ -2321,12 +2321,14 @@ update_local_overload (cxx_binding *binding, tree newval)
 static bool
 matching_fn_p (tree one, tree two)
 {
+  if (TREE_CODE (one) != TREE_CODE (two))
+    return false;
+
   if (!compparms (TYPE_ARG_TYPES (TREE_TYPE (one)),
 		  TYPE_ARG_TYPES (TREE_TYPE (two))))
     return false;
 
-  if (TREE_CODE (one) == TEMPLATE_DECL
-      && TREE_CODE (two) == TEMPLATE_DECL)
+  if (TREE_CODE (one) == TEMPLATE_DECL)
     {
       /* Compare template parms.  */
       if (!comp_template_parms (DECL_TEMPLATE_PARMS (one),
@@ -2996,7 +2998,8 @@ do_pushdecl (tree decl, bool is_friend)
   /* The binding level we will be pushing into.  During local class
      pushing, we want to push to the containing scope.  */
   cp_binding_level *level = current_binding_level;
-  while (level->kind == sk_class)
+  while (level->kind == sk_class
+	 || level->kind == sk_cleanup)
     level = level->level_chain;
 
   /* An anonymous namespace has a NULL DECL_NAME, but we still want to
@@ -4012,38 +4015,46 @@ is_nested_namespace (tree ancestor, tree descendant, bool inline_only)
   return ancestor == descendant;
 }
 
-/* Returns true if ROOT (a namespace, class, or function) encloses
-   CHILD.  CHILD may be either a class type or a namespace.  */
+/* Returns true if ROOT (a non-alias namespace, class, or function)
+   encloses CHILD.  CHILD may be either a class type or a namespace
+   (maybe alias).  */
 
 bool
 is_ancestor (tree root, tree child)
 {
-  gcc_assert ((TREE_CODE (root) == NAMESPACE_DECL
-	       || TREE_CODE (root) == FUNCTION_DECL
-	       || CLASS_TYPE_P (root)));
-  gcc_assert ((TREE_CODE (child) == NAMESPACE_DECL
-	       || CLASS_TYPE_P (child)));
+  gcc_checking_assert ((TREE_CODE (root) == NAMESPACE_DECL
+			&& !DECL_NAMESPACE_ALIAS (root))
+		       || TREE_CODE (root) == FUNCTION_DECL
+		       || CLASS_TYPE_P (root));
+  gcc_checking_assert (TREE_CODE (child) == NAMESPACE_DECL
+		       || CLASS_TYPE_P (child));
 
-  /* The global namespace encloses everything.  */
+  /* The global namespace encloses everything.  Early-out for the
+     common case.  */
   if (root == global_namespace)
     return true;
 
-  /* Search until we reach namespace scope.  */
+  /* Search CHILD until we reach namespace scope.  */
   while (TREE_CODE (child) != NAMESPACE_DECL)
     {
       /* If we've reached the ROOT, it encloses CHILD.  */
       if (root == child)
 	return true;
+
       /* Go out one level.  */
       if (TYPE_P (child))
 	child = TYPE_NAME (child);
       child = CP_DECL_CONTEXT (child);
     }
 
-  if (TREE_CODE (root) == NAMESPACE_DECL)
-    return is_nested_namespace (root, child);
+  if (TREE_CODE (root) != NAMESPACE_DECL)
+    /* Failed to meet the non-namespace we were looking for.  */
+    return false;
 
-  return false;
+  if (tree alias = DECL_NAMESPACE_ALIAS (child))
+    child = alias;
+
+  return is_nested_namespace (root, child);
 }
 
 /* Enter the class or namespace scope indicated by T suitable for name
@@ -4634,7 +4645,6 @@ lookup_using_decl (tree scope, name_lookup &lookup)
 	  maybe_warn_cpp0x (CPP0X_INHERITING_CTORS);
 	  lookup.name = ctor_identifier;
 	  CLASSTYPE_NON_AGGREGATE (current) = true;
-	  TYPE_HAS_USER_CONSTRUCTOR (current) = true;
     	}
 
       /* Cannot introduce a constructor name.  */
@@ -5929,7 +5939,7 @@ maybe_suggest_missing_header (location_t location, tree name, tree scope)
 /* Generate a name_hint at LOCATION for NAME, an IDENTIFIER_NODE for which name
    lookup failed within the explicitly provided SCOPE.
 
-   Suggest the the best meaningful candidates (if any), otherwise
+   Suggest the best meaningful candidates (if any), otherwise
    an empty name_hint is returned.  */
 
 name_hint
@@ -7363,23 +7373,59 @@ push_namespace (tree name, bool make_inline)
     name_lookup lookup (name, 0);
     if (!lookup.search_qualified (current_namespace, /*usings=*/false))
       ;
-    else if (TREE_CODE (lookup.value) != NAMESPACE_DECL)
-      ;
-    else if (tree dna = DECL_NAMESPACE_ALIAS (lookup.value))
+    else if (TREE_CODE (lookup.value) == TREE_LIST)
       {
-	/* A namespace alias is not allowed here, but if the alias
-	   is for a namespace also inside the current scope,
-	   accept it with a diagnostic.  That's better than dying
-	   horribly.  */
-	if (is_nested_namespace (current_namespace, CP_DECL_CONTEXT (dna)))
+	/* An ambiguous lookup.  If exactly one is a namespace, we
+	   want that.  If more than one is a namespace, error, but
+	   pick one of them.  */
+	/* DR2061 can cause us to find multiple namespaces of the same
+	   name.  We must treat that carefully and avoid thinking we
+	   need to push a new (possibly) duplicate namespace.  Hey,
+	   if you want to use the same identifier within an inline
+	   nest, knock yourself out.  */
+	for (tree *chain = &lookup.value, next; (next = *chain);)
 	  {
-	    error ("namespace alias %qD not allowed here, "
-		   "assuming %qD", lookup.value, dna);
-	    ns = dna;
+	    tree decl = TREE_VALUE (next);
+	    if (TREE_CODE (decl) == NAMESPACE_DECL)
+	      {
+		if (!ns)
+		  ns = decl;
+		else if (SCOPE_DEPTH (ns) >= SCOPE_DEPTH (decl))
+		  ns = decl;
+
+		/* Advance.  */
+		chain = &TREE_CHAIN (next);
+	      }
+	    else
+	      /* Stitch out.  */
+	      *chain = TREE_CHAIN (next);
+	  }
+
+	if (TREE_CHAIN (lookup.value))
+	  {
+	    error ("%<namespace %E%> is ambiguous", name);
+	    print_candidates (lookup.value);
 	  }
       }
-    else
+    else if (TREE_CODE (lookup.value) == NAMESPACE_DECL)
       ns = lookup.value;
+
+    if (ns)
+      if (tree dna = DECL_NAMESPACE_ALIAS (ns))
+	{
+	  /* A namespace alias is not allowed here, but if the alias
+	     is for a namespace also inside the current scope,
+	     accept it with a diagnostic.  That's better than dying
+	     horribly.  */
+	  if (is_nested_namespace (current_namespace, CP_DECL_CONTEXT (dna)))
+	    {
+	      error ("namespace alias %qD not allowed here, "
+		     "assuming %qD", ns, dna);
+	      ns = dna;
+	    }
+	  else
+	    ns = NULL_TREE;
+	}
   }
 
   bool new_ns = false;
@@ -7617,6 +7663,12 @@ maybe_save_operator_binding (tree e)
 
   if (!fns && (fns = op_unqualified_lookup (fnname)))
     {
+      tree d = is_overloaded_fn (fns) ? get_first_fn (fns) : fns;
+      if (DECL_P (d) && DECL_CLASS_SCOPE_P (d))
+	/* We don't need to remember class-scope functions or declarations,
+	   normal unqualified lookup will find them again.  */
+	return;
+
       bindings = tree_cons (fnname, fns, bindings);
       if (attr)
 	TREE_VALUE (attr) = bindings;

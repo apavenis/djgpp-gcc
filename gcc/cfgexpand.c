@@ -862,6 +862,9 @@ union_stack_vars (size_t a, size_t b)
   stack_vars[b].representative = a;
   stack_vars[a].next = b;
 
+  /* Make sure A is big enough to hold B.  */
+  stack_vars[a].size = upper_bound (stack_vars[a].size, stack_vars[b].size);
+
   /* Update the required alignment of partition A to account for B.  */
   if (stack_vars[a].alignb < stack_vars[b].alignb)
     stack_vars[a].alignb = stack_vars[b].alignb;
@@ -6653,7 +6656,7 @@ pass_expand::execute (function *fun)
   if (crtl->tail_call_emit)
     fixup_tail_calls ();
 
-  /* BB subdivision may have created basic blocks that are are only reachable
+  /* BB subdivision may have created basic blocks that are only reachable
      from unlikely bbs but not marked as such in the profile.  */
   if (optimize)
     propagate_unlikely_bbs_forward ();

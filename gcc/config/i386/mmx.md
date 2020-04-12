@@ -118,29 +118,7 @@
       return standard_sse_constant_opcode (insn, operands);
 
     case TYPE_SSEMOV:
-      switch (get_attr_mode (insn))
-	{
-	case MODE_DI:
-	  /* Handle broken assemblers that require movd instead of movq.  */
-	  if (!HAVE_AS_IX86_INTERUNIT_MOVQ
-	      && (GENERAL_REG_P (operands[0]) || GENERAL_REG_P (operands[1])))
-	    return "%vmovd\t{%1, %0|%0, %1}";
-	  return "%vmovq\t{%1, %0|%0, %1}";
-	case MODE_TI:
-	  return "%vmovdqa\t{%1, %0|%0, %1}";
-	case MODE_XI:
-	  return "vmovdqa64\t{%g1, %g0|%g0, %g1}";
-
-	case MODE_V2SF:
-	  if (TARGET_AVX && REG_P (operands[0]))
-	    return "vmovlps\t{%1, %0, %0|%0, %0, %1}";
-	  return "%vmovlps\t{%1, %0|%0, %1}";
-	case MODE_V4SF:
-	  return "%vmovaps\t{%1, %0|%0, %1}";
-
-	default:
-	  gcc_unreachable ();
-	}
+      return ix86_output_ssemov (insn, operands);
 
     default:
       gcc_unreachable ();
@@ -189,17 +167,10 @@
      (cond [(eq_attr "alternative" "2")
 	      (const_string "SI")
 	    (eq_attr "alternative" "11,12")
-	      (cond [(ior (match_operand 0 "ext_sse_reg_operand")
-			  (match_operand 1 "ext_sse_reg_operand"))
-			(const_string "XI")
-		     (match_test "<MODE>mode == V2SFmode")
+	      (cond [(match_test "<MODE>mode == V2SFmode")
 		       (const_string "V4SF")
 		     (ior (not (match_test "TARGET_SSE2"))
-			  (match_test "TARGET_SSE_PACKED_SINGLE_INSN_OPTIMAL"))
-		       (const_string "V4SF")
-		     (match_test "TARGET_AVX")
-		       (const_string "TI")
-		     (match_test "optimize_function_for_size_p (cfun)")
+			  (match_test "optimize_function_for_size_p (cfun)"))
 		       (const_string "V4SF")
 		    ]
 		    (const_string "TI"))
@@ -649,14 +620,14 @@
 (define_insn "*vec_extractv2sf_1"
   [(set (match_operand:SF 0 "nonimmediate_operand"     "=y,x,x,y,x,f,r")
 	(vec_select:SF
-	  (match_operand:V2SF 1 "nonimmediate_operand" " 0,x,x,o,o,o,o")
+	  (match_operand:V2SF 1 "nonimmediate_operand" " 0,x,0,o,o,o,o")
 	  (parallel [(const_int 1)])))]
   "(TARGET_MMX || TARGET_MMX_WITH_SSE)
    && !(MEM_P (operands[0]) && MEM_P (operands[1]))"
   "@
    punpckhdq\t%0, %0
    %vmovshdup\t{%1, %0|%0, %1}
-   shufps\t{$0xe5, %1, %0|%0, %1, 0xe5}
+   shufps\t{$0xe5, %0, %0|%0, %0, 0xe5}
    #
    #
    #
@@ -1798,7 +1769,7 @@
 (define_insn "*vec_extractv2si_1"
   [(set (match_operand:SI 0 "nonimmediate_operand"     "=y,rm,x,x,y,x,r")
 	(vec_select:SI
-	  (match_operand:V2SI 1 "nonimmediate_operand" " 0,x ,x,x,o,o,o")
+	  (match_operand:V2SI 1 "nonimmediate_operand" " 0,x ,x,0,o,o,o")
 	  (parallel [(const_int 1)])))]
   "(TARGET_MMX || TARGET_MMX_WITH_SSE)
    && !(MEM_P (operands[0]) && MEM_P (operands[1]))"
@@ -1806,7 +1777,7 @@
    punpckhdq\t%0, %0
    %vpextrd\t{$1, %1, %0|%0, %1, 1}
    %vpshufd\t{$0xe5, %1, %0|%0, %1, 0xe5}
-   shufps\t{$0xe5, %1, %0|%0, %1, 0xe5}
+   shufps\t{$0xe5, %0, %0|%0, %0, 0xe5}
    #
    #
    #"

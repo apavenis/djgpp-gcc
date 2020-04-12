@@ -211,6 +211,12 @@ extern unsigned aarch64_architecture_version;
 /* Brain half-precision floating-point (BFloat16) Extension.  */
 #define AARCH64_FL_BF16	      (1ULL << 36)
 
+/* 32-bit Floating-point Matrix Multiply (F32MM) extensions.  */
+#define AARCH64_FL_F32MM      (1ULL << 37)
+
+/* 64-bit Floating-point Matrix Multiply (F64MM) extensions.  */
+#define AARCH64_FL_F64MM      (1ULL << 38)
+
 /* Has FP and SIMD.  */
 #define AARCH64_FL_FPSIMD     (AARCH64_FL_FP | AARCH64_FL_SIMD)
 
@@ -267,6 +273,8 @@ extern unsigned aarch64_architecture_version;
 #define AARCH64_ISA_MEMTAG	   (aarch64_isa_flags & AARCH64_FL_MEMTAG)
 #define AARCH64_ISA_V8_6	   (aarch64_isa_flags & AARCH64_FL_V8_6)
 #define AARCH64_ISA_I8MM	   (aarch64_isa_flags & AARCH64_FL_I8MM)
+#define AARCH64_ISA_F32MM	   (aarch64_isa_flags & AARCH64_FL_F32MM)
+#define AARCH64_ISA_F64MM	   (aarch64_isa_flags & AARCH64_FL_F64MM)
 #define AARCH64_ISA_BF16	   (aarch64_isa_flags & AARCH64_FL_BF16)
 
 /* Crypto is an optional extension to AdvSIMD.  */
@@ -341,10 +349,20 @@ extern unsigned aarch64_architecture_version;
 
 /* I8MM instructions are enabled through +i8mm.  */
 #define TARGET_I8MM (AARCH64_ISA_I8MM)
+#define TARGET_SVE_I8MM (TARGET_SVE && AARCH64_ISA_I8MM)
+
+/* F32MM instructions are enabled through +f32mm.  */
+#define TARGET_F32MM (AARCH64_ISA_F32MM)
+#define TARGET_SVE_F32MM (TARGET_SVE && AARCH64_ISA_F32MM)
+
+/* F64MM instructions are enabled through +f64mm.  */
+#define TARGET_F64MM (AARCH64_ISA_F64MM)
+#define TARGET_SVE_F64MM (TARGET_SVE && AARCH64_ISA_F64MM)
 
 /* BF16 instructions are enabled through +bf16.  */
 #define TARGET_BF16_FP (AARCH64_ISA_BF16)
 #define TARGET_BF16_SIMD (AARCH64_ISA_BF16 && TARGET_SIMD)
+#define TARGET_SVE_BF16 (TARGET_SVE && AARCH64_ISA_BF16)
 
 /* Make sure this is always defined so we don't have to check for ifdefs
    but rather use normal ifs.  */
@@ -835,6 +853,7 @@ typedef struct GTY (()) machine_function
   struct aarch64_frame frame;
   /* One entry for each hard register.  */
   bool reg_is_wrapped_separately[LAST_SAVED_REGNUM];
+  bool label_is_assembled;
 } machine_function;
 #endif
 
@@ -999,14 +1018,8 @@ typedef struct
    if given data not on the nominal alignment.  */
 #define STRICT_ALIGNMENT		TARGET_STRICT_ALIGN
 
-/* Define this macro to be non-zero if accessing less than a word of
-   memory is no faster than accessing a word of memory, i.e., if such
-   accesses require more than one instruction or if there is no
-   difference in cost.
-   Although there's no difference in instruction count or cycles,
-   in AArch64 we don't want to expand to a sub-word to a 64-bit access
-   if we don't have to, for power-saving reasons.  */
-#define SLOW_BYTE_ACCESS		0
+/* Enable wide bitfield accesses for more efficient bitfield code.  */
+#define SLOW_BYTE_ACCESS 1
 
 #define NO_FUNCTION_CSE	1
 
@@ -1026,12 +1039,10 @@ typedef struct
 
 #define SELECT_CC_MODE(OP, X, Y)	aarch64_select_cc_mode (OP, X, Y)
 
-#define REVERSIBLE_CC_MODE(MODE) 1
-
-#define REVERSE_CONDITION(CODE, MODE)		\
-  (((MODE) == CCFPmode || (MODE) == CCFPEmode)	\
-   ? reverse_condition_maybe_unordered (CODE)	\
-   : reverse_condition (CODE))
+/* Having an integer comparison mode guarantees that we can use
+   reverse_condition, but the usual restrictions apply to floating-point
+   comparisons.  */
+#define REVERSIBLE_CC_MODE(MODE) ((MODE) != CCFPmode && (MODE) != CCFPEmode)
 
 #define CLZ_DEFINED_VALUE_AT_ZERO(MODE, VALUE) \
   ((VALUE) = GET_MODE_UNIT_BITSIZE (MODE), 2)

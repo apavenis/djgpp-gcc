@@ -262,7 +262,8 @@ toolexeclibgohash_DATA = \
 	hash/adler32.gox \
 	hash/crc32.gox \
 	hash/crc64.gox \
-	hash/fnv.gox
+	hash/fnv.gox \
+	hash/maphash.gox
 
 toolexeclibgohtmldir = $(toolexeclibgodir)/html
 
@@ -396,12 +397,18 @@ toolexeclibgounicode_DATA = \
 	unicode/utf16.gox \
 	unicode/utf8.gox
 
+# Some internal packages are needed to bootstrap the gc toolchain.
+toolexeclibgointernaldir = $(toolexeclibgodir)/internal
+toolexeclibgointernal_DATA = \
+	internal/reflectlite.gox
+
 # Some packages are only needed for tests, so unlike the other
 # internal packages nothing will explicitly depend on them.
 # Force them to be built.
 noinst_DATA = \
 	golang.org/x/net/nettest.gox \
 	internal/cfg.gox \
+	internal/obscuretestdata.gox \
 	internal/testenv.gox \
 	internal/trace.gox \
 	net/internal/socktest.gox \

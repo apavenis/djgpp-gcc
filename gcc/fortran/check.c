@@ -67,7 +67,12 @@ gfc_invalid_boz (const char *msg, locus *loc)
       return false;
     }
 
-  gfc_error (msg, loc);
+  const char hint[] = " [see %<-fno-allow-invalid-boz%>]";
+  size_t len = strlen (msg) + strlen (hint) + 1;
+  char *msg2 = (char *) alloca (len);
+  strcpy (msg2, msg);
+  strcat (msg2, hint);
+  gfc_error (msg2, loc);
   return true;
 }
 
@@ -3941,6 +3946,10 @@ gfc_check_findloc (gfc_actual_arglist *ap)
   a1 = a->ts.type == BT_CHARACTER;
   v1 = v->ts.type == BT_CHARACTER;
   if ((a1 && !v1) || (!a1 && v1))
+    goto incompat;
+
+  /* Check the kind of the characters argument match.  */
+  if (a1 && v1 && a->ts.kind != v->ts.kind)
     goto incompat;
 	 
   d = ap->next->next->expr;

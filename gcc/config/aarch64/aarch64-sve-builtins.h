@@ -150,6 +150,7 @@ enum predication_index
 enum type_class_index
 {
   TYPE_bool,
+  TYPE_bfloat,
   TYPE_float,
   TYPE_signed,
   TYPE_unsigned,
@@ -526,6 +527,7 @@ public:
 
   bool overlaps_input_p (rtx);
 
+  rtx convert_to_pmode (rtx);
   rtx get_contiguous_base (machine_mode);
   rtx get_fallback_value (machine_mode, unsigned int,
 			  unsigned int, unsigned int &);

@@ -1764,31 +1764,35 @@ convert_scalars_to_vector (bool timode_p)
 
      (set (reg:V2DF R) (reg:V2DF R))
 
-   which preserves the low 128 bits but clobbers the upper bits.
-   For a dead register we just use:
-
-     (clobber (reg:V2DF R))
-
-   which invalidates any previous contents of R and stops R from becoming
-   live across the vzeroupper in future.  */
+   which preserves the low 128 bits but clobbers the upper bits.  */
 
 static void
 ix86_add_reg_usage_to_vzeroupper (rtx_insn *insn, bitmap live_regs)
 {
   rtx pattern = PATTERN (insn);
   unsigned int nregs = TARGET_64BIT ? 16 : 8;
-  rtvec vec = rtvec_alloc (nregs + 1);
-  RTVEC_ELT (vec, 0) = XVECEXP (pattern, 0, 0);
+  unsigned int npats = nregs;
   for (unsigned int i = 0; i < nregs; ++i)
     {
       unsigned int regno = GET_SSE_REGNO (i);
+      if (!bitmap_bit_p (live_regs, regno))
+	npats--;
+    }
+  if (npats == 0)
+    return;
+  rtvec vec = rtvec_alloc (npats + 1);
+  RTVEC_ELT (vec, 0) = XVECEXP (pattern, 0, 0);
+  for (unsigned int i = 0, j = 0; i < nregs; ++i)
+    {
+      unsigned int regno = GET_SSE_REGNO (i);
+      if (!bitmap_bit_p (live_regs, regno))
+	continue;
       rtx reg = gen_rtx_REG (V2DImode, regno);
-      if (bitmap_bit_p (live_regs, regno))
-	RTVEC_ELT (vec, i + 1) = gen_rtx_SET (reg, reg);
-      else
-	RTVEC_ELT (vec, i + 1) = gen_rtx_CLOBBER (VOIDmode, reg);
+      ++j;
+      RTVEC_ELT (vec, j) = gen_rtx_SET (reg, reg);
     }
   XVEC (pattern, 0) = vec;
+  INSN_CODE (insn) = -1;
   df_insn_rescan (insn);
 }
 
@@ -1959,7 +1963,12 @@ rest_of_insert_endbranch (void)
       && (!flag_manual_endbr
 	  || lookup_attribute ("cf_check",
 			       DECL_ATTRIBUTES (cfun->decl)))
-      && !cgraph_node::get (cfun->decl)->only_called_directly_p ())
+      && (!cgraph_node::get (cfun->decl)->only_called_directly_p ()
+	  || ix86_cmodel == CM_LARGE
+	  || ix86_cmodel == CM_LARGE_PIC
+	  || flag_force_indirect_call
+	  || (TARGET_DLLIMPORT_DECL_ATTRIBUTES
+	      && DECL_DLLIMPORT_P (cfun->decl))))
     {
       /* Queue ENDBR insertion to x86_function_profiler.  */
       if (crtl->profile && flag_fentry)
@@ -2221,7 +2230,7 @@ remove_partial_avx_dependency (void)
       loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
 
       /* Generate a vxorps at entry of the nearest dominator for basic
-	 blocks with conversions, which is in the the fake loop that
+	 blocks with conversions, which is in the fake loop that
 	 contains the whole function, so that there is only a single
 	 vxorps in the whole function.   */
       bb = nearest_common_dominator_for_set (CDI_DOMINATORS,
@@ -2738,26 +2747,16 @@ make_resolver_func (const tree default_decl,
 		    const tree ifunc_alias_decl,
 		    basic_block *empty_bb)
 {
-  char *resolver_name;
-  tree decl, type, decl_name, t;
+  tree decl, type, t;
 
-  /* IFUNC's have to be globally visible.  So, if the default_decl is
-     not, then the name of the IFUNC should be made unique.  */
-  if (TREE_PUBLIC (default_decl) == 0)
-    {
-      char *ifunc_name = make_unique_name (default_decl, "ifunc", true);
-      symtab->change_decl_assembler_name (ifunc_alias_decl,
-					  get_identifier (ifunc_name));
-      XDELETEVEC (ifunc_name);
-    }
-
-  resolver_name = make_unique_name (default_decl, "resolver", false);
+  /* Create resolver function name based on default_decl.  */
+  tree decl_name = clone_function_name (default_decl, "resolver");
+  const char *resolver_name = IDENTIFIER_POINTER (decl_name);
 
   /* The resolver function should return a (void *). */
   type = build_function_type_list (ptr_type_node, NULL_TREE);
 
   decl = build_fn_decl (resolver_name, type);
-  decl_name = get_identifier (resolver_name);
   SET_DECL_ASSEMBLER_NAME (decl, decl_name);
 
   DECL_NAME (decl) = decl_name;
@@ -2784,6 +2783,9 @@ make_resolver_func (const tree default_decl,
       DECL_COMDAT (decl) = 1;
       make_decl_one_only (decl, DECL_ASSEMBLER_NAME (decl));
     }
+  else
+    TREE_PUBLIC (ifunc_alias_decl) = 0;
+
   /* Build result decl and add to function_decl. */
   t = build_decl (UNKNOWN_LOCATION, RESULT_DECL, NULL_TREE, ptr_type_node);
   DECL_CONTEXT (t) = decl;
@@ -2809,7 +2811,6 @@ make_resolver_func (const tree default_decl,
 
   /* Create the alias for dispatch to resolver here.  */
   cgraph_node::create_same_body_alias (ifunc_alias_decl, decl);
-  XDELETEVEC (resolver_name);
   return decl;
 }
 

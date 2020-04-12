@@ -1,8 +1,8 @@
 #! /bin/sh
 
 gcc_src_ext=xz
-gmp_version=6.1.2
-mpfr_version=4.0.1
+gmp_version=6.2.0
+mpfr_version=4.0.2
 mpc_version=1.1.0
 autoconf_version=2.69
 automake_version=1.15.1
@@ -15,9 +15,29 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=master
-dj_branch=gcc_master_djgpp
-djn_branch=gcc_master_djgpp_native
+case $basever in
+    10.[1-9].0)
+        upstream=tags/releases/gcc-$basever
+        dj_branch=tags/djgpp/gcc-$basever
+        djn_branch=tags/djgpp/native/gcc-$basever
+        ;;
+    10.0.* | 10.[1-9].[1-9])
+        upstream=master
+        dj_branch=djgpp/master
+        djn_branch=djgpp/native/master
+        test -z "$devphase" && devphase=prerelease
+        ;;
+    *)
+        echo Unsupported version $basever
+        exit 1
+esac
+
+for ref in $upstream $dj_branch $djn_branch; do
+    if ! git log -1 $ref 2>/dev/null >/dev/null ; then
+        echo "$ref not found"
+        exit 1
+    fi
+done
 
 sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 

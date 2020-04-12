@@ -155,14 +155,15 @@ finish_constraint_binary_op (location_t loc,
   if (!check_constraint_operands (loc, lhs, rhs))
     return error_mark_node;
   tree overload;
-  tree expr = build_x_binary_op (loc, code,
-				 lhs, TREE_CODE (lhs),
-				 rhs, TREE_CODE (rhs),
-				 &overload, tf_none);
+  cp_expr expr = build_x_binary_op (loc, code,
+				    lhs, TREE_CODE (lhs),
+				    rhs, TREE_CODE (rhs),
+				    &overload, tf_none);
   /* When either operand is dependent, the overload set may be non-empty.  */
   if (expr == error_mark_node)
     return error_mark_node;
-  SET_EXPR_LOCATION (expr, loc);
+  expr.set_location (loc);
+  expr.set_range (lhs.get_start (), rhs.get_finish ());
   return expr;
 }
 
@@ -316,7 +317,7 @@ resolve_function_concept_overload (tree ovl, tree args)
   return cands;
 }
 
-/* Determine if the the call expression CALL is a constraint check, and
+/* Determine if the call expression CALL is a constraint check, and
    return the concept declaration and arguments being checked. If CALL
    does not denote a constraint check, return NULL.  */
 
@@ -559,12 +560,11 @@ map_arguments (tree parms, tree args)
 static tree
 build_parameter_mapping (tree expr, tree args, tree decl)
 {
-  int depth = 0;
+  tree ctx_parms = NULL_TREE;
   if (decl)
     {
       gcc_assert (TREE_CODE (decl) == TEMPLATE_DECL);
-      tree parms = DECL_TEMPLATE_PARMS (decl);
-      depth = TREE_INT_CST_LOW (TREE_PURPOSE (parms));
+      ctx_parms = DECL_TEMPLATE_PARMS (decl);
     }
   else if (current_template_parms)
     {
@@ -572,10 +572,10 @@ build_parameter_mapping (tree expr, tree args, tree decl)
 	 point of declaration of concepts is currently set after the
 	 initializer, the template parameter lists are not available
 	 when normalizing concept definitions, hence the case above.  */
-      depth = TMPL_PARMS_DEPTH (current_template_parms);
+      ctx_parms = current_template_parms;
     }
 
-  tree parms = find_template_parameters (expr, depth);
+  tree parms = find_template_parameters (expr, ctx_parms);
   tree map = map_arguments (parms, args);
   return map;
 }
@@ -1188,6 +1188,29 @@ remove_constraints (tree t)
 
   if (decl_constraints)
     decl_constraints->remove (t);
+}
+
+/* If DECL is a friend, substitute into REQS to produce requirements suitable
+   for declaration matching.  */
+
+tree
+maybe_substitute_reqs_for (tree reqs, const_tree decl_)
+{
+  if (reqs == NULL_TREE)
+    return NULL_TREE;
+  tree decl = CONST_CAST_TREE (decl_);
+  tree result = STRIP_TEMPLATE (decl);
+  if (DECL_FRIEND_P (result))
+    {
+      tree tmpl = decl == result ? DECL_TI_TEMPLATE (result) : decl;
+      tree gargs = generic_targs_for (tmpl);
+      processing_template_decl_sentinel s;
+      if (uses_template_parms (gargs))
+	++processing_template_decl;
+      reqs = tsubst_constraint (reqs, gargs,
+				tf_warning_or_error, NULL_TREE);
+    }
+  return reqs;
 }
 
 /* Returns the template-head requires clause for the template
@@ -1841,7 +1864,10 @@ hash_placeholder_constraint (tree c)
 static tree
 tsubst_valid_expression_requirement (tree t, tree args, subst_info info)
 {
-  return tsubst_expr (t, args, info.complain, info.in_decl, false);
+  tree r = tsubst_expr (t, args, info.complain, info.in_decl, false);
+  if (convert_to_void (r, ICV_STATEMENT, info.complain) == error_mark_node)
+    return error_mark_node;
+  return r;
 }
 
 
@@ -1958,15 +1984,17 @@ tsubst_compound_requirement (tree t, tree args, subst_info info)
   if (type == error_mark_node)
     return error_mark_node;
 
+  subst_info quiet (tf_none, info.in_decl);
+
   /* Check expression against the result type.  */
   if (type)
     {
       if (tree placeholder = type_uses_auto (type))
 	{
-	  if (!type_deducible_p (expr, type, placeholder, args, info))
+	  if (!type_deducible_p (expr, type, placeholder, args, quiet))
 	    return error_mark_node;
 	}
-      else if (!expression_convertible_p (expr, type, info))
+      else if (!expression_convertible_p (expr, type, quiet))
 	return error_mark_node;
     }
 
@@ -1982,6 +2010,11 @@ tsubst_nested_requirement (tree t, tree args, subst_info info)
   /* Ensure that we're in an evaluation context prior to satisfaction.  */
   tree norm = TREE_VALUE (TREE_TYPE (t));
   tree result = satisfy_constraint (norm, args, info);
+  if (result == error_mark_node && info.quiet ())
+    {
+      subst_info noisy (tf_warning_or_error, info.in_decl);
+      satisfy_constraint (norm, args, noisy);
+    }
   if (result != boolean_true_node)
     return error_mark_node;
   return result;
@@ -2210,7 +2243,11 @@ tsubst_parameter_mapping (tree map, tree args, subst_info info)
       else if (ARGUMENT_PACK_P (arg))
 	new_arg = tsubst_argument_pack (arg, args, complain, in_decl);
       if (!new_arg)
-	new_arg = tsubst_template_arg (arg, args, complain, in_decl);
+	{
+	  new_arg = tsubst_template_arg (arg, args, complain, in_decl);
+	  if (TYPE_P (new_arg))
+	    new_arg = canonicalize_type_argument (new_arg, complain);
+	}
       if (new_arg == error_mark_node)
 	return error_mark_node;
 
@@ -2364,6 +2401,49 @@ satisfy_conjunction (tree t, tree args, subst_info info)
   return satisfy_constraint_r (TREE_OPERAND (t, 1), args, info);
 }
 
+/* The current depth at which we're replaying an error during recursive
+   diagnosis of a constraint satisfaction failure.  */
+
+static int current_constraint_diagnosis_depth;
+
+/* Whether CURRENT_CONSTRAINT_DIAGNOSIS_DEPTH has ever exceeded
+   CONCEPTS_DIAGNOSTICS_MAX_DEPTH during recursive diagnosis of a constraint
+   satisfaction error.  */
+
+static bool concepts_diagnostics_max_depth_exceeded_p;
+
+/* Recursive subroutine of collect_operands_of_disjunction.  T is a normalized
+   subexpression of a constraint (composed of CONJ_CONSTRs and DISJ_CONSTRs)
+   and E is the corresponding unnormalized subexpression (composed of
+   TRUTH_ANDIF_EXPRs and TRUTH_ORIF_EXPRs).  */
+
+static void
+collect_operands_of_disjunction_r (tree t, tree e,
+				   auto_vec<tree_pair> *operands)
+{
+  if (TREE_CODE (e) == TRUTH_ORIF_EXPR)
+    {
+      collect_operands_of_disjunction_r (TREE_OPERAND (t, 0),
+					 TREE_OPERAND (e, 0), operands);
+      collect_operands_of_disjunction_r (TREE_OPERAND (t, 1),
+					 TREE_OPERAND (e, 1), operands);
+    }
+  else
+    {
+      tree_pair p = std::make_pair (t, e);
+      operands->safe_push (p);
+    }
+}
+
+/* Recursively collect the normalized and unnormalized operands of the
+   disjunction T and append them to OPERANDS in order.  */
+
+static void
+collect_operands_of_disjunction (tree t, auto_vec<tree_pair> *operands)
+{
+  collect_operands_of_disjunction_r (t, CONSTR_EXPR (t), operands);
+}
+
 /* Compute the satisfaction of a disjunction.  */
 
 static tree
@@ -2381,11 +2461,25 @@ satisfy_disjunction (tree t, tree args, subst_info info)
   tree rhs = satisfy_constraint_r (TREE_OPERAND (t, 1), args, quiet);
   if (rhs != boolean_true_node && info.noisy ())
     {
-      location_t loc = cp_expr_location (CONSTR_EXPR (t));
-      inform (loc, "neither operand of the disjunction is satisfied");
-      /* TODO: Replay the LHS and RHS to find failures in both branches.  */
-      // satisfy_constraint_r (TREE_OPERAND (t, 0), args, info);
-      // satisfy_constraint_r (TREE_OPERAND (t, 1), args, info);
+      cp_expr disj_expr = CONSTR_EXPR (t);
+      inform (disj_expr.get_location (),
+	      "no operand of the disjunction is satisfied");
+      if (diagnosing_failed_constraint::replay_errors_p ())
+	{
+	  /* Replay the error in each branch of the disjunction.  */
+	  auto_vec<tree_pair> operands;
+	  collect_operands_of_disjunction (t, &operands);
+	  for (unsigned i = 0; i < operands.length (); i++)
+	    {
+	      tree norm_op = operands[i].first;
+	      tree op = operands[i].second;
+	      location_t loc = make_location (cp_expr_location (op),
+					      disj_expr.get_start (),
+					      disj_expr.get_finish ());
+	      inform (loc, "the operand %qE is unsatisfied because", op);
+	      satisfy_constraint_r (norm_op, args, info);
+	    }
+	}
     }
   return rhs;
 }
@@ -2432,7 +2526,7 @@ get_mapped_args (tree map)
      list. Note that the list will be sparse (not all arguments supplied),
      but instantiation is guaranteed to only use the parameters in the
      mapping, so null arguments would never be used.  */
-  auto_vec< auto_vec<tree> > lists (count);
+  auto_vec< vec<tree> > lists (count);
   lists.quick_grow_cleared (count);
   for (tree p = map; p; p = TREE_CHAIN (p))
     {
@@ -2441,7 +2535,7 @@ get_mapped_args (tree map)
       template_parm_level_and_index (TREE_VALUE (p), &level, &index);
 
       /* Insert the argument into its corresponding position.  */
-      auto_vec<tree> &list = lists[level - 1];
+      vec<tree> &list = lists[level - 1];
       if (index >= (int)list.length ())
 	list.safe_grow_cleared (index + 1);
       list[index] = TREE_PURPOSE (p);
@@ -2451,18 +2545,19 @@ get_mapped_args (tree map)
   tree args = make_tree_vec (lists.length ());
   for (unsigned i = 0; i != lists.length (); ++i)
     {
-      auto_vec<tree> &list = lists[i];
+      vec<tree> &list = lists[i];
       tree level = make_tree_vec (list.length ());
       for (unsigned j = 0; j < list.length(); ++j)
 	TREE_VEC_ELT (level, j) = list[j];
       SET_TMPL_ARGS_LEVEL (args, i + 1, level);
+      list.release ();
     }
   SET_NON_DEFAULT_TEMPLATE_ARGS_COUNT (args, 0);
 
   return args;
 }
 
-static void diagnose_atomic_constraint (tree, tree, subst_info);
+static void diagnose_atomic_constraint (tree, tree, tree, subst_info);
 
 /* Compute the satisfaction of an atomic constraint.  */
 
@@ -2507,9 +2602,7 @@ satisfy_atom (tree t, tree args, subst_info info)
       return cache.save (boolean_false_node);
     }
 
-  location_t loc = cp_expr_loc_or_input_loc (expr);
-
-  /* [17.4.1.2] ... lvalue-to-value conversion is performed as necessary,
+  /* [17.4.1.2] ... lvalue-to-rvalue conversion is performed as necessary,
      and EXPR shall be a constant expression of type bool.  */
   result = force_rvalue (result, info.complain);
   if (result == error_mark_node)
@@ -2517,14 +2610,22 @@ satisfy_atom (tree t, tree args, subst_info info)
   if (!same_type_p (TREE_TYPE (result), boolean_type_node))
     {
       if (info.noisy ())
-	error_at (loc, "constraint does not have type %<bool%>");
+	diagnose_atomic_constraint (t, map, result, info);
       return cache.save (error_mark_node);
     }
 
   /* Compute the value of the constraint.  */
-  result = satisfaction_value (cxx_constant_value (result));
+  if (info.noisy ())
+    result = cxx_constant_value (result);
+  else
+    {
+      result = maybe_constant_value (result);
+      if (!TREE_CONSTANT (result))
+	result = error_mark_node;
+    }
+  result = satisfaction_value (result);
   if (result == boolean_false_node && info.noisy ())
-    diagnose_atomic_constraint (t, args, info);
+    diagnose_atomic_constraint (t, map, result, info);
 
   return cache.save (result);
 }
@@ -2669,7 +2770,8 @@ satisfy_declaration_constraints (tree t, subst_info info)
   tree result = boolean_true_node;
   if (norm)
     {
-      push_tinst_level (t);
+      if (!push_tinst_level (t))
+	return result;
       push_access_scope (t);
       result = satisfy_associated_constraints (norm, args, info);
       pop_access_scope (t);
@@ -2705,20 +2807,34 @@ static tree
 constraint_satisfaction_value (tree t, tsubst_flags_t complain)
 {
   subst_info info (complain, NULL_TREE);
+  tree r;
   if (DECL_P (t))
-    return satisfy_declaration_constraints (t, info);
+    r = satisfy_declaration_constraints (t, info);
   else
-    return satisfy_constraint_expression (t, NULL_TREE, info);
+    r = satisfy_constraint_expression (t, NULL_TREE, info);
+  if (r == error_mark_node && info.quiet ()
+      && !(DECL_P (t) && TREE_NO_WARNING (t)))
+      {
+	constraint_satisfaction_value (t, tf_warning_or_error);
+	if (DECL_P (t))
+	  /* Avoid giving these errors again.  */
+	  TREE_NO_WARNING (t) = true;
+      }
+  return r;
 }
 
 static tree
 constraint_satisfaction_value (tree t, tree args, tsubst_flags_t complain)
 {
   subst_info info (complain, NULL_TREE);
+  tree r;
   if (DECL_P (t))
-    return satisfy_declaration_constraints (t, args, info);
+    r = satisfy_declaration_constraints (t, args, info);
   else
-    return satisfy_constraint_expression (t, args, info);
+    r = satisfy_constraint_expression (t, args, info);
+  if (r == error_mark_node && info.quiet ())
+    constraint_satisfaction_value (t, args, tf_warning_or_error);
+  return r;
 }
 
 /* True iff the result of satisfying T is BOOLEAN_TRUE_NODE and false
@@ -2930,7 +3046,7 @@ equivalently_constrained (tree d1, tree d2)
                      Partial ordering of constraints
 ---------------------------------------------------------------------------*/
 
-/* Returns true when the the constraints in A subsume those in B.  */
+/* Returns true when the constraints in A subsume those in B.  */
 
 bool
 subsumes_constraints (tree a, tree b)
@@ -2940,7 +3056,7 @@ subsumes_constraints (tree a, tree b)
   return subsumes (a, b);
 }
 
-/* Returns true when the the constraints in CI (with arguments
+/* Returns true when the constraints in CI (with arguments
    ARGS) strictly subsume the associated constraints of TMPL.  */
 
 bool
@@ -3005,6 +3121,9 @@ at_least_as_constrained (tree d1, tree d2)
 static location_t
 get_constraint_error_location (tree t)
 {
+  if (location_t loc = cp_expr_location (t))
+    return loc;
+
   /* If we have a specific location give it.  */
   tree expr = CONSTR_EXPR (t);
   if (location_t loc = cp_expr_location (expr))
@@ -3013,28 +3132,32 @@ get_constraint_error_location (tree t)
   /* If the constraint is normalized from a requires-clause, give
      the location as that of the constrained declaration.  */
   tree cxt = CONSTR_CONTEXT (t);
-  tree src = TREE_VALUE (cxt);
+  tree src = cxt ? TREE_VALUE (cxt) : NULL_TREE;
   if (!src)
     /* TODO: This only happens for constrained non-template declarations.  */
-    return input_location;
-  if (DECL_P (src))
+    ;
+  else if (DECL_P (src))
     return DECL_SOURCE_LOCATION (src);
-
   /* Otherwise, give the location as the defining concept.  */
-  gcc_assert (concept_check_p (src));
-  tree id = unpack_concept_check (src);
-  tree tmpl = TREE_OPERAND (id, 0);
-  if (OVL_P (tmpl))
-    tmpl = OVL_FIRST (tmpl);
-  return DECL_SOURCE_LOCATION (tmpl);
+  else if (concept_check_p (src))
+    {
+      tree id = unpack_concept_check (src);
+      tree tmpl = TREE_OPERAND (id, 0);
+      if (OVL_P (tmpl))
+	tmpl = OVL_FIRST (tmpl);
+      return DECL_SOURCE_LOCATION (tmpl);
+    }
+
+  return input_location;
 }
 
 /* Emit a diagnostic for a failed trait.  */
 
 void
-diagnose_trait_expr (tree expr, tree args)
+diagnose_trait_expr (tree expr, tree map)
 {
   location_t loc = cp_expr_location (expr);
+  tree args = get_mapped_args (map);
 
   /* Build a "fake" version of the instantiated trait, so we can
      get the instantiated types from result.  */
@@ -3122,10 +3245,14 @@ diagnose_valid_expression (tree expr, tree args, tree in_decl)
     return result;
 
   location_t loc = cp_expr_loc_or_input_loc (expr);
-  inform (loc, "the required expression %qE is invalid", expr);
-
-  /* TODO: Replay the substitution to diagnose the error?  */
-  // tsubst_expr (expr, args, tf_error, in_decl, false);
+  if (diagnosing_failed_constraint::replay_errors_p ())
+    {
+      /* Replay the substitution error.  */
+      inform (loc, "the required expression %qE is invalid, because", expr);
+      tsubst_expr (expr, args, tf_error, in_decl, false);
+    }
+  else
+    inform (loc, "the required expression %qE is invalid", expr);
 
   return error_mark_node;
 }
@@ -3138,10 +3265,14 @@ diagnose_valid_type (tree type, tree args, tree in_decl)
     return result;
 
   location_t loc = cp_expr_loc_or_input_loc (type);
-  inform (loc, "the required type %qT is invalid", type);
-
-  /* TODO: Replay the substitution to diagnose the error?  */
-  // tsubst (type, args, tf_error, in_decl);
+  if (diagnosing_failed_constraint::replay_errors_p ())
+    {
+      /* Replay the substitution error.  */
+      inform (loc, "the required type %qT is invalid, because", type);
+      tsubst (type, args, tf_error, in_decl);
+    }
+  else
+    inform (loc, "the required type %qT is invalid", type);
 
   return error_mark_node;
 }
@@ -3182,20 +3313,30 @@ diagnose_compound_requirement (tree req, tree args, tree in_decl)
 	  if (!type_deducible_p (expr, type, placeholder, args, quiet))
 	    {
 	      tree orig_expr = TREE_OPERAND (req, 0);
-	      inform (loc, "%qE does not satisfy return-type-requirement",
-		      orig_expr);
-
-	      /* Further explain the reason for the error.  */
-	      type_deducible_p (expr, type, placeholder, args, noisy);
+	      if (diagnosing_failed_constraint::replay_errors_p ())
+		{
+		  inform (loc,
+			  "%qE does not satisfy return-type-requirement, "
+			  "because", orig_expr);
+		  /* Further explain the reason for the error.  */
+		  type_deducible_p (expr, type, placeholder, args, noisy);
+		}
+	      else
+		inform (loc, "%qE does not satisfy return-type-requirement",
+			orig_expr);
 	    }
 	}
       else if (!expression_convertible_p (expr, type, quiet))
 	{
 	  tree orig_expr = TREE_OPERAND (req, 0);
-	  inform (loc, "cannot convert %qE to %qT", orig_expr, type);
-
-	  /* Further explain the reason for the error.  */
-	  expression_convertible_p (expr, type, noisy);
+	  if (diagnosing_failed_constraint::replay_errors_p ())
+	    {
+	      inform (loc, "cannot convert %qE to %qT because", orig_expr, type);
+	      /* Further explain the reason for the error.  */
+	      expression_convertible_p (expr, type, noisy);
+	    }
+	  else
+	    inform (loc, "cannot convert %qE to %qT", orig_expr, type);
 	}
     }
 }
@@ -3220,11 +3361,16 @@ diagnose_nested_requirement (tree req, tree args)
 
   tree expr = TREE_OPERAND (req, 0);
   location_t loc = cp_expr_location (expr);
-  inform (loc, "nested requirement %qE is not satisfied", expr);
+  if (diagnosing_failed_constraint::replay_errors_p ())
+    {
+      /* Replay the substitution error.  */
+      inform (loc, "nested requirement %qE is not satisfied, because", expr);
+      subst_info noisy (tf_warning_or_error, NULL_TREE);
+      satisfy_constraint_expression (expr, args, noisy);
+    }
+  else
+    inform (loc, "nested requirement %qE is not satisfied", expr);
 
-  /* TODO: Replay the substitution to diagnose the error?  */
-  // subst_info noisy (tf_warning_or_error, NULL_TREE);
-  // satisfy_constraint (norm, args, info);
 }
 
 static void
@@ -3247,11 +3393,12 @@ diagnose_requirement (tree req, tree args, tree in_decl)
 }
 
 static void
-diagnose_requires_expr (tree expr, tree args, tree in_decl)
+diagnose_requires_expr (tree expr, tree map, tree in_decl)
 {
   local_specialization_stack stack (lss_copy);
   tree parms = TREE_OPERAND (expr, 0);
   tree body = TREE_OPERAND (expr, 1);
+  tree args = get_mapped_args (map);
 
   cp_unevaluated u;
   subst_info info (tf_warning_or_error, NULL_TREE);
@@ -3268,11 +3415,11 @@ diagnose_requires_expr (tree expr, tree args, tree in_decl)
     }
 }
 
-/* Diagnose a substitution failure in the atomic constraint T. Note that
-   ARGS have been previously instantiated through the parameter map.  */
+/* Diagnose a substitution failure in the atomic constraint T when applied
+   with the instantiated parameter mapping MAP.  */
 
 static void
-diagnose_atomic_constraint (tree t, tree args, subst_info info)
+diagnose_atomic_constraint (tree t, tree map, tree result, subst_info info)
 {
   /* If the constraint is already ill-formed, we've previously diagnosed
      the reason. We should still say why the constraints aren't satisfied.  */
@@ -3296,17 +3443,20 @@ diagnose_atomic_constraint (tree t, tree args, subst_info info)
   switch (TREE_CODE (expr))
     {
     case TRAIT_EXPR:
-      diagnose_trait_expr (expr, args);
+      diagnose_trait_expr (expr, map);
       break;
     case REQUIRES_EXPR:
-      diagnose_requires_expr (expr, args, info.in_decl);
-      break;
-    case INTEGER_CST:
-      /* This must be either 0 or false.  */
-      inform (loc, "%qE is never satisfied", expr);
+      diagnose_requires_expr (expr, map, info.in_decl);
       break;
     default:
-      inform (loc, "the expression %qE evaluated to %<false%>", expr);
+      tree a = copy_node (t);
+      ATOMIC_CONSTR_MAP (a) = map;
+      if (!same_type_p (TREE_TYPE (result), boolean_type_node))
+	error_at (loc, "constraint %qE has type %qT, not %<bool%>",
+		  a, TREE_TYPE (result));
+      else
+	inform (loc, "the expression %qE evaluated to %<false%>", a);
+      ggc_free (a);
     }
 }
 
@@ -3317,14 +3467,38 @@ diagnosing_failed_constraint (tree t, tree args, bool diag)
   : diagnosing_error (diag)
 {
   if (diagnosing_error)
-    current_failed_constraint = tree_cons (args, t, current_failed_constraint);
+    {
+      current_failed_constraint
+	= tree_cons (args, t, current_failed_constraint);
+      ++current_constraint_diagnosis_depth;
+    }
 }
 
 diagnosing_failed_constraint::
 ~diagnosing_failed_constraint ()
 {
-  if (diagnosing_error && current_failed_constraint)
-    current_failed_constraint = TREE_CHAIN (current_failed_constraint);
+  if (diagnosing_error)
+    {
+      --current_constraint_diagnosis_depth;
+      if (current_failed_constraint)
+	current_failed_constraint = TREE_CHAIN (current_failed_constraint);
+    }
+
+}
+
+/* Whether we are allowed to replay an error that underlies a constraint failure
+   at the current diagnosis depth.  */
+
+bool
+diagnosing_failed_constraint::replay_errors_p ()
+{
+  if (current_constraint_diagnosis_depth >= concepts_diagnostics_max_depth)
+    {
+      concepts_diagnostics_max_depth_exceeded_p = true;
+      return false;
+    }
+  else
+    return true;
 }
 
 /* Emit diagnostics detailing the failure ARGS to satisfy the constraints
@@ -3335,11 +3509,26 @@ diagnose_constraints (location_t loc, tree t, tree args)
 {
   inform (loc, "constraints not satisfied");
 
+  if (concepts_diagnostics_max_depth == 0)
+    return;
+
   /* Replay satisfaction, but diagnose errors.  */
   if (!args)
     constraint_satisfaction_value (t, tf_warning_or_error);
   else
     constraint_satisfaction_value (t, args, tf_warning_or_error);
+
+  static bool suggested_p;
+  if (concepts_diagnostics_max_depth_exceeded_p
+      && current_constraint_diagnosis_depth == 0
+      && !suggested_p)
+    {
+      inform (UNKNOWN_LOCATION,
+	      "set %qs to at least %d for more detail",
+	      "-fconcepts-diagnostics-depth=",
+	      concepts_diagnostics_max_depth + 1);
+      suggested_p = true;
+    }
 }
 
 #include "gt-cp-constraint.h"

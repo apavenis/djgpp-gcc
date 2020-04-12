@@ -989,6 +989,10 @@ fallow-store-data-races
 Common Report Var(flag_store_data_races) Optimization
 Allow the compiler to introduce new data races on stores.
 
+fanalyzer
+Common Var(flag_analyzer)
+Enable static analysis pass.
+
 fargument-alias
 Common Ignore
 Does nothing. Preserved for backward compatibility.
@@ -1192,11 +1196,11 @@ Common RejectNegative Joined Var(common_deferred_options) Defer
 
 fdebug-prefix-map=
 Common Joined RejectNegative Var(common_deferred_options) Defer
--fdebug-prefix-map=<old>=<new> Map one directory name to another in debug information.
+-fdebug-prefix-map=<old>=<new>	Map one directory name to another in debug information.
 
 ffile-prefix-map=
 Common Joined RejectNegative Var(common_deferred_options) Defer
--ffile-prefix-map=<old>=<new> Map one directory name to another in compilation result.
+-ffile-prefix-map=<old>=<new>	Map one directory name to another in compilation result.
 
 fdebug-types-section
 Common Report Var(flag_debug_types_section) Init(0)
@@ -1307,7 +1311,7 @@ Enum(diagnostic_url_rule) String(auto) Value(DIAGNOSTICS_URL_AUTO)
 
 fdiagnostics-format=
 Common Joined RejectNegative Enum(diagnostics_output_format)
--fdiagnostics-format=[text|json] Select output format.
+-fdiagnostics-format=[text|json]	Select output format.
 
 ; Required for these enum values.
 SourceInclude
@@ -1364,11 +1368,11 @@ Set minimum width of left margin of source code when showing source.
 
 fdisable-
 Common Joined RejectNegative Var(common_deferred_options) Defer
--fdisable-[tree|rtl|ipa]-<pass>=range1+range2 disables an optimization pass.
+-fdisable-[tree|rtl|ipa]-<pass>=range1+range2	Disable an optimization pass.
 
 fenable-
 Common Joined RejectNegative Var(common_deferred_options) Defer
--fenable-[tree|rtl|ipa]-<pass>=range1+range2 enables an optimization pass.
+-fenable-[tree|rtl|ipa]-<pass>=range1+range2	Enable an optimization pass.
 
 fdump-
 Common Joined RejectNegative Var(common_deferred_options) Defer
@@ -1486,7 +1490,7 @@ Common Report Var(flag_finite_math_only) Optimization SetByCombined
 Assume no NaNs or infinities are generated.
 
 ffinite-loops
-Common Report Var(flag_finite_loops) Optimization
+Common Report Var(flag_finite_loops) Optimization Init(0)
 Assume that loops with an exit will terminate and not loop indefinitely.
 
 ffixed-
@@ -1751,11 +1755,11 @@ Instrument function entry and exit with profiling calls.
 
 finstrument-functions-exclude-function-list=
 Common RejectNegative Joined
--finstrument-functions-exclude-function-list=name,...  Do not instrument listed functions.
+-finstrument-functions-exclude-function-list=name,...	Do not instrument listed functions.
 
 finstrument-functions-exclude-file-list=
 Common RejectNegative Joined
--finstrument-functions-exclude-file-list=filename,...  Do not instrument functions listed in files.
+-finstrument-functions-exclude-file-list=filename,...	Do not instrument functions listed in files.
 
 fipa-cp
 Common Report Var(flag_ipa_cp) Optimization
@@ -2016,11 +2020,11 @@ Support synchronous non-call exceptions.
 
 foffload=
 Common Driver Joined MissingArgError(options or targets missing after %qs)
--foffload=<targets>=<options>  Specify offloading targets and options for them.
+-foffload=<targets>=<options>	Specify offloading targets and options for them.
 
 foffload-abi=
 Common Joined RejectNegative Enum(offload_abi) Var(flag_offload_abi) Init(OFFLOAD_ABI_UNSET)
--foffload-abi=[lp64|ilp32]     Set the ABI to use in an offload compiler.
+-foffload-abi=[lp64|ilp32]	Set the ABI to use in an offload compiler.
 
 Enum
 Name(offload_abi) Type(enum offload_abi) UnknownError(unknown offload ABI %qs)
@@ -2163,6 +2167,22 @@ Instrument only functions from files where names match any regular expression (s
 fprofile-exclude-files=
 Common Joined RejectNegative Var(flag_profile_exclude_files)
 Instrument only functions from files where names do not match all the regular expressions (separated by a semi-colon).
+
+Enum
+Name(profile_reproducibility) Type(enum profile_reproducibility) UnknownError(unknown profile reproducibility method %qs)
+
+EnumValue
+Enum(profile_reproducibility) String(serial) Value(PROFILE_REPRODUCIBILITY_SERIAL)
+
+EnumValue
+Enum(profile_reproducibility) String(parallel-runs) Value(PROFILE_REPRODUCIBILITY_PARALLEL_RUNS)
+
+EnumValue
+Enum(profile_reproducibility) String(multithreaded) Value(PROFILE_REPRODUCIBILITY_MULTITHREADED)
+
+fprofile-reproducible
+Common Joined RejectNegative Var(flag_profile_reproducible) Enum(profile_reproducibility) Init(PROFILE_REPRODUCIBILITY_SERIAL)
+-fprofile-reproducible=[serial|parallel-runs|multithreaded]	Control level of reproducibility of profile gathered by -fprofile-generate.
 
 Enum
 Name(profile_update) Type(enum profile_update) UnknownError(unknown profile update method %qs)

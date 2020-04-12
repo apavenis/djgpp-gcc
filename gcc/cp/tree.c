@@ -1135,6 +1135,15 @@ build_array_of_n_type (tree elt, int n)
   return build_cplus_array_type (elt, build_index_type (size_int (n - 1)));
 }
 
+/* True iff T is an array of unknown bound.  */
+
+bool
+array_of_unknown_bound_p (const_tree t)
+{
+  return (TREE_CODE (t) == ARRAY_TYPE
+	  && !TYPE_DOMAIN (t));
+}
+
 /* True iff T is an N3639 array of runtime bound (VLA).  These were approved
    for C++14 but then removed.  This should only be used for N3639
    specifically; code wondering more generally if something is a VLA should use
@@ -2455,6 +2464,8 @@ is_overloaded_fn (tree x)
 tree
 dependent_name (tree x)
 {
+  /* FIXME a dependent name must be unqualified, but this function doesn't
+     distinguish between qualified and unqualified identifiers.  */
   if (identifier_p (x))
     return x;
   if (TREE_CODE (x) == TEMPLATE_ID_EXPR)
@@ -2785,9 +2796,23 @@ no_linkage_check (tree t, bool relaxed_p)
      fix it up later if not.  We need to check this even in templates so
      that we properly handle a lambda-expression in the signature.  */
   if (LAMBDA_TYPE_P (t)
-      && CLASSTYPE_LAMBDA_EXPR (t) != error_mark_node
-      && LAMBDA_TYPE_EXTRA_SCOPE (t) == NULL_TREE)
-    return t;
+      && CLASSTYPE_LAMBDA_EXPR (t) != error_mark_node)
+    {
+      tree extra = LAMBDA_TYPE_EXTRA_SCOPE (t);
+      if (!extra)
+	return t;
+
+      /* If the mangling scope is internal-linkage or not repeatable
+	 elsewhere, the lambda effectively has no linkage.  (Sadly
+	 we're not very careful with the linkages of types.)  */
+      if (TREE_CODE (extra) == VAR_DECL
+	  && !(TREE_PUBLIC (extra)
+	       && (processing_template_decl
+		   || (DECL_LANG_SPECIFIC (extra) && DECL_USE_TEMPLATE (extra))
+		   /* DECL_COMDAT is set too late for us to check.  */
+		   || DECL_VAR_DECLARED_INLINE_P (extra))))
+	return t;
+    }
 
   /* Otherwise there's no point in checking linkage on template functions; we
      can't know their complete types.  */
@@ -3214,7 +3239,7 @@ replace_placeholders_r (tree* t, int* walk_subtrees, void* data_)
    a PLACEHOLDER_EXPR has been encountered.  */
 
 tree
-replace_placeholders (tree exp, tree obj, bool *seen_p)
+replace_placeholders (tree exp, tree obj, bool *seen_p /*= NULL*/)
 {
   /* This is only relevant for C++14.  */
   if (cxx_dialect < cxx14)
@@ -3222,7 +3247,7 @@ replace_placeholders (tree exp, tree obj, bool *seen_p)
 
   /* If the object isn't a (member of a) class, do nothing.  */
   tree op0 = obj;
-  while (TREE_CODE (op0) == COMPONENT_REF)
+  while (handled_component_p (op0))
     op0 = TREE_OPERAND (op0, 0);
   if (!CLASS_TYPE_P (strip_array_types (TREE_TYPE (op0))))
     return exp;
@@ -3558,6 +3583,15 @@ called_fns_equal (tree t1, tree t2)
       if (name1 != name2)
 	return false;
 
+      /* FIXME dependent_name currently returns an unqualified name regardless
+	 of whether the function was named with a qualified- or unqualified-id.
+	 Until that's fixed, check that we aren't looking at overload sets from
+	 different scopes.  */
+      if (is_overloaded_fn (t1) && is_overloaded_fn (t2)
+	  && (DECL_CONTEXT (get_first_fn (t1))
+	      != DECL_CONTEXT (get_first_fn (t2))))
+	return false;
+
       if (TREE_CODE (t1) == TEMPLATE_ID_EXPR)
 	targs1 = TREE_OPERAND (t1, 1);
       if (TREE_CODE (t2) == TEMPLATE_ID_EXPR)
@@ -3654,7 +3688,8 @@ cp_tree_equal (tree t1, tree t2)
       {
 	tree arg1, arg2;
 	call_expr_arg_iterator iter1, iter2;
-	if (!called_fns_equal (CALL_EXPR_FN (t1), CALL_EXPR_FN (t2)))
+	if (KOENIG_LOOKUP_P (t1) != KOENIG_LOOKUP_P (t2)
+	    || !called_fns_equal (CALL_EXPR_FN (t1), CALL_EXPR_FN (t2)))
 	  return false;
 	for (arg1 = first_call_expr_arg (t1, &iter1),
 	       arg2 = first_call_expr_arg (t2, &iter2);
@@ -3779,9 +3814,13 @@ cp_tree_equal (tree t1, tree t2)
 	    if (SIZEOF_EXPR_TYPE_P (t2))
 	      o2 = TREE_TYPE (o2);
 	  }
+
 	if (TREE_CODE (o1) != TREE_CODE (o2))
 	  return false;
-	if (TYPE_P (o1))
+
+	if (ARGUMENT_PACK_P (o1))
+	  return template_args_equal (o1, o2);
+	else if (TYPE_P (o1))
 	  return same_type_p (o1, o2);
 	else
 	  return cp_tree_equal (o1, o2);
@@ -3848,11 +3887,26 @@ cp_tree_equal (tree t1, tree t2)
 			     DEFERRED_NOEXCEPT_PATTERN (t2))
 	      && comp_template_args (DEFERRED_NOEXCEPT_ARGS (t1),
 				     DEFERRED_NOEXCEPT_ARGS (t2)));
-      break;
 
     case LAMBDA_EXPR:
       /* Two lambda-expressions are never considered equivalent.  */
       return false;
+
+    case TYPE_ARGUMENT_PACK:
+    case NONTYPE_ARGUMENT_PACK:
+      {
+	tree p1 = ARGUMENT_PACK_ARGS (t1);
+	tree p2 = ARGUMENT_PACK_ARGS (t2);
+	int len = TREE_VEC_LENGTH (p1);
+	if (TREE_VEC_LENGTH (p2) != len)
+	  return false;
+
+	for (int ix = 0; ix != len; ix++)
+	  if (!template_args_equal (TREE_VEC_ELT (p1, ix),
+				    TREE_VEC_ELT (p2, ix)))
+	    return false;
+	return true;
+      }
 
     default:
       break;
@@ -4918,6 +4972,11 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
     }							\
   while (0)
 
+  if (TYPE_P (*tp))
+    /* Walk into template args without looking through typedefs.  */
+    if (tree ti = TYPE_TEMPLATE_INFO_MAYBE_ALIAS (*tp))
+      WALK_SUBTREE (TI_ARGS (ti));
+
   /* Not one of the easy cases.  We must explicitly go through the
      children.  */
   result = NULL_TREE;
@@ -5010,6 +5069,11 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
       *walk_subtrees_p = 0;
       break;
 
+    case CONSTRUCTOR:
+      if (COMPOUND_LITERAL_P (*tp))
+	WALK_SUBTREE (TREE_TYPE (*tp));
+      break;
+
     case TRAIT_EXPR:
       WALK_SUBTREE (TRAIT_EXPR_TYPE1 (*tp));
       WALK_SUBTREE (TRAIT_EXPR_TYPE2 (*tp));
@@ -5066,6 +5130,37 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
       for (tree cap = LAMBDA_EXPR_CAPTURE_LIST (*tp); cap;
 	   cap = TREE_CHAIN (cap))
 	WALK_SUBTREE (TREE_VALUE (cap));
+      break;
+
+    case CO_YIELD_EXPR:
+      if (TREE_OPERAND (*tp, 1))
+	/* Operand 1 is the tree for the relevant co_await which has any
+	   interesting sub-trees.  */
+	WALK_SUBTREE (TREE_OPERAND (*tp, 1));
+      break;
+
+    case CO_AWAIT_EXPR:
+      if (TREE_OPERAND (*tp, 1))
+	/* Operand 1 is frame variable.  */
+	WALK_SUBTREE (TREE_OPERAND (*tp, 1));
+      if (TREE_OPERAND (*tp, 2))
+	/* Operand 2 has the initialiser, and we need to walk any subtrees
+	   there.  */
+	WALK_SUBTREE (TREE_OPERAND (*tp, 2));
+      break;
+
+    case CO_RETURN_EXPR:
+      if (TREE_OPERAND (*tp, 0))
+	{
+	  if (VOID_TYPE_P (TREE_OPERAND (*tp, 0)))
+	    /* For void expressions, operand 1 is a trivial call, and any
+	       interesting subtrees will be part of operand 0.  */
+	    WALK_SUBTREE (TREE_OPERAND (*tp, 0));
+	  else if (TREE_OPERAND (*tp, 1))
+	    /* Interesting sub-trees will be in the return_value () call
+	       arguments.  */
+	    WALK_SUBTREE (TREE_OPERAND (*tp, 1));
+	}
       break;
 
     default:
@@ -5216,6 +5311,10 @@ decl_linkage (tree decl)
   if (TREE_CODE (decl) == FIELD_DECL)
     return lk_none;
 
+  /* Things in local scope do not have linkage.  */
+  if (decl_function_context (decl))
+    return lk_none;
+
   /* Things that are TREE_PUBLIC have external linkage.  */
   if (TREE_PUBLIC (decl))
     return lk_external;
@@ -5234,11 +5333,6 @@ decl_linkage (tree decl)
      type.  */
   if (TREE_CODE (decl) == CONST_DECL)
     return decl_linkage (TYPE_NAME (DECL_CONTEXT (decl)));
-
-  /* Things in local scope do not have linkage, if they don't have
-     TREE_PUBLIC set.  */
-  if (decl_function_context (decl))
-    return lk_none;
 
   /* Members of the anonymous namespace also have TREE_PUBLIC unset, but
      are considered to have external linkage for language purposes, as do
@@ -5663,7 +5757,15 @@ type_initializer_zero_p (tree type, tree init)
     return TREE_CODE (init) != STRING_CST && initializer_zerop (init);
 
   if (TREE_CODE (init) != CONSTRUCTOR)
-    return initializer_zerop (init);
+    {
+      /* A class can only be initialized by a non-class type if it has
+	 a ctor that converts from that type.  Such classes are excluded
+	 since their semantics are unknown.  */
+      if (RECORD_OR_UNION_TYPE_P (type)
+	  && !RECORD_OR_UNION_TYPE_P (TREE_TYPE (init)))
+	return false;
+      return initializer_zerop (init);
+    }
 
   if (TREE_CODE (type) == ARRAY_TYPE)
     {

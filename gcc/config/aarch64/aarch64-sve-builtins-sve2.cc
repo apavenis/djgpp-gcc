@@ -442,6 +442,8 @@ public:
   rtx
   expand (function_expander &e) const OVERRIDE
   {
+    for (unsigned int i = 0; i < 2; ++i)
+      e.args[i] = e.convert_to_pmode (e.args[i]);
     return e.use_exact_insn (code_for_while (m_unspec, Pmode, e.gp_mode (0)));
   }
 
@@ -485,7 +487,6 @@ FUNCTION (svbsl2n, CODE_FOR_MODE0 (aarch64_sve2_bsl2n),)
 FUNCTION (svcdot, svcdot_impl,)
 FUNCTION (svcdot_lane, svcdot_lane_impl,)
 FUNCTION (svcvtlt, unspec_based_function, (-1, -1, UNSPEC_COND_FCVTLT))
-FUNCTION (svcvtnt, CODE_FOR_MODE1 (aarch64_sve2_cvtnt),)
 FUNCTION (svcvtx, unspec_based_function, (-1, -1, UNSPEC_COND_FCVTX))
 FUNCTION (svcvtxnt, CODE_FOR_MODE1 (aarch64_sve2_cvtxnt),)
 FUNCTION (sveor3, CODE_FOR_MODE0 (aarch64_sve2_eor3),)

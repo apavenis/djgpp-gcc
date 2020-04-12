@@ -821,6 +821,7 @@ input_cfg (class lto_input_block *ib, class data_in *data_in,
       loop->owned_clique = streamer_read_hwi (ib);
       loop->dont_vectorize = streamer_read_hwi (ib);
       loop->force_vectorize = streamer_read_hwi (ib);
+      loop->finite_p = streamer_read_hwi (ib);
       loop->simduid = stream_read_tree (ib, data_in);
 
       place_new_loop (fn, loop);
@@ -892,6 +893,7 @@ fixup_call_stmt_edges_1 (struct cgraph_node *node, gimple **stmts,
         fatal_error (input_location,
 		     "Cgraph edge statement index out of range");
       cedge->call_stmt = as_a <gcall *> (stmts[cedge->lto_stmt_uid - 1]);
+      cedge->lto_stmt_uid = 0;
       if (!cedge->call_stmt)
         fatal_error (input_location,
 		     "Cgraph edge statement index not found");
@@ -902,6 +904,7 @@ fixup_call_stmt_edges_1 (struct cgraph_node *node, gimple **stmts,
         fatal_error (input_location,
 		     "Cgraph edge statement index out of range");
       cedge->call_stmt = as_a <gcall *> (stmts[cedge->lto_stmt_uid - 1]);
+      cedge->lto_stmt_uid = 0;
       if (!cedge->call_stmt)
         fatal_error (input_location, "Cgraph edge statement index not found");
     }
@@ -912,6 +915,7 @@ fixup_call_stmt_edges_1 (struct cgraph_node *node, gimple **stmts,
 	  fatal_error (input_location,
 		       "Reference statement index out of range");
 	ref->stmt = stmts[ref->lto_stmt_uid - 1];
+	ref->lto_stmt_uid = 0;
 	if (!ref->stmt)
 	  fatal_error (input_location, "Reference statement index not found");
       }

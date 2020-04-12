@@ -871,7 +871,7 @@ store_init_value (tree decl, tree init, vec<tree, va_gc>** cleanups, int flags)
     {
       bool const_init;
       tree oldval = value;
-      value = fold_non_dependent_expr (value);
+      value = fold_non_dependent_expr (value, tf_warning_or_error, true, decl);
       if (DECL_DECLARED_CONSTEXPR_P (decl)
 	  || (DECL_IN_AGGR_P (decl)
 	      && DECL_INITIALIZED_IN_CLASS_P (decl)))
@@ -981,7 +981,11 @@ check_narrowing (tree type, tree init, tsubst_flags_t complain,
       return ok;
     }
 
-  init = maybe_constant_value (init);
+  /* Even non-dependent expressions can still have template
+     codes like CAST_EXPR, so use *_non_dependent_expr to cope.  */
+  init = fold_non_dependent_expr (init, complain);
+  if (init == error_mark_node)
+    return ok;
 
   /* If we were asked to only check constants, return early.  */
   if (const_only && !TREE_CONSTANT (init))
@@ -1369,9 +1373,6 @@ digest_nsdmi_init (tree decl, tree init, tsubst_flags_t complain)
       && CP_AGGREGATE_TYPE_P (type))
     init = reshape_init (type, init, complain);
   init = digest_init_flags (type, init, flags, complain);
-  if (TREE_CODE (init) == TARGET_EXPR)
-    /* This represents the whole initialization.  */
-    TARGET_EXPR_DIRECT_INIT_P (init) = true;
   return init;
 }
 
@@ -1487,6 +1488,17 @@ process_init_constructor_array (tree type, tree init, int nested, int flags,
 	= massage_init_elt (TREE_TYPE (type), ce->value, nested, flags,
 			    complain);
 
+      if (TREE_CODE (ce->value) == CONSTRUCTOR
+	  && CONSTRUCTOR_PLACEHOLDER_BOUNDARY (ce->value))
+	{
+	  /* Shift CONSTRUCTOR_PLACEHOLDER_BOUNDARY from the element initializer
+	     up to the array initializer, so that the call to
+	     replace_placeholders from store_init_value can resolve any
+	     PLACEHOLDER_EXPRs inside this element initializer.  */
+	  CONSTRUCTOR_PLACEHOLDER_BOUNDARY (ce->value) = 0;
+	  CONSTRUCTOR_PLACEHOLDER_BOUNDARY (init) = 1;
+	}
+
       gcc_checking_assert
 	(ce->value == error_mark_node
 	 || (same_type_ignoring_top_level_qualifiers_p
@@ -1515,6 +1527,13 @@ process_init_constructor_array (tree type, tree init, int nested, int flags,
 	      /* The default zero-initialization is fine for us; don't
 		 add anything to the CONSTRUCTOR.  */
 	      next = NULL_TREE;
+	    else if (TREE_CODE (next) == CONSTRUCTOR
+		     && CONSTRUCTOR_PLACEHOLDER_BOUNDARY (next))
+	      {
+		/* As above.  */
+		CONSTRUCTOR_PLACEHOLDER_BOUNDARY (next) = 0;
+		CONSTRUCTOR_PLACEHOLDER_BOUNDARY (init) = 1;
+	      }
 	  }
 	else if (!zero_init_p (TREE_TYPE (type)))
 	  next = build_zero_init (TREE_TYPE (type),
@@ -1932,11 +1951,15 @@ process_init_constructor (tree type, tree init, int nested, int flags,
       TREE_SIDE_EFFECTS (init) = true;
     }
   else if (picflags & PICFLAG_NOT_ALL_CONSTANT)
-    /* Make sure TREE_CONSTANT isn't set from build_constructor.  */
-    TREE_CONSTANT (init) = false;
+    {
+      /* Make sure TREE_CONSTANT isn't set from build_constructor.  */
+      TREE_CONSTANT (init) = false;
+      TREE_SIDE_EFFECTS (init) = false;
+    }
   else
     {
       TREE_CONSTANT (init) = 1;
+      TREE_SIDE_EFFECTS (init) = false;
       if (!(picflags & PICFLAG_NOT_ALL_SIMPLE))
 	TREE_STATIC (init) = 1;
     }
