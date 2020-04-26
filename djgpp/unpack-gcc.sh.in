@@ -67,11 +67,18 @@ devphase=$(cat gnu/$orig_dir_name/gcc/DEV-PHASE)
 version=$base_ver
 version_desc=$version
 
+
 #  X.Y.Z ==> X.YZ
 short_ver=$(echo $version | sed -e 's:\.::2g')
 
 #  X.Y.Z ==> XYZ
 short_ver_2=$(echo $version | sed -e 's:\.::g')
+
+if test -z "$devphase"; then
+    case "$base_ver" in
+    9.0.* | 9.[1-9].[1-9]) devphase=prerelease ;;
+    esac
+fi
 
 if ! test -z "$devphase"; then
     version=${base_ver}-${datestamp}
