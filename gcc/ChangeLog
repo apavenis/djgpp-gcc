@@ -1,3 +1,123 @@
+2020-04-21  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from master
+	2020-04-09  Martin Jambor  <mjambor@suse.cz>
+	            Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/94482
+	* tree-sra.c (create_access_replacement): Dump new replacement with
+	TDF_UID.
+	(sra_modify_expr): Fix handling of cases when the original EXPR writes
+	to only part of the replacement.
+	* tree-ssa-forwprop.c (pass_forwprop::execute): Properly verify
+	the first operand of combinations into REAL/IMAGPART_EXPR and
+	BIT_FIELD_REF.
+
+2020-04-20  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from master
+	2020-04-13  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/94556
+	* config/i386/i386.c (ix86_expand_epilogue): Restore the frame
+	pointer in word_mode for eh_return epilogues.
+
+2020-04-20  Andrea Corallo  <andrea.corallo@arm.com>
+
+	Backport from mainline.
+	2020-04-15  Andrea Corallo  <andrea.corallo@arm.com>
+
+	PR target/94530
+	* config/aarch64/falkor-tag-collision-avoidance.c
+	(valid_src_p): Check for aarch64_address_info type before
+	accessing base field.
+
+2020-04-20  Tamar Christina  <tamar.christina@arm.com>
+
+	Backport from mainline.
+	2020-04-03  Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/94396
+	* common/config/aarch64/aarch64-common.c
+	(aarch64_get_extension_string_for_isa_flags): Handle default flags.
+
+2020-04-20  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2020-04-17  Martin Liska  <mliska@suse.cz>
+		    Jonathan Yong <10walls@gmail.com>
+
+	PR gcov-profile/94570
+	* coverage.c (coverage_init): Use separator properly.
+
+2020-04-17  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from master
+	2020-04-08  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/94417
+	* config/i386/i386.c (rest_of_insert_endbranch): Insert ENDBR at
+	function entry if function will be called indirectly.
+
+2020-04-17  Kewen Lin  <linkw@gcc.gnu.org>
+
+	Backport from mainline
+	2020-04-03  Kewen Lin  <linkw@gcc.gnu.org>
+
+	PR tree-optimization/94443
+	* tree-vect-loop.c (vectorizable_live_operation): Use
+	gsi_insert_seq_before to replace gsi_insert_before.
+
+2020-04-17  Kewen Lin  <linkw@gcc.gnu.org>
+
+	Backport from mainline
+	2020-04-01  Kewen Lin  <linkw@gcc.gnu.org>
+
+	PR tree-optimization/94043
+	* tree-vect-loop.c (vectorizable_live_operation): Generate loop-closed
+	phi for vec_lhs and use it for lane extraction.
+
+2020-04-16  Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/94557
+	* config/rs6000/rs6000.c (rs6000_adjust_vec_address): Fix
+	regression caused by PR target/93932 backport.  Mask variable
+	vector extract index so it does not go beyond the vector when
+	extracting a vector element from memory.
+
+2020-04-16  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-04-07  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/94479
+	* gimplify.c (gimplify_addr_expr): Also consider generated
+	MEM_REFs.
+
+2020-04-15  Max Filippov  <jcmvbkbc@gmail.com>
+
+	Backport from mainline.
+	2020-04-14  Max Filippov  <jcmvbkbc@gmail.com>
+
+	PR target/94584
+	* config/xtensa/xtensa.md (zero_extendhisi2, zero_extendqisi2)
+	(extendhisi2_internal): Add %v1 before the load instructions.
+
+2020-04-15  Max Filippov  <jcmvbkbc@gmail.com>
+
+	Backport from mainline.
+	2019-09-26  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* config/xtensa/xtensa.c (hwloop_optimize): Insert zero overhead
+	loop instruction into new basic block before the loop when basic
+	block that precedes the loop is empty.
+
+2020-04-15  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/94603
+	* config/i386/i386-builtin.def (__builtin_ia32_movq128):
+	Require OPTION_MASK_ISA_SSE2.
+
 2020-04-11  Uroš Bizjak  <ubizjak@gmail.com>
 
 	PR target/94494

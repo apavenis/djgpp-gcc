@@ -1,3 +1,132 @@
+2020-04-24  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/93956
+	* gfortran.dg/pointer_assign_13.f90: New test.
+
+2020-04-23 Iain Sandoe <iain@sandoe.co.uk>
+
+	* g++.dg/coroutines/coro-bad-alloc-00-bad-op-new.C: Adjust for
+	changed inline namespace.
+	* g++.dg/coroutines/coro-bad-alloc-01-bad-op-del.C: Likewise.
+	* g++.dg/coroutines/coro-bad-alloc-02-no-op-new-nt.C: Likewise
+	* g++.dg/coroutines/coro.h: Likewise
+
+2020-04-21  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/94510
+	* g++.dg/init/array58.C: New test.
+	* g++.dg/init/array59.C: New test.
+	* g++.dg/cpp2a/nontype-class34.C: New test.
+	* g++.dg/cpp2a/nontype-class35.C: New test.
+
+2020-04-21  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from master
+	2020-04-09  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/94482
+	* gcc.dg/torture/pr94482.c: New test.
+	* gcc.dg/tree-ssa/pr94482-2.c: Likewise.
+
+2020-04-20  Harald Anlauf  <anlauf@gmx.de>
+
+	Backport from mainline.
+	PR fortran/93364
+	* gfortran.dg/pr93364.f90: New test.
+
+2020-04-20  Andrea Corallo  <andrea.corallo@arm.com>
+
+	Backport from mainline.
+	2020-04-09  Andrea Corallo  <andrea.corallo@arm.com
+
+	PR target/94530
+	* gcc.target/aarch64/pr94530.c: New test.
+
+2020-04-20  Tamar Christina  <tamar.christina@arm.com>
+
+	Backport from mainline.
+	2020-04-03  Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/94396
+	* gcc.target/aarch64/options_set_11.c: New test.
+	* gcc.target/aarch64/options_set_12.c: New test.
+	* gcc.target/aarch64/options_set_13.c: New test.
+	* gcc.target/aarch64/options_set_14.c: New test.
+	* gcc.target/aarch64/options_set_15.c: New test.
+	* gcc.target/aarch64/options_set_16.c: New test.
+	* gcc.target/aarch64/options_set_17.c: New test.
+	* gcc.target/aarch64/options_set_18.c: New test.
+	* gcc.target/aarch64/options_set_19.c: New test.
+	* gcc.target/aarch64/options_set_20.c: New test.
+	* gcc.target/aarch64/options_set_21.c: New test.
+	* gcc.target/aarch64/options_set_22.c: New test.
+	* gcc.target/aarch64/options_set_23.c: New test.
+	* gcc.target/aarch64/options_set_24.c: New test.
+	* gcc.target/aarch64/options_set_25.c: New test.
+	* gcc.target/aarch64/options_set_26.c: New test.
+
+2020-04-17  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from master
+	2020-04-08  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/94417
+	* gcc.target/i386/pr94417-1.c: New test.
+	* gcc.target/i386/pr94417-2.c: Likewise.
+	* gcc.target/i386/pr94417-3.c: Likewise.
+
+2020-04-17  Kewen Lin  <linkw@gcc.gnu.org>
+
+	Backport from mainline
+	2020-04-03  Kewen Lin  <linkw@gcc.gnu.org>
+
+	PR tree-optimization/94443
+	* gcc.dg/vect/pr94443.c: New test.
+
+2020-04-17  Kewen Lin  <linkw@gcc.gnu.org>
+
+	Backport from mainline
+	2020-04-01  Kewen Lin  <linkw@gcc.gnu.org>
+
+	PR tree-optimization/94043
+	* gfortran.dg/graphite/vect-pr94043.f90: New test.
+
+2020-04-16  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-04-07  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/94479
+	* gcc.dg/torture/pr94479.c: New testcase.
+
+2020-04-15  Max Filippov  <jcmvbkbc@gmail.com>
+
+	Backport from mainline.
+	2020-04-13  Max Filippov  <jcmvbkbc@gmail.com>
+
+	PR target/94584
+	* gcc.target/xtensa/pr94584.c: New test.
+
+2020-04-15  Max Filippov  <jcmvbkbc@gmail.com>
+
+	Backport from mainline.
+	2019-09-26  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* gcc.target/xtensa/pr91880.c: New test case.
+	* gcc.target/xtensa/xtensa.exp: New test suite.
+
+2020-04-15  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/94603
+	* gcc.target/i386/pr94603.c: New test.
+
+2020-04-14  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/94270
+	* gfortran.dg/warn_unused_dummy_argument_6.f90: New test.
+
 2020-04-11  Uroš Bizjak  <ubizjak@gmail.com>
 
 	PR target/94494
