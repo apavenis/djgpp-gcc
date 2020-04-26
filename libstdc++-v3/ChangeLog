@@ -1,3 +1,374 @@
+2020-04-24  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/experimental/executor (service_already_exists): Make default
+	constructor public (LWG 3414).
+	* testsuite/experimental/net/execution_context/make_service.cc: Check
+	the service_already_exists can be default constructed.
+
+2020-04-24  Kamlesh Kumar  <kamleshbhalui@gmail.com>
+	    Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/90415
+	PR libstdc++/92156
+	* include/std/any (any): Rename template parameters for consistency
+	with the standard.
+	(any::_Decay): Rename to _Decay_if_not_any.
+	(any::any(T&&):: Remove is_constructible from constraints. Remove
+	non-standard overload.
+	(any::any(in_place_type_t<T>, Args&&...))
+	(any::any(in_place_type_t<T>, initializer_list<U>, Args&&...))
+	(any::emplace(Args&&...))
+	(any::emplace(initializer_list<U>, Args&&...)):
+	Use decay_t instead of _Decay.
+	* testsuite/20_util/any/cons/90415.cc: New test.
+	* testsuite/20_util/any/cons/92156.cc: New Test.
+	* testsuite/20_util/any/misc/any_cast_neg.cc: Make dg-error directives
+	more robust.
+	* testsuite/20_util/any/modifiers/92156.cc: New test.
+
+2020-04-23  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/xml/manual/status_cxx2020.xml: Update C++20 status table.
+	* doc/html/*: Regenerate.
+
+	* include/bits/stl_iterator.h (__cpp_lib_array_constexpr): Revert
+	value for C++17 to 201803L because P0858R0 is supported for C++17.
+	* include/std/version (__cpp_lib_array_constexpr): Likewise.
+	* testsuite/23_containers/array/element_access/constexpr_c++17.cc:
+	Check for value corresponding to P0031R0 features being tested.
+	* testsuite/23_containers/array/requirements/constexpr_iter.cc:
+	Check for value corresponding to P0858R0 features being tested.
+
+	* include/std/version (__cpp_lib_three_way_comparison): Define for
+	freestanding builds.
+
+2020-04-23  Thomas Rodgers  <rodgert@appliantology.com>
+
+	* include/experimental/net/executor (system_context): Mark
+	system_context::system_context() = delete.
+	* testsuite/experimental/net/executor/1.cc: Add new
+	test to check system_context is not default constructible.
+
+2020-04-23  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* include/std/coroutine: Update the inline namespace to __n4861.
+	Add the __cpp_lib_coroutine define, set to 201902L.
+	* include/std/version: Add __cpp_lib_coroutine, set to 201902L.
+
+2020-04-22  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/std/execution (__cpp_lib_execution): Define to indicate
+	support for P0024R2 and P1001R2.
+	* include/std/version (__cpp_lib_execution): Define.
+	* testsuite/25_algorithms/pstl/feature_test.cc: Only test macro
+	defined by <algorithm>, move other tests to new tests ...
+	* testsuite/25_algorithms/pstl/feature_test-2.cc: New test.
+	* testsuite/25_algorithms/pstl/feature_test-3.cc: New test.
+	* testsuite/25_algorithms/pstl/feature_test-4.cc: New test.
+	* testsuite/25_algorithms/pstl/feature_test-5.cc: New test.
+
+	* include/bits/stl_iterator.h (__cpp_lib_array_constexpr): Define
+	different values for C++17 and C++20, to indicate different feature
+	sets. Update value for C++20 to indicate P1032R1 support.
+	* include/std/version (__cpp_lib_array_constexpr): Likewise.
+	* testsuite/23_containers/array/comparison_operators/constexpr.cc:
+	Check feature test macro.
+	* testsuite/23_containers/array/element_access/constexpr_c++17.cc:
+	New test.
+	* testsuite/23_containers/array/requirements/constexpr_fill.cc: Check
+	feature test macro.
+	* testsuite/23_containers/array/requirements/constexpr_iter.cc: Test
+	in C++17 mode and check feature test macro.
+
+	* include/std/utility (__cpp_lib_constexpr_algorithms): Do not define
+	here.
+	* testsuite/20_util/exchange/constexpr.cc: Do not expect macro to be
+	defined by <utility>.
+
+	* include/std/functional (__cpp_lib_concepts): Update macro value to
+	indicate P1964R2 support.
+	* include/std/version (__cpp_lib_concepts): Likewise.
+	* testsuite/std/concepts/1.cc: Adjust expected value.
+	* testsuite/std/concepts/2.cc: Likewise.
+
+	* include/std/functional (__cpp_lib_constexpr_invoke): Rename to
+	__cpp_lib_constexpr_functional.
+	* include/std/version (__cpp_lib_constexpr_invoke): Likewise.
+	* testsuite/20_util/function_objects/invoke/constexpr.cc: Adjust.
+
+	* include/bits/ptr_traits.h (__cpp_lib_constexpr_memory): Define to
+	indicate P1006R1 support.
+	(__cpp_lib_to_address): Define to indicate P0653R2 support.
+	* include/bits/range_access.h (__cpp_lib_ssize): Define to indicate
+	P1227R2 support.
+	* include/bits/ranges_algo.h (__cpp_lib_shift): Define to indicate
+	P0769R2 support.
+	* include/std/atomic (__cpp_lib_atomic_float): Define to indicate
+	P0020R6 support.
+	* include/std/memory (__cpp_lib_assume_aligned): Define to indicate
+	P1007R3 support.
+	* include/std/memory_resource (__cpp_lib_polymorphic_allocator):
+	Define to indicate P0339R6 support.
+	* include/std/string_view (__cpp_lib_starts_ends_with): Define to
+	indicate P0457R2 support.
+	* include/std/type_traits (__cpp_lib_is_nothrow_convertible): Define
+	to indicate P0758R1 support.
+	(__cpp_lib_remove_cvref): Define to indicate P0550R2 support.
+	(__cpp_lib_type_identity): Define to indicate P0887R1 support.
+	* include/std/version (__cpp_lib_atomic_float)
+	(__cpp_lib_is_nothrow_convertible, __cpp_lib_remove_cvref)
+	(__cpp_lib_type_identity, __cpp_lib_assume_aligned)
+	(__cpp_lib_constexpr_memory, __cpp_lib_polymorphic_allocator)
+	(__cpp_lib_shift, __cpp_lib_ssize, __cpp_lib_starts_ends_with)
+	(__cpp_lib_to_address): Define.
+	* testsuite/20_util/to_address/1_neg.cc: Adjust dg-error line number.
+
+	* include/bits/stl_map.h (__cpp_lib_map_insertion): Remove old
+	macro.
+	* include/bits/unordered_map.h (__cpp_lib_unordered_map_insertion):
+	Likewise.
+	* include/std/version (__cpp_lib_map_insertion)
+	(__cpp_lib_unordered_map_insertion): Remove.
+
+	* include/std/condition_variable (__cpp_lib_jthread): Remove
+	redundant definition.
+	* include/std/stop_token (__cpp_lib_jthread): Update macro value to
+	indicate P1869R1 support.
+	* include/std/version (__cpp_lib_jthread): Update value.
+	* testsuite/30_threads/condition_variable_any/stop_token/1.cc: Check
+	for updated macro value.
+	* testsuite/30_threads/condition_variable_any/stop_token/2.cc:
+	Likewise.
+	* testsuite/30_threads/jthread/1.cc: Likewise.
+	* testsuite/30_threads/jthread/2.cc: Likewise.
+	* testsuite/30_threads/stop_token/1.cc: Likewise.
+	* testsuite/30_threads/stop_token/2.cc: Likewise.
+
+	* testsuite/21_strings/basic_string/erasure.cc: Check for
+	__cpp_lib_erase_if macro.
+	* testsuite/23_containers/deque/erasure.cc: Add header name to #error
+	messages.
+	* testsuite/23_containers/forward_list/erasure.cc: Likewise.
+	* testsuite/23_containers/list/erasure.cc: Likewise.
+	* testsuite/23_containers/map/erasure.cc: Likewise.
+	* testsuite/23_containers/set/erasure.cc: Likewise.
+	* testsuite/23_containers/unordered_map/erasure.cc: Likewise.
+	* testsuite/23_containers/unordered_set/erasure.cc: Likewise.
+	* testsuite/23_containers/vector/erasure.cc: Likewise.
+
+2020-04-21  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/stl_iterator.h (__normal_iterator): Use synth-three-way
+	to define operator<=>.
+	* testsuite/24_iterators/normal_iterator/cmp_c++20.cc: New test.
+
+	* doc/Makefile.am (xml_sources_manual): Add missing XML files.
+	* doc/Makefile.in: Regenerate.
+	* doc/xml/manual/status_cxx1998.xml: Refer to "this section" instead
+	of "this page".
+	* doc/xml/manual/status_cxx2011.xml: Formatting and other corrections
+	to the C++11 status table.
+	* doc/xml/manual/status_cxx2014.xml: Replace list of C++14 feature
+	proposals with table matching contents of the C++14 standard.
+	* doc/xml/manual/status_cxx2017.xml: Add table matching contents of
+	the C++17 standard.
+	* doc/html/*: Regenerate.
+
+	PR c++/94149
+	* include/std/type_traits (__is_nt_constructible_impl): Add partial
+	specializations for bounded arrays with non-empty initializers.
+	* testsuite/20_util/is_nothrow_constructible/value_c++20.cc: New test.
+
+2020-04-20  Thomas Rodgers  <trodgers@redhat.com>
+
+	* testsuite/lib/libstdc++.exp: Add additional_flags=
+	-DTBB_SUPRESS_DEPRECATED_MESSAGES=1 to suppress warnings when
+	compiling with a newer Thread Building Blocks.
+
+2020-04-20  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/24_iterators/istreambuf_iterator/sentinel.cc: New test.
+
+	* testsuite/20_util/is_constructible/51185.cc: Make test class a
+	non-aggregate so that the test verifies the same thing in all -std
+	modes.
+	* testsuite/20_util/is_constructible/value-2.cc: Adjust expected
+	results for some types when paren-init for aggregates is supported.
+
+	* include/std/version (__cpp_lib_three_way_comparison): Update value.
+	* libsupc++/compare (__cpp_lib_three_way_comparison): Likewise.
+	(__detail::__synth3way): Add noexcept-specifier.
+
+	* include/bits/stl_map.h (map): Define operator<=> and remove
+	operator< for C++20.
+	* include/bits/stl_multimap.h (multimap): Likewise.
+	* include/bits/stl_multiset.h (multiset): Likewise.
+	* include/bits/stl_set.h (set): Likewise.
+	* include/bits/stl_tree.h (_Rb_tree): Likewise.
+	(_Rb_tree_iterator, _Rb_tree_const_iterator): Remove redundant
+	operator!= for C++20.
+	* include/debug/map.h (__gnu_debug::map): Define operator<=> for C++20.
+	* include/debug/multimap.h (__gnu_debug::multimap): Likewise.
+	* include/debug/multiset.h (__gnu_debug::multiset): Likewise.
+	* include/debug/set.h (__gnu_debug::set): Likewise.
+	* testsuite/23_containers/map/operators/cmp_c++20.cc: New test.
+	* testsuite/23_containers/multimap/operators/cmp_c++20.cc: New test.
+	* testsuite/23_containers/multiset/operators/cmp_c++20.cc: New test.
+	* testsuite/23_containers/set/operators/cmp_c++20.cc: New test.
+
+2020-04-20  Matthias Kretz  <kretz@kde.org>
+
+	* testsuite/lib/libstdc++.exp: Avoid illegal argument to verbose.
+
+2020-04-19  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/stl_queue.h (queue): Define operator<=> for C++20.
+	* include/bits/stl_stack.h (stack): Likewise.
+	* testsuite/23_containers/queue/cmp_c++20.cc: New test.
+	* testsuite/23_containers/stack/cmp_c++20.cc: New test.
+
+	* include/bits/unordered_map.h (unordered_map, unordered_multimap):
+	Remove redundant operator!= for C++20.
+	* include/bits/unordered_set.h (unordered_set, unordered_multiset):
+	Likewise.
+	* include/debug/unordered_map (unordered_map, unordered_multimap):
+	Likewise.
+	* include/debug/unordered_set (unordered_set, unordered_multiset):
+	Likewise.
+
+	PR other/94629
+	* include/debug/formatter.h (_Error_formatter::_Parameter): Fix
+	redundant assignment in constructor.
+
+2020-04-18  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/std/chrono (duration, time_point): Define operator<=> and
+	remove redundant operator!= for C++20.
+	* testsuite/20_util/duration/comparison_operators/three_way.cc: New
+	test.
+	* testsuite/20_util/time_point/comparison_operators/three_way.cc: New
+	test.
+
+	* testsuite/util/native_type/native_priority_queue.hpp: Use
+	allocator_traits to rebind allocator.
+
+2020-04-17  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/forward_list.h (forward_list): Define operator<=> and
+	remove redundant comparison operators for C++20.
+	* include/bits/stl_bvector.h (vector<bool, Alloc>): Likewise.
+	* include/bits/stl_deque.h (deque): Likewise.
+	* include/bits/stl_iterator.h (__normal_iterator): Likewise.
+	* include/bits/stl_list.h (list): Likewise.
+	* include/bits/stl_vector.h (vector): Likewise.
+	* include/debug/deque (__gnu_debug::deque): Likewise.
+	* include/debug/forward_list (__gnu_debug::forward_list): Likewise.
+	* include/debug/list (__gnu_debug::list): Likewise.
+	* include/debug/safe_iterator.h (__gnu_debug::_Safe_iterator):
+	Likewise.
+	* include/debug/vector (__gnu_debug::vector): Likewise.
+	* include/ext/pointer.h (__gnu_cxx::_Pointer_adapter): Define
+	operator<=> for C++20.
+	* testsuite/23_containers/deque/operators/cmp_c++20.cc: New test.
+	* testsuite/23_containers/forward_list/cmp_c++20.cc: New test.
+	* testsuite/23_containers/list/cmp_c++20.cc: New test.
+	* testsuite/23_containers/vector/bool/cmp_c++20.cc: New test.
+	* testsuite/23_containers/vector/cmp_c++20.cc: New test.
+
+	* include/bits/basic_string.h (basic_string): Define operator<=> and
+	remove redundant comparison operators for C++20.
+	* include/bits/char_traits.h (__gnu_cxx::char_traits, char_traits):
+	Add comparison_category members.
+	(__detail::__char_traits_cmp_cat): New helper to get comparison
+	category from char traits class.
+	* include/bits/regex.h (regex_traits::_RegexMask::operator!=): Do not
+	define for C++20.
+	(sub_match): Define operator<=> and remove redundant comparison
+	operators for C++20.
+	(match_results): Remove redundant operator!= for C++20.
+	* include/std/string_view (basic_string_view): Define operator<=> and
+	remove redundant comparison operators for C++20.
+	* testsuite/21_strings/basic_string/operators/char/cmp_c++20.cc: New
+	test.
+	* testsuite/21_strings/basic_string/operators/wchar_t/cmp_c++20.cc:
+	New test.
+	* testsuite/21_strings/basic_string_view/operations/copy/char/
+	constexpr.cc: Initialize variable.
+	* testsuite/21_strings/basic_string_view/operations/copy/wchar_t/
+	constexpr.cc: Likewise.
+	* testsuite/21_strings/basic_string_view/operators/char/2.cc: Add
+	dg-do directive and remove comments showing incorrect signatures.
+	* testsuite/21_strings/basic_string_view/operators/wchar_t/2.cc:
+	Likewise.
+	* testsuite/21_strings/basic_string_view/operators/char/cmp_c++20.cc:
+	New test.
+	* testsuite/21_strings/basic_string_view/operators/wchar_t/cmp_c++20.cc:
+	New test.
+	* testsuite/28_regex/sub_match/compare_c++20.cc: New test.
+
+2020-04-16  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/20_util/unsynchronized_pool_resource/allocate.cc: Remove
+	name of unused parameter.
+
+2020-04-15  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/fs_dir.h (file_status): Define operator== for C++20.
+	(directory_entry): Define operator<=> and remove redundant comparison
+	operators for C++20.
+	* include/bits/fs_fwd.h (space_info): Define operator== for C++20.
+	* include/bits/fs_path.h (path): Define operator<=> and remove
+	redundant comparison operators for C++20.
+	* testsuite/27_io/filesystem/path/compare/compare.cc: Fix comment.
+	* testsuite/27_io/filesystem/path/compare/lwg2936.cc: Likewise.
+	* testsuite/27_io/filesystem/path/compare/path.cc: Likewise.
+	* testsuite/27_io/filesystem/path/compare/strings.cc: Likewise.
+
+	* include/bits/allocator.h (operator!=): Do not define for C++20.
+	* include/bits/locale_classes.h (operator!=): Likewise.
+	* include/bits/std_function.h (operator==(nullptr_t, const function&))
+	(operator!=(const function&, nullptr_t))
+	(operator!=(nullptr_t, const function&)): Likewise.
+	* include/ext/bitmap_allocator.h (operator!=): Likewise.
+	* include/ext/debug_allocator.h (operator!=): Likewise.
+	* include/ext/extptr_allocator.h (operator!=): Likewise.
+	* include/ext/malloc_allocator.h (operator!=): Likewise.
+	* include/ext/mt_allocator.h (operator!=): Likewise.
+	* include/ext/new_allocator.h (operator!=): Likewise.
+	* include/ext/pool_allocator.h (operator!=): Likewise.
+	* include/ext/throw_allocator.h (operator!=): Likewise.
+	* include/std/bitset (bitset::operator!=): Likewise.
+	* include/std/memory_resource (operator!=): Likewise.
+	* include/std/scoped_allocator (operator!=): Likewise.
+
+	* include/std/typeindex (operator<=>): Define for C++20.
+	* testsuite/20_util/typeindex/comparison_operators_c++20.cc: New test.
+
+2020-04-14  Jonathan Wakely  <jwakely@redhat.com>
+
+	* libsupc++/compare (compare_three_way): Fix constraint so that
+	BUILTIN-PTR-THREE-WAY does not require three_way_comparable_with.
+	* testsuite/18_support/comparisons/object/builtin-ptr-three-way.cc:
+	New test.
+
+	PR libstdc++/94562
+	* include/bits/shared_ptr.h (operator<=>): Define for C++20.
+	* include/bits/shared_ptr_base.h (operator<=>): Likewise.
+	* include/bits/unique_ptr.h (operator<=>): Add inline specifier.
+	* testsuite/20_util/shared_ptr/comparison/cmp_c++20.cc: New test.
+	* testsuite/20_util/shared_ptr/comparison/less.cc: Do not expect
+	std::less<A*> to be used when comparing std::shared_ptr<A> objects in
+	C++20.
+
+	PR libstdc++/94565
+	* libsupc++/compare (__unspec): Add noexcept-specifier to constructor.
+	* testsuite/18_support/comparisons/categories/94565.cc: New test.
+
+2020-04-13  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* include/std/coroutine: Update coroutines builtin define,
+	per n4861.
+
 2020-04-09  Jonathan Wakely  <jwakely@redhat.com>
 
 	* libsupc++/compare (compare_three_way): Fix noexcept-specifier.

@@ -11782,15 +11782,28 @@ c_parser_objc_selector_arg (c_parser *parser)
 {
   tree sel = c_parser_objc_selector (parser);
   tree list = NULL_TREE;
-  if (sel && c_parser_next_token_is_not (parser, CPP_COLON))
+  if (sel
+      && c_parser_next_token_is_not (parser, CPP_COLON)
+      && c_parser_next_token_is_not (parser, CPP_SCOPE))
     return sel;
   while (true)
     {
-      if (!c_parser_require (parser, CPP_COLON, "expected %<:%>"))
-	return list;
-      list = chainon (list, build_tree_list (sel, NULL_TREE));
+      if (c_parser_next_token_is (parser, CPP_SCOPE))
+	{
+	  c_parser_consume_token (parser);
+	  list = chainon (list, build_tree_list (sel, NULL_TREE));
+	  list = chainon (list, build_tree_list (NULL_TREE, NULL_TREE));
+	}
+      else
+	{
+	  if (!c_parser_require (parser, CPP_COLON, "expected %<:%>"))
+	    return list;
+	  list = chainon (list, build_tree_list (sel, NULL_TREE));
+	}
       sel = c_parser_objc_selector (parser);
-      if (!sel && c_parser_next_token_is_not (parser, CPP_COLON))
+      if (!sel
+	  && c_parser_next_token_is_not (parser, CPP_COLON)
+	  && c_parser_next_token_is_not (parser, CPP_SCOPE))
 	break;
     }
   return list;
@@ -12402,6 +12415,13 @@ c_parser_pragma (c_parser *parser, enum pragma_context context, bool *if_p)
       return false;
 
     case PRAGMA_OMP_REQUIRES:
+      if (context != pragma_external)
+	{
+	  error_at (c_parser_peek_token (parser)->location,
+		    "%<#pragma omp requires%> may only be used at file scope");
+	  c_parser_skip_until_found (parser, CPP_PRAGMA_EOL, NULL);
+	  return false;
+	}
       c_parser_omp_requires (parser);
       return false;
 
@@ -16932,7 +16952,6 @@ c_parser_oacc_routine (c_parser *parser, enum pragma_context context)
   oacc_routine_data data;
   data.error_seen = false;
   data.fndecl_seen = false;
-  data.clauses = NULL_TREE;
   data.loc = c_parser_peek_token (parser)->location;
 
   c_parser_consume_pragma (parser);

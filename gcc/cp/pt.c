@@ -83,7 +83,9 @@ static tree cur_stmt_expr;
 local_specialization_stack::local_specialization_stack (lss_policy policy)
   : saved (local_specializations)
 {
-  if (policy == lss_blank || !saved)
+  if (policy == lss_nop)
+    ;
+  else if (policy == lss_blank || !saved)
     local_specializations = new hash_map<tree, tree>;
   else
     local_specializations = new hash_map<tree, tree>(*saved);
@@ -91,8 +93,11 @@ local_specialization_stack::local_specialization_stack (lss_policy policy)
 
 local_specialization_stack::~local_specialization_stack ()
 {
-  delete local_specializations;
-  local_specializations = saved;
+  if (local_specializations != saved)
+    {
+      delete local_specializations;
+      local_specializations = saved;
+    }
 }
 
 /* True if we've recursed into fn_type_unification too many times.  */
@@ -195,6 +200,7 @@ static void set_current_access_from_decl (tree);
 static enum template_base_result get_template_base (tree, tree, tree, tree,
 						    bool , tree *);
 static tree try_class_unification (tree, tree, tree, tree, bool);
+static bool class_nttp_const_wrapper_p (tree t);
 static int coerce_template_template_parms (tree, tree, tsubst_flags_t,
 					   tree, tree);
 static bool template_template_parm_bindings_ok_p (tree, tree);
@@ -384,7 +390,12 @@ template_class_depth (tree type)
 	++depth;
 
       if (DECL_P (type))
-	type = CP_DECL_CONTEXT (type);
+	{
+	  if (tree fctx = DECL_FRIEND_CONTEXT (type))
+	    type = fctx;
+	  else
+	    type = CP_DECL_CONTEXT (type);
+	}
       else if (LAMBDA_TYPE_P (type) && LAMBDA_TYPE_EXTRA_SCOPE (type))
 	type = LAMBDA_TYPE_EXTRA_SCOPE (type);
       else
@@ -1737,31 +1748,32 @@ spec_hasher::hash (spec_entry *e)
 }
 
 /* Recursively calculate a hash value for a template argument ARG, for use
-   in the hash tables of template specializations.  */
+   in the hash tables of template specializations.   We must be
+   careful to (at least) skip the same entities template_args_equal
+   does.  */
 
 hashval_t
 iterative_hash_template_arg (tree arg, hashval_t val)
 {
-  unsigned HOST_WIDE_INT i;
-  enum tree_code code;
-  char tclass;
-
   if (arg == NULL_TREE)
     return iterative_hash_object (arg, val);
 
   if (!TYPE_P (arg))
-    STRIP_NOPS (arg);
+    /* Strip nop-like things, but not the same as STRIP_NOPS.  */
+    while (CONVERT_EXPR_P (arg)
+	   || TREE_CODE (arg) == NON_LVALUE_EXPR
+	   || class_nttp_const_wrapper_p (arg))
+      arg = TREE_OPERAND (arg, 0);
 
-  if (TREE_CODE (arg) == ARGUMENT_PACK_SELECT)
-    gcc_unreachable ();
-
-  code = TREE_CODE (arg);
-  tclass = TREE_CODE_CLASS (code);
+  enum tree_code code = TREE_CODE (arg);
 
   val = iterative_hash_object (code, val);
 
   switch (code)
     {
+    case ARGUMENT_PACK_SELECT:
+      gcc_unreachable ();
+
     case ERROR_MARK:
       return val;
 
@@ -1769,12 +1781,9 @@ iterative_hash_template_arg (tree arg, hashval_t val)
       return iterative_hash_object (IDENTIFIER_HASH_VALUE (arg), val);
 
     case TREE_VEC:
-      {
-	int i, len = TREE_VEC_LENGTH (arg);
-	for (i = 0; i < len; ++i)
-	  val = iterative_hash_template_arg (TREE_VEC_ELT (arg, i), val);
-	return val;
-      }
+      for (int i = 0, len = TREE_VEC_LENGTH (arg); i < len; ++i)
+	val = iterative_hash_template_arg (TREE_VEC_ELT (arg, i), val);
+      return val;
 
     case TYPE_PACK_EXPANSION:
     case EXPR_PACK_EXPANSION:
@@ -1798,6 +1807,7 @@ iterative_hash_template_arg (tree arg, hashval_t val)
     case CONSTRUCTOR:
       {
 	tree field, value;
+	unsigned i;
 	iterative_hash_template_arg (TREE_TYPE (arg), val);
 	FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (arg), i, field, value)
 	  {
@@ -1884,6 +1894,7 @@ iterative_hash_template_arg (tree arg, hashval_t val)
       break;
     }
 
+  char tclass = TREE_CODE_CLASS (code);
   switch (tclass)
     {
     case tcc_type:
@@ -1899,12 +1910,30 @@ iterative_hash_template_arg (tree arg, hashval_t val)
 	  tree ti = TYPE_ALIAS_TEMPLATE_INFO (ats);
 	  return hash_tmpl_and_args (TI_TEMPLATE (ti), TI_ARGS (ti));
 	}
-      if (TYPE_CANONICAL (arg))
-	return iterative_hash_object (TYPE_HASH (TYPE_CANONICAL (arg)),
-				      val);
-      else if (TREE_CODE (arg) == DECLTYPE_TYPE)
-	return iterative_hash_template_arg (DECLTYPE_TYPE_EXPR (arg), val);
-      /* Otherwise just compare the types during lookup.  */
+
+      switch (TREE_CODE (arg))
+	{
+	case TEMPLATE_TEMPLATE_PARM:
+	  {
+	    tree tpi = TEMPLATE_TYPE_PARM_INDEX (arg);
+
+	    /* Do not recurse with TPI directly, as that is unbounded
+	       recursion.  */
+	    val = iterative_hash_object (TEMPLATE_PARM_LEVEL (tpi), val);
+	    val = iterative_hash_object (TEMPLATE_PARM_IDX (tpi), val);
+	  }
+	  break;
+
+	case  DECLTYPE_TYPE:
+	  val = iterative_hash_template_arg (DECLTYPE_TYPE_EXPR (arg), val);
+	  break;
+
+	default:
+	  if (tree canonical = TYPE_CANONICAL (arg))
+	    val = iterative_hash_object (TYPE_HASH (canonical), val);
+	  break;
+	}
+
       return val;
 
     case tcc_declaration:
@@ -1913,13 +1942,11 @@ iterative_hash_template_arg (tree arg, hashval_t val)
 
     default:
       gcc_assert (IS_EXPR_CODE_CLASS (tclass));
-      {
-	unsigned n = cp_tree_operand_length (arg);
-	for (i = 0; i < n; ++i)
-	  val = iterative_hash_template_arg (TREE_OPERAND (arg, i), val);
-	return val;
-      }
+      for (int i = 0, n = cp_tree_operand_length (arg); i < n; ++i)
+	val = iterative_hash_template_arg (TREE_OPERAND (arg, i), val);
+      return val;
     }
+
   gcc_unreachable ();
   return 0;
 }
@@ -4382,6 +4409,9 @@ canonical_type_parameter (tree type)
 {
   tree list;
   int idx = TEMPLATE_TYPE_IDX (type);
+
+  gcc_assert (TREE_CODE (type) != TEMPLATE_TEMPLATE_PARM);
+
   if (!canonical_template_parms)
     vec_alloc (canonical_template_parms, idx + 1);
 
@@ -4564,7 +4594,10 @@ process_template_parm (tree list, location_t parm_loc, tree parm,
 				     processing_template_decl,
 				     decl, TREE_TYPE (parm));
       TEMPLATE_TYPE_PARAMETER_PACK (t) = is_parameter_pack;
-      TYPE_CANONICAL (t) = canonical_type_parameter (t);
+      if (TREE_CODE (t) == TEMPLATE_TEMPLATE_PARM)
+	SET_TYPE_STRUCTURAL_EQUALITY (t);
+      else
+	TYPE_CANONICAL (t) = canonical_type_parameter (t);
     }
   DECL_ARTIFICIAL (decl) = 1;
   SET_DECL_TEMPLATE_PARM_P (decl);
@@ -6978,6 +7011,11 @@ invalid_tparm_referent_p (tree type, tree expr, tsubst_flags_t complain)
 
 }
 
+/* The template arguments corresponding to template parameter objects of types
+   that contain pointers to members.  */
+
+static GTY(()) hash_map<tree, tree> *tparm_obj_values;
+
 /* Return a VAR_DECL for the C++20 template parameter object corresponding to
    template argument EXPR.  */
 
@@ -7011,8 +7049,30 @@ get_template_parm_object (tree expr, tsubst_flags_t complain)
   SET_DECL_ASSEMBLER_NAME (decl, name);
   DECL_CONTEXT (decl) = global_namespace;
   comdat_linkage (decl);
+
+  if (!zero_init_p (type))
+    {
+      /* If EXPR contains any PTRMEM_CST, they will get clobbered by
+	 lower_var_init before we're done mangling.  So store the original
+	 value elsewhere.  */
+      tree copy = unshare_constructor (expr);
+      hash_map_safe_put<hm_ggc> (tparm_obj_values, decl, copy);
+    }
+
   pushdecl_top_level_and_finish (decl, expr);
+
   return decl;
+}
+
+/* Return the actual template argument corresponding to template parameter
+   object VAR.  */
+
+tree
+tparm_object_argument (tree var)
+{
+  if (zero_init_p (TREE_TYPE (var)))
+    return DECL_INITIAL (var);
+  return *(tparm_obj_values->get (var));
 }
 
 /* Attempt to convert the non-type template parameter EXPR to the
@@ -10501,6 +10561,12 @@ any_template_parm_r (tree t, void *data)
       }
       break;
 
+    case IDENTIFIER_NODE:
+      if (IDENTIFIER_CONV_OP_P (t))
+	/* The conversion-type-id of a conversion operator may be dependent.  */
+	WALK_SUBTREE (TREE_TYPE (t));
+      break;
+
     default:
       break;
     }
@@ -12356,6 +12422,7 @@ fold_expression (tree t, tree left, tree right, tsubst_flags_t complain)
   if (FOLD_EXPR_MODIFY_P (t))
     return build_x_modify_expr (input_location, left, code, right, complain);
 
+  warning_sentinel s(warn_parentheses);
   switch (code)
     {
     case COMPOUND_EXPR:
@@ -12691,10 +12758,8 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
   tree pattern;
   tree pack, packs = NULL_TREE;
   bool unsubstituted_packs = false;
-  bool unsubstituted_fn_pack = false;
   int i, len = -1;
   tree result;
-  hash_map<tree, tree> *saved_local_specializations = NULL;
   bool need_local_specializations = false;
   int levels;
 
@@ -12772,19 +12837,15 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
 	      else
 		arg_pack = make_fnparm_pack (arg_pack);
 	    }
-	  else if (argument_pack_element_is_expansion_p (arg_pack, 0))
-	    /* This argument pack isn't fully instantiated yet.  We set this
-	       flag rather than clear arg_pack because we do want to do the
-	       optimization below, and we don't want to substitute directly
-	       into the pattern (as that would expose a NONTYPE_ARGUMENT_PACK
-	       where it isn't expected).  */
-	    unsubstituted_fn_pack = true;
+	  else if (DECL_PACK_P (arg_pack))
+	    /* This argument pack isn't fully instantiated yet.  */
+	    arg_pack = NULL_TREE;
 	}
       else if (is_capture_proxy (parm_pack))
 	{
 	  arg_pack = retrieve_local_specialization (parm_pack);
-	  if (argument_pack_element_is_expansion_p (arg_pack, 0))
-	    unsubstituted_fn_pack = true;
+	  if (DECL_PACK_P (arg_pack))
+	    arg_pack = NULL_TREE;
 	}
       else
         {
@@ -12819,8 +12880,7 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
 
           if (len < 0)
 	    len = my_len;
-          else if (len != my_len
-		   && !unsubstituted_fn_pack)
+	  else if (len != my_len)
             {
 	      if (!(complain & tf_error))
 		/* Fail quietly.  */;
@@ -12843,10 +12903,6 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
 	  /* We can't substitute for this parameter pack.  We use a flag as
 	     well as the missing_level counter because function parameter
 	     packs don't have a level.  */
-          if (!(processing_template_decl || is_auto (parm_pack)))
-	    {
-	      gcc_unreachable ();
-	    }
 	  gcc_assert (processing_template_decl || is_auto (parm_pack));
 	  unsubstituted_packs = true;
 	}
@@ -12893,7 +12949,15 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
 	= build_extra_args (pattern, args, complain);
       return t;
     }
-  else if (unsubstituted_packs)
+
+  /* If NEED_LOCAL_SPECIALIZATIONS then we're in a late-specified return
+     type, so create our own local specializations map; the current map is
+     either NULL or (in the case of recursive unification) might have
+     bindings that we don't want to use or alter.  */
+  local_specialization_stack lss (need_local_specializations
+				  ? lss_blank : lss_nop);
+
+  if (unsubstituted_packs)
     {
       /* There were no real arguments, we're just replacing a parameter
 	 pack with another version of itself. Substitute into the
@@ -12909,16 +12973,6 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
     }
 
   gcc_assert (len >= 0);
-
-  if (need_local_specializations)
-    {
-      /* We're in a late-specified return type, so create our own local
-	 specializations map; the current map is either NULL or (in the
-	 case of recursive unification) might have bindings that we don't
-	 want to use or alter.  */
-      saved_local_specializations = local_specializations;
-      local_specializations = new hash_map<tree, tree>;
-    }
 
   /* For each argument in each argument pack, substitute into the
      pattern.  */
@@ -12964,12 +13018,6 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
           else
             TREE_VEC_ELT (args, idx) = TREE_TYPE (pack);
         }
-    }
-
-  if (need_local_specializations)
-    {
-      delete local_specializations;
-      local_specializations = saved_local_specializations;
     }
 
   /* If the dependent pack arguments were such that we end up with only a
@@ -17844,7 +17892,8 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
 	      {
 		inst = (retrieve_local_specialization
 			(DECL_CAPTURED_VARIABLE (decl)));
-		gcc_assert (TREE_CODE (inst) == NONTYPE_ARGUMENT_PACK);
+		gcc_assert (TREE_CODE (inst) == NONTYPE_ARGUMENT_PACK
+			    || DECL_PACK_P (inst));
 	      }
 	    else
 	      inst = lookup_init_capture_pack (decl);
@@ -19389,7 +19438,11 @@ tsubst_copy_and_build (tree t,
     case POINTER_PLUS_EXPR:
       {
 	tree op0 = RECUR (TREE_OPERAND (t, 0));
+	if (op0 == error_mark_node)
+	  RETURN (error_mark_node);
 	tree op1 = RECUR (TREE_OPERAND (t, 1));
+	if (op1 == error_mark_node)
+	  RETURN (error_mark_node);
 	RETURN (fold_build_pointer_plus (op0, op1));
       }
 
@@ -25258,7 +25311,8 @@ register_parameter_specializations (tree pattern, tree inst)
     }
   for (; tmpl_parm; tmpl_parm = DECL_CHAIN (tmpl_parm))
     {
-      if (!DECL_PACK_P (tmpl_parm))
+      if (!DECL_PACK_P (tmpl_parm)
+	  || (spec_parm && DECL_PACK_P (spec_parm)))
 	{
 	  register_local_specialization (spec_parm, tmpl_parm);
 	  spec_parm = DECL_CHAIN (spec_parm);
@@ -25539,6 +25593,14 @@ instantiate_decl (tree d, bool defer_ok, bool expl_inst_class_mem_p)
       push_function_context ();
       cp_unevaluated_operand = 0;
       c_inhibit_evaluation_warnings = 0;
+    }
+
+  if (VAR_P (d))
+    {
+      /* The variable might be a lambda's extra scope, and that
+	 lambda's visibility depends on D's.  */
+      maybe_commonize_var (d);
+      determine_visibility (d);
     }
 
   /* Mark D as instantiated so that recursive calls to
@@ -27997,7 +28059,10 @@ rewrite_template_parm (tree olddecl, unsigned index, unsigned level,
       TEMPLATE_PARM_PARAMETER_PACK (newidx)
 	= TEMPLATE_PARM_PARAMETER_PACK (oldidx);
       TYPE_STUB_DECL (newtype) = TYPE_NAME (newtype) = newdecl;
-      TYPE_CANONICAL (newtype) = canonical_type_parameter (newtype);
+      if (TYPE_STRUCTURAL_EQUALITY_P (TREE_TYPE (olddecl)))
+	SET_TYPE_STRUCTURAL_EQUALITY (newtype);
+      else
+	TYPE_CANONICAL (newtype) = canonical_type_parameter (newtype);
 
       if (TREE_CODE (olddecl) == TEMPLATE_DECL)
 	{
@@ -29024,10 +29089,17 @@ splice_late_return_type (tree type, tree late_return_type)
     {
       tree idx = get_template_parm_index (*auto_node);
       if (TEMPLATE_PARM_LEVEL (idx) <= processing_template_decl)
-	/* In an abbreviated function template we didn't know we were dealing
-	   with a function template when we saw the auto return type, so update
-	   it to have the correct level.  */
-	*auto_node = make_auto_1 (TYPE_IDENTIFIER (*auto_node), true);
+	{
+	  /* In an abbreviated function template we didn't know we were dealing
+	     with a function template when we saw the auto return type, so update
+	     it to have the correct level.  */
+	  tree new_auto = make_auto_1 (TYPE_IDENTIFIER (*auto_node), false);
+	  PLACEHOLDER_TYPE_CONSTRAINTS (new_auto)
+	    = PLACEHOLDER_TYPE_CONSTRAINTS (*auto_node);
+	  TYPE_CANONICAL (new_auto) = canonical_type_parameter (new_auto);
+	  new_auto = cp_build_qualified_type (new_auto, TYPE_QUALS (*auto_node));
+	  *auto_node = new_auto;
+	}
     }
   return type;
 }

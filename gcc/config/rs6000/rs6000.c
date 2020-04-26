@@ -98,6 +98,11 @@
 #endif
 #endif
 
+/* Don't enable PC-relative addressing if the target does not support it.  */
+#ifndef PCREL_SUPPORTED_BY_OS
+#define PCREL_SUPPORTED_BY_OS	0
+#endif
+
 /* Support targetm.vectorize.builtin_mask_for_load.  */
 tree altivec_builtin_mask_for_load;
 
@@ -1734,6 +1739,10 @@ static const struct attribute_spec rs6000_attribute_table[] =
 
 #undef TARGET_MANGLE_DECL_ASSEMBLER_NAME
 #define TARGET_MANGLE_DECL_ASSEMBLER_NAME rs6000_mangle_decl_assembler_name
+
+#undef TARGET_CANNOT_SUBSTITUTE_MEM_EQUIV_P
+#define TARGET_CANNOT_SUBSTITUTE_MEM_EQUIV_P \
+  rs6000_cannot_substitute_mem_equiv_p
 
 
 /* Processor table.  */
@@ -4020,15 +4029,17 @@ rs6000_option_override_internal (bool global_init_p)
       rs6000_isa_flags &= ~OPTION_MASK_FLOAT128_HW;
     }
 
-  /* -mprefixed (and hence -mpcrel) requires -mcpu=future.  */
-  if (TARGET_PREFIXED && !TARGET_FUTURE)
+  /* Enable -mprefixed by default on 'future' systems.  */
+  if (TARGET_FUTURE && (rs6000_isa_flags_explicit & OPTION_MASK_PREFIXED) == 0)
+    rs6000_isa_flags |= OPTION_MASK_PREFIXED;
+
+  /* -mprefixed requires -mcpu=future.  */
+  else if (TARGET_PREFIXED && !TARGET_FUTURE)
     {
-      if ((rs6000_isa_flags_explicit & OPTION_MASK_PCREL) != 0)
-	error ("%qs requires %qs", "-mpcrel", "-mcpu=future");
-      else if ((rs6000_isa_flags_explicit & OPTION_MASK_PREFIXED) != 0)
+      if ((rs6000_isa_flags_explicit & OPTION_MASK_PREFIXED) != 0)
 	error ("%qs requires %qs", "-mprefixed", "-mcpu=future");
 
-      rs6000_isa_flags &= ~(OPTION_MASK_PCREL | OPTION_MASK_PREFIXED);
+      rs6000_isa_flags &= ~OPTION_MASK_PREFIXED;
     }
 
   /* -mpcrel requires prefixed load/store addressing.  */
@@ -4171,9 +4182,16 @@ rs6000_option_override_internal (bool global_init_p)
   SUB3TARGET_OVERRIDE_OPTIONS;
 #endif
 
+  /* If the ABI has support for PC-relative relocations, enable it by default.
+     This test depends on the sub-target tests above setting the code model to
+     medium for ELF v2 systems.  */
+  if (PCREL_SUPPORTED_BY_OS
+      && (rs6000_isa_flags_explicit & OPTION_MASK_PCREL) == 0)
+    rs6000_isa_flags |= OPTION_MASK_PCREL;
+
   /* -mpcrel requires -mcmodel=medium, but we can't check TARGET_CMODEL until
       after the subtarget override options are done.  */
-  if (TARGET_PCREL && TARGET_CMODEL != CMODEL_MEDIUM)
+  else if (TARGET_PCREL && TARGET_CMODEL != CMODEL_MEDIUM)
     {
       if ((rs6000_isa_flags_explicit & OPTION_MASK_PCREL) != 0)
 	error ("%qs requires %qs", "-mpcrel", "-mcmodel=medium");
@@ -24824,15 +24842,21 @@ address_to_insn_form (rtx addr,
   if (GET_RTX_CLASS (GET_CODE (addr)) == RTX_AUTOINC)
     return INSN_FORM_UPDATE;
 
-  /* Handle PC-relative symbols and labels.  Check for both local and external
-     symbols.  Assume labels are always local.  */
+  /* Handle PC-relative symbols and labels.  Check for both local and
+     external symbols.  Assume labels are always local.  TLS symbols
+     are not PC-relative for rs6000.  */
   if (TARGET_PCREL)
     {
-      if (SYMBOL_REF_P (addr) && !SYMBOL_REF_LOCAL_P (addr))
-	return INSN_FORM_PCREL_EXTERNAL;
-
-      if (SYMBOL_REF_P (addr) || LABEL_REF_P (addr))
+      if (LABEL_REF_P (addr))
 	return INSN_FORM_PCREL_LOCAL;
+
+      if (SYMBOL_REF_P (addr) && !SYMBOL_REF_TLS_MODEL (addr))
+	{
+	  if (!SYMBOL_REF_LOCAL_P (addr))
+	    return INSN_FORM_PCREL_EXTERNAL;
+	  else
+	    return INSN_FORM_PCREL_LOCAL;
+	}
     }
 
   if (GET_CODE (addr) == CONST)
@@ -24866,14 +24890,19 @@ address_to_insn_form (rtx addr,
     return INSN_FORM_BAD;
 
   /* Check for local and external PC-relative addresses.  Labels are always
-     local.  */
+     local.  TLS symbols are not PC-relative for rs6000.  */
   if (TARGET_PCREL)
     {
-      if (SYMBOL_REF_P (op0) && !SYMBOL_REF_LOCAL_P (op0))
-	return INSN_FORM_PCREL_EXTERNAL;
-
-      if (SYMBOL_REF_P (op0) || LABEL_REF_P (op0))
+      if (LABEL_REF_P (op0))
 	return INSN_FORM_PCREL_LOCAL;
+
+      if (SYMBOL_REF_P (op0) && !SYMBOL_REF_TLS_MODEL (op0))
+	{
+	  if (!SYMBOL_REF_LOCAL_P (op0))
+	    return INSN_FORM_PCREL_EXTERNAL;
+	  else
+	    return INSN_FORM_PCREL_LOCAL;
+	}
     }
 
   /* If it isn't PC-relative, the address must use a base register.  */
@@ -26362,6 +26391,22 @@ rs6000_predict_doloop_p (struct loop *loop)
     }
 
   return true;
+}
+
+/* Implement TARGET_CANNOT_SUBSTITUTE_MEM_EQUIV_P.  */
+
+static bool
+rs6000_cannot_substitute_mem_equiv_p (rtx mem)
+{
+  gcc_assert (MEM_P (mem));
+
+  /* curr_insn_transform()'s handling of subregs cannot handle altivec AND:
+     type addresses, so don't allow MEMs with those address types to be
+     substituted as an equivalent expression.  See PR93974 for details.  */
+  if (GET_CODE (XEXP (mem, 0)) == AND)
+    return true;
+
+  return false;
 }
 
 struct gcc_target targetm = TARGET_INITIALIZER;

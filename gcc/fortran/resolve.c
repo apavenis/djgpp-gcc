@@ -2601,21 +2601,27 @@ resolve_global_procedure (gfc_symbol *sym, locus *where, int sub)
 	  goto done;
 	}
 
-      if (!pedantic && (gfc_option.allow_std & GFC_STD_GNU))
-	/* Turn erros into warnings with -std=gnu and -std=legacy.  */
-	gfc_errors_to_warnings (true);
-
+      bool bad_result_characteristics;
       if (!gfc_compare_interfaces (sym, def_sym, sym->name, 0, 1,
-				   reason, sizeof(reason), NULL, NULL))
+				   reason, sizeof(reason), NULL, NULL,
+				   &bad_result_characteristics))
 	{
-	  gfc_error_opt (0, "Interface mismatch in global procedure %qs at %L:"
-			 " %s", sym->name, &sym->declared_at, reason);
+	  /* Turn erros into warnings with -std=gnu and -std=legacy,
+	     unless a function returns a wrong type, which can lead
+	     to all kinds of ICEs and wrong code.  */
+
+	  if (!pedantic && (gfc_option.allow_std & GFC_STD_GNU)
+	      && !bad_result_characteristics)
+	    gfc_errors_to_warnings (true);
+
+	  gfc_error ("Interface mismatch in global procedure %qs at %L: %s",
+		     sym->name, &sym->declared_at, reason);
+	  gfc_errors_to_warnings (false);
 	  goto done;
 	}
     }
 
 done:
-  gfc_errors_to_warnings (false);
 
   if (gsym->type == GSYM_UNKNOWN)
     {
@@ -3986,6 +3992,9 @@ resolve_operator (gfc_expr *e)
 
   op1 = e->value.op.op1;
   op2 = e->value.op.op2;
+  if (op1 == NULL && op2 == NULL)
+    return false;
+
   dual_locus_error = false;
 
   /* op1 and op2 cannot both be BOZ.  */
@@ -12622,6 +12631,7 @@ resolve_fl_var_and_proc (gfc_symbol *sym, int mp_flag)
 	{
 	  gfc_error ("Array pointer %qs at %L must have a deferred shape or "
 		     "assumed rank", sym->name, &sym->declared_at);
+	  sym->error = 1;
 	  return false;
 	}
     }

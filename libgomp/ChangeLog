@@ -1,3 +1,97 @@
+2020-04-23  Andrew Stubbs  <ams@codesourcery.com>
+
+	PR other/94629
+
+	* plugin/plugin-gcn.c (init_hsa_context): Check return value from
+	hsa_iterate_agents.
+	(GOMP_OFFLOAD_init_device): Check return values from both calls to
+	hsa_agent_iterate_regions.
+
+2020-04-20  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR middle-end/94635
+	* testsuite/libgomp.fortran/target-enter-data-2.F90: Add 'dg-do
+	run'.
+
+2020-04-20  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR middle-end/94120
+	* testsuite/libgomp.oacc-c++/declare-pr94120.C: Fix 'declare copy(out)'
+	test case.
+
+2020-04-17  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR middle-end/94635
+	* testsuite/libgomp.fortran/target-enter-data-2.F90: New.
+
+2020-04-13  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR libgomp/92843
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-1-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-1-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-1.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-1.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-2-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-2-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-2.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-2.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-3-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-3-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-3.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-3.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-4-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-4-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-4.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-4.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-5-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-5-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-5.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-5.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-6-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-6-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-6.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-6.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-7-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-7-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-7.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-7.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-8-lib.c:
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-8-lib.c:
+	... this.
+	* testsuite/libgomp.oacc-c-c++-common/static-dynamic-lifetimes-8.c::
+	Rename to...
+	* testsuite/libgomp.oacc-c-c++-common/structured-dynamic-lifetimes-8.c:
+	... this.
+
 2020-04-10  Julian Brown  <julian@codesourcery.com>
 	    Thomas Schwinge  <thomas@codesourcery.com>
 

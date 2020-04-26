@@ -1,3 +1,632 @@
+2020-04-25  David Edelsohn  <dje.gcc@gmail.com>
+
+	* config/rs6000/rs6000-logue.c (rs6000_stack_info): Don't push a
+	stack frame when debugging and flag_compare_debug is enabled.
+
+2020-04-25  Michael Meissner  <meissner@linux.ibm.com>
+
+	* config/rs6000/linux64.h (PCREL_SUPPORTED_BY_OS): Define to
+	enable PC-relative addressing for -mcpu=future.
+	* config/rs6000/rs6000-cpus.def (ISA_FUTURE_MASKS_SERVER): Move
+	after OTHER_FUTURE_MASKS.  Use OTHER_FUTURE_MASKS.
+	* config/rs6000/rs6000.c (PCREL_SUPPORTED_BY_OS): If not defined,
+	suppress PC-relative addressing.
+	(rs6000_option_override_internal): Split up error messages
+	checking for -mprefixed and -mpcrel.  Enable -mpcrel if the target
+	system supports it.
+
+2020-04-25  Jakub Jelinek  <jakub@redhat.com>
+	    Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/94734
+	PR tree-optimization/89430
+	* tree-ssa-phiopt.c: Include tree-eh.h.
+	(cond_store_replacement): Return false if an automatic variable
+	access could trap.  If -fstore-data-races, don't return false
+	just because an automatic variable is addressable.
+
+2020-04-24  Andrew Stubbs  <ams@codesourcery.com>
+
+	* config/gcn/gcn-valu.md (add<mode>_zext_dup2_exec): Fix merge
+	of high-part.
+	(add<mode>_sext_dup2_exec): Likewise.
+
+2020-04-24  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	PR target/94710
+	* config/rs6000/vector.md (vec_shr_<mode> for VEC_L): Correct little
+	endian byteshift_val calculation.
+
+2020-04-24  Andrew Stubbs  <ams@codesourcery.com>
+
+	* config/gcn/gcn.md (*mov<mode>_insn): Only split post-reload.
+
+2020-04-24  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/arm_sve.h: Add a comment.
+
+2020-04-24  Haijian Zhang <z.zhanghaijian@huawei.com>
+
+	PR rtl-optimization/94708
+	* combine.c (simplify_if_then_else): Add check for
+	!HONOR_NANS (mode) && !HONOR_SIGNED_ZEROS (mode).
+
+2020-04-23  Martin Sebor  <msebor@redhat.com>
+
+	PR driver/90983
+	* common.opt (-Wno-frame-larger-than): New option.
+	(-Wno-larger-than, -Wno-stack-usage): Same.
+
+2020-04-23  Andrew Stubbs  <ams@codesourcery.com>
+
+	* config/gcn/gcn-valu.md (mov<mode>_exec): Swap the numbers on operands
+	2 and 3.
+	(mov<mode>_exec): Likewise.
+	(trunc<vndi><mode>2_exec): Swap parameters to gen_mov<mode>_exec.
+	(<convop><mode><vndi>2_exec): Likewise.
+
+2019-04-23  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR tree-optimization/94717
+	* gimple-ssa-store-merging.c (try_coalesce_bswap): Return false if one
+	of the stores doesn't have the same landing pad number as the first.
+	(coalesce_immediate_stores): Do not try to coalesce the store using
+	bswap if it doesn't have the same landing pad number as the first.
+
+2020-04-23  Bill Schmidt  <wschmidt@linux.ibm.com>
+
+	* gcc/doc/extend.texi (PowerPC AltiVec/VSX Built-in Functions):
+	Replace outdated link to ELFv2 ABI.
+
+2020-04-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94710
+	* optabs.c (expand_vec_perm_const): For shift_amt const0_rtx
+	just return v2.
+
+	PR middle-end/94724
+	* tree.c (get_narrower): Instead of creating COMPOUND_EXPRs
+	temporarily with non-final second operand and updating it later,
+	push COMPOUND_EXPRs into a vector and process it in reverse,
+	creating COMPOUND_EXPRs with the final operands.
+
+2020-04-23  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	PR target/94697
+	* config/aarch64/aarch64-bti-insert.c (rest_of_insert_bti): Swap
+	bti c and bti j handling.
+
+2020-04-23  Andrew Stubbs  <ams@codesourcery.com>
+	    Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR middle-end/93488
+
+	* omp-expand.c (expand_omp_target): Use force_gimple_operand_gsi on
+	t_async and the wait arguments.
+
+2020-04-23  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/94727
+	* tree-vect-stmts.c (vectorizable_comparison): Use mask_type when
+	comparing invariant scalar booleans.
+
+2020-04-23  Matthew Malcomson  <matthew.malcomson@arm.com>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94383
+	* config/aarch64/aarch64.c (aapcs_vfp_sub_candidate): Account for C++17
+	empty base class artificial fields.
+	(aarch64_vfp_is_call_or_return_candidate): Warn when ABI PCS decision is
+	different after this fix.
+
+2020-04-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94707
+	* config/rs6000/rs6000-call.c (rs6000_discover_homogeneous_aggregate):
+	Use TYPE_UID (TYPE_MAIN_VARIANT (type)) instead of type to check
+	if the same type has been diagnosed most recently already.
+
+2020-04-23  Srinath Parvathaneni  <srinath.parvathaneni@arm.com>
+
+	* config/arm/arm_mve.h (__arm_vbicq_n_u16): Modify function parameter's
+	datatype.
+	(__arm_vbicq_n_s16): Likewise.
+	(__arm_vbicq_n_u32): Likewise.
+	(__arm_vbicq_n_s32): Likewise.
+	(__arm_vbicq): Likewise.
+	(__arm_vbicq_n_s16): Modify MVE polymorphic variant argument's datatype.
+	(__arm_vbicq_n_s32): Likewise.
+	(__arm_vbicq_n_u16): Likewise.
+	(__arm_vbicq_n_u32): Likewise.
+	(__arm_vdupq_m_n_s8): Likewise.
+	(__arm_vdupq_m_n_s16): Likewise.
+	(__arm_vdupq_m_n_s32): Likewise.
+	(__arm_vdupq_m_n_u8): Likewise.
+	(__arm_vdupq_m_n_u16): Likewise.
+	(__arm_vdupq_m_n_u32): Likewise.
+	(__arm_vdupq_m_n_f16): Likewise.
+	(__arm_vdupq_m_n_f32): Likewise.
+	(__arm_vldrhq_gather_offset_s16): Likewise.
+	(__arm_vldrhq_gather_offset_s32): Likewise.
+	(__arm_vldrhq_gather_offset_u16): Likewise.
+	(__arm_vldrhq_gather_offset_u32): Likewise.
+	(__arm_vldrhq_gather_offset_f16): Likewise.
+	(__arm_vldrhq_gather_offset_z_s16): Likewise.
+	(__arm_vldrhq_gather_offset_z_s32): Likewise.
+	(__arm_vldrhq_gather_offset_z_u16): Likewise.
+	(__arm_vldrhq_gather_offset_z_u32): Likewise.
+	(__arm_vldrhq_gather_offset_z_f16): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_s16): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_s32): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_u16): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_u32): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_f16): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_z_s16): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_z_s32): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_z_u16): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_z_u32): Likewise.
+	(__arm_vldrhq_gather_shifted_offset_z_f16): Likewise.
+	(__arm_vldrwq_gather_offset_s32): Likewise.
+	(__arm_vldrwq_gather_offset_u32): Likewise.
+	(__arm_vldrwq_gather_offset_f32): Likewise.
+	(__arm_vldrwq_gather_offset_z_s32): Likewise.
+	(__arm_vldrwq_gather_offset_z_u32): Likewise.
+	(__arm_vldrwq_gather_offset_z_f32): Likewise.
+	(__arm_vldrwq_gather_shifted_offset_s32): Likewise.
+	(__arm_vldrwq_gather_shifted_offset_u32): Likewise.
+	(__arm_vldrwq_gather_shifted_offset_f32): Likewise.
+	(__arm_vldrwq_gather_shifted_offset_z_s32): Likewise.
+	(__arm_vldrwq_gather_shifted_offset_z_u32): Likewise.
+	(__arm_vldrwq_gather_shifted_offset_z_f32): Likewise.
+	(__arm_vdwdupq_x_n_u8): Likewise.
+	(__arm_vdwdupq_x_n_u16): Likewise.
+	(__arm_vdwdupq_x_n_u32): Likewise.
+	(__arm_viwdupq_x_n_u8): Likewise.
+	(__arm_viwdupq_x_n_u16): Likewise.
+	(__arm_viwdupq_x_n_u32): Likewise.
+	(__arm_vidupq_x_n_u8): Likewise.
+	(__arm_vddupq_x_n_u8): Likewise.
+	(__arm_vidupq_x_n_u16): Likewise.
+	(__arm_vddupq_x_n_u16): Likewise.
+	(__arm_vidupq_x_n_u32): Likewise.
+	(__arm_vddupq_x_n_u32): Likewise.
+	(__arm_vldrdq_gather_offset_s64): Likewise.
+	(__arm_vldrdq_gather_offset_u64): Likewise.
+	(__arm_vldrdq_gather_offset_z_s64): Likewise.
+	(__arm_vldrdq_gather_offset_z_u64): Likewise.
+	(__arm_vldrdq_gather_shifted_offset_s64): Likewise.
+	(__arm_vldrdq_gather_shifted_offset_u64): Likewise.
+	(__arm_vldrdq_gather_shifted_offset_z_s64): Likewise.
+	(__arm_vldrdq_gather_shifted_offset_z_u64): Likewise.
+	(__arm_vidupq_m_n_u8): Likewise.
+	(__arm_vidupq_m_n_u16): Likewise.
+	(__arm_vidupq_m_n_u32): Likewise.
+	(__arm_vddupq_m_n_u8): Likewise.
+	(__arm_vddupq_m_n_u16): Likewise.
+	(__arm_vddupq_m_n_u32): Likewise.
+	(__arm_vidupq_n_u16): Likewise.
+	(__arm_vidupq_n_u32): Likewise.
+	(__arm_vidupq_n_u8): Likewise.
+	(__arm_vddupq_n_u16): Likewise.
+	(__arm_vddupq_n_u32): Likewise.
+	(__arm_vddupq_n_u8): Likewise.
+
+2020-04-23  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* doc/install.texi (D-Specific Options): Document
+	--enable-libphobos-checking and --with-libphobos-druntime-only.
+
+2020-04-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94707
+	* config/rs6000/rs6000-call.c (rs6000_aggregate_candidate): Add
+	cxx17_empty_base_seen argument.  Pass it to recursive calls.
+	Ignore cxx17_empty_base_field_p fields after setting
+	*cxx17_empty_base_seen to true.
+	(rs6000_discover_homogeneous_aggregate): Adjust
+	rs6000_aggregate_candidate caller.  With -Wpsabi, diagnose homogeneous
+	aggregates with C++17 empty base fields.
+
+	PR c/94705
+	* attribs.c (decl_attribute): Don't diagnose attribute exclusions
+	if last_decl is error_mark_node or has such a TREE_TYPE.
+
+	PR c/94705
+	* attribs.c (decl_attribute): Don't diagnose attribute exclusions
+	if last_decl is error_mark_node or has such a TREE_TYPE.
+
+2020-04-22  Felix Yang  <felix.yang@huawei.com>
+
+	PR target/94678
+	* config/aarch64/aarch64.h (TARGET_SVE):
+	Add && !TARGET_GENERAL_REGS_ONLY.
+	(TARGET_SVE2): Add && TARGET_SVE.
+	(TARGET_SVE2_AES, TARGET_SVE2_BITPERM, TARGET_SVE2_SHA3,
+	TARGET_SVE2_SM4): Add && TARGET_SVE2.
+	* config/aarch64/aarch64-sve-builtins.h
+	(sve_switcher::m_old_general_regs_only): New member.
+	* config/aarch64/aarch64-sve-builtins.cc (check_required_registers):
+	New function.
+	(reported_missing_registers_p): New variable.
+	(check_required_extensions): Call check_required_registers before
+	return if all required extenstions are present.
+	(sve_switcher::sve_switcher): Save TARGET_GENERAL_REGS_ONLY in
+	m_old_general_regs_only and clear MASK_GENERAL_REGS_ONLY in
+	global_options.x_target_flags.
+	(sve_switcher::~sve_switcher): Set MASK_GENERAL_REGS_ONLY in
+	global_options.x_target_flags if m_old_general_regs_only is true.
+
+2020-04-22  Zackery Spytz  <zspytz@gmail.com>
+
+	* doc/extend.exi: Add "free" to list of other builtin functions
+	supported by GCC.
+
+2020-04-20  Aaron Sawdey  <acsawdey@linux.ibm.com>
+
+	PR target/94622
+	* config/rs6000/sync.md (load_quadpti): Add attr "prefixed"
+	if TARGET_PREFIXED.
+	(store_quadpti): Ditto.
+	(atomic_load<mode>): Do not swap doublewords if TARGET_PREFIXED as
+	plq will be used and doesn't need it.
+	(atomic_store<mode>): Ditto, for pstq.
+
+2020-04-22  Erick Ochoa  <erick.ochoa@theobroma-systems.com>
+
+	* doc/invoke.texi: Update flags turned on by -O3.
+
+2020-04-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94706
+	* config/ia64/ia64.c (hfa_element_mode): Ignore
+	cxx17_empty_base_field_p fields.
+
+	PR target/94383
+	* calls.h (cxx17_empty_base_field_p): Declare.
+	* calls.c (cxx17_empty_base_field_p): Define.
+
+2020-04-22  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* doc/sourcebuild.texi (arm_softfp_ok, arm_hard_ok): Document.
+
+2020-04-22  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+            Andre Vieira  <andre.simoesdiasvieira@arm.com>
+            Mihail Ionescu  <mihail.ionescu@arm.com>
+
+	* config/arm/arm.c (arm_file_start): Handle isa_bit_quirk_no_asmcpu.
+	* config/arm/arm-cpus.in (quirk_no_asmcpu): Define.
+	(ALL_QUIRKS): Add quirk_no_asmcpu.
+	(cortex-m55): Define new cpu.
+	* config/arm/arm-tables.opt: Regenerate.
+	* config/arm/arm-tune.md: Likewise.
+	* doc/invoke.texi (Arm Options): Document -mcpu=cortex-m55.
+
+2020-04-22  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/94700
+	* tree-ssa-forwprop.c (simplify_vector_constructor): When processing
+	an identity constructor, use a VIEW_CONVERT_EXPR to handle mixtures
+	of similarly-structured but distinct vector types.
+
+2020-04-21  Martin Sebor  <msebor@redhat.com>
+
+	PR middle-end/94647
+	* gimple-ssa-warn-restrict.c (builtin_access::builtin_access): Correct
+	the computation of the lower bound of the source access size.
+	(builtin_access::generic_overlap): Remove a hack for setting ranges
+	of overlap offsets.
+
+2020-04-21  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/som.h (ASM_WEAKEN_LABEL): Delete.
+	(ASM_WEAKEN_DECL): New define.
+	(HAVE_GAS_WEAKREF): Undefine.
+
+2020-04-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/94683
+	* tree-ssa-forwprop.c (simplify_vector_constructor): Use a
+	VIEW_CONVERT_EXPR to handle mixtures of similarly-structured
+	but distinct vector types.
+
+2020-04-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/94641
+	* stor-layout.c (place_field, finalize_record_size): Don't emit
+	-Wpadded warning on TYPE_ARTIFICIAL rli->t.
+	* ubsan.c (ubsan_get_type_descriptor_type,
+	ubsan_get_source_location_type, ubsan_create_data): Set
+	TYPE_ARTIFICIAL.
+	* asan.c (asan_global_struct): Likewise.
+
+2020-04-21  Duan bo  <duanbo3@huawei.com>
+
+	PR target/94577
+	* config/aarch64/aarch64.c: Add an error message for option conflict.
+	* doc/invoke.texi (-mcmodel=large): Mention that -mcmodel=large is
+	incompatible with -fpic, -fPIC and -mabi=ilp32.
+
+2020-04-21  Frederik Harwath  <frederik@codesourcery.com>
+
+	PR other/94629
+	* omp-low.c (new_omp_context): Remove assignments to
+	ctx->outer_reduction_clauses and ctx->local_reduction_clauses.
+
+2020-04-20  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	* config/s390/vector.md ("popcountv8hi2_vx", "popcountv4si2_vx")
+	("popcountv2di2_vx"): Use simplify_gen_subreg.
+
+2020-04-20  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	PR target/94613
+	* config/s390/s390-builtin-types.def: Add 3 new function modes.
+	* config/s390/s390-builtins.def: Add mode dependent low-level
+	builtin and map the overloaded builtins to these.
+	* config/s390/vx-builtins.md ("vec_selV_HW"): Rename to ...
+	("vsel<V_HW"): ... this and rewrite the pattern with bitops.
+
+2020-04-20  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* tree-vect-loop.c (vect_better_loop_vinfo_p): If old_loop_vinfo
+	has a variable VF, prefer new_loop_vinfo if it is cheaper for the
+	estimated VF and is no worse at double the estimated VF.
+
+2020-04-20  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/94668
+	* config/aarch64/aarch64.c (aarch64_sve_expand_vector_init): Fix
+	order of arguments to rtx_vector_builder.
+	(aarch64_sve_expand_vector_init_handle_trailing_constants): Likewise.
+	When extending the trailing constants to a full vector, replace any
+	variables with zeros.
+
+2020-04-20  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR ipa/94582
+	* tree-inline.c (optimize_inline_calls): Recompute calls_comdat_local
+	flag.
+
+2020-04-20  Martin Liska  <mliska@suse.cz>
+
+	* symtab.c (symtab_node::dump_references): Add space after
+	one entry.
+	(symtab_node::dump_referring): Likewise.
+
+2020-04-18  Jeff Law  <law@redhat.com>
+
+	PR debug/94439
+	* regrename.c (check_new_reg_p): Ignore DEBUG_INSNs when walking
+	the chain.
+
+2020-04-18  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* doc/sourcebuild.texi (Effective-Target Keywords, Environment
+	attributes): Document d_runtime_has_std_library.
+
+2020-04-17  Jeff Law  <law@redhat.com>
+
+	PR rtl-optimization/90275
+	* cse.c (cse_insn): Avoid recording nop sets in multi-set parallels
+	when the destination has a REG_UNUSED note.
+
+2020-04-17  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR middle-end/94635
+	* gimplify.c (gimplify_scan_omp_clauses): Turn MAP_TO_PSET to
+	MAP_DELETE.
+
+2020-04-17  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_advsimd_ldp_stp_p): New function.
+	(aarch64_sve_adjust_stmt_cost): Add a vectype parameter.  Double the
+	cost of load and store insns if one loop iteration has enough scalar
+	elements to use an Advanced SIMD LDP or STP.
+	(aarch64_add_stmt_cost): Update call accordingly.
+
+2020-04-17  Jakub Jelinek  <jakub@redhat.com>
+	    Jeff Law  <law@redhat.com>
+
+	PR target/94567
+	* config/i386/i386.md (*testqi_ext_3): Use CCZmode rather than
+	CCNOmode in ix86_match_ccmode if len is equal to <MODE>mode precision,
+	or pos + len >= 32, or pos + len is equal to operands[2] precision
+	and operands[2] is not a register operand.  During splitting perform
+	SImode AND if operands[0] doesn't have CCZmode and pos + len is
+	equal to mode precision.
+
+2020-04-17  Richard Biener  <rguenther@suse.de>
+
+	PR other/94629
+	* cgraphclones.c (cgraph_node::create_clone): Remove duplicate
+	initialization.
+	* dwarf2out.c (dw_val_equal_p): Fix pasto in
+	dw_val_class_vms_delta comparison.
+	* optabs.c (expand_binop_directly): Fix pasto in commutation
+	check.
+	* tree-ssa-sccvn.c (vn_reference_lookup_pieces): Fix pasto in
+	initialization.
+
+2020-04-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/94618
+	* cfgrtl.c (delete_insn_and_edges): Set purge not just when
+	insn is the BB_END of its block, but also when it is only followed
+	by DEBUG_INSNs in its block.
+
+	PR tree-optimization/94621
+	* tree-inline.c (remap_type_1): Don't dereference NULL TYPE_DOMAIN.
+	Move id->adjust_array_error_bounds check first in the condition.
+
+2020-04-17  Martin Liska  <mliska@suse.cz>
+	    Jonathan Yong <10walls@gmail.com>
+
+	PR gcov-profile/94570
+	* coverage.c (coverage_init): Use separator properly.
+
+2020-04-16  Peter Bergner  <bergner@linux.ibm.com>
+
+	PR rtl-optimization/93974
+	* config/rs6000/rs6000.c (TARGET_CANNOT_SUBSTITUTE_MEM_EQUIV_P): Define.
+	(rs6000_cannot_substitute_mem_equiv_p): New function.
+
+2020-04-16  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/93621
+	* ipa-inline.h (ipa_saved_clone_sources): Declare.
+	* ipa-inline-transform.c (ipa_saved_clone_sources): New variable.
+	(save_inline_function_body): Link the new body holder with the
+	previous one.
+	* cgraph.c: Include ipa-inline.h.
+	(cgraph_edge::redirect_call_stmt_to_callee): Try to find the decl from
+	the statement in ipa_saved_clone_sources.
+	* cgraphunit.c: Include ipa-inline.h.
+	(expand_all_functions): Free ipa_saved_clone_sources.
+
+2020-04-16  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/94606
+	* config/aarch64/aarch64.c (aarch64_expand_sve_const_pred_eor): Take
+	the VNx16BI lowpart of the recursively-generated constant.
+
+2020-04-16  Martin Liska  <mliska@suse.cz>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/94314
+	* cgraphclones.c (set_new_clone_decl_and_node_flags): Drop
+	DECL_IS_REPLACEABLE_OPERATOR during cloning.
+	* tree-ssa-dce.c (valid_new_delete_pair_p): New function.
+	(propagate_necessity): Check operator names.
+
+2020-04-16  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR rtl-optimization/94605
+	* early-remat.c (early_remat::process_block): Handle insns that
+	set multiple candidate registers.
+2020-04-16  Jan Hubicka  <hubicka@ucw.cz>
+	
+	PR gcov-profile/93401
+	* common.opt (profile-prefix-path): New option.
+	* coverae.c: Include diagnostics.h.
+	(coverage_init): Strip profile prefix path.
+	* doc/invoke.texi (-fprofile-prefix-path): Document.
+
+2020-04-16  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/94614
+	* expr.c (emit_move_multi_word): Do not generate code when
+	the destination part is undefined_operand_subword_p.
+	* lower-subreg.c (resolve_clobber): Look through a paradoxica
+	subreg.
+
+2020-04-16  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/94598
+	* tree-sra.c (verify_sra_access_forest): Fix verification of total
+	scalarization accesses under access to one-element arrays.
+
+2020-04-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR bootstrap/89494
+	* function.c (assign_parm_find_data_types): Add workaround for
+	BROKEN_VALUE_INITIALIZATION compilers.
+
+2020-04-16  Richard Biener  <rguenther@suse.de>
+
+	* gdbhooks.py (TreePrinter): Print SSA_NAME_VERSION of SSA_NAME
+	nodes.
+
+2020-04-15  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/94603
+	* config/i386/i386-builtin.def (__builtin_ia32_movq128):
+	Require OPTION_MASK_ISA_SSE2.
+
+2020-04-15  Gustavo Romero  <gromero@linux.ibm.com>
+
+	PR bootstrap/89494
+	* dumpfile.c (selftest::temp_dump_context::temp_dump_context):
+	Don't construct a dump_context temporary to call static method.
+
+2020-04-15  Andrea Corallo  <andrea.corallo@arm.com>
+
+	* config/aarch64/falkor-tag-collision-avoidance.c
+	(valid_src_p): Check for aarch64_address_info type before
+	accessing base field.
+
+2020-04-15  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	* config/arm/mve.md (mve_vec_duplicate<mode>): New pattern.
+	(V_sz_elem2): Remove unused mode attribute.
+
+2020-04-15  Matthew Malcomson  <matthew.malcomson@arm.com>
+
+	* config/arm/arm.md (arm_movdi): Disallow for MVE.
+
+2020-04-15  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/94539
+	* tree-ssa-alias.c (same_type_for_tbaa): Defer to
+	alias_sets_conflict_p for pointers.
+
+2020-04-14  Max Filippov  <jcmvbkbc@gmail.com>
+
+	PR target/94584
+	* config/xtensa/xtensa.md (zero_extendhisi2, zero_extendqisi2)
+	(extendhisi2_internal): Add %v1 before the load instructions.
+
+2020-04-14  Aaron Sawdey  <acsawdey@linux.ibm.com>
+
+	PR target/94542
+	* config/rs6000/rs6000.c (address_to_insn_form): Do not attempt to
+	use PC-relative addressing for TLS references.
+
+2020-04-14  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/94434
+	* ipa-sra.c: Include internal-fn.h.
+	(enum isra_scan_context): Update comment.
+	(scan_function): Treat calls to internal_functions like loads or stores.
+
+2020-04-14  Yang Yang <yangyang305@huawei.com>
+
+	PR tree-optimization/94574
+	* tree-ssa.c (non_rewritable_lvalue_p): Add size check when analyzing
+	whether a vector-insert is rewritable using a BIT_INSERT_EXPR.
+
+2020-04-14  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/94561
+	* config/i386/i386.c (ix86_get_ssemov): Remove mode size check.
+
+2020-04-13  Martin Sebor  <msebor@redhat.com>
+
+	* doc/extend.texi (-Wall): Mention -Wformat-overflow and
+	-Wformat-truncation.  Move -Wzero-length-bounds last.
+	(-Wrestrict): Document positive form of option enabled by -Wall.
+
+2020-04-13 Zachary Spytz  <zspytz@gmail.com>
+
+	* doc/extend.texi: Add realloc to list of built-in functions
+	are recognized by the compiler.
+
+2020-04-13  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/94556
+	* config/i386/i386.c (ix86_expand_epilogue): Restore the frame
+	pointer in word_mode for eh_return epilogues.
+
+2020-04-13  Jozef Lawrynowicz  <jozef.l@mittosystems.com>
+
+	* config/msp430/msp430.c (msp430_print_operand): Don't add offsets to
+	memory references in %B, %C and %D operand selectors when the inner
+	operand is a post increment address.
+
+2020-04-13  Jozef Lawrynowicz  <jozef.l@mittosystems.com>
+
+	* config/msp430/msp430.c (msp430_print_operand): Offset a %C memory
+	reference by 4 bytes, and %D memory reference by 6 bytes.
+
 2020-04-11  Uroš Bizjak  <ubizjak@gmail.com>
 
 	PR target/94494

@@ -1,3 +1,31 @@
+2020-04-25  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* intrinsics.cc (expand_intrinsic_toprec): New function.
+	(maybe_expand_intrinsic): Handle toPrec intrinsics.
+	* intrinsics.def (TOPRECF, TOPREC, TOPRECL): Add toPrec intrinsics.
+
+2020-04-24  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* d-spec.cc (need_phobos): Remove.
+	(lang_specific_driver): Replace need_phobos with phobos_library.
+	Reorder -debuglib and -defaultlib to have precedence over libphobos.
+	(lang_specific_pre_link): Remove test for need_phobos.
+
+2020-04-19  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/94609
+	* d-codegen.cc (argument_reference_p): Don't check TREE_ADDRESSABLE.
+	(type_passed_as): Build reference type if TREE_ADDRESSABLE.
+	* d-convert.cc (convert_for_argument): Build explicit TARGET_EXPR if
+	needed for arguments passed by invisible reference.
+	* types.cc (TypeVisitor::visit (TypeStruct *)): Mark all structs that
+	are not POD as TREE_ADDRESSABLE.
+
+2020-04-13  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* Make-lang.in (D_FRONTEND_OBJS): Remove d/argtypes.o.
+	* d-target.cc (Target::toArgTypes): New function.
+
 2020-04-10  Iain Buclaw  <ibuclaw@gdcproject.org>
 
 	* d-spec.cc (LIBDRUNTIME): Remove.

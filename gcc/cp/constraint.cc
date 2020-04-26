@@ -2736,11 +2736,17 @@ static tree
 satisfy_declaration_constraints (tree t, subst_info info)
 {
   gcc_assert (DECL_P (t));
+  const tree saved_t = t;
 
   /* For inherited constructors, consider the original declaration;
      it has the correct template information attached. */
-  if (flag_new_inheriting_ctors)
-    t = strip_inheriting_ctors (t);
+  t = strip_inheriting_ctors (t);
+  tree inh_ctor_targs = NULL_TREE;
+  if (t != saved_t)
+    if (tree ti = DECL_TEMPLATE_INFO (saved_t))
+      /* The inherited constructor points to an instantiation of a constructor
+	 template; remember its template arguments.  */
+      inh_ctor_targs = TI_ARGS (ti);
 
   /* Update the declaration for diagnostics.  */
   info.in_decl = t;
@@ -2760,6 +2766,8 @@ satisfy_declaration_constraints (tree t, subst_info info)
       /* The initial parameter mapping is the complete set of
 	 template arguments substituted into the declaration.  */
       args = TI_ARGS (ti);
+      if (inh_ctor_targs)
+	args = add_outermost_template_args (args, inh_ctor_targs);
     }
   else
     {
@@ -3241,7 +3249,8 @@ static tree
 diagnose_valid_expression (tree expr, tree args, tree in_decl)
 {
   tree result = tsubst_expr (expr, args, tf_none, in_decl, false);
-  if (result != error_mark_node)
+  if (result != error_mark_node
+      && convert_to_void (result, ICV_STATEMENT, tf_none) != error_mark_node)
     return result;
 
   location_t loc = cp_expr_loc_or_input_loc (expr);
@@ -3249,7 +3258,10 @@ diagnose_valid_expression (tree expr, tree args, tree in_decl)
     {
       /* Replay the substitution error.  */
       inform (loc, "the required expression %qE is invalid, because", expr);
-      tsubst_expr (expr, args, tf_error, in_decl, false);
+      if (result == error_mark_node)
+	tsubst_expr (expr, args, tf_error, in_decl, false);
+      else
+	convert_to_void (result, ICV_STATEMENT, tf_error);
     }
   else
     inform (loc, "the required expression %qE is invalid", expr);

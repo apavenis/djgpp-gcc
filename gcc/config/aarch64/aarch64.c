@@ -4742,6 +4742,7 @@ aarch64_expand_sve_const_pred_eor (rtx target, rtx_vector_builder &builder,
   /* EOR the result with an ELT_SIZE PTRUE.  */
   rtx mask = aarch64_ptrue_all (elt_size);
   mask = force_reg (VNx16BImode, mask);
+  inv = gen_lowpart (VNx16BImode, inv);
   target = aarch64_target_reg (target, VNx16BImode);
   emit_insn (gen_aarch64_pred_z (XOR, VNx16BImode, target, mask, inv, mask));
   return target;
@@ -13517,6 +13518,32 @@ aarch64_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
     }
 }
 
+/* Return true if creating multiple copies of STMT_INFO for Advanced SIMD
+   vectors would produce a series of LDP or STP operations.  KIND is the
+   kind of statement that STMT_INFO represents.  */
+static bool
+aarch64_advsimd_ldp_stp_p (enum vect_cost_for_stmt kind,
+			   stmt_vec_info stmt_info)
+{
+  switch (kind)
+    {
+    case vector_load:
+    case vector_store:
+    case unaligned_load:
+    case unaligned_store:
+      break;
+
+    default:
+      return false;
+    }
+
+  if (aarch64_tune_params.extra_tuning_flags
+      & AARCH64_EXTRA_TUNE_NO_LDP_STP_QREGS)
+    return false;
+
+  return is_gimple_assign (stmt_info->stmt);
+}
+
 /* Return true if STMT_INFO extends the result of a load.  */
 static bool
 aarch64_extending_load_p (stmt_vec_info stmt_info)
@@ -13555,10 +13582,12 @@ aarch64_integer_truncation_p (stmt_vec_info stmt_info)
 }
 
 /* STMT_COST is the cost calculated by aarch64_builtin_vectorization_cost
-   for STMT_INFO, which has cost kind KIND.  Adjust the cost as necessary
-   for SVE targets.  */
+   for STMT_INFO, which has cost kind KIND and which when vectorized would
+   operate on vector type VECTYPE.  Adjust the cost as necessary for SVE
+   targets.  */
 static unsigned int
-aarch64_sve_adjust_stmt_cost (vect_cost_for_stmt kind, stmt_vec_info stmt_info,
+aarch64_sve_adjust_stmt_cost (vect_cost_for_stmt kind,
+			      stmt_vec_info stmt_info, tree vectype,
 			      unsigned int stmt_cost)
 {
   /* Unlike vec_promote_demote, vector_stmt conversions do not change the
@@ -13576,6 +13605,46 @@ aarch64_sve_adjust_stmt_cost (vect_cost_for_stmt kind, stmt_vec_info stmt_info,
      because we can just ignore the unused upper bits of the source.  */
   if (kind == vector_stmt && aarch64_integer_truncation_p (stmt_info))
     stmt_cost = 0;
+
+  /* Advanced SIMD can load and store pairs of registers using LDP and STP,
+     but there are no equivalent instructions for SVE.  This means that
+     (all other things being equal) 128-bit SVE needs twice as many load
+     and store instructions as Advanced SIMD in order to process vector pairs.
+
+     Also, scalar code can often use LDP and STP to access pairs of values,
+     so it is too simplistic to say that one SVE load or store replaces
+     VF scalar loads and stores.
+
+     Ideally we would account for this in the scalar and Advanced SIMD
+     costs by making suitable load/store pairs as cheap as a single
+     load/store.  However, that would be a very invasive change and in
+     practice it tends to stress other parts of the cost model too much.
+     E.g. stores of scalar constants currently count just a store,
+     whereas stores of vector constants count a store and a vec_init.
+     This is an artificial distinction for AArch64, where stores of
+     nonzero scalar constants need the same kind of register invariant
+     as vector stores.
+
+     An alternative would be to double the cost of any SVE loads and stores
+     that could be paired in Advanced SIMD (and possibly also paired in
+     scalar code).  But this tends to stress other parts of the cost model
+     in the same way.  It also means that we can fall back to Advanced SIMD
+     even if full-loop predication would have been useful.
+
+     Here we go for a more conservative version: double the costs of SVE
+     loads and stores if one iteration of the scalar loop processes enough
+     elements for it to use a whole number of Advanced SIMD LDP or STP
+     instructions.  This makes it very likely that the VF would be 1 for
+     Advanced SIMD, and so no epilogue should be needed.  */
+  if (STMT_VINFO_GROUPED_ACCESS (stmt_info))
+    {
+      stmt_vec_info first = DR_GROUP_FIRST_ELEMENT (stmt_info);
+      unsigned int count = DR_GROUP_SIZE (first) - DR_GROUP_GAP (first);
+      unsigned int elt_bits = GET_MODE_UNIT_BITSIZE (TYPE_MODE (vectype));
+      if (multiple_p (count * elt_bits, 256)
+	  && aarch64_advsimd_ldp_stp_p (kind, stmt_info))
+	stmt_cost *= 2;
+    }
 
   return stmt_cost;
 }
@@ -13596,7 +13665,8 @@ aarch64_add_stmt_cost (void *data, int count, enum vect_cost_for_stmt kind,
 	    aarch64_builtin_vectorization_cost (kind, vectype, misalign);
 
       if (stmt_info && vectype && aarch64_sve_mode_p (TYPE_MODE (vectype)))
-	stmt_cost = aarch64_sve_adjust_stmt_cost (kind, stmt_info, stmt_cost);
+	stmt_cost = aarch64_sve_adjust_stmt_cost (kind, stmt_info, vectype,
+						  stmt_cost);
 
       /* Statements in an inner loop relative to the loop being
 	 vectorized are weighted more heavily.  The value here is
@@ -14707,32 +14777,37 @@ aarch64_init_expanders (void)
 static void
 initialize_aarch64_code_model (struct gcc_options *opts)
 {
-   if (opts->x_flag_pic)
-     {
-       switch (opts->x_aarch64_cmodel_var)
-	 {
-	 case AARCH64_CMODEL_TINY:
-	   aarch64_cmodel = AARCH64_CMODEL_TINY_PIC;
-	   break;
-	 case AARCH64_CMODEL_SMALL:
+  aarch64_cmodel = opts->x_aarch64_cmodel_var;
+  switch (opts->x_aarch64_cmodel_var)
+    {
+    case AARCH64_CMODEL_TINY:
+      if (opts->x_flag_pic)
+	aarch64_cmodel = AARCH64_CMODEL_TINY_PIC;
+      break;
+    case AARCH64_CMODEL_SMALL:
+      if (opts->x_flag_pic)
+	{
 #ifdef HAVE_AS_SMALL_PIC_RELOCS
-	   aarch64_cmodel = (flag_pic == 2
-			     ? AARCH64_CMODEL_SMALL_PIC
-			     : AARCH64_CMODEL_SMALL_SPIC);
+	  aarch64_cmodel = (flag_pic == 2
+			    ? AARCH64_CMODEL_SMALL_PIC
+			    : AARCH64_CMODEL_SMALL_SPIC);
 #else
-	   aarch64_cmodel = AARCH64_CMODEL_SMALL_PIC;
+	  aarch64_cmodel = AARCH64_CMODEL_SMALL_PIC;
 #endif
-	   break;
-	 case AARCH64_CMODEL_LARGE:
-	   sorry ("code model %qs with %<-f%s%>", "large",
-		  opts->x_flag_pic > 1 ? "PIC" : "pic");
-	   break;
-	 default:
-	   gcc_unreachable ();
-	 }
-     }
-   else
-     aarch64_cmodel = opts->x_aarch64_cmodel_var;
+	}
+      break;
+    case AARCH64_CMODEL_LARGE:
+      if (opts->x_flag_pic)
+	sorry ("code model %qs with %<-f%s%>", "large",
+	       opts->x_flag_pic > 1 ? "PIC" : "pic");
+      if (opts->x_aarch64_abi == AARCH64_ABI_ILP32)
+	sorry ("code model %qs not supported in ilp32 mode", "large");
+      break;
+    case AARCH64_CMODEL_TINY_PIC:
+    case AARCH64_CMODEL_SMALL_PIC:
+    case AARCH64_CMODEL_SMALL_SPIC:
+      gcc_unreachable ();
+    }
 }
 
 /* Implement TARGET_OPTION_SAVE.  */
@@ -16367,9 +16442,19 @@ aarch64_member_type_forces_blk (const_tree field_or_array, machine_mode mode)
    If *MODEP is VOIDmode, then set it to the first valid floating point
    type.  If a non-floating point type is found, or if a floating point
    type that doesn't match a non-VOIDmode *MODEP is found, then return -1,
-   otherwise return the count in the sub-tree.  */
+   otherwise return the count in the sub-tree.
+
+   The AVOID_CXX17_EMPTY_BASE argument is to allow the caller to check whether
+   this function has changed its behavior after the fix for PR94384 -- this fix
+   is to avoid artificial fields in empty base classes.
+   When called with this argument as a NULL pointer this function does not
+   avoid the artificial fields -- this is useful to check whether the function
+   returns something different after the fix.
+   When called pointing at a value, this function avoids such artificial fields
+   and sets the value to TRUE when one of these fields has been set.  */
 static int
-aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep)
+aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep,
+			 bool *avoid_cxx17_empty_base)
 {
   machine_mode mode;
   HOST_WIDE_INT size;
@@ -16445,7 +16530,8 @@ aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep)
 	    || TREE_CODE (TYPE_SIZE (type)) != INTEGER_CST)
 	  return -1;
 
-	count = aapcs_vfp_sub_candidate (TREE_TYPE (type), modep);
+	count = aapcs_vfp_sub_candidate (TREE_TYPE (type), modep,
+					 avoid_cxx17_empty_base);
 	if (count == -1
 	    || !index
 	    || !TYPE_MAX_VALUE (index)
@@ -16483,7 +16569,18 @@ aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep)
 	    if (TREE_CODE (field) != FIELD_DECL)
 	      continue;
 
-	    sub_count = aapcs_vfp_sub_candidate (TREE_TYPE (field), modep);
+	    /* Ignore C++17 empty base fields, while their type indicates
+	       they do contain padding, they have zero size and thus don't
+	       contain any padding.  */
+	    if (cxx17_empty_base_field_p (field)
+		&& avoid_cxx17_empty_base)
+	      {
+		*avoid_cxx17_empty_base = true;
+		continue;
+	      }
+
+	    sub_count = aapcs_vfp_sub_candidate (TREE_TYPE (field), modep,
+						 avoid_cxx17_empty_base);
 	    if (sub_count < 0)
 	      return -1;
 	    count += sub_count;
@@ -16516,7 +16613,8 @@ aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep)
 	    if (TREE_CODE (field) != FIELD_DECL)
 	      continue;
 
-	    sub_count = aapcs_vfp_sub_candidate (TREE_TYPE (field), modep);
+	    sub_count = aapcs_vfp_sub_candidate (TREE_TYPE (field), modep,
+						 avoid_cxx17_empty_base);
 	    if (sub_count < 0)
 	      return -1;
 	    count = count > sub_count ? count : sub_count;
@@ -16643,10 +16741,26 @@ aarch64_vfp_is_call_or_return_candidate (machine_mode mode,
     }
   else if (type && composite_p)
     {
-      int ag_count = aapcs_vfp_sub_candidate (type, &new_mode);
-
+      bool avoided = false;
+      int ag_count = aapcs_vfp_sub_candidate (type, &new_mode, &avoided);
       if (ag_count > 0 && ag_count <= HA_MAX_NUM_FLDS)
 	{
+	  static unsigned last_reported_type_uid;
+	  unsigned uid = TYPE_UID (TYPE_MAIN_VARIANT (type));
+	  int alt;
+	  if (warn_psabi
+	      && avoided
+	      && uid != last_reported_type_uid
+	      && ((alt = aapcs_vfp_sub_candidate (type, &new_mode, NULL))
+		  != ag_count))
+	    {
+	      gcc_assert (alt == -1);
+	      last_reported_type_uid = uid;
+	      inform (input_location, "parameter passing for argument of type "
+		      "%qT when C++17 is enabled changed to match C++14 "
+		      "in GCC 10.1", type);
+	    }
+
 	  if (is_ha != NULL) *is_ha = true;
 	  *count = ag_count;
 	}
@@ -18312,15 +18426,27 @@ aarch64_sve_expand_vector_init_handle_trailing_constants
   int n_trailing_constants = 0;
 
   for (int i = nelts_reqd - 1;
-       i >= 0 && aarch64_legitimate_constant_p (elem_mode, builder.elt (i));
+       i >= 0 && valid_for_const_vector_p (elem_mode, builder.elt (i));
        i--)
     n_trailing_constants++;
 
   if (n_trailing_constants >= nelts_reqd / 2)
     {
-      rtx_vector_builder v (mode, 1, nelts);
+      /* Try to use the natural pattern of BUILDER to extend the trailing
+	 constant elements to a full vector.  Replace any variables in the
+	 extra elements with zeros.
+
+	 ??? It would be better if the builders supported "don't care"
+	     elements, with the builder filling in whichever elements
+	     give the most compact encoding.  */
+      rtx_vector_builder v (mode, nelts, 1);
       for (int i = 0; i < nelts; i++)
-	v.quick_push (builder.elt (i + nelts_reqd - n_trailing_constants));
+	{
+	  rtx x = builder.elt (i + nelts_reqd - n_trailing_constants);
+	  if (!valid_for_const_vector_p (elem_mode, x))
+	    x = const0_rtx;
+	  v.quick_push (x);
+	}
       rtx const_vec = v.build ();
       emit_move_insn (target, const_vec);
 
@@ -18438,7 +18564,7 @@ aarch64_sve_expand_vector_init (rtx target, const rtx_vector_builder &builder,
 
   /* Case 2: Vector contains leading constants.  */
 
-  rtx_vector_builder rev_builder (mode, 1, nelts_reqd);
+  rtx_vector_builder rev_builder (mode, nelts_reqd, 1);
   for (int i = 0; i < nelts_reqd; i++)
     rev_builder.quick_push (builder.elt (nelts_reqd - i - 1));
   rev_builder.finalize ();
@@ -18471,8 +18597,8 @@ aarch64_sve_expand_vector_init (rtx target, const rtx_vector_builder &builder,
   if (nelts_reqd <= 4)
     return false;
 
-  rtx_vector_builder v_even (mode, 1, nelts);
-  rtx_vector_builder v_odd (mode, 1, nelts);
+  rtx_vector_builder v_even (mode, nelts, 1);
+  rtx_vector_builder v_odd (mode, nelts, 1);
 
   for (int i = 0; i < nelts * 2; i += 2)
     {
@@ -18516,7 +18642,7 @@ aarch64_sve_expand_vector_init (rtx target, rtx vals)
   machine_mode mode = GET_MODE (target);
   int nelts = XVECLEN (vals, 0);
 
-  rtx_vector_builder v (mode, 1, nelts);
+  rtx_vector_builder v (mode, nelts, 1);
   for (int i = 0; i < nelts; i++)
     v.quick_push (XVECEXP (vals, 0, i));
   v.finalize ();

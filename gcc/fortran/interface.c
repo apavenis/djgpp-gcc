@@ -1529,7 +1529,7 @@ gfc_check_dummy_characteristics (gfc_symbol *s1, gfc_symbol *s2,
 
 bool
 gfc_check_result_characteristics (gfc_symbol *s1, gfc_symbol *s2,
-			      char *errmsg, int err_len)
+				  char *errmsg, int err_len)
 {
   gfc_symbol *r1, *r2;
 
@@ -1695,11 +1695,15 @@ bool
 gfc_compare_interfaces (gfc_symbol *s1, gfc_symbol *s2, const char *name2,
 			int generic_flag, int strict_flag,
 			char *errmsg, int err_len,
-			const char *p1, const char *p2)
+			const char *p1, const char *p2,
+			bool *bad_result_characteristics)
 {
   gfc_formal_arglist *f1, *f2;
 
   gcc_assert (name2 != NULL);
+
+  if (bad_result_characteristics)
+    *bad_result_characteristics = false;
 
   if (s1->attr.function && (s2->attr.subroutine
       || (!s2->attr.function && s2->ts.type == BT_UNKNOWN
@@ -1726,7 +1730,11 @@ gfc_compare_interfaces (gfc_symbol *s1, gfc_symbol *s2, const char *name2,
 	  /* If both are functions, check result characteristics.  */
 	  if (!gfc_check_result_characteristics (s1, s2, errmsg, err_len)
 	      || !gfc_check_result_characteristics (s2, s1, errmsg, err_len))
-	    return false;
+	    {
+	      if (bad_result_characteristics)
+		*bad_result_characteristics = true;
+	      return false;
+	    }
 	}
 
       if (s1->attr.pure && !s2->attr.pure)
@@ -3780,6 +3788,36 @@ check_intents (gfc_formal_arglist *f, gfc_actual_arglist *a)
   return true;
 }
 
+/* Go through the argument list of a procedure and look for
+   pointers which may be set, possibly introducing a span.  */
+
+static void
+gfc_set_subref_array_pointer_arg (gfc_formal_arglist *dummy_args,
+				  gfc_actual_arglist *actual_args)
+{
+  gfc_formal_arglist *f;
+  gfc_actual_arglist *a;
+  gfc_symbol *a_sym;
+  for (f = dummy_args, a = actual_args; f && a ; f = f->next, a = a->next)
+    {
+
+      if (f->sym == NULL)
+	continue;
+
+      if (!f->sym->attr.pointer || f->sym->attr.intent == INTENT_IN)
+	continue;
+
+      if (a->expr == NULL || a->expr->expr_type != EXPR_VARIABLE)
+	continue;
+      a_sym = a->expr->symtree->n.sym;
+
+      if (!a_sym->attr.pointer)
+	continue;
+
+      a_sym->attr.subref_array_pointer = 1;
+    }
+  return;
+}
 
 /* Check how a procedure is used against its interface.  If all goes
    well, the actual argument list will also end up being properly
@@ -3959,6 +3997,10 @@ gfc_procedure_use (gfc_symbol *sym, gfc_actual_arglist **ap, locus *where)
 
   if (warn_aliasing)
     check_some_aliasing (dummy_args, *ap);
+
+  /* Set the subref_array_pointer_arg if needed.  */
+  if (dummy_args)
+    gfc_set_subref_array_pointer_arg (dummy_args, *ap);
 
   return true;
 }
@@ -5317,7 +5359,6 @@ gfc_get_formal_from_actual_arglist (gfc_symbol *sym,
 	      s->ts.is_iso_c = 0;
 	      s->ts.is_c_interop = 0;
 	      s->attr.flavor = FL_VARIABLE;
-	      s->attr.artificial = 1;
 	      if (a->expr->rank > 0)
 		{
 		  s->attr.dimension = 1;
@@ -5332,6 +5373,7 @@ gfc_get_formal_from_actual_arglist (gfc_symbol *sym,
 		s->maybe_array = maybe_dummy_array_arg (a->expr);
 	    }
 	  s->attr.dummy = 1;
+	  s->attr.artificial = 1;
 	  s->declared_at = a->expr->where;
 	  s->attr.intent = INTENT_UNKNOWN;
 	  (*f)->sym = s;

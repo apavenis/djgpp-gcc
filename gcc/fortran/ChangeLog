@@ -1,3 +1,87 @@
+2020-04-23  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/93956
+	* expr.c (gfc_check_pointer_assign): Also set subref_array_pointer
+	when a function returns a pointer.
+	* interface.c (gfc_set_subref_array_pointer_arg): New function.
+	(gfc_procedure_use): Call it.
+
+2020-04-22  Fritz Reese  <foreese@gcc.gnu.org>
+
+	* trigd_fe.inc: Use mpfr to compute cosd(30) rather than a host-
+	precision floating point literal based on an invalid macro.
+
+2020-04-22  José Rui Faustino de Sousa  <jrfsousa@gmail.com>
+
+	PR fortran/90350
+	* simplify.c (simplify_bound): In the case of assumed-size arrays
+	check if the reference is to a full array.
+
+2020-04-22  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/94709
+	* scanner.c (load_line): In fixed form, also treat 'C' as comment and
+	'D'/'d' only with -fd-lines-as-comments. Treat '!$' with -fopenmp,
+	'!$acc' with -fopenacc and '!GCC$' as non-comment to permit <tab>
+	and truncation warnings.
+
+2020-04-20  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	* dump-parse-tree.c (show_attr): Add numerous flags, some cleanup.
+
+2020-04-20  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/93364
+	* array.c (gfc_set_array_spec): Check for sum of rank and corank
+	not exceeding GFC_MAX_DIMENSIONS.
+
+2020-04-20  Steve Kargl  <kargl@gcc.gnu.org>
+	Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/91800
+	* decl.c (variable_decl): Reject Hollerith constants as type
+	initializer.
+
+2020-04-19  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/93500
+	* resolve.c (resolve_operator): If both operands are
+	NULL, return false.
+	* simplify.c (simplify_bound): If a division by zero
+	was seen during bound simplification, free the
+	corresponcing expression and return &gfc_bad_expr.
+
+2020-04-17  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/94090
+	* gfortran.dg (gfc_compare_interfaces): Add
+	optional argument bad_result_characteristics.
+	* interface.c (gfc_check_result_characteristics): Fix
+	whitespace.
+	(gfc_compare_interfaces): Handle new argument; return
+	true if function return values are wrong.
+	* resolve.c (resolve_global_procedure): Hard error if
+	the return value of a function is wrong.
+
+2020-04-15  Fritz Reese  <foreese@gcc.gnu.org>
+	Linus Koenig <link@sig-st.de>
+
+	PR fortran/94192
+	* simplify.c (simplify_bound): Simplify condition for error check.
+
+2020-04-14  Tobias Burnus  <tobias@codesourcery.com>
+
+	* module.c (gfc_match_use): Fix name-conflict check for use-associating
+	the same symbol again in a submodule.
+
+2020-04-13  Linus Koenig <link@sig-st.de>
+
+	PR fortran/94192
+	* resolve.c (resolve_fl_var_and_proc): Set flag "error" to 1 if
+	pointer is found to not have an assumed rank or a deferred shape.
+	* simplify.c (simplify_bound): If an error has been issued for a
+	given pointer, one should not attempt to find its bounds.
+
 2020-04-09  Fritz Reese  <foreese@gcc.gnu.org>
 
 	PR fortran/87923

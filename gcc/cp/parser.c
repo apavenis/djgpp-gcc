@@ -3378,6 +3378,9 @@ cp_parser_diagnose_invalid_type_name (cp_parser *parser, tree id,
       else if (!flag_concepts && id == ridpointers[(int)RID_CONCEPT])
 	inform (location, "%<concept%> only available with %<-std=c++2a%> or "
 		"%<-fconcepts%>");
+      else if (!flag_concepts && id == ridpointers[(int)RID_REQUIRES])
+	inform (location, "%<requires%> only available with %<-std=c++2a%> or "
+		"%<-fconcepts%>");
       else if (processing_template_decl && current_class_type
 	       && TYPE_BINFO (current_class_type))
 	{
@@ -13675,7 +13678,7 @@ cp_parser_simple_declaration (cp_parser* parser,
 	    if ((decl != error_mark_node
 		 && DECL_INITIAL (decl) != error_mark_node)
 		|| cp_parser_uncommitted_to_tentative_parse_p (parser))
-	      cp_parser_error (parser, "expected %<,%> or %<;%>");
+	      cp_parser_error (parser, "expected %<;%>");
 	    /* Skip tokens until we reach the end of the statement.  */
 	    cp_parser_skip_to_end_of_statement (parser);
 	    /* If the next token is now a `;', consume it.  */
@@ -28530,6 +28533,10 @@ cp_parser_check_template_parameters (cp_parser* parser,
   if (!template_id_p
       && parser->num_template_parameter_lists == num_templates + 1)
     return true;
+
+  if (cp_parser_simulate_error (parser))
+    return false;
+
   /* If there are more template classes than parameter lists, we have
      something like:
 
@@ -43801,6 +43808,13 @@ cp_parser_pragma (cp_parser *parser, enum pragma_context context, bool *if_p)
       return true;
 
     case PRAGMA_OMP_REQUIRES:
+      if (context != pragma_external)
+	{
+	  error_at (pragma_tok->location,
+		    "%<#pragma omp requires%> may only be used at file or "
+		    "namespace scope");
+	  break;
+	}
       return cp_parser_omp_requires (parser, pragma_tok);
 
     case PRAGMA_OMP_ORDERED:

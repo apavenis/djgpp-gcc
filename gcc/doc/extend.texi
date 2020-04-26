@@ -12315,6 +12315,7 @@ is called and the @var{flag} argument passed to it.
 @findex fprintf_unlocked
 @findex fputs
 @findex fputs_unlocked
+@findex free
 @findex frexp
 @findex frexpf
 @findex frexpl
@@ -12434,6 +12435,7 @@ is called and the @var{flag} argument passed to it.
 @findex printf_unlocked
 @findex putchar
 @findex puts
+@findex realloc
 @findex remainder
 @findex remainderf
 @findex remainderl
@@ -12677,8 +12679,8 @@ The ISO C90 functions
 @code{toupper}, @code{labs}, @code{ldexp}, @code{log10}, @code{log},
 @code{malloc}, @code{memchr}, @code{memcmp}, @code{memcpy},
 @code{memset}, @code{modf}, @code{pow}, @code{printf}, @code{putchar},
-@code{puts}, @code{scanf}, @code{sinh}, @code{sin}, @code{snprintf},
-@code{sprintf}, @code{sqrt}, @code{sscanf}, @code{strcat},
+@code{puts}, @code{realloc}, @code{scanf}, @code{sinh}, @code{sin},
+@code{snprintf}, @code{sprintf}, @code{sqrt}, @code{sscanf}, @code{strcat},
 @code{strchr}, @code{strcmp}, @code{strcpy}, @code{strcspn},
 @code{strlen}, @code{strncat}, @code{strncmp}, @code{strncpy},
 @code{strpbrk}, @code{strrchr}, @code{strspn}, @code{strstr},
@@ -17631,7 +17633,7 @@ subject to change without notice.
 
 GCC complies with the OpenPOWER 64-Bit ELF V2 ABI Specification,
 which may be found at
-@uref{http://openpowerfoundation.org/wp-content/uploads/resources/leabi-prd/content/index.html}.
+@uref{https://openpowerfoundation.org/?resource_lib=64-bit-elf-v2-abi-specification-power-architecture}.
 Appendix A of this document lists the vector API interfaces that must be
 provided by compliant compilers.  Programmers should preferentially use
 the interfaces described therein.  However, historically GCC has provided
