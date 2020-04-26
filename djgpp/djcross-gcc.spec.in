@@ -356,6 +356,7 @@ rm -fr %{buildroot}
 %{_bindir}/%{target}-cpp
 %{_bindir}/%{target}-gcc*
 %{_bindir}/%{target}-gcov*
+%{_bindir}/%{target}-lto-dump
 %{_libdir}/gcc/%{target}/%{gcc_version}/include-fixed/*
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgcc.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libgcov.a
@@ -395,6 +396,7 @@ rm -fr %{buildroot}
 %{_mandir}/man1/%{target}-gcov.1.gz
 %{_mandir}/man1/%{target}-gcov-dump.1.gz
 %{_mandir}/man1/%{target}-gcov-tool.1.gz
+%{_mandir}/man1/%{target}-lto-dump.1.gz
 %doc COPYING* README readme.DJGPP
 
 %files c++
@@ -442,6 +444,7 @@ rm -fr %{buildroot}
 %{_bindir}/%{target}-gnat*
 %{_libdir}/gcc/%{target}/%{gcc_version}/adainclude/*
 %{_libdir}/gcc/%{target}/%{gcc_version}/adalib/*
+%{_libdir}/gcc/%{target}/%{gcc_version}/ada_target_properties
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/gnat1
 %endif
 
