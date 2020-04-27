@@ -16,7 +16,7 @@
 %define gcc_src_ext @__GCC_SRC_EXT__@
 
 %define include_ada 1
-%define include_fortran 0
+%define include_fortran 1
 %define include_objc 1
 %define enable_lto 1
 %define do_native_bootstrap 1
