@@ -31,6 +31,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "plugin.h"
 #include "options.h"
 
+#ifdef __DJGPP__
+extern "C" {
+#include <libc/malldbg.h>
+}
+#endif
+
 /* When set, ggc_collect will do collection.  */
 bool ggc_force_collect;
 

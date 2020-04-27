@@ -1,3 +1,19 @@
+2020-04-26  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/90320
+	* call.c (struct conversion): Add copy_init_p.
+	(standard_conversion): Set copy_init_p in ck_base and ck_rvalue
+	if FLAGS demands LOOKUP_ONLYCONVERTING.
+	(convert_like_real) <case ck_base>: If copy_init_p is set, or
+	LOOKUP_ONLYCONVERTING into FLAGS.
+
+2020-04-26  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94752
+	* coroutines.cc (morph_fn_to_coro): Ensure that
+	unnamed function params have a usable and distinct
+	frame field name.
+
 2020-04-24  Jason Merrill  <jason@redhat.com>
 
 	PR c++/94583

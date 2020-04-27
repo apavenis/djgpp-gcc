@@ -1,3 +1,31 @@
+2020-04-26  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/90320
+	* g++.dg/cpp0x/explicit13.C: New test.
+	* g++.dg/cpp0x/explicit14.C: New test.
+
+2020-04-27  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/89418
+	* lib/gdc-utils.exp (gdc-convert-test): Add dg-skip-if for compilable
+	tests that depend on the phobos standard library.
+
+2020-04-27  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/94777
+	* gdc.dg/pr94777a.d: New test.
+	* gdc.dg/pr94777b.d: New test.
+
+2020-04-26  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94752
+	* g++.dg/coroutines/pr94752.C: New test.
+
+2020-04-26  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/94737
+	* gfortran.dg/binding_label_tests_34.f90: New test case.
+
 2020-04-25  David Edelsohn  <dje.gcc@gmail.com>
 
 	* g++.dg/debug/dwarf2/pr61433.C: Unfail AIX.
@@ -45,6 +73,12 @@
 
 	* gcc.dg/debug/dwarf2/pr82718-1.c: Skip on AIX.
 	* gcc.dg/debug/dwarf2/pr82718-2.c: Skip on AIX.
+
+2020-04-25  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/94578
+	* gfortran.dg/pointer_assign_14.f90: New test.
+	* gfortran.dg/pointer_assign_15.f90: New test.
 
 2020-04-25  Iain Sandoe  <iain@sandoe.co.uk>
 
