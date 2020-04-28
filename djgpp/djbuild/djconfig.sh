@@ -21,7 +21,7 @@ export CONFIG_SHELL
 conf_options="$target"
 conf_options="$conf_options --prefix=/dev/env/DJDIR"
 conf_options="$conf_options --disable-werror"
-conf_options="$conf_options --enable-languages=c,c++,objc,obj-c++,ada"
+conf_options="$conf_options --enable-languages=c,c++,objc,obj-c++,fortran,ada"
 conf_options="$conf_options --with-gcc-major-version-only"
 conf_options="$conf_options --enable-libquadmath-support"
 conf_options="$conf_options --enable-lto"

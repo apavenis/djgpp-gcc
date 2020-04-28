@@ -673,17 +673,18 @@ sub mk_manifest
         '/libgf', '/f951\.exe', 'manifest/gfor',
         '/finclude/ieee_',
 	'/libcaf_single.(?:a|la)',
+	'/include/iso_fortran_binding.h',
         '/cat1/gfortran'
     );
 
     my @adafiles = (
         'bin/gnat.*\.exe', 'bin/gprmake\.exe', 'info/gnat',
         '/adainclude/', '/adalib/', '/gnat1\.exe',
-        'manifest/ada'
+        'manifest/ada', '/ada_target_properties'
     );
 
     my @gccfiles = (
-        'bin/gcc\.exe', 'bin/cpp\.exe', 'bin/gcov\.exe', 'bin/gccbug',
+        'bin/gcc\.exe', 'bin/cpp\.exe', 'bin/gcov\.exe', 'bin/gccbug', 'bin/lto-dump',
         'bin/gcc-(?:ar|nm|ranlib)\.exe', 'bin/gcov-tool\.exe', 'bin/gcov-dump\.exe',
         'include/ssp/', 'info/(?:cpp|gcc|libquadmath)', '/djgpp\.ver$',
         '/include/header\.gcc$',
@@ -709,7 +710,7 @@ sub mk_manifest
         '/collect2\.exe',
         '/lto-wrapper\.exe',
         'manifest/gcc',
-        'readme.djgpp', '/cat1/(?:cpp|gcc|gcov)', '/cat7/',
+        'readme.djgpp', '/cat1/(?:cpp|gcc|gcov|lto-dump)', '/cat7/',
         '/bugs', '/copying', '/faq', '/news', '/readme', '/gcc/onews',
         'share/locale/',
         '/bugs\.html', 'faq\.html'
@@ -773,7 +774,7 @@ sub mk_manifest
         next if ($status{$file} ne "unknown");
         foreach my $expr (@ignore)
         {
-            if ($file =~ $expr)
+            if (lc($file) =~ lc($expr))
             {
                 $status{$file} = "ignore";
                 print "Ignore $file\n";
@@ -786,7 +787,7 @@ sub mk_manifest
         next if ($status{$file} ne "unknown");
         foreach (@cxxfiles)
         {
-            if (lc($file) =~ $_)
+            if (lc($file) =~ lc($_))
             {
                 $status{$file} = "gpp";
                 push @mft_gpp, $file;
@@ -801,7 +802,7 @@ sub mk_manifest
         next if ($status{$file} ne "unknown");
         foreach (@adafiles)
         {
-            if (lc($file) =~ $_)
+            if (lc($file) =~ lc($_))
             {
                 $status{$file} = "ada";
                 push @mft_ada, $file;
@@ -815,7 +816,7 @@ sub mk_manifest
         next if ($status{$file} ne "unknown");
         foreach (@gforfiles)
         {
-            if (lc($file) =~ $_)
+            if (lc($file) =~ lc($_))
             {
                 $status{$file} = "gfor";
                 push @mft_gfor, $file;
@@ -829,7 +830,7 @@ sub mk_manifest
         next if ($status{$file} ne "unknown");
         foreach (@objcfiles)
         {
-            if (lc($file) =~ $_)
+            if (lc($file) =~ lc($_))
             {
                 $status{$file} = "objc";
                 push @mft_objc, $file;
@@ -843,7 +844,7 @@ sub mk_manifest
         next if ($status{$file} ne "unknown");
         foreach (@gccfiles)
         {
-            if (lc($file) =~ $_)
+            if (lc($file) =~ lc($_))
             {
                 $status{$file} = "gcc";
                 push @mft_gcc, $file;
