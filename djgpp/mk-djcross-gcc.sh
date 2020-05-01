@@ -22,9 +22,9 @@ case $basever in
         djn_branch=tags/djgpp/native/gcc-$basever
         ;;
     10.0.* | 10.[1-9].[1-9])
-        upstream=master
-        dj_branch=djgpp/master
-        djn_branch=djgpp/native/master
+        upstream=releases/gcc-10
+        dj_branch=djgpp/gcc-10
+        djn_branch=djgpp/native/gcc-10
         test -z "$devphase" && devphase=prerelease
         ;;
     *)
