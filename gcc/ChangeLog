@@ -1,3 +1,538 @@
+2020-04-30  Jonathan Wakely  <jwakely@redhat.com>
+
+	* pretty-print.c (pp_take_prefix): Fix spelling in comment.
+
+2020-04-30  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/94775
+	* tree.c (check_base_type): Return true only if TYPE_USER_ALIGN match.
+	(check_aligned_type): Check if TYPE_USER_ALIGN match.
+
+2020-04-30  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/aarch64/aarch64.h (TARGET_OUTLINE_ATOMICS): Define.
+	* config/aarch64/aarch64.opt (moutline-atomics): Change to Int variable.
+	* doc/invoke.texi (moutline-atomics): Document as on by default.
+
+2020-04-30  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	PR target/94748
+	* config/aarch64/aarch64-bti-insert.c (rest_of_insert_bti): Remove
+	the check for NOTE_INSN_DELETED_LABEL.
+
+2020-04-30  Jakub Jelinek  <jakub@redhat.com>
+
+	* configure.ac (--with-documentation-root-url,
+	--with-changes-root-url): Diagnose URL not ending with /,
+	use AC_DEFINE_UNQUOTED instead of AC_SUBST.
+	* opts.h (get_changes_url): Remove.
+	* opts.c (get_changes_url): Remove.
+	* Makefile.in (CFLAGS-opts.o): Don't add -DDOCUMENTATION_ROOT_URL
+	or -DCHANGES_ROOT_URL.
+	* doc/install.texi (--with-documentation-root-url,
+	--with-changes-root-url): Document.
+	* config/arm/arm.c (aapcs_vfp_is_call_or_return_candidate): Don't call
+	get_changes_url and free, change url variable type to const char * and
+	set it to CHANGES_ROOT_URL "gcc-10/changes.html#empty_base".
+	* config/s390/s390.c (s390_function_arg_vector,
+	s390_function_arg_float): Likewise.
+	* config/aarch64/aarch64.c (aarch64_vfp_is_call_or_return_candidate):
+	Likewise.
+	* config/rs6000/rs6000-call.c (rs6000_discover_homogeneous_aggregate):
+	Likewise.
+	* config.in: Regenerate.
+	* configure: Regenerate.
+
+2020-04-30  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	PR target/57002
+	* config/arm/arm.c (isr_attribute_args): Remove duplicate entries.
+
+2020-04-30  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	* config/s390/constraints.md ("j>f", "jb4"): New constraints.
+	* config/s390/vecintrin.h (vec_load_len_r, vec_store_len_r): Fix
+	macro definitions.
+	* config/s390/vx-builtins.md ("vlrlrv16qi", "vstrlrv16qi"): Add a
+	separate expander.
+	("*vlrlrv16qi", "*vstrlrv16qi"): Add alternative for vl/vst.
+	Change constraint for vlrl/vstrl to jb4.
+
+2020-04-30  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	* var-tracking.c (vt_initialize): Move variables pre and post
+	into inner block and initialize both in order to fix warning
+	about uninitialized use.  Remove unnecessary checks for
+	frame_pointer_needed.
+
+2020-04-30  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	* toplev.c (output_stack_usage_1): Ensure that first
+	argument to fprintf is not null.
+
+2020-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	* configure.ac (-with-changes-root-url): New configure option,
+	defaulting to https://gcc.gnu.org/.
+	* Makefile.in (CFLAGS-opts.o): Define CHANGES_ROOT_URL for
+	opts.c.
+	* pretty-print.c (get_end_url_string): New function.
+	(pp_format): Handle %{ and %} for URLs.
+	(pp_begin_url): Use pp_string instead of pp_printf.
+	(pp_end_url): Use get_end_url_string.
+	* opts.h (get_changes_url): Declare.
+	* opts.c (get_changes_url): New function.
+	* config/rs6000/rs6000-call.c: Include opts.h.
+	(rs6000_discover_homogeneous_aggregate): Use %{in GCC 10.1%} instead
+	of just in GCC 10.1 in diagnostics and add URL.
+	* config/arm/arm.c (aapcs_vfp_is_call_or_return_candidate): Likewise.
+	* config/aarch64/aarch64.c (aarch64_vfp_is_call_or_return_candidate):
+	Likewise.
+	* config/s390/s390.c (s390_function_arg_vector,
+	s390_function_arg_float): Likewise.
+	* configure: Regenerated.
+
+	PR target/94704
+	* config/s390/s390.c (s390_function_arg_vector,
+	s390_function_arg_float): Use DECL_FIELD_ABI_IGNORED instead of
+	cxx17_empty_base_field_p.  In -Wpsabi diagnostics use the type
+	passed to the function rather than the type of the single element.
+	Rename cxx17_empty_base_seen variable to empty_base_seen, change
+	type to int, and adjust diagnostics depending on if the field
+	has [[no_unique_attribute]] or not.
+
+	PR target/94832
+	* config/i386/avx512bwintrin.h (_mm512_alignr_epi8,
+	_mm512_mask_alignr_epi8, _mm512_maskz_alignr_epi8): Wrap macro operands
+	used in casts into parens.
+	* config/i386/avx512fintrin.h (_mm512_cvt_roundps_ph, _mm512_cvtps_ph,
+	_mm512_mask_cvt_roundps_ph, _mm512_mask_cvtps_ph,
+	_mm512_maskz_cvt_roundps_ph, _mm512_maskz_cvtps_ph,
+	_mm512_mask_cmp_epi64_mask, _mm512_mask_cmp_epi32_mask,
+	_mm512_mask_cmp_epu64_mask, _mm512_mask_cmp_epu32_mask,
+	_mm512_mask_cmp_round_pd_mask, _mm512_mask_cmp_round_ps_mask,
+	_mm512_mask_cmp_pd_mask, _mm512_mask_cmp_ps_mask): Likewise.
+	* config/i386/avx512vlbwintrin.h (_mm256_mask_alignr_epi8,
+	_mm256_maskz_alignr_epi8, _mm_mask_alignr_epi8, _mm_maskz_alignr_epi8,
+	_mm256_mask_cmp_epu8_mask): Likewise.
+	* config/i386/avx512vlintrin.h (_mm_mask_cvtps_ph, _mm_maskz_cvtps_ph,
+	_mm256_mask_cvtps_ph, _mm256_maskz_cvtps_ph): Likewise.
+	* config/i386/f16cintrin.h (_mm_cvtps_ph, _mm256_cvtps_ph): Likewise.
+	* config/i386/shaintrin.h (_mm_sha1rnds4_epu32): Likewise.
+
+	PR target/94832
+	* config/i386/avx2intrin.h (_mm_mask_i32gather_pd,
+	_mm256_mask_i32gather_pd, _mm_mask_i64gather_pd,
+	_mm256_mask_i64gather_pd, _mm_mask_i32gather_ps,
+	_mm256_mask_i32gather_ps, _mm_mask_i64gather_ps,
+	_mm256_mask_i64gather_ps, _mm_i32gather_epi64,
+	_mm_mask_i32gather_epi64, _mm256_i32gather_epi64,
+	_mm256_mask_i32gather_epi64, _mm_i64gather_epi64,
+	_mm_mask_i64gather_epi64, _mm256_i64gather_epi64,
+	_mm256_mask_i64gather_epi64, _mm_i32gather_epi32,
+	_mm_mask_i32gather_epi32, _mm256_i32gather_epi32,
+	_mm256_mask_i32gather_epi32, _mm_i64gather_epi32,
+	_mm_mask_i64gather_epi32, _mm256_i64gather_epi32,
+	_mm256_mask_i64gather_epi32): Surround macro parameter uses with
+	parens.
+	(_mm_i32gather_pd, _mm256_i32gather_pd, _mm_i64gather_pd,
+	_mm256_i64gather_pd, _mm_i32gather_ps, _mm256_i32gather_ps,
+	_mm_i64gather_ps, _mm256_i64gather_ps): Likewise.  Don't use
+	as mask vector containing -1.0 or -1.0f elts, but instead vector
+	with all bits set using _mm*_cmpeq_p? with zero operands.
+	* config/i386/avx512fintrin.h (_mm512_i32gather_ps,
+	_mm512_mask_i32gather_ps, _mm512_i32gather_pd,
+	_mm512_mask_i32gather_pd, _mm512_i64gather_ps,
+	_mm512_mask_i64gather_ps, _mm512_i64gather_pd,
+	_mm512_mask_i64gather_pd, _mm512_i32gather_epi32,
+	_mm512_mask_i32gather_epi32, _mm512_i32gather_epi64,
+	_mm512_mask_i32gather_epi64, _mm512_i64gather_epi32,
+	_mm512_mask_i64gather_epi32, _mm512_i64gather_epi64,
+	_mm512_mask_i64gather_epi64, _mm512_i32scatter_ps,
+	_mm512_mask_i32scatter_ps, _mm512_i32scatter_pd,
+	_mm512_mask_i32scatter_pd, _mm512_i64scatter_ps,
+	_mm512_mask_i64scatter_ps, _mm512_i64scatter_pd,
+	_mm512_mask_i64scatter_pd, _mm512_i32scatter_epi32,
+	_mm512_mask_i32scatter_epi32, _mm512_i32scatter_epi64,
+	_mm512_mask_i32scatter_epi64, _mm512_i64scatter_epi32,
+	_mm512_mask_i64scatter_epi32, _mm512_i64scatter_epi64,
+	_mm512_mask_i64scatter_epi64): Surround macro parameter uses with
+	parens.
+	* config/i386/avx512pfintrin.h (_mm512_prefetch_i32gather_pd,
+	_mm512_prefetch_i32gather_ps, _mm512_mask_prefetch_i32gather_pd,
+	_mm512_mask_prefetch_i32gather_ps, _mm512_prefetch_i64gather_pd,
+	_mm512_prefetch_i64gather_ps, _mm512_mask_prefetch_i64gather_pd,
+	_mm512_mask_prefetch_i64gather_ps, _mm512_prefetch_i32scatter_pd,
+	_mm512_prefetch_i32scatter_ps, _mm512_mask_prefetch_i32scatter_pd,
+	_mm512_mask_prefetch_i32scatter_ps, _mm512_prefetch_i64scatter_pd,
+	_mm512_prefetch_i64scatter_ps, _mm512_mask_prefetch_i64scatter_pd,
+	_mm512_mask_prefetch_i64scatter_ps): Likewise.
+	* config/i386/avx512vlintrin.h (_mm256_mmask_i32gather_ps,
+	_mm_mmask_i32gather_ps, _mm256_mmask_i32gather_pd,
+	_mm_mmask_i32gather_pd, _mm256_mmask_i64gather_ps,
+	_mm_mmask_i64gather_ps, _mm256_mmask_i64gather_pd,
+	_mm_mmask_i64gather_pd, _mm256_mmask_i32gather_epi32,
+	_mm_mmask_i32gather_epi32, _mm256_mmask_i32gather_epi64,
+	_mm_mmask_i32gather_epi64, _mm256_mmask_i64gather_epi32,
+	_mm_mmask_i64gather_epi32, _mm256_mmask_i64gather_epi64,
+	_mm_mmask_i64gather_epi64, _mm256_i32scatter_ps,
+	_mm256_mask_i32scatter_ps, _mm_i32scatter_ps, _mm_mask_i32scatter_ps,
+	_mm256_i32scatter_pd, _mm256_mask_i32scatter_pd, _mm_i32scatter_pd,
+	_mm_mask_i32scatter_pd, _mm256_i64scatter_ps,
+	_mm256_mask_i64scatter_ps, _mm_i64scatter_ps, _mm_mask_i64scatter_ps,
+	_mm256_i64scatter_pd, _mm256_mask_i64scatter_pd, _mm_i64scatter_pd,
+	_mm_mask_i64scatter_pd, _mm256_i32scatter_epi32,
+	_mm256_mask_i32scatter_epi32, _mm_i32scatter_epi32,
+	_mm_mask_i32scatter_epi32, _mm256_i32scatter_epi64,
+	_mm256_mask_i32scatter_epi64, _mm_i32scatter_epi64,
+	_mm_mask_i32scatter_epi64, _mm256_i64scatter_epi32,
+	_mm256_mask_i64scatter_epi32, _mm_i64scatter_epi32,
+	_mm_mask_i64scatter_epi32, _mm256_i64scatter_epi64,
+	_mm256_mask_i64scatter_epi64, _mm_i64scatter_epi64,
+	_mm_mask_i64scatter_epi64): Likewise.
+
+2020-04-29  Jeff Law  <law@redhat.com>
+
+	* config/h8300/h8300.md (H8/SX div patterns): All H8/SX specific
+	division instructions are 4 bytes long.
+
+2020-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94826
+	* config/rs6000/rs6000.c (rs6000_atomic_assign_expand_fenv): Use
+	TARGET_EXPR instead of MODIFY_EXPR for first assignment to
+	fenv_var, fenv_clear and old_fenv variables.  For fenv_addr
+	take address of TARGET_EXPR of fenv_var with void_node initializer.
+	Formatting fixes.
+
+2020-04-29  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	PR tree-optimization/94774
+	* gimple-ssa-sprintf.c (try_substitute_return_value): Initialize
+	variable retval.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* calls.h (cxx17_empty_base_field_p): Turn into a function declaration.
+	* calls.c (cxx17_empty_base_field_p): New function.  Check
+	DECL_ARTIFICIAL and RECORD_OR_UNION_TYPE_P in addition to the
+	previous checks.
+
+2020-04-29  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/93654
+	* config/i386/i386-options.c (ix86_set_indirect_branch_type):
+	Allow -fcf-protection with -mindirect-branch=thunk-extern and
+	-mfunction-return=thunk-extern.
+	* doc/invoke.texi: Update notes for -fcf-protection=branch with
+	-mindirect-branch=thunk-extern and -mindirect-return=thunk-extern.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* doc/sourcebuild.texi: Add missing arm_arch_v8a_hard_ok anchor.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/arm/arm-builtins.c (arm_atomic_assign_expand_fenv): Use
+	TARGET_EXPR instead of MODIFY_EXPR for the first assignments to
+	fenv_var and new_fenv_var.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* doc/sourcebuild.texi (arm_arch_v8a_hard_ok): Document new
+	effective-target keyword.
+	(arm_arch_v8a_hard_multilib): Likewise.
+	(arm_arch_v8a_hard): Document new dg-add-options keyword.
+	* config/arm/arm.c (arm_return_in_memory): Note that the APCS
+	code is deprecated and has not been updated to handle
+	DECL_FIELD_ABI_IGNORED.
+	(WARN_PSABI_EMPTY_CXX17_BASE): New constant.
+	(WARN_PSABI_NO_UNIQUE_ADDRESS): Likewise.
+	(aapcs_vfp_sub_candidate): Replace the boolean pointer parameter
+	avoid_cxx17_empty_base with a pointer to a bitmask.  Ignore fields
+	whose DECL_FIELD_ABI_IGNORED bit is set when determining whether
+	something actually is a HFA or HVA.  Record whether we see a
+	[[no_unique_address]] field that previous GCCs would not have
+	ignored in this way.
+	(aapcs_vfp_is_call_or_return_candidate): Update the calls to
+	aapcs_vfp_sub_candidate and report a -Wpsabi warning for the
+	[[no_unique_address]] case.  Use TYPE_MAIN_VARIANT in the
+	diagnostic messages.
+	(arm_needs_doubleword_align): Add a comment explaining why we
+	consider even zero-sized fields.
+
+2020-04-29  Richard Biener  <rguenther@suse.de>
+	    Li Zekun  <lizekun1@huawei.com>
+
+	PR lto/94822
+	* tree.c (component_ref_size): Guard against error_mark_node
+	DECL_INITIAL as it happens with LTO.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.c (aarch64_function_arg_alignment): Add a
+	comment explaining why we consider even zero-sized fields.
+	(WARN_PSABI_EMPTY_CXX17_BASE): New constant.
+	(WARN_PSABI_NO_UNIQUE_ADDRESS): Likewise.
+	(aapcs_vfp_sub_candidate): Replace the boolean pointer parameter
+	avoid_cxx17_empty_base with a pointer to a bitmask.  Ignore fields
+	whose DECL_FIELD_ABI_IGNORED bit is set when determining whether
+	something actually is a HFA or HVA.  Record whether we see a
+	[[no_unique_address]] field that previous GCCs would not have
+	ignored in this way.
+	(aarch64_vfp_is_call_or_return_candidate): Add a parameter to say
+	whether diagnostics should be suppressed.  Update the calls to
+	aapcs_vfp_sub_candidate and report a -Wpsabi warning for the
+	[[no_unique_address]] case.
+	(aarch64_return_in_msb): Update call accordingly, never silencing
+	diagnostics.
+	(aarch64_function_value): Likewise.
+	(aarch64_return_in_memory_1): Likewise.
+	(aarch64_init_cumulative_args): Likewise.
+	(aarch64_gimplify_va_arg_expr): Likewise.
+	(aarch64_pass_by_reference_1): Take a CUMULATIVE_ARGS pointer and
+	use it to decide whether arch64_vfp_is_call_or_return_candidate
+	should be silent.
+	(aarch64_pass_by_reference): Update calls accordingly.
+	(aarch64_vfp_is_call_candidate): Use the CUMULATIVE_ARGS argument
+	to decide whether arch64_vfp_is_call_or_return_candidate should be
+	silent.
+
+2020-04-29  Haijian Zhang  <z.zhanghaijian@huawei.com>
+
+	PR target/94820
+	* config/aarch64/aarch64-builtins.c
+	(aarch64_atomic_assign_expand_fenv): Use TARGET_EXPR instead of
+	MODIFY_EXPR for first assignment to fenv_cr, fenv_sr and
+	new_fenv_var.
+
+2020-04-29  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* configure.ac <$enable_offload_targets>: Do parsing as done
+	elsewhere.
+	* configure: Regenerate.
+
+	* configure.ac <$enable_offload_targets>: 'amdgcn' is 'gcn'.
+	* configure: Regenerate.
+
+	PR target/94279
+	* rtlanal.c (set_noop_p): Handle non-constant selectors.
+
+	PR target/94282
+	* common/config/gcn/gcn-common.c (gcn_except_unwind_info): New
+	function.
+	(TARGET_EXCEPT_UNWIND_INFO): Define.
+
+2020-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94248
+	* config/gcn/gcn.md (*mov<mode>_insn): Use
+	'reg_overlap_mentioned_p' to check for overlap.
+
+	PR target/94706
+	* config/ia64/ia64.c (hfa_element_mode): Use DECL_FIELD_ABI_IGNORED
+	instead of cxx17_empty_base_field_p.
+
+	PR target/94707
+	* tree-core.h (tree_decl_common): Note decl_flag_0 used for
+	DECL_FIELD_ABI_IGNORED.
+	* tree.h (DECL_FIELD_ABI_IGNORED): Define.
+	* calls.h (cxx17_empty_base_field_p): Change into a temporary
+	macro, check DECL_FIELD_ABI_IGNORED flag with no "no_unique_address"
+	attribute.
+	* calls.c (cxx17_empty_base_field_p): Remove.
+	* tree-streamer-out.c (pack_ts_decl_common_value_fields): Handle
+	DECL_FIELD_ABI_IGNORED.
+	* tree-streamer-in.c (unpack_ts_decl_common_value_fields): Likewise.
+	* lto-streamer-out.c (hash_tree): Likewise.
+	* config/rs6000/rs6000-call.c (rs6000_aggregate_candidate): Rename
+	cxx17_empty_base_seen to empty_base_seen, change type to int *,
+	adjust recursive calls, use DECL_FIELD_ABI_IGNORED instead of
+	cxx17_empty_base_field_p, if "no_unique_address" attribute is
+	present, propagate that to the caller too.
+	(rs6000_discover_homogeneous_aggregate): Adjust
+	rs6000_aggregate_candidate caller, emit different diagnostics
+	when c++17 empty base fields are present and when empty
+	[[no_unique_address]] fields are present.
+	* config/rs6000/rs6000.c (rs6000_special_round_type_align,
+	darwin_rs6000_special_round_type_align): Skip DECL_FIELD_ABI_IGNORED
+	fields.
+
+2020-04-29  Richard Biener  <rguenther@suse.de>
+
+	* tree-ssa-loop-im.c (ref_always_accessed::operator ()):
+	Just check whether the stmt stores.
+
+2020-04-28  Alexandre Oliva <oliva@adacore.com>
+
+	PR target/94812
+	* gcc/config/rs6000/rs6000.md (rs6000_mffsl): Copy result to
+	output operand in emulation.  Don't overwrite pseudos.
+
+2020-04-28  Jeff Law  <law@redhat.com>
+
+	* config/h8300/h8300.md (H8/SX mult patterns): All H8/SX specific
+	multiply patterns are 4 bytes long.
+
+2020-04-28  Kyrylo Tkachov  <kyrylo.tkachov@arm.com>
+
+	* config/arm/arm-cpus.in (cortex-m55): Remove +nofp option.
+	* doc/invoke.texi (Arm Options): Remove -mcpu=cortex-m55 from +nofp option.
+
+2020-04-28  Matthew Malcomson  <matthew.malcomson@arm.com>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94711
+	* config/arm/arm.c (aapcs_vfp_sub_candidate): Account for C++17 empty
+	base class artificial fields.
+	(aapcs_vfp_is_call_or_return_candidate): Warn when PCS ABI
+	decision is different after this fix.
+
+2020-04-28  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/94447
+	PR analyzer/94639
+	PR analyzer/94732
+	PR analyzer/94754
+	* doc/invoke.texi (Static Analyzer Options): Remove
+	-Wanalyzer-use-of-uninitialized-value.
+	(-Wno-analyzer-use-of-uninitialized-value): Remove item.
+
+2020-04-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/94809
+	* tree.c (build_call_expr_internal_loc_array): Call
+	process_call_operands.
+
+2020-04-27  Anton Youdkevitch  <anton.youdkevitch@bell-sw.com>
+
+	* config/aarch64/aarch64-cores.def (thunderx3t110): Add the chip name.
+	* config/aarch64/aarch64-tune.md: Regenerate.
+	* config/aarch64/aarch64.c (thunderx3t110_addrcost_table): Define.
+	(thunderx3t110_regmove_cost): Likewise.
+	(thunderx3t110_vector_cost): Likewise.
+	(thunderx3t110_prefetch_tune): Likewise.
+	(thunderx3t110_tunings): Likewise.
+	* config/aarch64/aarch64-cost-tables.h (thunderx3t110_extra_costs):
+	Define.
+	* config/aarch64/thunderx3t110.md: New file.
+	* config/aarch64/aarch64.md: Include thunderx3t110.md.
+	* doc/invoke.texi (AArch64 options): Add thunderx3t110.
+
+2020-04-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94704
+	* config/s390/s390.c (s390_function_arg_vector,
+	s390_function_arg_float): Emit -Wpsabi diagnostics if the ABI changed.
+
+2020-04-28  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/94727
+	* tree-vect-stmts.c (vect_is_simple_cond): If both comparison
+	operands are invariant booleans, use the mask type associated with the
+	STMT_VINFO_VECTYPE.  Use !slp_node instead of !vectype to exclude SLP.
+	(vectorizable_condition): Pass vectype unconditionally to
+	vect_is_simple_cond.
+
+2020-04-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94780
+	* config/i386/i386.c (ix86_atomic_assign_expand_fenv): Use
+	TARGET_EXPR instead of MODIFY_EXPR for first assignment to
+	sw_var, exceptions_var, mxcsr_orig_var and mxcsr_mod_var.
+
+2020-04-27  David Malcolm  <dmalcolm@redhat.com>
+
+	PR 92830
+	* configure.ac (DOCUMENTATION_ROOT_URL): Drop trailing "gcc/" from
+	default value, so that it can by supplied by get_option_html_page.
+	* configure: Regenerate.
+	* opts.c: Include "selftest.h".
+	(get_option_html_page): New function.
+	(get_option_url): Use it.  Reformat to place comments next to the
+	expressions they refer to.
+	(selftest::test_get_option_html_page): New.
+	(selftest::opts_c_tests): New.
+	* selftest-run-tests.c (selftest::run_tests): Call
+	selftest::opts_c_tests.
+	* selftest.h (selftest::opts_c_tests): New decl.
+
+2020-04-27  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/arm/arm-builtins.c (arm_expand_builtin_args): Only apply
+	UINTVAL to CONST_INTs.
+
+2020-04-27  Srinath Parvathaneni  <srinath.parvathaneni@arm.com>
+
+	* config/arm/constraints.md (e): Remove constraint.
+	(Te): Define constraint.
+	* config/arm/mve.md (vaddvq_<supf><mode>): Modify constraint in
+	operand 0 from "e" to "Te".
+	(vaddvaq_<supf><mode>): Likewise.
+	(vaddvq_p_<supf><mode>): Likewise.
+	(vmladavq_<supf><mode>): Likewise.
+	(vmladavxq_s<mode>): Likewise.
+	(vmlsdavq_s<mode>): Likewise.
+	(vmlsdavxq_s<mode>): Likewise.
+	(vaddvaq_p_<supf><mode>): Likewise.
+	(vmladavaq_<supf><mode>): Likewise.
+	(vmladavq_p_<supf><mode>): Likewise.
+	(vmladavxq_p_s<mode>): Likewise.
+	(vmlsdavq_p_s<mode>): Likewise.
+	(vmlsdavxq_p_s<mode>): Likewise.
+	(vmlsdavaxq_s<mode>): Likewise.
+	(vmlsdavaq_s<mode>): Likewise.
+	(vmladavaxq_s<mode>): Likewise.
+	(vmladavaq_p_<supf><mode>): Likewise.
+	(vmladavaxq_p_s<mode>): Likewise.
+	(vmlsdavaq_p_s<mode>): Likewise.
+	(vmlsdavaxq_p_s<mode>): Likewise.
+
+2020-04-27  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	* config/arm/arm.c (output_move_neon): Only get the first operand if
+	addr is PLUS.
+
+2020-04-27  Felix Yang  <felix.yang@huawei.com>
+
+	PR tree-optimization/94784
+	* tree-ssa-forwprop.c (simplify_vector_constructor): Flip the
+	assert around so that it checks that the two vectors have equal
+	TYPE_VECTOR_SUBPARTS and that converting the corresponding element
+	types is a useless_type_conversion_p.
+
+2020-04-27  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	PR target/94515
+	* dwarf2cfi.c (struct GTY): Add ra_mangled.
+	(cfi_row_equal_p): Check ra_mangled.
+	(dwarf2out_frame_debug_cfa_window_save): Remove the argument,
+	this only handles the sparc logic now.
+	(dwarf2out_frame_debug_cfa_toggle_ra_mangle): New function for
+	the aarch64 specific logic.
+	(dwarf2out_frame_debug): Update to use the new subroutines.
+	(change_cfi_row): Check ra_mangled.
+
+2020-04-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94704
+	* config/s390/s390.c (s390_function_arg_vector,
+	s390_function_arg_float): Ignore cxx17_empty_base_field_p fields.
+
+2020-04-27  Jiufu Guo   <guojiufu@cn.ibm.com>
+
+	* common/config/rs6000/rs6000-common.c
+	(rs6000_option_optimization_table) [OPT_LEVELS_ALL]: Remove turn off
+	-fweb.
+	* config/rs6000/rs6000.c (rs6000_option_override_internal): Avoid to
+	set flag_web.
+
+2020-04-27  Martin Liska  <mliska@suse.cz>
+
+	PR lto/94659
+	* cgraph.h (cgraph_node::can_remove_if_no_direct_calls_and_refs_p):
+	Do not remove ifunc_resolvers in remove unreachable nodes in LTO.
+
 2020-04-27  Xiong Hu Luo  <luoxhu@linux.ibm.com>
 
 	PR target/91518

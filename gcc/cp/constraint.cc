@@ -546,12 +546,16 @@ static tree
 map_arguments (tree parms, tree args)
 {
   for (tree p = parms; p; p = TREE_CHAIN (p))
-    {
-      int level;
-      int index;
-      template_parm_level_and_index (TREE_VALUE (p), &level, &index);
-      TREE_PURPOSE (p) = TMPL_ARG (args, level, index);
-    }
+    if (args)
+      {
+	int level;
+	int index;
+	template_parm_level_and_index (TREE_VALUE (p), &level, &index);
+	TREE_PURPOSE (p) = TMPL_ARG (args, level, index);
+      }
+    else
+      TREE_PURPOSE (p) = TREE_VALUE (p);
+
   return parms;
 }
 
@@ -2005,8 +2009,6 @@ tsubst_compound_requirement (tree t, tree args, subst_info info)
 static tree
 tsubst_nested_requirement (tree t, tree args, subst_info info)
 {
-  gcc_assert (!uses_template_parms (args));
-
   /* Ensure that we're in an evaluation context prior to satisfaction.  */
   tree norm = TREE_VALUE (TREE_TYPE (t));
   tree result = satisfy_constraint (norm, args, info);
@@ -2752,7 +2754,7 @@ satisfy_declaration_constraints (tree t, subst_info info)
   info.in_decl = t;
 
   if (info.quiet ())
-    if (tree *result = hash_map_safe_get (decl_satisfied_cache, t))
+    if (tree *result = hash_map_safe_get (decl_satisfied_cache, saved_t))
       return *result;
 
   /* Get the normalized constraints.  */
@@ -2787,7 +2789,7 @@ satisfy_declaration_constraints (tree t, subst_info info)
     }
 
   if (info.quiet ())
-    hash_map_safe_put<hm_ggc> (decl_satisfied_cache, t, result);
+    hash_map_safe_put<hm_ggc> (decl_satisfied_cache, saved_t, result);
 
   return result;
 }
@@ -2953,12 +2955,15 @@ finish_compound_requirement (location_t loc, tree expr, tree type, bool noexcept
 tree
 finish_nested_requirement (location_t loc, tree expr)
 {
+  /* Currently open template headers have dummy arg vectors, so don't
+     pass into normalization.  */
+  tree norm = normalize_constraint_expression (expr, NULL_TREE, false);
+  tree args = current_template_parms
+    ? template_parms_to_args (current_template_parms) : NULL_TREE;
+
   /* Save the normalized constraint and complete set of normalization
      arguments with the requirement.  We keep the complete set of arguments
      around for re-normalization during diagnostics.  */
-  tree args = current_template_parms
-    ? template_parms_to_args (current_template_parms) : NULL_TREE;
-  tree norm = normalize_constraint_expression (expr, args, false);
   tree info = build_tree_list (args, norm);
 
   /* Build the constraint, saving its normalization as its type.  */
