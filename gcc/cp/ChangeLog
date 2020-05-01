@@ -1,3 +1,217 @@
+2020-03-04  Release Manager
+
+	* GCC 8.4.0 released.
+
+2020-02-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/93905
+	Backported from mainline
+	2018-11-04  Jason Merrill  <jason@redhat.com>
+
+	* constexpr.c (cxx_eval_outermost_constant_expr): Don't wrap a
+	CONSTRUCTOR if one was passed in.
+
+2020-02-26  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/90998 - ICE with copy elision in init by ctor and -Wconversion.
+	* call.c (joust): Don't attempt to warn if ->second_conv is null.
+
+2020-02-26  Jason Merrill  <jason@redhat.com>
+
+	PR c++/86521 - C++17 copy elision in initialization by constructor.
+	* call.c (joust_maybe_elide_copy): New.
+	(joust): Call it.
+
+2020-02-26  Jason Merrill  <jason@redhat.com>
+
+	PR c++/90546
+	* call.c (build_user_type_conversion_1): Allow a template conversion
+	returning an rvalue reference to bind directly to an lvalue.
+
+2020-02-26  Jason Merrill  <jason@redhat.com>
+
+	PR c++/86521 - wrong overload resolution with ref-qualifiers.
+	* call.c (build_user_type_conversion_1): Don't use a conversion to a
+	reference of the wrong rvalueness for direct binding.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/89831 - error with qualified-id in const member function.
+	* semantics.c (finish_non_static_data_member): Use object cv-quals
+	in scoped case, too.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/88380 - wrong-code with flexible array and NSDMI.
+	* typeck2.c (process_init_constructor_record): Skip flexarrays.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/87685 - generic lambda 'this' capture error.
+	* lambda.c (lambda_expr_this_capture): Change add_capture_p to int.
+	(maybe_generic_this_capture): Pass -1.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/87554 - ICE with extern template and reference member.
+	* decl.c (cp_finish_decl): Don't set DECL_INITIAL of external vars.
+
+2020-02-25  Alexandre Oliva <aoliva@redhat.com>
+
+	PR c++/86747
+	* pt.c (tsubst_friend_class): Enter tsubsted class context.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/86429 - constexpr variable in lambda.
+	PR c++/82643
+	PR c++/87327
+	* constexpr.c (cxx_eval_constant_expression): In a lambda function,
+	try evaluating the captured variable directly.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	* cp-tree.h (TYPE_REF_P): New.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/87748 - substitution failure error with decltype.
+	* pt.c (most_specialized_partial_spec): Clear
+	processing_template_decl.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/87480 - decltype of member access in default template arg
+	* pt.c (type_unification_real): Accept a dependent result in
+	template context.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/88394 - ICE with VLA init-capture.
+	* lambda.c (is_normal_capture_proxy): Check DECL_CAPTURED_VARIABLE.
+
+2019-02-05  Alexandre Oliva <aoliva@redhat.com>
+
+	PR c++/87770
+	* pt.c (instantiates_primary_template_p): New.
+	(type_dependent_expression_p): Use it.
+
+2020-02-25  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/92745 - bogus error when initializing array of vectors.
+	* decl.c (reshape_init_r): For a nested compound literal, do
+	call reshape_init_{class,array,vector}.
+
+2020-02-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/89917 - ICE with lambda in variadic mem-init.
+	* pt.c (make_pack_expansion): Change type_pack_expansion_p to false.
+
+2020-02-24  Jason Merrill  <jason@redhat.com>
+
+	PR c++/90951
+	* constexpr.c (cxx_eval_array_reference): {}-initialize missing
+	elements instead of value-initializing them.
+
+2020-02-24  Jason Merrill  <jason@redhat.com>
+
+	PR c++/93140
+	* pt.c (tsubst_decl) [PARM_DECL]: Check cp_unevaluated_operand in
+	handling of TREE_CHAIN for empty pack.
+
+2020-02-24  Jason Merrill  <jason@redhat.com>
+
+	PR c++/92852
+	* constexpr.c (maybe_constant_value): Don't unshare if the cached
+	value is the same as the argument.
+
+2020-02-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/61414
+	* class.c (enum_min_precision): Change prec type from int to int &.
+
+2020-02-14  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2020-01-17  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/93228
+	* parser.c (cp_parser_template_name): Look up deprecated attribute
+	in DECL_TEMPLATE_RESULT or its type's attributes.
+
+	2019-12-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92438
+	* parser.c (cp_parser_constructor_declarator_p): If open paren
+	is followed by RID_ATTRIBUTE, skip over the attribute tokens and
+	try to parse type specifier.
+
+	2019-12-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92992
+	* call.c (convert_arg_to_ellipsis): For decltype(nullptr) arguments
+	that have side-effects use cp_build_compound_expr.
+
+	2019-12-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92732
+	* typeck2.c (digest_nsdmi_init): For bitfields, use
+	DECL_BIT_FIELD_TYPE instead of TREE_TYPE.
+
+	2019-11-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/60228
+	* parser.c (cp_parser_omp_declare_reduction_exprs): If
+	processing_template_decl, wrap the combiner or initializer
+	into EXPR_STMT.
+	* decl.c (start_preparsed_function): Don't start a lambda scope
+	for DECL_OMP_DECLARE_REDUCTION_P functions.
+	(finish_function): Don't finish a lambda scope for
+	DECL_OMP_DECLARE_REDUCTION_P functions, nor cp_fold_function
+	them nor cp_genericize them.
+	* mangle.c (decl_mangling_context): Look through
+	DECL_OMP_DECLARE_REDUCTION_P functions.
+	* semantics.c (expand_or_defer_fn_1): For DECL_OMP_DECLARE_REDUCTION_P
+	functions, use tentative linkage, don't keep their bodies with
+	-fkeep-inline-functions and return false at the end.
+
+	2019-11-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92524
+	* tree.c (replace_placeholders_r): Don't walk constructor elts with
+	RANGE_EXPR indexes.
+
+	2019-11-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92648
+	* parser.c (cp_parser_std_attribute): For unknown attributes,
+	skip balanced token seq instead of trying to parse
+	attribute-argument-clause as expression list.
+
+	PR c++/61414
+	* class.c (enum_to_min_precision): New hash_map.
+	(enum_min_precision): New function.
+	(check_bitfield_decl): Use it.
+
+	2019-11-21  Jakub Jelinek  <jakub@redhat.com>
+		    Jason Merrill  <jason@redhat.com>
+
+	PR c++/90842
+	* parser.c (cp_parser_decl_specifier_seq): For concept or typedef
+	break early if CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR.
+	For type specifiers, set CP_PARSER_FLAGS_NO_TYPE_DEFINITIONS
+	if CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR is set.
+
+2020-01-27  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/91826
+	* name-lookup.c (is_ancestor): Allow CHILD to be a namespace alias.
+
+2020-01-24  Jason Merrill  <jason@redhat.com>
+
+	PR c++/92852 - ICE with generic lambda and reference var.
+	* constexpr.c (maybe_constant_value): Likewise.
+
 2019-12-11  Jason Merrill  <jason@redhat.com>
 
 	PR c++/92859 - ADL and bit-field.

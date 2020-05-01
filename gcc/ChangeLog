@@ -1,3 +1,622 @@
+2020-03-04  Release Manager
+
+	* GCC 8.4.0 released.
+
+2020-03-02  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2020-02-28  Martin Liska  <mliska@suse.cz>
+
+	PR other/93965
+	* configure.ac: Improve detection of ld_date by requiring
+	either two dashes or none.
+	* configure: Regenerate.
+
+2020-02-29  Peter Bergner  <bergner@linux.ibm.com>
+
+	Revert
+	2020-02-20  Peter Bergner  <bergner@linux.ibm.com>
+
+	PR target/93658
+	* config/rs6000/rs6000.c (rs6000_legitimate_address_p): Handle VSX
+	vector modes.
+
+	2020-02-03  Michael Meissner  <meissner@linux.ibm.com>
+
+	* config/rs6000/rs6000.c (get_vector_offset): New helper function
+	to calculate the offset in memory from the start of a vector of a
+	particular element.  Add code to keep the element number in
+	bounds if the element number is variable.
+	(rs6000_adjust_vec_address): Move calculation of offset of the
+	vector element to get_vector_offset.
+	(rs6000_split_vec_extract_var): Do not do the initial AND of
+	element here, move the code to get_vector_offset.
+
+	2020-02-05  Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/93568
+	* config/rs6000/rs6000.c (get_vector_offset): Fix Q constraint assert
+	to use MEM.
+
+	2020-01-06  Michael Meissner  <meissner@linux.ibm.com>
+
+	* config/rs6000/vsx.md (vsx_extract_<mode>_var, VSX_D iterator):
+	Use 'Q' for doing vector extract from memory.
+	(vsx_extract_v4sf_var): Use 'Q' for doing vector extract from
+	memory.
+	(vsx_extract_<mode>_var, VSX_EXTRACT_I iterator): Use 'Q' for
+	doing vector extract from memory.
+	(vsx_extract_<mode>_<VS_scalar>mode_var): Use 'Q' for doing vector
+	extract from memory.
+
+2020-02-26  Carl Love  <cel@us.ibm.com>
+
+	PR target/91276
+	* doc/extend.texi (PowerPC AltiVec Built-in Functions): The
+	builtin-function name __builtin_crypto_vpmsumb is only for the
+	vector unsigned short arguments.  It is also listed as the name of
+	the built-in for arguments vector unsigned short,
+	vector unsigned int and vector unsigned long long built-ins.  The
+	name of the builtins for these arguments should be:
+	__builtin_crypto_vpmsumh, __builtin_crypto_vpmsumw and
+	__builtin_crypto_vpmsumd respectively.
+
+2020-02-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/93820
+	* gimple-ssa-store-merging.c (check_no_overlap): Change RHS_CODE
+	argument to ALL_INTEGER_CST_P boolean.
+	(imm_store_chain_info::try_coalesce_bswap): Adjust caller.
+	(imm_store_chain_info::coalesce_immediate_stores): Likewise.  Handle
+	adjacent INTEGER_CST store into merged_store->only_constants like
+	overlapping one.
+
+2020-02-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/93908
+	* combine.c (find_split_point): For store into ZERO_EXTRACT, and src
+	with mask.
+
+2019-02-25  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* dwarf2out.c (dwarf2out_size_function): Run in early-DWARF mode.
+
+2020-02-25  Roman Zhuykov  <zhroma@ispras.ru>
+
+	Backport from master
+	2020-02-24  Roman Zhuykov  <zhroma@ispras.ru>
+
+	* doc/install.texi (--enable-checking): Properly document current
+	behavior.
+	(--enable-stage1-checking): Minor clarification about bootstrap.
+
+2020-02-25  Richard Sandiford  <richard.sandiford@arm.com>
+
+	Backport from mainline
+	2020-02-19  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/93767
+	* tree-vect-data-refs.c (vect_compile_time_alias): Remove the
+	access-size bias from the offset calculations for negative strides.
+
+2020-02-25  Richard Sandiford  <richard.sandiford@arm.com>
+
+	Backport from mainline
+	2020-01-28  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/93434
+	* tree-predcom.c (split_data_refs_to_components): Record which
+	components have had aliasing loads removed.  Prevent store-store
+	commoning for all such components.
+
+2020-02-25  Richard Sandiford  <richard.sandiford@arm.com>
+
+	Backport from mainline
+	2019-12-05  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR middle-end/92768
+	* tree-core.h (OEP_BITWISE): New flag.
+	* fold-const.c (operand_compare::operand_equal_p): Handle it.
+	* tree-vector-builder.h (tree_vector_builder::equal_p): Pass it.
+
+2020-02-25  Richard Sandiford  <richard.sandiford@arm.com>
+
+	Backport from mainline
+	2019-11-11  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR tree-optimization/92420
+	* tree-vect-stmts.c (get_negative_load_store_type): Move further
+	up file.
+	(get_group_load_store_type): Use it for reversed SLP accesses.
+
+2020-02-25  Richard Sandiford  <richard.sandiford@arm.com>
+
+	Backport from mainline
+	2019-08-09  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR middle-end/90313
+	* tree-tailcall.c (find_tail_calls): Reject calls that might
+	read from an escaped RESULT_DECL.
+
+2020-02-24  Jason Merrill  <jason@redhat.com>
+
+	PR c++/92003
+	* symtab.c (symtab_node::nonzero_address): A DECL_COMDAT decl has
+	non-zero address even if weak and not yet defined.
+
+2020-02-23  Peter Bergner  <bergner@linux.ibm.com>
+
+	Backport from master
+	2020-02-20  Peter Bergner  <bergner@linux.ibm.com>
+
+	PR target/93658
+	* config/rs6000/rs6000.c (rs6000_legitimate_address_p): Handle VSX
+	vector modes.
+
+2020-02-23  Peter Bergner  <bergner@linux.ibm.com>
+
+	Backport from master
+	2020-02-03  Michael Meissner  <meissner@linux.ibm.com>
+
+	* config/rs6000/rs6000.c (get_vector_offset): New helper function
+	to calculate the offset in memory from the start of a vector of a
+	particular element.  Add code to keep the element number in
+	bounds if the element number is variable.
+	(rs6000_adjust_vec_address): Move calculation of offset of the
+	vector element to get_vector_offset.
+	(rs6000_split_vec_extract_var): Do not do the initial AND of
+	element here, move the code to get_vector_offset.
+
+	Backport from master
+	2020-02-05  Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/93568
+	* config/rs6000/rs6000.c (get_vector_offset): Fix Q constraint assert
+	to use MEM.
+
+2020-02-23  Peter Bergner  <bergner@linux.ibm.com>
+
+	Backport from master
+	2020-01-06  Michael Meissner  <meissner@linux.ibm.com>
+
+	* config/rs6000/vsx.md (vsx_extract_<mode>_var, VSX_D iterator):
+	Use 'Q' for doing vector extract from memory.
+	(vsx_extract_v4sf_var): Use 'Q' for doing vector extract from
+	memory.
+	(vsx_extract_<mode>_var, VSX_EXTRACT_I iterator): Use 'Q' for
+	doing vector extract from memory.
+	(vsx_extract_<mode>_<VS_scalar>mode_var): Use 'Q' for doing vector
+	extract from memory.
+
+2020-02-21  John David Anglin  <danglin@gcc.gnu.org>
+
+	* gcc/config/pa/pa.c (pa_function_value): Fix check for word and
+	double-word size when handling aggregate return values.
+	* gcc/config/pa/som.h (ASM_DECLARE_FUNCTION_NAME): Fix to indicate
+	that homogeneous SFmode and DFmode aggregates are passed and returned
+	in general registers.
+
+2020-02-20  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/93828
+	* config/i386/mmx.md (*vec_extractv2sf_1): Match source operand
+	to destination operand for shufps alternative.
+	(*vec_extractv2si_1): Ditto.
+
+2020-02-20  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	* collect2.c (tool_cleanup): Avoid calling not signal-safe
+	functions.
+	(maybe_run_lto_and_relink): Avoid possible signal handler
+	access to unintialzed memory (lto_o_files).
+
+2020-02-20  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backport from master
+	2020-02-13  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/93656
+	* config/i386/i386.c (ix86_trampoline_init): Skip ENDBR32 at
+	the target function entry.
+
+2020-02-17  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-01-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/93381
+	* tree-ssa-structalias.c (find_func_aliases): Assume offsetting
+	throughout, handle all conversions the same.
+
+2020-02-17  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-01-28  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/93439
+	* tree-parloops.c (create_loop_fn): Move clique bookkeeping...
+	* tree-cfg.c (move_sese_region_to_fn): ... here.
+	(verify_types_in_gimple_reference): Verify used cliques are
+	tracked.
+
+2020-02-17  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-01-09  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/93054
+	* gimplify.c (gimplify_expr): Deal with NOP definitions.
+
+2020-02-17  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2020-01-20  Richard Biener  <rguenther@suse.de>
+
+	PR debug/92763
+	* dwarf2out.c (prune_unused_types): Unconditionally mark
+	called function DIEs.
+
+2020-02-17  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2019-11-29  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/92704
+	* tree-if-conv.c (combine_blocks): Deal with virtual PHIs
+	in loops performing only loads.
+
+2020-02-17  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	2019-11-27  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/92674
+	* tree-inline.c (expand_call_inline): Delay purging EH/abnormal
+	edges and instead record blocks in bitmap.
+	(gimple_expand_calls_inline): Adjust.
+	(fold_marked_statements): Delay EH cleanup until all folding is
+	done.
+	(optimize_inline_calls): Do EH/abnormal cleanup for calls after
+	inlining finished.
+
+2020-02-14 Hongtao Liu  <hongtao.liu@intel.com>
+
+	PR target/93724
+	* config/i386/avx512vbmi2intrin.h
+	(_mm512_shrdi_epi16, _mm512_mask_shrdi_epi16,
+	_mm512_maskz_shrdi_epi16, _mm512_shrdi_epi32,
+	_mm512_mask_shrdi_epi32, _mm512_maskz_shrdi_epi32,
+	_m512_shrdi_epi64, _m512_mask_shrdi_epi64,
+	_m512_maskz_shrdi_epi64, _mm512_shldi_epi16,
+	_mm512_mask_shldi_epi16, _mm512_maskz_shldi_epi16,
+	_mm512_shldi_epi32, _mm512_mask_shldi_epi32,
+	_mm512_maskz_shldi_epi32, _mm512_shldi_epi64,
+	_mm512_mask_shldi_epi64, _mm512_maskz_shldi_epi64): Fix typo
+	of lacking a closing parenthesis.
+	* config/i386/avx512vbmi2vlintrin.h
+	(_mm256_shrdi_epi16, _mm256_mask_shrdi_epi16,
+	_mm256_maskz_shrdi_epi16, _mm256_shrdi_epi32,
+	_mm256_mask_shrdi_epi32, _mm256_maskz_shrdi_epi32,
+	_m256_shrdi_epi64, _m256_mask_shrdi_epi64,
+	_m256_maskz_shrdi_epi64, _mm256_shldi_epi16,
+	_mm256_mask_shldi_epi16, _mm256_maskz_shldi_epi16,
+	_mm256_shldi_epi32, _mm256_mask_shldi_epi32,
+	_mm256_maskz_shldi_epi32, _mm256_shldi_epi64,
+	_mm256_mask_shldi_epi64, _mm256_maskz_shldi_epi64,
+	_mm_shrdi_epi16, _mm_mask_shrdi_epi16,
+	_mm_maskz_shrdi_epi16, _mm_shrdi_epi32,
+	_mm_mask_shrdi_epi32, _mm_maskz_shrdi_epi32,
+	_mm_shrdi_epi64, _mm_mask_shrdi_epi64,
+	_m_maskz_shrdi_epi64, _mm_shldi_epi16,
+	_mm_mask_shldi_epi16, _mm_maskz_shldi_epi16,
+	_mm_shldi_epi32, _mm_mask_shldi_epi32,
+	_mm_maskz_shldi_epi32, _mm_shldi_epi64,
+	_mm_mask_shldi_epi64, _mm_maskz_shldi_epi64): Ditto.
+
+2020-02-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/93744
+	* match.pd (((m1 >/</>=/<= m2) * d -> (m1 >/</>=/<= m2) ? d : 0): For
+	GENERIC, make sure @2 in the first and @1 in the other patterns has no
+	side-effects.
+
+2020-02-14  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR target/93704
+	* config/sparc/sparc.c (eligible_for_call_delay): Test HAVE_GNU_LD in
+	conjunction with TARGET_GNU_TLS in early return.
+
+2020-02-14  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2020-02-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/93696
+	* config/i386/avx512bitalgintrin.h (_mm512_mask_popcnt_epi8,
+	_mm512_mask_popcnt_epi16, _mm256_mask_popcnt_epi8,
+	_mm256_mask_popcnt_epi16, _mm_mask_popcnt_epi8,
+	_mm_mask_popcnt_epi16): Rename __B argument to __A and __A to __W,
+	pass __A to the builtin followed by __W instead of __A followed by
+	__B.
+	* config/i386/avx512vpopcntdqintrin.h (_mm512_mask_popcnt_epi32,
+	_mm512_mask_popcnt_epi64): Likewise.
+	* config/i386/avx512vpopcntdqvlintrin.h (_mm_mask_popcnt_epi32,
+	_mm256_mask_popcnt_epi32, _mm_mask_popcnt_epi64,
+	_mm256_mask_popcnt_epi64): Likewise.
+
+	PR target/93673
+	* config/i386/sse.md (k<code><mode>): Drop mode from last operand and
+	use const_0_to_255_operand predicate instead of immediate_operand.
+	(avx512dq_fpclass<mode><mask_scalar_merge_name>,
+	avx512dq_vmfpclass<mode><mask_scalar_merge_name>,
+	vgf2p8affineinvqb_<mode><mask_name>,
+	vgf2p8affineqb_<mode><mask_name>): Drop mode from
+	const_0_to_255_operand predicated operands.
+
+	2020-02-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/93670
+	* config/i386/sse.md (VI48F_256_DQ): New mode iterator.
+	(avx512vl_vextractf128<mode>): Use it instead of VI48F_256.  Remove
+	TARGET_AVX512DQ from condition.
+	(vec_extract_lo_<mode><mask_name>): Use <mask_avx512dq_condition>
+	instead of <mask_mode512bit_condition> in condition.  If
+	TARGET_AVX512DQ is false, emit vextract*64x4 instead of
+	vextract*32x8.
+	(vec_extract_lo_<mode><mask_name>): Drop <mask_avx512dq_condition>
+	from condition.
+
+	2020-02-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/93637
+	* config/i386/sse.md (VI_256_AVX2): New mode iterator.
+	(vcond_mask_<mode><sseintvecmodelower>): Use it instead of VI_256.
+	Change condition from TARGET_AVX2 to TARGET_AVX.
+
+	2020-02-08  Uroš Bizjak  <ubizjak@gmail.com>
+		    Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/65782
+	* config/i386/i386.h (CALL_USED_REGISTERS): Make
+	xmm16-xmm31 call-used even in 64-bit ms-abi.
+
+	2020-02-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/93515
+	* omp-low.c (use_pointer_for_field): For nested constructs, also
+	look for map clauses on target construct.
+	(scan_omp_1_stmt) <case GIMPLE_OMP_TARGET>: Bump temporarily
+	taskreg_nesting_level.
+
+	2020-02-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/93555
+	* omp-simd-clone.c (expand_simd_clones): If simd_clone_mangle or
+	simd_clone_create failed when i == 0, adjust clone->nargs by
+	clone->inbranch.
+
+	2020-01-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/93505
+	* combine.c (simplify_comparison) <case ROTATE>: Punt on out of range
+	rotate counts.
+
+	2020-01-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/93402
+	* postreload.c (reload_combine_recognize_pattern): Don't try to adjust
+	USE insns.
+
+	2020-01-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/91298
+	* output.h (assemble_name_resolve): Declare.
+	* varasm.c (assemble_name_resolve): New function.
+	(assemble_name): Use it.
+	* config/i386/i386.h (ASM_OUTPUT_SYMBOL_REF): Define.
+
+	2020-01-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/93333
+	* config/riscv/riscv.c (riscv_rtx_costs) <case ZERO_EXTRACT>: Verify
+	the last two operands are CONST_INT_P before using them as such.
+
+	PR target/93073
+	* config/rs6000/rs6000.c (rs6000_emit_cmove): If using fsel, punt for
+	compare_mode other than SFmode or DFmode.
+
+	2020-01-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR inline-asm/93202
+	* config/riscv/riscv.c (riscv_print_operand_reloc): Use
+	output_operand_lossage instead of gcc_unreachable.
+	* doc/md.texi (riscv f constraint): Fix typo.
+
+	2020-01-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/93088
+	* loop-iv.c (find_single_def_src): Punt after looking through
+	128 reg copies for regs with single definitions.  Move definitions
+	to first uses.
+
+	2020-01-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR ipa/93087
+	* predict.c (compute_function_frequency): Don't call
+	warn_function_cold on functions that already have cold attribute.
+
+	2019-12-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR ipa/92357
+	* ipa-fnsummary.c (ipa_fn_summary_write): Use
+	lto_symtab_encoder_iterator with lsei_start_function_in_partition and
+	lsei_next_function_in_partition instead of walking all cgraph nodes
+	in encoder.
+
+	PR tree-optimization/92930
+	* ipa-pure-const.c (special_builtin_state): Don't handle
+	BUILT_IN_APPLY.
+
+	2019-12-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/92904
+	* config/i386/i386.c (ix86_gimplify_va_arg): If need_intregs and
+	not need_temp, decrease alignment of the read because the GPR save
+	area only guarantees 8-byte alignment.
+
+	2019-12-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/92723
+	* tree-vect-patterns.c (vect_recog_rotate_pattern): If dt is not
+	vect_internal_def, use oprnd1 as is, without trying to cast it.
+	Formatting fix.
+
+	2019-11-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/92664
+	* dwarf2out.c (lookup_filename): Use "<stdin>" instead of "".
+
+	2019-11-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/92615
+	* config/i386/i386.c (ix86_md_asm_adjust): If dest_mode is
+	GET_MODE (dest), is not QImode, using ZERO_EXTEND and dest is not
+	register_operand, force x into register before storing it into dest.
+	Formatting fix.
+
+2020-02-14  Richard Biener  <rguenther@suse.de>
+
+	Backport from mainline
+	PR middle-end/93246
+	* alias.c (record_component_aliases): Take superset to record
+	into, recurse for alias-set zero fields.
+	(record_component_aliases): New oveerload wrapping around the above.
+
+2020-02-11  Tamar Christina  <tamar.christina@arm.com>
+
+	Backport from mainline
+	2020-01-31  Tamar Christina  <tamar.christina@arm.com>
+
+	PR rtl-optimization/91838
+	* simplify-rtx.c (simplify_binary_operation_1): Update LSHIFTRT case
+	to truncate if allowed or reject combination.
+
+2020-01-27  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	PR target/92692
+	* config/aarch64/aarch64.c (aarch64_split_compare_and_swap)
+	Add assert to ensure prolog has been emitted.
+	(aarch64_split_atomic_op): Likewise.
+	* config/aarch64/atomics.md (aarch64_compare_and_swap<mode>)
+	Use epilogue_completed rather than reload_completed.
+	(aarch64_atomic_exchange<mode>): Likewise.
+	(aarch64_atomic_<atomic_optab><mode>): Likewise.
+	(atomic_nand<mode>): Likewise.
+	(aarch64_atomic_fetch_<atomic_optab><mode>): Likewise.
+	(atomic_fetch_nand<mode>): Likewise.
+	(aarch64_atomic_<atomic_optab>_fetch<mode>): Likewise.
+	(atomic_nand_fetch<mode>): Likewise.
+
+2020-01-19  Eric S. Raymond <esr@thyrsus.com>
+	    Sandra Loosemore  <sandra@codesourcery.com>
+
+	Backport from mainline:
+
+	2020-01-19  Eric S. Raymond <esr@thyrsus.com>
+
+	* doc/contribute.texi: Update for SVN -> Git transition.
+	* doc/install.texi: Likewise.
+
+2020-01-15  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2019-04-14  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR lto/89358
+	* ipa-devirt.c (skip_in_fields_list_p): New.
+	(odr_types_equivalent_p): Use it.
+
+2020-01-10  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from mainline
+	2019-12-17  Martin Jambor  <mjambor@suse.cz>
+
+        PR ipa/92971
+        * ipa-cp.c (cgraph_edge_brings_all_agg_vals_for_node): Fix
+          definition of values, release memory on exit.
+
+2020-01-09  Martin Liska  <mliska@suse.cz>
+
+	Backport from mainline
+	2019-12-12  Jan Hubicka  <hubicka@ucw.cz>
+
+	* ipa-prop.c (read_ipcp_transformation_info): Fix undefined ordering
+	of execution of function call parameters.
+
+2020-01-08  Georg-Johann Lay  <avr@gjlay.de>
+
+	Backport from 2020-01-08 trunk r279995.
+
+	Add -nodevicespecs option for avr.
+
+	PR target/93182
+	* config/avr/avr.opt (-nodevicespecs): New driver option.
+	* config/avr/driver-avr.c (avr_devicespecs_file): Only issue
+	"-specs=device-specs/..." if that option is not set.
+	* doc/invoke.texi (AVR Options) <-nodevicespecs>: Document.
+
+2020-01-06  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.md: Revert change to use ordered_comparison_operator
+	instead of cmpib_comparison_operator in cmpib patterns.
+	* config/pa/predicates.md (cmpib_comparison_operator): Revert removal
+	of cmpib_comparison_operator.  Revise comment.
+
+2020-01-01  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR target/93111
+	* config/pa/pa.md (scc): Use ordered_comparison_operator instead of
+	comparison_operator in B and S integer comparisons.  Likewise, use
+	ordered_comparison_operator instead of cmpib_comparison_operator in
+	cmpib patterns.
+	* config/pa/predicates.md (cmpib_comparison_operator): Remove.
+
+2019-12-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	Backport from mainline.
+	2019-12-14 Iain Sandoe <iain@sandoe.co.uk>
+
+	* config/darwin.h (DARWIN_EXTRA_SPECS): Add new
+	bundle spec. (DARWIN_BUNDLE1_SPEC): New.
+	(STARTFILE_SPEC): Use darwin bundle spec.
+	* config/rs6000/darwin.h (DARWIN_BUNDLE1_SPEC): New.
+	(DARWIN_DYLIB1_SPEC): Delete duplicate.
+
+2019-12-20  Roman Zhuykov  <zhroma@ispras.ru>
+
+	Backport from mainline
+	2019-12-13  Roman Zhuykov  <zhroma@ispras.ru>
+
+	PR rtl-optimization/92591
+	* modulo-sched.c (ps_add_node_check_conflicts): Improve checking
+	for history > 0 case.
+	* params.def (sms-dfa-history): Limit to 16.
+
+2019-12-19  Georg-Johann Lay  <avr@gjlay.de>
+
+	Backport support for some AVR devices from avrxmega3 family
+	from SVN trunk r279309, r278387, r278389, r278478.
+
+	PR target/92545
+	* config/avr/avr-arch.h (avr_mcu_t) <flash_pm_offset>: New field.
+	* config/avr/avr-devices.c (avr_mcu_types): Adjust initializers.
+	* config/avr/avr-mcus.def (AVR_MCU): Add respective field.
+	* config/avr/gen-avr-mmcu-specs.c (print_mcu)
+	<*cpp, *cpp_mcu, *cpp_avrlibc, *link_pm_base_address>: Emit code
+	for spec definitions.
+	* config/avr/gen-avr-mmcu-texi.c: Rewrite.
+	* doc/avr-mmcu.texi: Regenerate.
+
 2019-12-17  Andreas Krebbel  <krebbel@linux.ibm.com>
 
 	Backport from mainline
@@ -7,7 +626,7 @@
 	* config/s390/vector.md ("mov<mode>" for V_8): Replace lh, lhy,
 	and lhrl with llc.
 
-2019-12-02  Wilco Dijkstra  <wdijkstr@arm.com> 
+2019-12-02  Wilco Dijkstra  <wdijkstr@arm.com>
 
 	* config/aarch64/aarch64-cores.def (ares): Define.
 	(cortex-a76): Likewise.

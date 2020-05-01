@@ -10005,6 +10005,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   tree ptrtype;
   machine_mode nat_mode;
   unsigned int arg_boundary;
+  unsigned int type_align;
 
   /* Only 64bit target needs something special.  */
   if (is_va_list_char_pointer (TREE_TYPE (valist)))
@@ -10062,6 +10063,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   /* Pull the value out of the saved registers.  */
 
   addr = create_tmp_var (ptr_type_node, "addr");
+  type_align = TYPE_ALIGN (type);
 
   if (container)
     {
@@ -10232,6 +10234,9 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
 	  t = build2 (PLUS_EXPR, TREE_TYPE (gpr), gpr,
 		      build_int_cst (TREE_TYPE (gpr), needed_intregs * 8));
 	  gimplify_assign (gpr, t, pre_p);
+	  /* The GPR save area guarantees only 8-byte alignment.  */
+	  if (!need_temp)
+	    type_align = MIN (type_align, 64);
 	}
 
       if (needed_sseregs)
@@ -10276,6 +10281,7 @@ ix86_gimplify_va_arg (tree valist, tree type, gimple_seq *pre_p,
   if (container)
     gimple_seq_add_stmt (pre_p, gimple_build_label (lab_over));
 
+  type = build_aligned_type (type, type_align);
   ptrtype = build_pointer_type_for_mode (type, ptr_mode, true);
   addr = fold_convert (ptrtype, addr);
 
@@ -30473,9 +30479,14 @@ ix86_trampoline_init (rtx m_tramp, tree fndecl, rtx chain_value)
 	 the stack, we need to skip the first insn which pushes the
 	 (call-saved) register static chain; this push is 1 byte.  */
       offset += 5;
+      int skip = MEM_P (chain) ? 1 : 0;
+      /* Skip ENDBR32 at the entry of the target function.  */
+      if (need_endbr
+	  && !cgraph_node::get (fndecl)->only_called_directly_p ())
+	skip += 4;
       disp = expand_binop (SImode, sub_optab, fnaddr,
 			   plus_constant (Pmode, XEXP (m_tramp, 0),
-					  offset - (MEM_P (chain) ? 1 : 0)),
+					  offset - skip),
 			   NULL_RTX, 1, OPTAB_DIRECT);
       emit_move_insn (mem, disp);
     }
@@ -44774,11 +44785,15 @@ ix86_md_asm_adjust (vec<rtx> &outputs, vec<rtx> &/*inputs*/,
 	    {
 	      x = force_reg (dest_mode, const0_rtx);
 
-	      emit_insn (gen_movstrictqi
-			 (gen_lowpart (QImode, x), destqi));
+	      emit_insn (gen_movstrictqi (gen_lowpart (QImode, x), destqi));
 	    }
 	  else
-	    x = gen_rtx_ZERO_EXTEND (dest_mode, destqi);
+	    {
+	      x = gen_rtx_ZERO_EXTEND (dest_mode, destqi);
+	      if (dest_mode == GET_MODE (dest)
+		  && !register_operand (dest, GET_MODE (dest)))
+		x = force_reg (dest_mode, x);
+	    }
 	}
 
       if (dest_mode != GET_MODE (dest))
