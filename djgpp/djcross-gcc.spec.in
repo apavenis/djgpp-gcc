@@ -466,6 +466,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri May  1 2020 Andris Pavenis <andris.pavenis@iki.fi>
+- Branch for upcoming gcc-10
+
 * Tue May 15 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Fix value of macros __DATE__ and __TIME__ for DJGPP host.
 

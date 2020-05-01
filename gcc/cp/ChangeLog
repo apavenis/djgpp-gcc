@@ -1,3 +1,117 @@
+2020-04-30  Jason Merrill  <jason@redhat.com>
+	    Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/94827
+	* constraint.cc (map_arguments): If ARGS is null, it's a
+	self-mapping of parms.
+	(finish_nested_requirement): Do not pass argified
+	current_template_parms to normalization.
+	(tsubst_nested_requirement): Don't assert no template parms.
+
+2020-04-30  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94886
+	* coroutines.cc (transform_local_var_uses): Defer walking
+	the DECL_INITIALs of BIND_EXPR vars until all the frame
+	allocations have been made.
+
+2020-04-30  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94883
+	* coroutines.cc (register_awaits): Update target
+	expressions for awaitable and suspend handle
+	initializers.
+
+2020-04-30  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94879
+	* coroutines.cc (build_co_await): Account for variables
+	with DECL_VALUE_EXPRs.
+	(captures_temporary): Likewise.
+	(register_awaits): Likewise.
+
+2020-04-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94830
+	* pt.c (find_template_parameter_info::parm_list): New field.
+	(keep_template_parm): Use the new field to build up the
+	parameter list here instead of ...
+	(find_template_parameters): ... here.  Return ftpi.parm_list.
+
+2020-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94707
+	* class.c (build_base_field): Set DECL_FIELD_ABI_IGNORED on C++17 empty
+	base artificial FIELD_DECLs.
+	(layout_class_type): Set DECL_FIELD_ABI_IGNORED on empty class
+	field_poverlapping_p FIELD_DECLs.
+
+2020-04-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94819
+	* constraint.cc (satisfy_declaration_constraints): Use saved_t
+	instead of t as the key to decl_satisfied_cache.
+
+	PR c++/94808
+	* error.c (print_requires_expression_info): Print the dependent
+	form of the parameter list with its template parameter mapping,
+	rather than printing the substituted form.
+
+2020-04-28  Jason Merrill  <jason@redhat.com>
+
+	PR c++/94583
+	* decl.c (use_eh_spec_block): Check nothrow type after
+	DECL_DEFAULTED_FN.
+	* pt.c (maybe_instantiate_noexcept): Call synthesize_method for
+	DECL_MAYBE_DELETED fns here.
+	* decl2.c (mark_used): Not here.
+	* method.c (get_defaulted_eh_spec): Reject DECL_MAYBE_DELETED here.
+
+2020-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94760
+	* coroutines.cc (instantiate_coro_traits): Pass a reference to
+	object type rather than a pointer type for 'this', for method
+	coroutines.
+	(struct param_info): Add a field to hold that the parm is a lambda
+	closure pointer.
+	(morph_fn_to_coro): Check for lambda closure pointers in the
+	args.  Use a reference to *this when building the args list for the
+	promise allocator lookup.
+
+2020-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94759
+	* coroutines.cc (coro_promise_type_found_p): Do not
+	exclude non-classes here (this needs to be handled in the
+	coroutine header).
+	(morph_fn_to_coro):  Allow for the case where the coroutine
+	returns void.
+
+2020-04-27  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94701
+	* coroutines.cc (struct local_var_info): Add fields for static
+	variables and those with DECL_VALUE_EXPR redirection.
+	(transform_local_var_uses): Skip past typedefs and static vars
+	and then account for redirected variables.
+	(register_local_var_uses): Likewise.
+
+2020-04-27  Jason Merrill  <jason@redhat.com>
+
+	PR c++/90750
+	PR c++/79585
+	* decl.c (grokdeclarator): Move dependent attribute to decl.
+	* decl2.c (splice_template_attributes): No longer static.
+
+2020-04-27  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94772
+	* constexpr.c (cxx_eval_call_expression): Don't set new_obj if we're
+	evaluating the target constructor of a delegating constructor.
+	(cxx_eval_store_expression): Don't set TREE_READONLY if the LHS of the
+	INIT_EXPR is '*this'.
+
 2020-04-26  Marek Polacek  <polacek@redhat.com>
 
 	PR c++/90320

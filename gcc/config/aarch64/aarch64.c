@@ -286,7 +286,7 @@ static bool aarch64_return_in_memory_1 (const_tree);
 static bool aarch64_vfp_is_call_or_return_candidate (machine_mode,
 						     const_tree,
 						     machine_mode *, int *,
-						     bool *);
+						     bool *, bool);
 static void aarch64_elf_asm_constructor (rtx, int) ATTRIBUTE_UNUSED;
 static void aarch64_elf_asm_destructor (rtx, int) ATTRIBUTE_UNUSED;
 static void aarch64_override_options_after_change (void);
@@ -416,6 +416,22 @@ static const struct cpu_addrcost_table thunderx2t99_addrcost_table =
   0, /* imm_offset  */
 };
 
+static const struct cpu_addrcost_table thunderx3t110_addrcost_table =
+{
+    {
+      1, /* hi  */
+      1, /* si  */
+      1, /* di  */
+      2, /* ti  */
+    },
+  0, /* pre_modify  */
+  0, /* post_modify  */
+  2, /* register_offset  */
+  3, /* register_sextend  */
+  3, /* register_zextend  */
+  0, /* imm_offset  */
+};
+
 static const struct cpu_addrcost_table tsv110_addrcost_table =
 {
     {
@@ -521,6 +537,15 @@ static const struct cpu_regmove_cost thunderx2t99_regmove_cost =
   /* Avoid the use of int<->fp moves for spilling.  */
   8, /* GP2FP  */
   8, /* FP2GP  */
+  4  /* FP2FP  */
+};
+
+static const struct cpu_regmove_cost thunderx3t110_regmove_cost =
+{
+  1, /* GP2GP  */
+  /* Avoid the use of int<->fp moves for spilling.  */
+  4, /* GP2FP  */
+  5, /* FP2GP  */
   4  /* FP2FP  */
 };
 
@@ -692,6 +717,26 @@ static const struct cpu_vector_cost thunderx2t99_vector_cost =
   1  /* cond_not_taken_branch_cost  */
 };
 
+static const struct cpu_vector_cost thunderx3t110_vector_cost =
+{
+  1, /* scalar_int_stmt_cost  */
+  5, /* scalar_fp_stmt_cost  */
+  4, /* scalar_load_cost  */
+  1, /* scalar_store_cost  */
+  5, /* vec_int_stmt_cost  */
+  5, /* vec_fp_stmt_cost  */
+  10, /* vec_permute_cost  */
+  5, /* vec_to_scalar_cost  */
+  5, /* scalar_to_vec_cost  */
+  4, /* vec_align_load_cost  */
+  4, /* vec_unalign_load_cost  */
+  4, /* vec_unalign_store_cost  */
+  4, /* vec_store_cost  */
+  2, /* cond_taken_branch_cost  */
+  1  /* cond_not_taken_branch_cost  */
+};
+
+
 /* Generic costs for branch instructions.  */
 static const struct cpu_branch_cost generic_branch_cost =
 {
@@ -780,6 +825,17 @@ static const cpu_prefetch_tune thunderx_prefetch_tune =
 };
 
 static const cpu_prefetch_tune thunderx2t99_prefetch_tune =
+{
+  8,			/* num_slots  */
+  32,			/* l1_cache_size  */
+  64,			/* l1_cache_line_size  */
+  256,			/* l2_cache_size  */
+  true,			/* prefetch_dynamic_strides */
+  -1,			/* minimum_stride */
+  -1			/* default_opt_level  */
+};
+
+static const cpu_prefetch_tune thunderx3t110_prefetch_tune =
 {
   8,			/* num_slots  */
   32,			/* l1_cache_size  */
@@ -1214,6 +1270,33 @@ static const struct tune_params thunderx2t99_tunings =
   tune_params::AUTOPREFETCHER_WEAK,	/* autoprefetcher_model.  */
   (AARCH64_EXTRA_TUNE_NONE),	/* tune_flags.  */
   &thunderx2t99_prefetch_tune
+};
+
+static const struct tune_params thunderx3t110_tunings =
+{
+  &thunderx3t110_extra_costs,
+  &thunderx3t110_addrcost_table,
+  &thunderx3t110_regmove_cost,
+  &thunderx3t110_vector_cost,
+  &generic_branch_cost,
+  &generic_approx_modes,
+  SVE_NOT_IMPLEMENTED, /* sve_width  */
+  4, /* memmov_cost.  */
+  6, /* issue_rate.  */
+  (AARCH64_FUSE_ALU_BRANCH | AARCH64_FUSE_AES_AESMC
+   | AARCH64_FUSE_ALU_CBZ), /* fusible_ops  */
+  "16",	/* function_align.  */
+  "8",	/* jump_align.  */
+  "16",	/* loop_align.  */
+  3,	/* int_reassoc_width.  */
+  2,	/* fp_reassoc_width.  */
+  2,	/* vec_reassoc_width.  */
+  2,	/* min_div_recip_mul_sf.  */
+  2,	/* min_div_recip_mul_df.  */
+  0,	/* max_case_values.  */
+  tune_params::AUTOPREFETCHER_WEAK,	/* autoprefetcher_model.  */
+  (AARCH64_EXTRA_TUNE_NONE),	/* tune_flags.  */
+  &thunderx3t110_prefetch_tune
 };
 
 static const struct tune_params neoversen1_tunings =
@@ -5286,7 +5369,8 @@ aarch64_function_ok_for_sibcall (tree, tree exp)
    passed in SVE registers.  */
 
 static bool
-aarch64_pass_by_reference_1 (const function_arg_info &arg)
+aarch64_pass_by_reference_1 (CUMULATIVE_ARGS *pcum,
+			     const function_arg_info &arg)
 {
   HOST_WIDE_INT size;
   machine_mode dummymode;
@@ -5310,8 +5394,8 @@ aarch64_pass_by_reference_1 (const function_arg_info &arg)
 
   /* Can this be a candidate to be passed in fp/simd register(s)?  */
   if (aarch64_vfp_is_call_or_return_candidate (arg.mode, arg.type,
-					       &dummymode, &nregs,
-					       NULL))
+					       &dummymode, &nregs, NULL,
+					       !pcum || pcum->silent_p))
     return false;
 
   /* Arguments which are variable sized or larger than 2 registers are
@@ -5329,7 +5413,7 @@ aarch64_pass_by_reference (cumulative_args_t pcum_v,
   CUMULATIVE_ARGS *pcum = get_cumulative_args (pcum_v);
 
   if (!arg.type)
-    return aarch64_pass_by_reference_1 (arg);
+    return aarch64_pass_by_reference_1 (pcum, arg);
 
   pure_scalable_type_info pst_info;
   switch (pst_info.analyze (arg.type))
@@ -5348,12 +5432,12 @@ aarch64_pass_by_reference (cumulative_args_t pcum_v,
 	      || pcum->aapcs_nprn + pst_info.num_pr () > NUM_PR_ARG_REGS);
 
     case pure_scalable_type_info::DOESNT_MATTER:
-      gcc_assert (aarch64_pass_by_reference_1 (arg));
+      gcc_assert (aarch64_pass_by_reference_1 (pcum, arg));
       return true;
 
     case pure_scalable_type_info::NO_ABI_IDENTITY:
     case pure_scalable_type_info::ISNT_PST:
-      return aarch64_pass_by_reference_1 (arg);
+      return aarch64_pass_by_reference_1 (pcum, arg);
     }
   gcc_unreachable ();
 }
@@ -5381,7 +5465,8 @@ aarch64_return_in_msb (const_tree valtype)
      is always passed/returned in the least significant bits of fp/simd
      register(s).  */
   if (aarch64_vfp_is_call_or_return_candidate (TYPE_MODE (valtype), valtype,
-					       &dummy_mode, &dummy_int, NULL))
+					       &dummy_mode, &dummy_int, NULL,
+					       false))
     return false;
 
   /* Likewise pure scalable types for SVE vector and predicate registers.  */
@@ -5428,8 +5513,8 @@ aarch64_function_value (const_tree type, const_tree func,
 
   int count;
   machine_mode ag_mode;
-  if (aarch64_vfp_is_call_or_return_candidate (mode, type,
-					       &ag_mode, &count, NULL))
+  if (aarch64_vfp_is_call_or_return_candidate (mode, type, &ag_mode, &count,
+					       NULL, false))
     {
       gcc_assert (!sve_p);
       if (!aarch64_composite_type_p (type, mode))
@@ -5516,11 +5601,8 @@ aarch64_return_in_memory_1 (const_tree type)
     /* Simple scalar types always returned in registers.  */
     return false;
 
-  if (aarch64_vfp_is_call_or_return_candidate (TYPE_MODE (type),
-					       type,
-					       &ag_mode,
-					       &count,
-					       NULL))
+  if (aarch64_vfp_is_call_or_return_candidate (TYPE_MODE (type), type,
+					       &ag_mode, &count, NULL, false))
     return false;
 
   /* Types larger than 2 registers returned in memory.  */
@@ -5563,11 +5645,9 @@ aarch64_vfp_is_call_candidate (cumulative_args_t pcum_v, machine_mode mode,
 			       const_tree type, int *nregs)
 {
   CUMULATIVE_ARGS *pcum = get_cumulative_args (pcum_v);
-  return aarch64_vfp_is_call_or_return_candidate (mode,
-						  type,
+  return aarch64_vfp_is_call_or_return_candidate (mode, type,
 						  &pcum->aapcs_vfp_rmode,
-						  nregs,
-						  NULL);
+						  nregs, NULL, pcum->silent_p);
 }
 
 /* Given MODE and TYPE of a function argument, return the alignment in
@@ -5601,6 +5681,19 @@ aarch64_function_arg_alignment (machine_mode mode, const_tree type,
   for (tree field = TYPE_FIELDS (type); field; field = DECL_CHAIN (field))
     if (TREE_CODE (field) == FIELD_DECL)
       {
+	/* Note that we explicitly consider zero-sized fields here,
+	   even though they don't map to AAPCS64 machine types.
+	   For example, in:
+
+	       struct __attribute__((aligned(8))) empty {};
+
+	       struct s {
+		 [[no_unique_address]] empty e;
+		 int x;
+	       };
+
+	   "s" contains only one Fundamental Data Type (the int field)
+	   but gains 8-byte alignment and size thanks to "e".  */
 	alignment = std::max (alignment, DECL_ALIGN (field));
 	if (DECL_BIT_FIELD_TYPE (field))
 	  bitfield_alignment
@@ -5893,7 +5986,7 @@ aarch64_init_cumulative_args (CUMULATIVE_ARGS *pcum,
       machine_mode mode ATTRIBUTE_UNUSED; /* To pass pointer as argument.  */
       int nregs ATTRIBUTE_UNUSED; /* Likewise.  */
       if (aarch64_vfp_is_call_or_return_candidate (TYPE_MODE (type), type,
-						   &mode, &nregs, NULL))
+						   &mode, &nregs, NULL, false))
 	aarch64_err_no_fpadvsimd (TYPE_MODE (type));
     }
 
@@ -16069,11 +16162,8 @@ aarch64_gimplify_va_arg_expr (tree valist, tree type, gimple_seq *pre_p,
 
   dw_align = false;
   adjust = 0;
-  if (aarch64_vfp_is_call_or_return_candidate (mode,
-					       type,
-					       &ag_mode,
-					       &nregs,
-					       &is_ha))
+  if (aarch64_vfp_is_call_or_return_candidate (mode, type, &ag_mode, &nregs,
+					       &is_ha, false))
     {
       /* No frontends can create types with variable-sized modes, so we
 	 shouldn't be asked to pass or return them.  */
@@ -16438,23 +16528,42 @@ aarch64_member_type_forces_blk (const_tree field_or_array, machine_mode mode)
   return default_member_type_forces_blk (field_or_array, mode);
 }
 
+/* Bitmasks that indicate whether earlier versions of GCC would have
+   taken a different path through the ABI logic.  This should result in
+   a -Wpsabi warning if the earlier path led to a different ABI decision.
+
+   WARN_PSABI_EMPTY_CXX17_BASE
+      Indicates that the type includes an artificial empty C++17 base field
+      that, prior to GCC 10.1, would prevent the type from being treated as
+      a HFA or HVA.  See PR94383 for details.
+
+   WARN_PSABI_NO_UNIQUE_ADDRESS
+      Indicates that the type includes an empty [[no_unique_address]] field
+      that, prior to GCC 10.1, would prevent the type from being treated as
+      a HFA or HVA.  */
+const unsigned int WARN_PSABI_EMPTY_CXX17_BASE = 1U << 0;
+const unsigned int WARN_PSABI_NO_UNIQUE_ADDRESS = 1U << 1;
+
 /* Walk down the type tree of TYPE counting consecutive base elements.
    If *MODEP is VOIDmode, then set it to the first valid floating point
    type.  If a non-floating point type is found, or if a floating point
    type that doesn't match a non-VOIDmode *MODEP is found, then return -1,
    otherwise return the count in the sub-tree.
 
-   The AVOID_CXX17_EMPTY_BASE argument is to allow the caller to check whether
-   this function has changed its behavior after the fix for PR94384 -- this fix
-   is to avoid artificial fields in empty base classes.
-   When called with this argument as a NULL pointer this function does not
-   avoid the artificial fields -- this is useful to check whether the function
-   returns something different after the fix.
-   When called pointing at a value, this function avoids such artificial fields
-   and sets the value to TRUE when one of these fields has been set.  */
+   The WARN_PSABI_FLAGS argument allows the caller to check whether this
+   function has changed its behavior relative to earlier versions of GCC.
+   Normally the argument should be nonnull and point to a zero-initialized
+   variable.  The function then records whether the ABI decision might
+   be affected by a known fix to the ABI logic, setting the associated
+   WARN_PSABI_* bits if so.
+
+   When the argument is instead a null pointer, the function tries to
+   simulate the behavior of GCC before all such ABI fixes were made.
+   This is useful to check whether the function returns something
+   different after the ABI fixes.  */
 static int
 aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep,
-			 bool *avoid_cxx17_empty_base)
+			 unsigned int *warn_psabi_flags)
 {
   machine_mode mode;
   HOST_WIDE_INT size;
@@ -16531,7 +16640,7 @@ aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep,
 	  return -1;
 
 	count = aapcs_vfp_sub_candidate (TREE_TYPE (type), modep,
-					 avoid_cxx17_empty_base);
+					 warn_psabi_flags);
 	if (count == -1
 	    || !index
 	    || !TYPE_MAX_VALUE (index)
@@ -16569,18 +16678,30 @@ aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep,
 	    if (TREE_CODE (field) != FIELD_DECL)
 	      continue;
 
-	    /* Ignore C++17 empty base fields, while their type indicates
-	       they do contain padding, they have zero size and thus don't
-	       contain any padding.  */
-	    if (cxx17_empty_base_field_p (field)
-		&& avoid_cxx17_empty_base)
+	    if (DECL_FIELD_ABI_IGNORED (field))
 	      {
-		*avoid_cxx17_empty_base = true;
-		continue;
+		/* See whether this is something that earlier versions of
+		   GCC failed to ignore.  */
+		unsigned int flag;
+		if (lookup_attribute ("no_unique_address",
+				      DECL_ATTRIBUTES (field)))
+		  flag = WARN_PSABI_NO_UNIQUE_ADDRESS;
+		else if (cxx17_empty_base_field_p (field))
+		  flag = WARN_PSABI_EMPTY_CXX17_BASE;
+		else
+		  /* No compatibility problem.  */
+		  continue;
+
+		/* Simulate the old behavior when WARN_PSABI_FLAGS is null.  */
+		if (warn_psabi_flags)
+		  {
+		    *warn_psabi_flags |= flag;
+		    continue;
+		  }
 	      }
 
 	    sub_count = aapcs_vfp_sub_candidate (TREE_TYPE (field), modep,
-						 avoid_cxx17_empty_base);
+						 warn_psabi_flags);
 	    if (sub_count < 0)
 	      return -1;
 	    count += sub_count;
@@ -16614,7 +16735,7 @@ aapcs_vfp_sub_candidate (const_tree type, machine_mode *modep,
 	      continue;
 
 	    sub_count = aapcs_vfp_sub_candidate (TREE_TYPE (field), modep,
-						 avoid_cxx17_empty_base);
+						 warn_psabi_flags);
 	    if (sub_count < 0)
 	      return -1;
 	    count = count > sub_count ? count : sub_count;
@@ -16713,14 +16834,20 @@ aarch64_composite_type_p (const_tree type,
    Upon successful return, *COUNT returns the number of needed registers,
    *BASE_MODE returns the mode of the individual register and when IS_HAF
    is not NULL, *IS_HA indicates whether or not the argument is a homogeneous
-   floating-point aggregate or a homogeneous short-vector aggregate.  */
+   floating-point aggregate or a homogeneous short-vector aggregate.
+
+   SILENT_P is true if the function should refrain from reporting any
+   diagnostics.  This should only be used if the caller is certain that
+   any ABI decisions would eventually come through this function with
+   SILENT_P set to false.  */
 
 static bool
 aarch64_vfp_is_call_or_return_candidate (machine_mode mode,
 					 const_tree type,
 					 machine_mode *base_mode,
 					 int *count,
-					 bool *is_ha)
+					 bool *is_ha,
+					 bool silent_p)
 {
   if (is_ha != NULL) *is_ha = false;
 
@@ -16741,24 +16868,37 @@ aarch64_vfp_is_call_or_return_candidate (machine_mode mode,
     }
   else if (type && composite_p)
     {
-      bool avoided = false;
-      int ag_count = aapcs_vfp_sub_candidate (type, &new_mode, &avoided);
+      unsigned int warn_psabi_flags = 0;
+      int ag_count = aapcs_vfp_sub_candidate (type, &new_mode,
+					      &warn_psabi_flags);
       if (ag_count > 0 && ag_count <= HA_MAX_NUM_FLDS)
 	{
 	  static unsigned last_reported_type_uid;
 	  unsigned uid = TYPE_UID (TYPE_MAIN_VARIANT (type));
 	  int alt;
-	  if (warn_psabi
-	      && avoided
+	  if (!silent_p
+	      && warn_psabi
+	      && warn_psabi_flags
 	      && uid != last_reported_type_uid
 	      && ((alt = aapcs_vfp_sub_candidate (type, &new_mode, NULL))
 		  != ag_count))
 	    {
+	      const char *url
+		= CHANGES_ROOT_URL "gcc-10/changes.html#empty_base";
 	      gcc_assert (alt == -1);
 	      last_reported_type_uid = uid;
-	      inform (input_location, "parameter passing for argument of type "
-		      "%qT when C++17 is enabled changed to match C++14 "
-		      "in GCC 10.1", type);
+	      /* Use TYPE_MAIN_VARIANT to strip any redundant const
+		 qualification.  */
+	      if (warn_psabi_flags & WARN_PSABI_NO_UNIQUE_ADDRESS)
+		inform (input_location, "parameter passing for argument of "
+			"type %qT with %<[[no_unique_address]]%> members "
+			"changed %{in GCC 10.1%}",
+			TYPE_MAIN_VARIANT (type), url);
+	      else if (warn_psabi_flags & WARN_PSABI_EMPTY_CXX17_BASE)
+		inform (input_location, "parameter passing for argument of "
+			"type %qT when C++17 is enabled changed to match "
+			"C++14 %{in GCC 10.1%}",
+			TYPE_MAIN_VARIANT (type), url);
 	    }
 
 	  if (is_ha != NULL) *is_ha = true;

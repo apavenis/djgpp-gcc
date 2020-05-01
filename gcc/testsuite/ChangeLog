@@ -1,3 +1,201 @@
+2020-04-30  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/94856
+	* g++.dg/ipa/pr94856.C: New test.
+
+2020-04-30  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94886
+	* g++.dg/coroutines/pr94886-folly-3.C: New test.
+
+2020-04-30  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94883
+	* g++.dg/coroutines/pr94883-folly-2.C: New test.
+
+2020-04-30  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94879
+	* g++.dg/coroutines/pr94xxx-folly-1.C: New test.
+
+2020-04-30  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/94775
+	* g++.dg/warn/Warray-bounds-10.C: New test.
+
+2020-04-30  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	PR target/94748
+	* gcc.target/aarch64/pr94748.c: New test.
+
+2020-04-30  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	* gcc.target/s390/zvector/vec_load_len_r.c: New test.
+	* gcc.target/s390/zvector/vec_store_len_r.c: New test.
+
+2020-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94704
+	* g++.target/s390/s390.exp: New file.
+	* g++.target/s390/pr94704-1.C: New test.
+	* g++.target/s390/pr94704-2.C: New test.
+	* g++.target/s390/pr94704-3.C: New test.
+	* g++.target/s390/pr94704-4.C: New test.
+
+2020-04-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94830
+	* g++.dg/concepts/diagnostics12.C: Clarify the dg-message now
+	that the corresponding diagnostic is deterministic.
+	* g++.dg/concepts/diagnostics13.C: New test.
+
+2020-04-29  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/93654
+	* gcc.target/i386/pr93654.c: New test.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* lib/target-supports.exp: Add v8a_hard to the list of arm_arch_*
+	targets.
+	* g++.target/arm/no_unique_address_1.C: New test.
+	* g++.target/arm/no_unique_address_2.C: Likewise.
+
+2020-04-29  Richard Biener  <rguenther@suse.de>
+	    Li Zekun  <lizekun1@huawei.com>
+
+	PR lto/94822
+	* gcc.dg/lto/pr94822_0.c: New testcase.
+	* gcc.dg/lto/pr94822_1.c: Alternate file.
+	* gcc.dg/lto/pr94822.h: Likewise.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* g++.target/aarch64/no_unique_address_1.C: New test.
+	* g++.target/aarch64/no_unique_address_2.C: Likewise.
+
+2020-04-29  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* g++.target/arm/mve.exp: Restore the original dg-do-what-default
+	before finishing.
+
+2020-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94707
+	* g++.target/powerpc/pr94707-1.C: New test.
+	* g++.target/powerpc/pr94707-2.C: New test.
+	* g++.target/powerpc/pr94707-3.C: New test.
+	* g++.target/powerpc/pr94707-4.C: New test.
+	* g++.target/powerpc/pr94707-5.C: New test.
+	* g++.target/powerpc/pr94707-4.C: New test.
+
+2020-04-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94819
+	* g++.dg/cpp2a/concepts-inherit-ctor10.C: New test.
+	* g++.dg/cpp2a/concepts-inherit-ctor11.C: New test.
+
+	PR c++/94808
+	* g++.dg/concepts/diagnostic12.C: New test.
+	* g++.dg/concepts/diagnostic5.C: Adjust dg-message.
+
+2020-04-28  Alexandre Oliva <oliva@adacore.com>
+
+	PR target/94812
+	* gcc.target/powerpc/test_mffsl.c: Call mffsl only once.
+	Reinterpret the doubles as long longs for compares.  Mask out
+	mffs bits that are not expected from mffsl.
+
+2020-04-28  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/94816
+	* g++.dg/analyzer/pr94816.C: New test.
+
+2020-04-28  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/94447
+	PR analyzer/94639
+	PR analyzer/94732
+	PR analyzer/94754
+	* gcc.dg/analyzer/data-model-1.c: Mark "use of uninitialized
+	value" warnings as xfail for now.
+	* gcc.dg/analyzer/data-model-5b.c: Remove uninitialized warning.
+	* gcc.dg/analyzer/pr94099.c: Mark "uninitialized" warning as xfail
+	for now.
+	* gcc.dg/analyzer/pr94447.c: New test.
+	* gcc.dg/analyzer/pr94639.c: New test.
+	* gcc.dg/analyzer/pr94732.c: New test.
+	* gcc.dg/analyzer/pr94754.c: New test.
+	* gcc.dg/analyzer/zlib-6.c: Mark "uninitialized" warning as xfail
+	for now.
+
+2020-04-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/94809
+	* gcc.c-torture/execute/pr94809.c: New test.
+
+2020-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94760
+	* g++.dg/coroutines/pr94760-mismatched-traits-and-promise-prev.C:
+	New test.
+
+2020-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94759
+	* g++.dg/coroutines/coro-bad-alloc-00-bad-op-new.C: Adjust for
+	updated error messages.
+	* g++.dg/coroutines/coro-bad-alloc-01-bad-op-del.C: Likewise.
+	* g++.dg/coroutines/coro-bad-alloc-02-no-op-new-nt.C: Likewise.
+	* g++.dg/coroutines/coro-missing-promise.C: Likewise.
+	* g++.dg/coroutines/pr93458-5-bad-coro-type.C: Liekwise.
+	* g++.dg/coroutines/torture/co-ret-17-void-ret-coro.C: New test.
+
+2020-04-27  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/94701
+	* g++.dg/coroutines/torture/local-var-06-structured-binding.C:
+	New test.
+
+2020-04-27  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/93956
+	PR fortran/94788
+	* gfortran.dg/pointer_assign_13.f90: Remove.
+
+2020-04-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/94780
+	* gcc.dg/pr94780.c: New test.
+
+2020-04-27  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94772
+	* g++.dg/cpp1y/constexpr-tracking-const23.C: New test.
+	* g++.dg/cpp1y/constexpr-tracking-const24.C: New test.
+	* g++.dg/cpp1y/constexpr-tracking-const25.C: New test.
+
+2020-04-27  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	PR target/94697
+	* gcc.target/aarch64/pr94697.c: Require lp64.
+
+2020-04-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/94755
+	* c-c++-common/pr94755.c: New test.
+
+2020-04-27  Felix Yang  <felix.yang@huawei.com>
+
+	PR tree-optimization/94784
+	* gcc.dg/pr94784.c: New test.
+
+2020-04-27  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	PR target/94515
+	* g++.target/aarch64/pr94515-1.C: New test.
+	* g++.target/aarch64/pr94515-2.C: New test.
+
 2020-04-26  Marek Polacek  <polacek@redhat.com>
 
 	PR c++/90320
