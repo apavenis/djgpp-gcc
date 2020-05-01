@@ -1,3 +1,13 @@
+2020-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	* c-format.c (PP_FORMAT_CHAR_TABLE): Add %{ and %}.
+
+2020-04-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/94755
+	* c-common.c (resolve_overloaded_builtin): Return error_mark_node for
+	fncode == BUILT_IN_NONE before initialization of first_param.
+
 2020-04-23  Marek Polacek  <polacek@redhat.com>
 
 	PR c++/94733
