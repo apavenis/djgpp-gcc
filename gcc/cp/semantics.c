@@ -1844,7 +1844,7 @@ finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
 
   if (current_class_ptr)
     TREE_USED (current_class_ptr) = 1;
-  if (processing_template_decl && !qualifying_scope)
+  if (processing_template_decl)
     {
       tree type = TREE_TYPE (decl);
 
@@ -1865,17 +1865,16 @@ finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
 	  type = cp_build_qualified_type (type, quals);
 	}
 
-      ret = (convert_from_reference
-	      (build_min (COMPONENT_REF, type, object, decl, NULL_TREE)));
+      if (qualifying_scope)
+	/* Wrap this in a SCOPE_REF for now.  */
+	ret = build_qualified_name (type, qualifying_scope, decl,
+				    /*template_p=*/false);
+      else
+	ret = (convert_from_reference
+	       (build_min (COMPONENT_REF, type, object, decl, NULL_TREE)));
     }
   /* If PROCESSING_TEMPLATE_DECL is nonzero here, then
-     QUALIFYING_SCOPE is also non-null.  Wrap this in a SCOPE_REF
-     for now.  */
-  else if (processing_template_decl)
-    ret = build_qualified_name (TREE_TYPE (decl),
-				qualifying_scope,
-				decl,
-				/*template_p=*/false);
+     QUALIFYING_SCOPE is also non-null.  */
   else
     {
       tree access_type = TREE_TYPE (object);
@@ -4234,7 +4233,7 @@ expand_or_defer_fn_1 (tree fn)
       if (DECL_INTERFACE_KNOWN (fn))
 	/* We've already made a decision as to how this function will
 	   be handled.  */;
-      else if (!at_eof)
+      else if (!at_eof || DECL_OMP_DECLARE_REDUCTION_P (fn))
 	tentative_decl_linkage (fn);
       else
 	import_export_decl (fn);
@@ -4245,6 +4244,7 @@ expand_or_defer_fn_1 (tree fn)
 	 be emitted; there may be callers in other DLLs.  */
       if (DECL_DECLARED_INLINE_P (fn)
 	  && !DECL_REALLY_EXTERN (fn)
+	  && !DECL_OMP_DECLARE_REDUCTION_P (fn)
 	  && (flag_keep_inline_functions
 	      || (flag_keep_inline_dllexport
 		  && lookup_attribute ("dllexport", DECL_ATTRIBUTES (fn)))))
@@ -4276,6 +4276,9 @@ expand_or_defer_fn_1 (tree fn)
       TREE_ASM_WRITTEN (fn) = 1;
       return false;
     }
+
+  if (DECL_OMP_DECLARE_REDUCTION_P (fn))
+    return false;
 
   return true;
 }

@@ -1,7 +1,7 @@
 #! /bin/sh
 
 gcc_src_ext=xz
-gmp_version=6.1.2
+gmp_version=6.2.0
 mpfr_version=4.0.2
 mpc_version=1.1.0
 autoconf_version=2.64
@@ -15,9 +15,29 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
-upstream=gcc-8-branch
-dj_branch=gcc_8_djgpp
-djn_branch=gcc_8_djgpp_native
+case $basever in
+    8.[1-9].0)
+        upstream=tags/releases/gcc-$basever
+        dj_branch=tags/djgpp/gcc-$basever
+        djn_branch=tags/djgpp/native/gcc-$basever
+        ;;
+    8.0.* | 8.[1-9].[1-9])
+        upstream=master
+        dj_branch=djgpp/master
+        djn_branch=djgpp/native/master
+        test -z "$devphase" && devphase=prerelease
+        ;;
+    *)
+        echo Unsupported version $basever
+        exit 1
+esac
+
+for ref in $upstream $dj_branch $djn_branch; do
+    if ! git log -1 $ref 2>/dev/null >/dev/null ; then
+        echo "$ref not found"
+        exit 1
+    fi
+done
 
 sver2=$(echo $basever | sed -e 's:\.:_:2g' | sed 's:_.*$::')
 
@@ -171,9 +191,9 @@ ext_files="
 
 for file in $ext_files ; do
     case $file in
-        gmp*) url=ftp://ftp.gmplib.org/pub/gmp-${gmp_version}/gmp-${gmp_version}.tar.bz2 ;;
+        gmp*) url=http://ftp.gnu.org/gnu/gmp/gmp-${gmp_version}.tar.bz2 ;;
         mpfr*) url=http://ftp.gnu.org/gnu/mpfr/mpfr-${mpfr_version}.tar.bz2 ;;
-        mpc*) url=http://www.multiprecision.org/mpc/download/mpc-${mpc_version}.tar.gz ;;
+        mpc*) url=https://ftp.gnu.org/gnu/mpc/mpc-${mpc_version}.tar.gz ;;
         autoconf*) url=http://ftp.gnu.org/gnu/autoconf/autoconf-${autoconf_version}.tar.gz ;;
         automake*) url=http://ftp.gnu.org/gnu/automake/automake-${automake_version}.tar.gz ;;
         *) exit 1 ;;

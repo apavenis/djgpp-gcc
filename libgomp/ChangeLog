@@ -1,3 +1,31 @@
+2020-03-04  Release Manager
+
+	* GCC 8.4.0 released.
+
+2020-02-14  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2020-02-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/93515
+	* testsuite/libgomp.c-c++-common/pr93515.c: New test.
+
+	2019-12-31  Ayush Mittal  <ayush.m@samsung.com>
+
+	PR libgomp/93065
+	* oacc-init.c (goacc_runtime_deinitialize): New function.
+
+	2019-12-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/92899
+	* testsuite/libgomp.fortran/atomic1.f90: New test.
+
+	2019-11-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/60228
+	* testsuite/libgomp.c++/udr-20.C: New test.
+	* testsuite/libgomp.c++/udr-21.C: New test.
+
 2019-12-11  Tobias Burnus  <tobias@codesourcery.com>
 
 	Backported from mainline

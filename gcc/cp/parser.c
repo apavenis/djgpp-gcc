@@ -2646,6 +2646,7 @@ static bool cp_parser_init_statement_p
   (cp_parser *);
 static bool cp_parser_skip_to_closing_square_bracket
   (cp_parser *);
+static size_t cp_parser_skip_balanced_tokens (cp_parser *, size_t);
 
 /* Concept-related syntactic transformations */
 
@@ -13552,6 +13553,10 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
         case RID_CONCEPT:
           ds = ds_concept;
           cp_lexer_consume_token (parser->lexer);
+
+	  if (flags & CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR)
+	    break;
+
 	  /* In C++20 a concept definition is just 'concept name = expr;'
 	     Support that syntax by pretending we've seen 'bool'.  */
 	  if (cp_lexer_next_token_is (parser->lexer, CPP_NAME)
@@ -13579,6 +13584,10 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
 	  ds = ds_typedef;
 	  /* Consume the token.  */
 	  cp_lexer_consume_token (parser->lexer);
+
+	  if (flags & CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR)
+	    break;
+
 	  /* A constructor declarator cannot appear in a typedef.  */
 	  constructor_possible_p = false;
 	  /* The "typedef" keyword can only occur in a declaration; we
@@ -13672,6 +13681,9 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
 	  int decl_spec_declares_class_or_enum;
 	  bool is_cv_qualifier;
 	  tree type_spec;
+
+	  if (flags & CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR)
+	    flags |= CP_PARSER_FLAGS_NO_TYPE_DEFINITIONS;
 
 	  type_spec
 	    = cp_parser_type_specifier (parser, flags,
@@ -16154,7 +16166,17 @@ cp_parser_template_name (cp_parser* parser,
     {
       if (TREE_DEPRECATED (decl)
 	  && deprecated_state != DEPRECATED_SUPPRESS)
-	warn_deprecated_use (decl, NULL_TREE);
+	{
+	  tree d = DECL_TEMPLATE_RESULT (decl);
+	  tree attr;
+	  if (TREE_CODE (d) == TYPE_DECL)
+	    attr = lookup_attribute ("deprecated",
+				     TYPE_ATTRIBUTES (TREE_TYPE (d)));
+	  else
+	    attr = lookup_attribute ("deprecated",
+				     DECL_ATTRIBUTES (d));
+	  warn_deprecated_use (decl, attr);
+	}
     }
   else
     {
@@ -25389,6 +25411,17 @@ cp_parser_std_attribute (cp_parser *parser, tree attr_ns)
       /* A GNU attribute that takes an identifier in parameter.  */
       attr_flag = id_attr;
 
+    const attribute_spec *as
+      = lookup_attribute_spec (TREE_PURPOSE (attribute));
+    if (as == NULL)
+      {
+	/* For unknown attributes, just skip balanced tokens instead of
+	   trying to parse the arguments.  */
+	for (size_t n = cp_parser_skip_balanced_tokens (parser, 1) - 1; n; --n)
+	  cp_lexer_consume_token (parser->lexer);
+	return attribute;
+      }
+
     vec = cp_parser_parenthesized_expression_list
       (parser, attr_flag, /*cast_p=*/false,
        /*allow_expansion_p=*/true,
@@ -26788,11 +26821,26 @@ cp_parser_constructor_declarator_p (cp_parser *parser, bool friend_p)
 	  /* A parameter declaration begins with a decl-specifier,
 	     which is either the "attribute" keyword, a storage class
 	     specifier, or (usually) a type-specifier.  */
-	  && !cp_lexer_next_token_is_decl_specifier_keyword (parser->lexer))
+	  && (!cp_lexer_next_token_is_decl_specifier_keyword (parser->lexer)
+	      /* GNU attributes can actually appear both at the start of
+		 a parameter and parenthesized declarator.
+		 S (__attribute__((unused)) int);
+		 is a constructor, but
+		 S (__attribute__((unused)) foo) (int);
+		 is a function declaration.  */
+	      || (cp_parser_allow_gnu_extensions_p (parser)
+		  && cp_next_tokens_can_be_gnu_attribute_p (parser))))
 	{
 	  tree type;
 	  tree pushed_scope = NULL_TREE;
 	  unsigned saved_num_template_parameter_lists;
+
+	  if (cp_next_tokens_can_be_gnu_attribute_p (parser))
+	    {
+	      unsigned int n = cp_parser_skip_gnu_attributes_opt (parser, 1);
+	      while (--n)
+		cp_lexer_consume_token (parser->lexer);
+	    }
 
 	  /* Names appearing in the type-specifier should be looked up
 	     in the scope of the class.  */
@@ -37592,6 +37640,8 @@ cp_parser_omp_declare_reduction_exprs (tree fndecl, cp_parser *parser)
   combiner = cp_parser_expression (parser);
   finish_expr_stmt (combiner);
   block = finish_omp_structured_block (block);
+  if (processing_template_decl)
+    block = build_stmt (input_location, EXPR_STMT, block);
   add_stmt (block);
 
   if (!cp_parser_require (parser, CPP_CLOSE_PAREN, RT_CLOSE_PAREN))
@@ -37694,6 +37744,8 @@ cp_parser_omp_declare_reduction_exprs (tree fndecl, cp_parser *parser)
 
       block = finish_omp_structured_block (block);
       cp_walk_tree (&block, cp_remove_omp_priv_cleanup_stmt, omp_priv, NULL);
+      if (processing_template_decl)
+	block = build_stmt (input_location, EXPR_STMT, block);
       add_stmt (block);
 
       if (ctor)

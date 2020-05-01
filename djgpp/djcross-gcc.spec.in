@@ -183,8 +183,8 @@ make all install
 cd $RPM_BUILD_DIR/%{name}-%{version} || exit 1
 tar xzf $RPM_SOURCE_DIR/automake-%{automake_version}.tar.gz || exit 1
 cd $RPM_BUILD_DIR/%{name}-%{version}/automake-%{automake_version}
-./configure --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst
-make all install
+PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" ./configure --prefix=$RPM_BUILD_DIR/%{name}-%{version}/tmpinst
+PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" make all install
 
 cd $RPM_BUILD_DIR/%{name}-%{version} || exit 1
 tar xjf $RPM_SOURCE_DIR/gmp-%{gmp_version}.tar.bz2 || exit 1
@@ -462,11 +462,15 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
-* Fri Feb 22 2019  Andris Pavenis <andris.pavenis@iki.fi>
+* Fri May  1 2020 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-8.4.0
+- Use GMP-6.2.0
+
+* Fri Feb 22 2019 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-8.3.0
 - Use MPFR-4.0.2
 
-* Sat Jul 28 2018  Andris Pavenis <andris.pavenis@iki.fi>
+* Sat Jul 28 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - LTO fix (https://gcc.gnu.org/ml/gcc-patches/2018-07/msg01696.html)
 
 * Thu Jul 26 2018 Andris Pavenis <andris.pavenis@iki.fi>

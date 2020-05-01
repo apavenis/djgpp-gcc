@@ -2884,7 +2884,7 @@ pushdecl (tree x)
      unless they have initializers (which generate code).  */
   if (current_function_decl
       && (!VAR_OR_FUNCTION_DECL_P (x)
-	  || DECL_INITIAL (x) || !DECL_EXTERNAL (x)))
+	  || DECL_INITIAL (x) || !TREE_PUBLIC (x)))
     DECL_CONTEXT (x) = current_function_decl;
 
   /* Anonymous decls are just inserted in the scope.  */
@@ -6227,11 +6227,14 @@ grokdeclarator (const struct c_declarator *declarator,
 		  }
 		if (this_size_varies)
 		  {
-		    if (*expr)
-		      *expr = build2 (COMPOUND_EXPR, TREE_TYPE (size),
-				      *expr, size);
-		    else
-		      *expr = size;
+		    if (TREE_SIDE_EFFECTS (size))
+		      {
+			if (*expr)
+			  *expr = build2 (COMPOUND_EXPR, TREE_TYPE (size),
+					  *expr, size);
+			else
+			  *expr = size;
+		      }
 		    *expr_const_operands &= size_maybe_const;
 		  }
 	      }
