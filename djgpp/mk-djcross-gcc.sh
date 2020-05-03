@@ -16,12 +16,12 @@ datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
 case $basever in
-    10.[1-9].0)
+    11.[1-9].0)
         upstream=tags/releases/gcc-$basever
         dj_branch=tags/djgpp/gcc-$basever
         djn_branch=tags/djgpp/native/gcc-$basever
         ;;
-    10.0.* | 10.[1-9].[1-9])
+    11.0.* | 11.[1-9].[1-9])
         upstream=master
         dj_branch=djgpp/master
         djn_branch=djgpp/native/master

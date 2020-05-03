@@ -1,3 +1,43 @@
+2020-05-02  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR translation/93861
+	* config/darwin-driver.c (darwin_driver_init): Adjust spelling in
+	a warning.
+
+2020-05-02  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/tilegx/tilegx.md
+	(insn_stnt<I124MODE:n>_add<I48MODE:bitsuffix>): Use <I124MODE:n>
+	rather than just <n>.
+
+2020-05-01  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/93492
+	* cfgexpand.c (pass_expand::execute): Set crtl->patch_area_size
+	and crtl->patch_area_entry.
+	* emit-rtl.h (rtl_data): Add patch_area_size and patch_area_entry.
+	* opts.c (common_handle_option): Limit
+	function_entry_patch_area_size and function_entry_patch_area_start
+	to USHRT_MAX.  Fix a typo in error message.
+	* varasm.c (assemble_start_function): Use crtl->patch_area_size
+	and crtl->patch_area_entry.
+	* doc/invoke.texi: Document the maximum value for
+	-fpatchable-function-entry.
+
+2020-05-01  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* config/i386/darwin.h: Repair SUBTARGET_INIT_BUILTINS.
+	Override SUBTARGET_SHADOW_OFFSET macro.
+
+2020-05-01  Andreas Tobler  <andreast@gcc.gnu.org>
+
+	* config/i386/i386.h: Define a new macro: SUBTARGET_SHADOW_OFFSET.
+	* config/i386/i386.c (ix86_asan_shadow_offset): Use this macro.
+	* config/i386/darwin.h: Override the SUBTARGET_SHADOW_OFFSET macro.
+	* config/i386/freebsd.h: Likewise.
+	* config/freebsd.h (LIBASAN_EARLY_SPEC): Define.
+	LIBTSAN_EARLY_SPEC): Likewise. (LIBLSAN_EARLY_SPEC): Likewise.
+
 2020-04-30  Alexandre Oliva <oliva@adacore.com>
 
 	* doc/sourcebuild.texi (Effective-Target Keywords): Document
