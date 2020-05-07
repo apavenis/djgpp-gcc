@@ -466,6 +466,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Thu May  7 2020 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to GCC-10.1.0
+
 * Fri May  1 2020 Andris Pavenis <andris.pavenis@iki.fi>
 - Branch for upcoming gcc-10
 
