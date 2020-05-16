@@ -72,12 +72,12 @@ esac
 
 # Extract minimal set of changes required for building cross-compiler for DJGPP target
 rm -f djgpp-changes-minimal.diff
-for file in $(cd .. && git diff --name-only $upstream $dj_branch); do
+for file in $(git -C .. diff --name-only $upstream $dj_branch); do
    case $file in
        djgpp* | readme.DJGPP | ChangeLog.DJGPP)
            ;;
        *)
-           ( cd .. && git diff -u $upstream $dj_branch -- $file ) >>djgpp-changes-minimal.diff
+           ( git -C .. diff -u $upstream $dj_branch -- $file ) >>djgpp-changes-minimal.diff
            ;;
    esac
 done
@@ -110,7 +110,8 @@ CreatePatchDir()
     echo "# Writting diffs to the directory $patch_dir"
     echo "#"
 
-    files=$( cd .. && git diff --stat $orig_branch $new_branch | grep -v files\ changed | awk '{print $1}')
+    set -x
+    files=$( git -C .. diff --stat --name-only $orig_branch $new_branch )
 
     new_files=
     for file in $files; do
@@ -123,7 +124,7 @@ CreatePatchDir()
                 dir=$patch_dir/$(dirname $file)
                 mkdir -p $dir
                 if git cat-file -e $orig_branch:$file 2>/dev/null ; then
-                    ( cd .. && git diff $orig_branch $new_branch -- $file ) >$patch_dir/$file.diff
+                    ( git -C .. diff $orig_branch $new_branch -- $file ) >$patch_dir/$file.diff
                     echo "Existing file : " $file
                 else
                     new_files="$new_files $file"
@@ -138,6 +139,7 @@ CreatePatchDir()
         mkdir -p $dir
         git cat-file -p $new_branch:$file >$patch_dir/$file
     done
+    set +x
 }
 
 CreatePatchDir $upstream $dj_branch $dest/diffs/source
@@ -215,7 +217,7 @@ mkdir -p rpm/SOURCES rpm/BUILD rpm/SPECS rpm/SRPMS rpm/RPMS
 
 tar cjf rpm/SOURCES/${dest}.tar.bz2 ${dest}
 
-( cd .. && git archive --format=tar --prefix=gcc-${source_name}/ ${upstream} ) | $archiver -9vv >rpm/SOURCES/gcc-${source_name}.tar.${gcc_src_ext}
+git -C .. archive --format=tar --prefix=gcc-${source_name}/ ${upstream} | $archiver -9vv >rpm/SOURCES/gcc-${source_name}.tar.${gcc_src_ext}
 
 for file in $ext_files ; do cp -v ext/$file rpm/SOURCES; done
 
