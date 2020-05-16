@@ -45,7 +45,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   ctype<char>::ctype(__c_locale, const mask* __table, bool __del,
 		     size_t __refs)
   : facet(__refs), _M_del(__table != 0 && __del),
-  _M_toupper(__dj_ctype_toupper), _M_tolower(__dj_ctype_tolower),
+  _M_toupper(__dj_ctype_toupper+1), _M_tolower(__dj_ctype_tolower+1),
   _M_table(__table ? __table : classic_table())
   {
     memset(_M_widen, 0, sizeof(_M_widen));
@@ -56,7 +56,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   ctype<char>::ctype(const mask* __table, bool __del, size_t __refs)
   : facet(__refs), _M_del(__table != 0 && __del),
-  _M_toupper(__dj_ctype_toupper), _M_tolower(__dj_ctype_tolower),
+  _M_toupper(__dj_ctype_toupper+1), _M_tolower(__dj_ctype_tolower+1),
   _M_table(__table ? __table : classic_table())
   {
     memset(_M_widen, 0, sizeof(_M_widen));
