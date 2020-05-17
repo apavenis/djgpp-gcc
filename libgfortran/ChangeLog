@@ -1,7 +1,31 @@
+2020-05-15  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR bootstrap/95147
+	* configure: Regenerated.
+
+2020-05-14  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR libfortran/95119
+	* io/close.c (close_status): Add CLOSE_INVALID.
+	(st_close): Return early on invalid STATUS parameter.
+
+2020-05-14  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* configure: Regenerated.
+
+2020-05-06  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/fpu-387.h (__math_force_eval): Remove.
+	(__math_force_eval_div): New define.
+	(local_feraiseexcept): Use __math_force_eval_div to use
+	generic division to generate INVALID, DIVZERO and INEXACT
+	exceptions.
+	(struct fenv): Define named struct instead of typedef.
+
 2020-05-01  Uroš Bizjak  <ubizjak@gmail.com>
 
 	* config/fpu-387.h (__math_force_eval): New define.
-	(local_feraiseexcept): Use __math_force_eval to evaluete
+	(local_feraiseexcept): Use __math_force_eval to evaluate
 	generic division to generate INVALID and DIVZERO exceptions.
 
 2020-04-22  Fritz Reese  <foreese@gcc.gnu.org>

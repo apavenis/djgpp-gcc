@@ -428,6 +428,15 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	}
     };
 
+_GLIBCXX_BEGIN_NAMESPACE_CONTAINER
+
+  template<typename _Tp, typename _Ref, typename _Ptr>
+    struct _Deque_iterator;
+
+  struct _Bit_iterator;
+
+_GLIBCXX_END_NAMESPACE_CONTAINER
+
   // Helpers for streambuf iterators (either istream or ostream).
   // NB: avoid including <iosfwd>, relatively large.
   template<typename _CharT>
@@ -471,13 +480,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       return std::__copy_move<_IsMove, __memcpyable<_OI, _II>::__value,
 			      _Category>::__copy_m(__first, __last, __result);
     }
-
-_GLIBCXX_BEGIN_NAMESPACE_CONTAINER
-
-  template<typename _Tp, typename _Ref, typename _Ptr>
-    struct _Deque_iterator;
-
-_GLIBCXX_END_NAMESPACE_CONTAINER
 
   template<bool _IsMove,
 	   typename _Tp, typename _Ref, typename _Ptr, typename _OI>
@@ -875,11 +877,20 @@ _GLIBCXX_END_NAMESPACE_CONTAINER
 
   // Specialization: for char types we can use memset.
   template<typename _Tp>
+    _GLIBCXX20_CONSTEXPR
     inline typename
     __gnu_cxx::__enable_if<__is_byte<_Tp>::__value, void>::__type
     __fill_a1(_Tp* __first, _Tp* __last, const _Tp& __c)
     {
       const _Tp __tmp = __c;
+#if __cpp_lib_is_constant_evaluated
+      if (std::is_constant_evaluated())
+	{
+	  for (; __first != __last; ++__first)
+	    *__first = __tmp;
+	  return;
+	}
+#endif
       if (const size_t __len = __last - __first)
 	__builtin_memset(__first, static_cast<unsigned char>(__tmp), __len);
     }
@@ -897,6 +908,10 @@ _GLIBCXX_END_NAMESPACE_CONTAINER
     __fill_a1(const _GLIBCXX_STD_C::_Deque_iterator<_Tp, _Tp&, _Tp*>&,
 	      const _GLIBCXX_STD_C::_Deque_iterator<_Tp, _Tp&, _Tp*>&,
 	      const _VTp&);
+
+  void
+  __fill_a1(_GLIBCXX_STD_C::_Bit_iterator, _GLIBCXX_STD_C::_Bit_iterator,
+	    const bool&);
 
   template<typename _FIte, typename _Tp>
     _GLIBCXX20_CONSTEXPR
@@ -1691,8 +1706,8 @@ _GLIBCXX_BEGIN_NAMESPACE_ALGO
 	  if constexpr (__is_byte_iter<_InputIter1>)
 	    if constexpr (__is_byte_iter<_InputIter2>)
 	      {
-		const auto [__len, __lencmp]
-		  = std::__min_cmp(__last1 - __first1, __last2 - __first2);
+		const auto [__len, __lencmp] = _GLIBCXX_STD_A::
+		  __min_cmp(__last1 - __first1, __last2 - __first2);
 		if (__len)
 		  {
 		    const auto __c
@@ -1722,9 +1737,9 @@ _GLIBCXX_BEGIN_NAMESPACE_ALGO
 				      _InputIter2 __first2,
 				      _InputIter2 __last2)
     {
-      return std::lexicographical_compare_three_way(__first1, __last1,
-						    __first2, __last2,
-						    compare_three_way{});
+      return _GLIBCXX_STD_A::
+	lexicographical_compare_three_way(__first1, __last1, __first2, __last2,
+					  compare_three_way{});
     }
 #endif // three_way_comparison
 

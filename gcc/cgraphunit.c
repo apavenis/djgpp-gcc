@@ -206,6 +206,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "stringpool.h"
 #include "attribs.h"
 #include "ipa-inline.h"
+#include "omp-offload.h"
 
 /* Queue of cgraph nodes scheduled to be added into cgraph.  This is a
    secondary queue used during optimization to accommodate passes that
@@ -1160,6 +1161,9 @@ analyze_functions (bool first_time)
 	  node->fixup_same_cpp_alias_visibility (node->get_alias_target ());
   build_type_inheritance_graph ();
 
+  if (flag_openmp && first_time)
+    omp_discover_implicit_declare_target ();
+
   /* Analysis adds static variables that in turn adds references to new functions.
      So we need to iterate the process until it stabilize.  */
   while (changed)
@@ -2058,10 +2062,7 @@ cgraph_node::expand_thunk (bool output_asm_thunks, bool force_gimple_thunk)
 	for (; i < nargs; i++, arg = DECL_CHAIN (arg))
 	  {
 	    tree tmp = arg;
-	    if (VECTOR_TYPE_P (TREE_TYPE (arg))
-		|| TREE_CODE (TREE_TYPE (arg)) == COMPLEX_TYPE)
-	      DECL_GIMPLE_REG_P (arg) = 1;
-
+	    DECL_NOT_GIMPLE_REG_P (arg) = 0;
 	    if (!is_gimple_val (arg))
 	      {
 		tmp = create_tmp_reg (TYPE_MAIN_VARIANT

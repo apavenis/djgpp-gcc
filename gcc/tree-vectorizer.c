@@ -99,7 +99,7 @@ auto_purge_vect_location::~auto_purge_vect_location ()
 
 void
 dump_stmt_cost (FILE *f, void *data, int count, enum vect_cost_for_stmt kind,
-		stmt_vec_info stmt_info, int misalign, unsigned cost,
+		stmt_vec_info stmt_info, tree, int misalign, unsigned cost,
 		enum vect_cost_model_location where)
 {
   fprintf (f, "%p ", data);
@@ -631,7 +631,6 @@ stmt_vec_info
 vec_info::new_stmt_vec_info (gimple *stmt)
 {
   stmt_vec_info res = XCNEW (class _stmt_vec_info);
-  res->vinfo = this;
   res->stmt = stmt;
 
   STMT_VINFO_TYPE (res) = undef_vec_info_type;

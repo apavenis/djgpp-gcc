@@ -5603,10 +5603,8 @@ enum overload_flags { NO_SPECIAL = 0, DTOR_FLAG, TYPENAME_FLAG };
 /* Used in calls to store_init_value to suppress its usual call to
    digest_init.  */
 #define LOOKUP_ALREADY_DIGESTED (LOOKUP_DEFAULTED << 1)
-/* An instantiation with explicit template arguments.  */
-#define LOOKUP_EXPLICIT_TMPL_ARGS (LOOKUP_ALREADY_DIGESTED << 1)
 /* Like LOOKUP_NO_TEMP_BIND, but also prevent binding to xvalues.  */
-#define LOOKUP_NO_RVAL_BIND (LOOKUP_EXPLICIT_TMPL_ARGS << 1)
+#define LOOKUP_NO_RVAL_BIND (LOOKUP_ALREADY_DIGESTED << 1)
 /* Used by case_conversion to disregard non-integral conversions.  */
 #define LOOKUP_NO_NON_INTEGRAL (LOOKUP_NO_RVAL_BIND << 1)
 /* Used for delegating constructors in order to diagnose self-delegation.  */
@@ -6955,7 +6953,7 @@ extern tree tsubst_default_argument		(tree, int, tree, tree,
 						 tsubst_flags_t);
 extern tree tsubst (tree, tree, tsubst_flags_t, tree);
 extern tree tsubst_copy_and_build		(tree, tree, tsubst_flags_t,
-						 tree, bool, bool);
+						 tree, bool = false, bool = false);
 extern tree tsubst_expr                         (tree, tree, tsubst_flags_t,
                                                  tree, bool);
 extern tree tsubst_pack_expansion		(tree, tree, tsubst_flags_t, tree);
@@ -7058,7 +7056,7 @@ extern tree dcast_base_hint			(tree, tree);
 extern int accessible_p				(tree, tree, bool);
 extern int accessible_in_template_p		(tree, tree);
 extern tree lookup_field			(tree, tree, int, bool);
-extern tree lookup_fnfields			(tree, tree, int);
+extern tree lookup_fnfields			(tree, tree, int, tsubst_flags_t);
 extern tree lookup_member			(tree, tree, int, bool,
 						 tsubst_flags_t,
 						 access_failure_info *afi = NULL);

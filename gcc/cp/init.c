@@ -160,7 +160,7 @@ build_zero_init_1 (tree type, tree nelts, bool static_storage_p,
      -- if T is a scalar type, the storage is set to the value of zero
 	converted to T.
 
-     -- if T is a non-union class type, the storage for each nonstatic
+     -- if T is a non-union class type, the storage for each non-static
 	data member and each base-class subobject is zero-initialized.
 
      -- if T is a union type, the storage for its first data member is
@@ -812,7 +812,7 @@ perform_member_init (tree member, tree init)
   if (init && TREE_CODE (init) == TREE_LIST
       && (DIRECT_LIST_INIT_P (TREE_VALUE (init))
 	  /* FIXME C++20 parenthesized aggregate init (PR 92812).  */
-	  || !(/* cxx_dialect >= cxx2a ? CP_AGGREGATE_TYPE_P (type) */
+	  || !(/* cxx_dialect >= cxx20 ? CP_AGGREGATE_TYPE_P (type) */
 	       /* :  */CLASS_TYPE_P (type))))
     init = build_x_compound_expr_from_list (init, ELK_MEM_INIT,
 					    tf_warning_or_error);
@@ -2221,8 +2221,8 @@ build_offset_ref (tree type, tree member, bool address_p,
       /* If MEMBER is non-static, then the program has fallen afoul of
 	 [expr.prim]:
 
-	   An id-expression that denotes a nonstatic data member or
-	   nonstatic member function of a class can only be used:
+	   An id-expression that denotes a non-static data member or
+	   non-static member function of a class can only be used:
 
 	   -- as part of a class member access (_expr.ref_) in which the
 	   object-expression refers to the member's class or a class
@@ -2230,8 +2230,8 @@ build_offset_ref (tree type, tree member, bool address_p,
 
 	   -- to form a pointer to member (_expr.unary.op_), or
 
-	   -- in the body of a nonstatic member function of that class or
-	   of a class derived from that class (_class.mfct.nonstatic_), or
+	   -- in the body of a non-static member function of that class or
+	   of a class derived from that class (_class.mfct.non-static_), or
 
 	   -- in a mem-initializer for a constructor for that class or for
 	   a class derived from that class (_class.base.init_).  */
@@ -2909,7 +2909,7 @@ build_new_constexpr_heap_type (tree elt_type, tree cookie_size, tree full_size)
 static tree
 maybe_wrap_new_for_constexpr (tree alloc_call, tree elt_type, tree cookie_size)
 {
-  if (cxx_dialect < cxx2a)
+  if (cxx_dialect < cxx20)
     return alloc_call;
 
   if (current_function_decl != NULL_TREE
@@ -3276,7 +3276,7 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
       /* Create the argument list.  */
       vec_safe_insert (*placement, 0, size);
       /* Do name-lookup to find the appropriate operator.  */
-      fns = lookup_fnfields (elt_type, fnname, /*protect=*/2);
+      fns = lookup_fnfields (elt_type, fnname, /*protect=*/2, complain);
       if (fns == NULL_TREE)
 	{
 	  if (complain & tf_error)
@@ -3611,7 +3611,7 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 		 means allocate an int, and initialize it with 10.
 
 		 In C++20, also handle `new A(1, 2)'.  */
-	      if (cxx_dialect >= cxx2a
+	      if (cxx_dialect >= cxx20
 		  && AGGREGATE_TYPE_P (type)
 		  && (*init)->length () > 1)
 		{
@@ -4076,7 +4076,9 @@ build_vec_delete_1 (location_t loc, tree base, tree maxindex, tree type,
     }
 
   body = loop;
-  if (!deallocate_expr)
+  if (deallocate_expr == error_mark_node)
+    return error_mark_node;
+  else if (!deallocate_expr)
     ;
   else if (!body)
     body = deallocate_expr;
@@ -4993,7 +4995,9 @@ build_delete (location_t loc, tree otype, tree addr,
       return expr;
     }
 
-  if (do_delete)
+  if (do_delete == error_mark_node)
+    return error_mark_node;
+  else if (do_delete)
     {
       tree do_delete_call_expr = extract_call_expr (do_delete);
       if (TREE_CODE (do_delete_call_expr) == CALL_EXPR)
