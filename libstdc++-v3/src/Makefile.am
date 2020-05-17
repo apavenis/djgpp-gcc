@@ -99,13 +99,15 @@ libstdcxx_la_LIBADD = \
 	$(GLIBCXX_LIBS) \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
 	$(top_builddir)/src/c++98/libc++98convenience.la \
-	$(top_builddir)/src/c++11/libc++11convenience.la
+	$(top_builddir)/src/c++11/libc++11convenience.la \
+	$(top_builddir)/src/c++17/libc++17convenience.la
 
 libstdcxx_la_DEPENDENCIES = \
 	${version_dep} \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
 	$(top_builddir)/src/c++98/libc++98convenience.la \
-	$(top_builddir)/src/c++11/libc++11convenience.la
+	$(top_builddir)/src/c++11/libc++11convenience.la \
+	$(top_builddir)/src/c++17/libc++17convenience.la
 
 libstdcxx_la_LDFLAGS = \
 	-version-info $(libtool_VERSION) ${version_arg} -lm
