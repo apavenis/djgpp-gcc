@@ -4282,6 +4282,28 @@ build_user_type_conversion (tree totype, tree expr, int flags,
   return ret;
 }
 
+/* Give a helpful diagnostic when implicit_conversion fails.  */
+
+static void
+implicit_conversion_error (location_t loc, tree type, tree expr)
+{
+  tsubst_flags_t complain = tf_warning_or_error;
+
+  /* If expr has unknown type, then it is an overloaded function.
+     Call instantiate_type to get good error messages.  */
+  if (TREE_TYPE (expr) == unknown_type_node)
+    instantiate_type (type, expr, complain);
+  else if (invalid_nonstatic_memfn_p (loc, expr, complain))
+    /* We gave an error.  */;
+  else
+    {
+      range_label_for_type_mismatch label (TREE_TYPE (expr), type);
+      gcc_rich_location rich_loc (loc, &label);
+      error_at (&rich_loc, "could not convert %qE from %qH to %qI",
+		expr, TREE_TYPE (expr), type);
+    }
+}
+
 /* Worker for build_converted_constant_expr.  */
 
 static tree
@@ -4397,8 +4419,7 @@ build_converted_constant_expr_internal (tree type, tree expr,
   else
     {
       if (complain & tf_error)
-	error_at (loc, "could not convert %qE from %qH to %qI", expr,
-		  TREE_TYPE (expr), type);
+	implicit_conversion_error (loc, type, expr);
       expr = error_mark_node;
     }
 
@@ -4600,15 +4621,7 @@ build_new_function_call (tree fn, vec<tree, va_gc> **args,
     }
   else
     {
-      int flags = LOOKUP_NORMAL;
-      /* If fn is template_id_expr, the call has explicit template arguments
-         (e.g. func<int>(5)), communicate this info to build_over_call
-         through flags so that later we can use it to decide whether to warn
-         about peculiar null pointer conversion.  */
-      if (TREE_CODE (fn) == TEMPLATE_ID_EXPR)
-        flags |= LOOKUP_EXPLICIT_TMPL_ARGS;
-
-      result = build_over_call (cand, flags, complain);
+      result = build_over_call (cand, LOOKUP_NORMAL, complain);
     }
 
   if (flag_coroutines
@@ -4779,7 +4792,7 @@ build_op_call_1 (tree obj, vec<tree, va_gc> **args, tsubst_flags_t complain)
 
   if (TYPE_BINFO (type))
     {
-      fns = lookup_fnfields (TYPE_BINFO (type), call_op_identifier, 1);
+      fns = lookup_fnfields (TYPE_BINFO (type), call_op_identifier, 1, complain);
       if (fns == error_mark_node)
 	return error_mark_node;
     }
@@ -5965,7 +5978,7 @@ add_operator_candidates (z_candidate **candidates,
   tree arg2_type = nargs > 1 ? TREE_TYPE ((*arglist)[1]) : NULL_TREE;
   if (CLASS_TYPE_P (arg1_type))
     {
-      tree fns = lookup_fnfields (arg1_type, fnname, 1);
+      tree fns = lookup_fnfields (arg1_type, fnname, 1, complain);
       if (fns == error_mark_node)
 	return error_mark_node;
       if (fns)
@@ -6028,7 +6041,7 @@ add_operator_candidates (z_candidate **candidates,
 
       /* Maybe add C++20 rewritten comparison candidates.  */
       tree_code rewrite_code = ERROR_MARK;
-      if (cxx_dialect >= cxx2a
+      if (cxx_dialect >= cxx20
 	  && nargs == 2
 	  && (OVERLOAD_TYPE_P (arg1_type) || OVERLOAD_TYPE_P (arg2_type)))
 	switch (code)
@@ -6586,7 +6599,7 @@ extract_call_expr (tree call)
     call = TREE_OPERAND (call, 0);
   if (TREE_CODE (call) == TARGET_EXPR)
     call = TARGET_EXPR_INITIAL (call);
-  if (cxx_dialect >= cxx2a)
+  if (cxx_dialect >= cxx20)
     switch (TREE_CODE (call))
       {
 	/* C++20 rewritten comparison operators.  */
@@ -6772,7 +6785,7 @@ build_op_delete_call (enum tree_code code, tree addr, tree size,
 
        Therefore, we ask lookup_fnfields to complain about ambiguity.  */
     {
-      fns = lookup_fnfields (TYPE_BINFO (type), fnname, 1);
+      fns = lookup_fnfields (TYPE_BINFO (type), fnname, 1, complain);
       if (fns == error_mark_node)
 	return error_mark_node;
     }
@@ -7267,7 +7280,7 @@ maybe_inform_about_fndecl_for_bogus_argument_init (tree fn, int argnum)
 static void
 maybe_warn_array_conv (location_t loc, conversion *c, tree expr)
 {
-  if (cxx_dialect >= cxx2a)
+  if (cxx_dialect >= cxx20)
     return;
 
   tree type = TREE_TYPE (expr);
@@ -7279,7 +7292,7 @@ maybe_warn_array_conv (location_t loc, conversion *c, tree expr)
 
   if (conv_binds_to_array_of_unknown_bound (c))
     pedwarn (loc, OPT_Wpedantic, "conversions to arrays of unknown bound "
-	     "are only available with %<-std=c++2a%> or %<-std=gnu++2a%>");
+	     "are only available with %<-std=c++20%> or %<-std=gnu++20%>");
 }
 
 /* Perform the conversions in CONVS on the expression EXPR.  FN and
@@ -8697,7 +8710,7 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 	      (DECL_CONTEXT (fn), BINFO_TYPE (cand->conversion_path)))) 
 	flags |= LOOKUP_NONVIRTUAL;
 
-      /* [class.mfct.nonstatic]: If a nonstatic member function of a class
+      /* [class.mfct.non-static]: If a non-static member function of a class
 	 X is called for an object that is not of type X, or of a type
 	 derived from X, the behavior is undefined.
 
@@ -8773,7 +8786,7 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
       if (null_node_p (arg)
           && DECL_TEMPLATE_INFO (fn)
           && cand->template_decl
-          && !(flags & LOOKUP_EXPLICIT_TMPL_ARGS))
+	  && !cand->explicit_targs)
         conversion_warning = false;
 
       /* Set user_conv_p on the argument conversions, so rvalue/base handling
@@ -9793,7 +9806,7 @@ build_special_member_call (tree instance, tree name, vec<tree, va_gc> **args,
 	}
     }
 
-  fns = lookup_fnfields (binfo, name, 1);
+  fns = lookup_fnfields (binfo, name, 1, complain);
 
   /* When making a call to a constructor or destructor for a subobject
      that uses virtual base classes, pass down a pointer to a VTT for
@@ -10238,7 +10251,7 @@ build_new_method_call_1 (tree instance, tree fns, vec<tree, va_gc> **args,
 	 the two.  */
       if (DECL_CONSTRUCTOR_P (fn)
 	  && !(flags & LOOKUP_ONLYCONVERTING)
-	  && cxx_dialect >= cxx2a
+	  && cxx_dialect >= cxx20
 	  && CP_AGGREGATE_TYPE_P (basetype)
 	  && !user_args->is_empty ())
 	{
@@ -10345,8 +10358,6 @@ build_new_method_call_1 (tree instance, tree fns, vec<tree, va_gc> **args,
 
 	  if (call != error_mark_node)
 	    {
-              if (explicit_targs)
-                flags |= LOOKUP_EXPLICIT_TMPL_ARGS;
 	      /* Now we know what function is being called.  */
 	      if (fn_p)
 		*fn_p = fn;
@@ -11855,21 +11866,7 @@ perform_implicit_conversion_flags (tree type, tree expr,
   if (!conv)
     {
       if (complain & tf_error)
-	{
-	  /* If expr has unknown type, then it is an overloaded function.
-	     Call instantiate_type to get good error messages.  */
-	  if (TREE_TYPE (expr) == unknown_type_node)
-	    instantiate_type (type, expr, complain);
-	  else if (invalid_nonstatic_memfn_p (loc, expr, complain))
-	    /* We gave an error.  */;
-	  else
-	    {
-	      range_label_for_type_mismatch label (TREE_TYPE (expr), type);
-	      gcc_rich_location rich_loc (loc, &label);
-	      error_at (&rich_loc, "could not convert %qE from %qH to %qI",
-			expr, TREE_TYPE (expr), type);
-	    }
-	}
+	implicit_conversion_error (loc, type, expr);
       expr = error_mark_node;
     }
   else if (processing_template_decl && conv->kind != ck_identity)

@@ -1,3 +1,56 @@
+2020-05-15  Jason Merrill  <jason@redhat.com>
+
+	* c-opts.c (set_std_cxx20): Set flag_coroutines.
+
+2020-05-13  Jason Merrill  <jason@redhat.com>
+
+	* c.opt (std=c++20): Make c++2a the alias.
+	(std=gnu++20): Likewise.
+	* c-common.h (cxx_dialect): Change cxx2a to cxx20.
+	* c-opts.c: Adjust.
+	* c-cppbuiltin.c: Adjust.
+	* c-ubsan.c: Adjust.
+	* c-warn.c: Adjust.
+
+2020-05-12  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* c-ada-spec.c (dump_ads): Output pragma Warnings ("U"); on entry.
+
+2020-05-08  Nathan Sidwell  <nathan@acm.org>
+
+	Reimplement directives only processing.
+	* c-ppoutput.c (token_streamer): Ne.
+	(directives_only_cb): New.  Swallow ...
+	(print_lines_directives_only): ... this.
+	(scan_translation_unit_directives_only): Reimplment using the
+	published interface.
+
+2020-05-07  Marek Polacek  <polacek@redhat.com>
+
+	* c-format.c (badwords): Add "nonstatic".
+
+202-05-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/94968
+	* c-common.c (speculation_safe_value_resolve_params): Return false if
+	error_operand_p (val2).
+	(resolve_overloaded_builtin) <case BUILT_IN_SPECULATION_SAFE_VALUE_N>:
+	Remove extraneous semicolon.
+
+2020-05-06  qing zhao  <qing.zhao@oracle.com>
+
+	PR c/94230
+	* c-indentation.c (get_visual_column): Add a hint to use the new
+	-flarge-source-files option.
+
+2020-05-05  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	* c-attribs.c (handle_vector_size_attribute): Add attribute
+	nonnull for argument args in order to silence warning of
+	uninitialized variable usage.  Since this is local to the
+	compilation unit and thus cannot be checked at call sides by the
+	compiler, added an assert statement in order to verify this.
+
 2020-05-01  H.J. Lu  <hongjiu.lu@intel.com>
 
 	PR target/93492

@@ -3661,7 +3661,7 @@ check_field_decls (tree t, tree *access_decls,
 	    {
 	      /* ARM $12.6.2: [A member initializer list] (or, for an
 		 aggregate, initialization by a brace-enclosed list) is the
-		 only way to initialize nonstatic const and reference
+		 only way to initialize non-static const and reference
 		 members.  */
 	      TYPE_HAS_COMPLEX_COPY_ASSIGN (t) = 1;
 	      TYPE_HAS_COMPLEX_MOVE_ASSIGN (t) = 1;
@@ -3784,7 +3784,7 @@ check_field_decls (tree t, tree *access_decls,
 	    {
 	      /* ARM $12.6.2: [A member initializer list] (or, for an
 		 aggregate, initialization by a brace-enclosed list) is the
-		 only way to initialize nonstatic const and reference
+		 only way to initialize non-static const and reference
 		 members.  */
 	      TYPE_HAS_COMPLEX_COPY_ASSIGN (t) = 1;
 	      TYPE_HAS_COMPLEX_MOVE_ASSIGN (t) = 1;
@@ -3799,7 +3799,7 @@ check_field_decls (tree t, tree *access_decls,
 	    | CLASSTYPE_READONLY_FIELDS_NEED_INIT (type));
 	}
 
-      /* Core issue 80: A nonstatic data member is required to have a
+      /* Core issue 80: A non-static data member is required to have a
 	 different name from the class iff the class has a
 	 user-declared constructor.  */
       if (constructor_name_p (DECL_NAME (field), t)
@@ -5314,7 +5314,7 @@ trivial_default_constructor_is_constexpr (tree t)
        struct S { int i; constexpr S() = default; };
 
      should work.  */
-  return (cxx_dialect >= cxx2a
+  return (cxx_dialect >= cxx20
 	  || is_really_empty_class (t, /*ignore_vptr*/true));
 }
 
@@ -5644,7 +5644,7 @@ type_requires_array_cookie (tree type)
      a cookie.  */
   fns = lookup_fnfields (TYPE_BINFO (type),
 			 ovl_op_identifier (false, VEC_DELETE_EXPR),
-			 /*protect=*/0);
+			 /*protect=*/0, tf_warning_or_error);
   /* If there are no `operator []' members, or the lookup is
      ambiguous, then we don't need a cookie.  */
   if (!fns || fns == error_mark_node)
@@ -5691,7 +5691,7 @@ finalize_literal_type_property (tree t)
     CLASSTYPE_LITERAL_P (t) = false;
   else if (CLASSTYPE_LITERAL_P (t)
 	   && TYPE_HAS_NONTRIVIAL_DESTRUCTOR (t)
-	   && (cxx_dialect < cxx2a || !type_maybe_constexpr_destructor (t)))
+	   && (cxx_dialect < cxx20 || !type_maybe_constexpr_destructor (t)))
     CLASSTYPE_LITERAL_P (t) = false;
   else if (CLASSTYPE_LITERAL_P (t) && LAMBDA_TYPE_P (t))
     CLASSTYPE_LITERAL_P (t) = (cxx_dialect >= cxx17);
@@ -5745,7 +5745,7 @@ explain_non_literal_class (tree t)
     inform (UNKNOWN_LOCATION,
 	    "  %qT is a closure type, which is only literal in "
 	    "C++17 and later", t);
-  else if (cxx_dialect < cxx2a && TYPE_HAS_NONTRIVIAL_DESTRUCTOR (t))
+  else if (cxx_dialect < cxx20 && TYPE_HAS_NONTRIVIAL_DESTRUCTOR (t))
     inform (UNKNOWN_LOCATION, "  %q+T has a non-trivial destructor", t);
   else if (TYPE_HAS_NONTRIVIAL_DESTRUCTOR (t)
 	   && !type_maybe_constexpr_destructor (t))
@@ -5893,7 +5893,7 @@ check_bases_and_members (tree t)
      Again, other conditions for being an aggregate are checked
      elsewhere.  */
   CLASSTYPE_NON_AGGREGATE (t)
-    |= ((cxx_dialect < cxx2a
+    |= ((cxx_dialect < cxx20
 	 ? type_has_user_provided_or_explicit_constructor (t)
 	 : TYPE_HAS_USER_CONSTRUCTOR (t))
 	|| TYPE_POLYMORPHIC_P (t));
@@ -7499,7 +7499,7 @@ finish_struct (tree t, tree attributes)
       /* Remember current #pragma pack value.  */
       TYPE_PRECISION (t) = maximum_field_alignment;
 
-      if (cxx_dialect < cxx2a)
+      if (cxx_dialect < cxx20)
 	{
 	  if (!CLASSTYPE_NON_AGGREGATE (t)
 	      && type_has_user_provided_or_explicit_constructor (t))
@@ -8106,7 +8106,7 @@ resolve_address_of_overloaded_function (tree target_type,
        member functions match targets of type "pointer-to-member
        function;" the function type of the pointer to member is used to
        select the member function from the set of overloaded member
-       functions.  If a nonstatic member function is selected, the
+       functions.  If a non-static member function is selected, the
        reference to the overloaded function name is required to have the
        form of a pointer to member as described in 5.3.1.
 

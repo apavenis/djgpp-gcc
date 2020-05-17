@@ -3336,7 +3336,8 @@ rs6000_builtin_mask_calculate (void)
 	      && TARGET_HARD_FLOAT
 	      && !TARGET_IEEEQUAD)	    ? RS6000_BTM_LDBL128   : 0)
 	  | ((TARGET_FLOAT128_TYPE)	    ? RS6000_BTM_FLOAT128  : 0)
-	  | ((TARGET_FLOAT128_HW)	    ? RS6000_BTM_FLOAT128_HW : 0));
+	  | ((TARGET_FLOAT128_HW)	    ? RS6000_BTM_FLOAT128_HW : 0)
+	  | ((TARGET_FUTURE)                ? RS6000_BTM_FUTURE    : 0));
 }
 
 /* Implement TARGET_MD_ASM_ADJUST.  All asm statements are considered
@@ -5046,23 +5047,24 @@ adjust_vectorization_cost (enum vect_cost_for_stmt kind,
 /* Implement targetm.vectorize.add_stmt_cost.  */
 
 static unsigned
-rs6000_add_stmt_cost (void *data, int count, enum vect_cost_for_stmt kind,
-		      struct _stmt_vec_info *stmt_info, int misalign,
-		      enum vect_cost_model_location where)
+rs6000_add_stmt_cost (class vec_info *vinfo, void *data, int count,
+		      enum vect_cost_for_stmt kind,
+		      struct _stmt_vec_info *stmt_info, tree vectype,
+		      int misalign, enum vect_cost_model_location where)
 {
   rs6000_cost_data *cost_data = (rs6000_cost_data*) data;
   unsigned retval = 0;
 
   if (flag_vect_cost_model)
     {
-      tree vectype = stmt_info ? stmt_vectype (stmt_info) : NULL_TREE;
       int stmt_cost = rs6000_builtin_vectorization_cost (kind, vectype,
 							 misalign);
       stmt_cost += adjust_vectorization_cost (kind, stmt_info);
       /* Statements in an inner loop relative to the loop being
 	 vectorized are weighted more heavily.  The value here is
 	 arbitrary and could potentially be improved with analysis.  */
-      if (where == vect_body && stmt_info && stmt_in_inner_loop_p (stmt_info))
+      if (where == vect_body && stmt_info
+	  && stmt_in_inner_loop_p (vinfo, stmt_info))
 	count *= 50;  /* FIXME.  */
 
       retval = (unsigned) (count * stmt_cost);

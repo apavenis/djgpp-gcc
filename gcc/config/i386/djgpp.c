@@ -36,6 +36,8 @@ i386_djgpp_asm_named_section(const char *name, unsigned int flags,
     *f++ = 'w';
   if (flags & SECTION_CODE)
     *f++ = 'x';
+  if (flags & SECTION_BSS)
+    *f++ = 'b';
 
   /* LTO sections need 1-byte alignment to avoid confusing the
      zlib decompression algorithm with trailing zero pad bytes.  */

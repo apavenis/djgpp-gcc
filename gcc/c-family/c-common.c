@@ -324,7 +324,7 @@ static bool nonnull_check_p (tree, unsigned HOST_WIDE_INT);
    ObjC is like C except that D_OBJC and D_CXX_OBJC are not set
    C++ --std=c++98: D_CONLY | D_CXX11 | D_CXX20 | D_OBJC
    C++ --std=c++11: D_CONLY | D_CXX20 | D_OBJC
-   C++ --std=c++2a: D_CONLY | D_OBJC
+   C++ --std=c++20: D_CONLY | D_OBJC
    ObjC++ is like C++ except that D_OBJC is not set
 
    If -fno-asm is used, D_ASM is added to the mask.  If
@@ -6716,6 +6716,8 @@ speculation_safe_value_resolve_params (location_t loc, tree orig_function,
       tree val2 = (*params)[1];
       if (TREE_CODE (TREE_TYPE (val2)) == ARRAY_TYPE)
 	val2 = default_conversion (val2);
+      if (error_operand_p (val2))
+	return false;
       if (!(TREE_TYPE (val) == TREE_TYPE (val2)
 	    || useless_type_conversion_p (TREE_TYPE (val), TREE_TYPE (val2))))
 	{
@@ -7400,7 +7402,7 @@ resolve_overloaded_builtin (location_t loc, tree function,
       {
 	tree new_function, first_param, result;
 	enum built_in_function fncode
-	  = speculation_safe_value_resolve_call (function, params);;
+	  = speculation_safe_value_resolve_call (function, params);
 
 	if (fncode == BUILT_IN_NONE)
 	  return error_mark_node;

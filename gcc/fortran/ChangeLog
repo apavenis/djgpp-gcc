@@ -1,3 +1,80 @@
+2020-05-15  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/94690
+	* openmp.c (resolve_omp_do): Permit more clauses for SIMD
+	iteration variables.
+
+2020-05-14  Jakub Jelinek  <jakub@redhat.com>
+
+	* trans-openmp.c: Include function.h.
+	(gfc_trans_omp_target): Set cfun->has_omp_target.
+
+2020-05-13  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/93497
+	* decl.c (char_len_param_value): Check whether character
+	length expression is of type EXPR_OP and if so simplify it.
+	* resolve.c (resolve_charlen): Reject length if it has a
+	rank.
+
+2020-05-13  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/94690
+	* openmp.c (OMP_DISTRIBUTE_CLAUSES): Add OMP_CLAUSE_LASTPRIVATE.
+	(gfc_resolve_do_iterator): Skip the private handling for SIMD as
+	that is handled by ME code.
+	* trans-openmp.c (gfc_trans_omp_do): Don't add private/lastprivate
+	for dovar_found == 0, unless !simple.
+
+2020-05-11  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/95053
+	* arith.c (gfc_divide): Do not error out if operand 2 is
+	non-numeric.  Defer checks to later stage.
+
+2020-05-11  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/94672
+	* trans.h (gfc_conv_expr_present): Add use_saved_decl=false argument.
+	* trans-expr.c (gfc_conv_expr_present): Likewise; use DECL directly
+	and only if use_saved_decl is true, use the actual PARAM_DECL arg (saved
+	descriptor).
+	* trans-array.c (gfc_trans_dummy_array_bias): Set local 'arg.0'
+	variable to NULL if 'arg' is not present.
+	* trans-openmp.c (gfc_omp_check_optional_argument): Simplify by checking
+	'arg.0' instead of the true PARM_DECL.
+	(gfc_omp_finish_clause): Remove setting 'arg.0' to NULL.
+
+2020-05-11  Janus Weil  <janus@gcc.gnu.org>
+	    Dominique d'Humieres  <dominiq@lps.ens.fr>
+
+	PR fortran/59107
+	* gfortran.h: Rename field resolved as resolve_symbol_called
+	and assign two 2 bits instead of 1.
+	* interface.c (check_dtio_interface1): Use new field name.
+	(gfc_find_typebound_dtio_proc): Use new field name.
+	* resolve.c (gfc_resolve_intrinsic): Replace check of the formal
+	field with resolve_symbol_called is at least 2, if it is not
+	set the field to 2.  (resolve_typebound_procedure): Use new field
+	name.  (resolve_symbol): Use new field name and check whether it
+	is at least 1, if it is not set the field to 1.
+
+2020-05-10  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/93499
+	* arith.c (gfc_divide): Catch division by zero.
+	(eval_intrinsic_f3): Safeguard for NULL operands.
+
+2020-05-05  Steve Kargl  <kargl@gcc.gnu.org>
+	Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/93366
+	* check.c (gfc_check_associated, invalid_null_arg): Factorize
+	check for presence of invalid NULL() argument.
+	(gfc_check_kind, gfc_check_merge, gfc_check_shape)
+	(gfc_check_sizeof, gfc_check_spread, gfc_check_transfer): Use this
+	check for presence of invalid NULL() arguments.
+
 2020-04-29  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
 
 	PR fortran/94769

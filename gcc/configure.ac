@@ -3547,6 +3547,11 @@ changequote(,)dnl
     fi
     case "$target" in
       i[34567]86-*-*)
+	if test x$on_solaris = xyes; then
+	  case $gas_flag in
+	    yes) tls_as_opt="$tls_as_opt --32" ;;
+	  esac
+	fi
 	conftest_s="$conftest_s
 foo:	.long	25
 	.text
@@ -6843,6 +6848,17 @@ if test "$gcc_cv_no_pie" = "yes"; then
   NO_PIE_FLAG="-no-pie"
 fi
 AC_SUBST([NO_PIE_FLAG])
+
+# Enable Intel CET on Intel CET enabled host if jit is enabled.
+GCC_CET_HOST_FLAGS(CET_HOST_FLAGS)
+case x$enable_languages in
+*jit*)
+  ;;
+*)
+  CET_HOST_FLAGS=
+  ;;
+esac
+AC_SUBST(CET_HOST_FLAGS)
 
 # Check linker supports '-z bndplt'
 ld_bndplt_support=no

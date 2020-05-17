@@ -3,7 +3,7 @@ dnl GCC_CET_FLAGS
 dnl    (SHELL-CODE_HANDLER)
 dnl
 AC_DEFUN([GCC_CET_FLAGS],[dnl
-GCC_ENABLE(cet, no, ,[enable Intel CET in target libraries],
+GCC_ENABLE(cet, auto, ,[enable Intel CET in target libraries],
 	   permit yes|no|auto)
 AC_MSG_CHECKING([for CET support])
 
@@ -13,6 +13,8 @@ case "$host" in
       auto)
 	# Check if target supports multi-byte NOPs
 	# and if assembler supports CET insn.
+	save_CFLAGS="$CFLAGS"
+	CFLAGS="$CFLAGS -fcf-protection"
 	AC_COMPILE_IFELSE(
 	 [AC_LANG_PROGRAM(
 	  [],
@@ -25,6 +27,7 @@ asm ("setssbsy");
 	  ])],
 	 [enable_cet=yes],
 	 [enable_cet=no])
+	CFLAGS="$save_CFLAGS"
 	;;
       yes)
 	# Check if assembler supports CET.
@@ -111,7 +114,8 @@ if test x$may_have_cet = xyes; then
 fi
 
 if test x$may_have_cet = xyes; then
-  AC_TRY_RUN([
+  if test x$cross_compiling = xno; then
+    AC_TRY_RUN([
 static void
 foo (void)
 {
@@ -137,12 +141,17 @@ main ()
   bar ();
   return 0;
 }
-  ],
-  [have_cet=no],
-  [have_cet=yes])
-  if test x$enable_cet = xno -a x$have_cet = xyes; then
-    AC_MSG_ERROR([Intel CET must be enabled on Intel CET enabled host])
+    ],
+    [have_cet=no],
+    [have_cet=yes])
+    if test x$enable_cet = xno -a x$have_cet = xyes; then
+      AC_MSG_ERROR([Intel CET must be enabled on Intel CET enabled host])
+    fi
   fi
+else
+  # Enable CET in cross compiler if possible so that it will run on both
+  # CET and non-CET hosts.
+  have_cet=yes
 fi
 if test x$enable_cet = xyes; then
   $1="-fcf-protection"

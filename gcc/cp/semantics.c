@@ -127,11 +127,10 @@ struct GTY(()) deferred_access {
        A::B* A::f() { return 0; }
 
      is valid, even though `A::B' is not generally accessible.  */
-  vec<deferred_access_check, va_gc> * GTY(()) deferred_access_checks;
+  vec<deferred_access_check, va_gc> *deferred_access_checks;
 
   /* The current mode of access checks.  */
   enum deferring_kind deferring_access_checks_kind;
-
 };
 
 /* Data for deferred access checking.  */
@@ -3216,7 +3215,7 @@ begin_class_definition (tree t)
       SET_CLASSTYPE_INTERFACE_UNKNOWN_X
 	(t, finfo->interface_unknown);
     }
-  reset_specialization();
+  reset_specialization ();
 
   /* Make a declaration for this class in its own scope.  */
   build_self_reference ();
@@ -9746,6 +9745,14 @@ finish_decltype_type (tree expr, bool id_expression_or_member_access_p,
       SET_TYPE_STRUCTURAL_EQUALITY (type);
 
       return type;
+    }
+  else if (processing_template_decl)
+    {
+      ++cp_unevaluated_operand;
+      expr = instantiate_non_dependent_expr_sfinae (expr, complain);
+      --cp_unevaluated_operand;
+      if (expr == error_mark_node)
+	return error_mark_node;
     }
 
   /* The type denoted by decltype(e) is defined as follows:  */

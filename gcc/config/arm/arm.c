@@ -306,10 +306,10 @@ static bool aarch_macro_fusion_pair_p (rtx_insn*, rtx_insn*);
 static int arm_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
 					   tree vectype,
 					   int misalign ATTRIBUTE_UNUSED);
-static unsigned arm_add_stmt_cost (void *data, int count,
+static unsigned arm_add_stmt_cost (vec_info *vinfo, void *data, int count,
 				   enum vect_cost_for_stmt kind,
 				   struct _stmt_vec_info *stmt_info,
-				   int misalign,
+				   tree vectype, int misalign,
 				   enum vect_cost_model_location where);
 
 static void arm_canonicalize_comparison (int *code, rtx *op0, rtx *op1,
@@ -4188,6 +4188,31 @@ arm_trampoline_adjust_address (rtx addr)
   return addr;
 }
 
+/* Return 1 if REG needs to be saved. For interrupt handlers, this
+   includes call-clobbered registers too.  If this is a leaf function
+   we can just examine the registers used by the RTL, but otherwise we
+   have to assume that whatever function is called might clobber
+   anything, and so we have to save all the call-clobbered registers
+   as well.  */
+static inline bool reg_needs_saving_p (unsigned reg)
+{
+  unsigned long func_type = arm_current_func_type ();
+
+  if (IS_INTERRUPT (func_type))
+    if (df_regs_ever_live_p (reg)
+	/* Save call-clobbered core registers.  */
+	|| (! crtl->is_leaf && call_used_or_fixed_reg_p (reg) && reg < FIRST_VFP_REGNUM))
+      return true;
+    else
+      return false;
+  else
+    if (!df_regs_ever_live_p (reg)
+	|| call_used_or_fixed_reg_p (reg))
+      return false;
+    else
+      return true;
+}
+
 /* Return 1 if it is possible to return using a single instruction.
    If SIBLING is non-null, this is a test for a return before a sibling
    call.  SIBLING is the call insn, so we can examine its register usage.  */
@@ -4317,12 +4342,12 @@ use_return_insn (int iscond, rtx sibling)
      since this also requires an insn.  */
   if (TARGET_VFP_BASE)
     for (regno = FIRST_VFP_REGNUM; regno <= LAST_VFP_REGNUM; regno++)
-      if (df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
+      if (reg_needs_saving_p (regno))
 	return 0;
 
   if (TARGET_REALLY_IWMMXT)
     for (regno = FIRST_IWMMXT_REGNUM; regno <= LAST_IWMMXT_REGNUM; regno++)
-      if (df_regs_ever_live_p (regno) && ! call_used_or_fixed_reg_p (regno))
+      if (reg_needs_saving_p (regno))
 	return 0;
 
   return 1;
@@ -12131,22 +12156,23 @@ arm_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
 /* Implement targetm.vectorize.add_stmt_cost.  */
 
 static unsigned
-arm_add_stmt_cost (void *data, int count, enum vect_cost_for_stmt kind,
-		   struct _stmt_vec_info *stmt_info, int misalign,
-		   enum vect_cost_model_location where)
+arm_add_stmt_cost (vec_info *vinfo, void *data, int count,
+		   enum vect_cost_for_stmt kind,
+		   struct _stmt_vec_info *stmt_info, tree vectype,
+		   int misalign, enum vect_cost_model_location where)
 {
   unsigned *cost = (unsigned *) data;
   unsigned retval = 0;
 
   if (flag_vect_cost_model)
     {
-      tree vectype = stmt_info ? stmt_vectype (stmt_info) : NULL_TREE;
       int stmt_cost = arm_builtin_vectorization_cost (kind, vectype, misalign);
 
       /* Statements in an inner loop relative to the loop being
 	 vectorized are weighted more heavily.  The value here is
 	 arbitrary and could potentially be improved with analysis.  */
-      if (where == vect_body && stmt_info && stmt_in_inner_loop_p (stmt_info))
+      if (where == vect_body && stmt_info
+	  && stmt_in_inner_loop_p (vinfo, stmt_info))
 	count *= 50;  /* FIXME.  */
 
       retval = (unsigned) (count * stmt_cost);
@@ -20666,8 +20692,7 @@ arm_compute_save_reg0_reg12_mask (void)
 	max_reg = 12;
 
       for (reg = 0; reg <= max_reg; reg++)
-	if (df_regs_ever_live_p (reg)
-	    || (! crtl->is_leaf && call_used_or_fixed_reg_p (reg)))
+	if (reg_needs_saving_p (reg))
 	  save_reg_mask |= (1 << reg);
 
       /* Also save the pic base register if necessary.  */
@@ -20936,7 +20961,6 @@ thumb1_compute_save_core_reg_mask (void)
   return mask;
 }
 
-
 /* Return the number of bytes required to save VFP registers.  */
 static int
 arm_get_vfp_saved_size (void)
@@ -20954,10 +20978,7 @@ arm_get_vfp_saved_size (void)
 	   regno < LAST_VFP_REGNUM;
 	   regno += 2)
 	{
-	  if ((!df_regs_ever_live_p (regno)
-	       || call_used_or_fixed_reg_p (regno))
-	      && (!df_regs_ever_live_p (regno + 1)
-		  || call_used_or_fixed_reg_p (regno + 1)))
+	  if (!reg_needs_saving_p (regno) && !reg_needs_saving_p (regno + 1))
 	    {
 	      if (count > 0)
 		{
@@ -22482,8 +22503,7 @@ arm_compute_frame_layout (void)
 	  for (regno = FIRST_IWMMXT_REGNUM;
 	       regno <= LAST_IWMMXT_REGNUM;
 	       regno++)
-	    if (df_regs_ever_live_p (regno)
-		&& !call_used_or_fixed_reg_p (regno))
+	    if (reg_needs_saving_p (regno))
 	      saved += 8;
 	}
 
@@ -22704,8 +22724,9 @@ arm_save_coproc_regs(void)
   unsigned start_reg;
   rtx insn;
 
+  if (TARGET_REALLY_IWMMXT)
   for (reg = LAST_IWMMXT_REGNUM; reg >= FIRST_IWMMXT_REGNUM; reg--)
-    if (df_regs_ever_live_p (reg) && !call_used_or_fixed_reg_p (reg))
+    if (reg_needs_saving_p (reg))
       {
 	insn = gen_rtx_PRE_DEC (Pmode, stack_pointer_rtx);
 	insn = gen_rtx_MEM (V2SImode, insn);
@@ -22720,9 +22741,7 @@ arm_save_coproc_regs(void)
 
       for (reg = FIRST_VFP_REGNUM; reg < LAST_VFP_REGNUM; reg += 2)
 	{
-	  if ((!df_regs_ever_live_p (reg) || call_used_or_fixed_reg_p (reg))
-	      && (!df_regs_ever_live_p (reg + 1)
-		  || call_used_or_fixed_reg_p (reg + 1)))
+	  if (!reg_needs_saving_p (reg) && !reg_needs_saving_p (reg + 1))
 	    {
 	      if (start_reg != reg)
 		saved_size += vfp_emit_fstmd (start_reg,
@@ -26500,7 +26519,7 @@ thumb1_expand_prologue (void)
 
   if (IS_INTERRUPT (func_type))
     {
-      error ("interrupt Service Routines cannot be coded in Thumb mode");
+      error ("Interrupt Service Routines cannot be coded in Thumb-1 mode");
       return;
     }
 
@@ -27017,7 +27036,7 @@ thumb1_expand_epilogue (void)
   /* Emit a clobber for each insn that will be restored in the epilogue,
      so that flow2 will get register lifetimes correct.  */
   for (regno = 0; regno < 13; regno++)
-    if (df_regs_ever_live_p (regno) && !call_used_or_fixed_reg_p (regno))
+    if (reg_needs_saving_p (regno))
       emit_clobber (gen_rtx_REG (SImode, regno));
 
   if (! df_regs_ever_live_p (LR_REGNUM))
@@ -27083,9 +27102,7 @@ arm_expand_epilogue_apcs_frame (bool really_return)
 
       for (i = FIRST_VFP_REGNUM; i < LAST_VFP_REGNUM; i += 2)
         /* Look for a case where a reg does not need restoring.  */
-        if ((!df_regs_ever_live_p (i) || call_used_or_fixed_reg_p (i))
-            && (!df_regs_ever_live_p (i + 1)
-                || call_used_or_fixed_reg_p (i + 1)))
+	if (!reg_needs_saving_p (i) && !reg_needs_saving_p (i + 1))
           {
             if (start_reg != i)
               arm_emit_vfp_multi_reg_pop (start_reg,
@@ -27112,7 +27129,7 @@ arm_expand_epilogue_apcs_frame (bool really_return)
       int lrm_count = (num_regs % 2) ? (num_regs + 2) : (num_regs + 1);
 
       for (i = LAST_IWMMXT_REGNUM; i >= FIRST_IWMMXT_REGNUM; i--)
-        if (df_regs_ever_live_p (i) && !call_used_or_fixed_reg_p (i))
+	if (reg_needs_saving_p (i))
           {
             rtx addr = gen_frame_mem (V2SImode,
                                  plus_constant (Pmode, hard_frame_pointer_rtx,
@@ -27317,9 +27334,7 @@ arm_expand_epilogue (bool really_return)
          unlike pop, vldm can only do consecutive regs.  */
       for (i = LAST_VFP_REGNUM - 1; i >= FIRST_VFP_REGNUM; i -= 2)
         /* Look for a case where a reg does not need restoring.  */
-        if ((!df_regs_ever_live_p (i) || call_used_or_fixed_reg_p (i))
-            && (!df_regs_ever_live_p (i + 1)
-                || call_used_or_fixed_reg_p (i + 1)))
+	if (!reg_needs_saving_p (i) && !reg_needs_saving_p (i + 1))
           {
             /* Restore the regs discovered so far (from reg+2 to
                end_reg).  */
@@ -27341,7 +27356,7 @@ arm_expand_epilogue (bool really_return)
 
   if (TARGET_IWMMXT)
     for (i = FIRST_IWMMXT_REGNUM; i <= LAST_IWMMXT_REGNUM; i++)
-      if (df_regs_ever_live_p (i) && !call_used_or_fixed_reg_p (i))
+      if (reg_needs_saving_p (i))
         {
           rtx_insn *insn;
           rtx addr = gen_rtx_MEM (V2SImode,

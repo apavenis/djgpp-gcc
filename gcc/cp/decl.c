@@ -928,7 +928,7 @@ static bool
 function_requirements_equivalent_p (tree newfn, tree oldfn)
 {
   /* In the concepts TS, the combined constraints are compared.  */
-  if (cxx_dialect < cxx2a)
+  if (cxx_dialect < cxx20)
     {
       tree ci1 = get_constraints (oldfn);
       tree ci2 = get_constraints (newfn);
@@ -2035,6 +2035,8 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
       DECL_FINAL_P (newdecl) |= DECL_FINAL_P (olddecl);
       DECL_OVERRIDE_P (newdecl) |= DECL_OVERRIDE_P (olddecl);
       DECL_THIS_STATIC (newdecl) |= DECL_THIS_STATIC (olddecl);
+      DECL_HAS_DEPENDENT_EXPLICIT_SPEC_P (newdecl)
+	|= DECL_HAS_DEPENDENT_EXPLICIT_SPEC_P (olddecl);
       if (DECL_OVERLOADED_OPERATOR_P (olddecl))
 	DECL_OVERLOADED_OPERATOR_CODE_RAW (newdecl)
 	  = DECL_OVERLOADED_OPERATOR_CODE_RAW (olddecl);
@@ -4544,6 +4546,9 @@ cxx_init_decl_processing (void)
   abort_fndecl
     = build_library_fn_ptr ("__cxa_pure_virtual", void_ftype,
 			    ECF_NORETURN | ECF_NOTHROW | ECF_COLD);
+  if (flag_weak)
+    /* If no definition is available, resolve references to NULL.  */
+    declare_weak (abort_fndecl);
 
   /* Perform other language dependent initializations.  */
   init_class_processing ();
@@ -5214,17 +5219,10 @@ start_decl (const cp_declarator *declarator,
 
   *pushed_scope_p = NULL_TREE;
 
-  /* An object declared as __attribute__((deprecated)) suppresses
-     warnings of uses of other deprecated items.  */
-  if (lookup_attribute ("deprecated", attributes))
-    deprecated_state = DEPRECATED_SUPPRESS;
-
   attributes = chainon (attributes, prefix_attributes);
 
   decl = grokdeclarator (declarator, declspecs, NORMAL, initialized,
 			 &attributes);
-
-  deprecated_state = DEPRECATED_NORMAL;
 
   if (decl == NULL_TREE || VOID_TYPE_P (decl)
       || decl == error_mark_node)
@@ -5574,7 +5572,7 @@ grok_reference_init (tree decl, tree type, tree init, int flags)
       if (TREE_TYPE (init) == NULL_TREE
 	  && CP_AGGREGATE_TYPE_P (ttype)
 	  && !DECL_DECOMPOSITION_P (decl)
-	  && (cxx_dialect >= cxx2a))
+	  && (cxx_dialect >= cxx20))
 	{
 	  /* We don't know yet if we should treat const A& r(1) as
 	     const A& r{1}.  */
@@ -5900,7 +5898,7 @@ check_for_uninitialized_const_var (tree decl, bool constexpr_context_p,
       && (CP_TYPE_CONST_P (type)
 	  /* C++20 permits trivial default initialization in constexpr
 	     context (P1331R2).  */
-	  || (cxx_dialect < cxx2a
+	  || (cxx_dialect < cxx20
 	      && (constexpr_context_p
 		  || var_in_constexpr_fn (decl))))
       && !DECL_NONTRIVIALLY_INITIALIZED_P (decl))
@@ -5911,7 +5909,7 @@ check_for_uninitialized_const_var (tree decl, bool constexpr_context_p,
 
       bool show_notes = true;
 
-      if (!constexpr_context_p || cxx_dialect >= cxx2a)
+      if (!constexpr_context_p || cxx_dialect >= cxx20)
 	{
 	  if (CP_TYPE_CONST_P (type))
 	    {
@@ -6725,7 +6723,7 @@ check_initializer (tree decl, tree init, int flags, vec<tree, va_gc> **cleanups)
 	       && TREE_TYPE (init) == NULL_TREE
 	       && TREE_CODE (type) == ARRAY_TYPE
 	       && !DECL_DECOMPOSITION_P (decl)
-	       && (cxx_dialect >= cxx2a))
+	       && (cxx_dialect >= cxx20))
 	{
 	  /* [dcl.init.string] "An array of ordinary character type [...]
 	     can be initialized by an ordinary string literal [...] by an
@@ -7190,14 +7188,14 @@ notice_forced_label_r (tree *tp, int *walk_subtrees, void *)
   return NULL_TREE;
 }
 
-/* Return true if DECL has either a trivial destructor, or for C++2A
+/* Return true if DECL has either a trivial destructor, or for C++20
    is constexpr and has a constexpr destructor.  */
 
 static bool
 decl_maybe_constant_destruction (tree decl, tree type)
 {
   return (TYPE_HAS_TRIVIAL_DESTRUCTOR (type)
-	  || (cxx_dialect >= cxx2a
+	  || (cxx_dialect >= cxx20
 	      && VAR_P (decl)
 	      && DECL_DECLARED_CONSTEXPR_P (decl)
 	      && type_has_constexpr_destructor (strip_array_types (type))));
@@ -7257,7 +7255,7 @@ omp_declare_variant_finalize_one (tree decl, tree attr)
   if (idk == CP_ID_KIND_UNQUALIFIED || idk == CP_ID_KIND_TEMPLATE_ID)
     {
       if (identifier_p (variant)
-	  /* In C++2A, we may need to perform ADL for a template
+	  /* In C++20, we may need to perform ADL for a template
 	     name.  */
 	  || (TREE_CODE (variant) == TEMPLATE_ID_EXPR
 	      && identifier_p (TREE_OPERAND (variant, 0))))
@@ -10456,6 +10454,15 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
     itype = build_min (MINUS_EXPR, sizetype, size, integer_one_node);
   else
     {
+      if (!TREE_CONSTANT (size))
+	{
+	  /* A variable sized array.  Arrange for the SAVE_EXPR on the inside
+	     of the MINUS_EXPR, which allows the -1 to get folded with the +1
+	     that happens when building TYPE_SIZE.  */
+	  size = variable_size (size);
+	  stabilize_vla_size (size);
+	}
+
       /* Compute the index of the largest element in the array.  It is
 	 one less than the number of elements in the array.  We save
 	 and restore PROCESSING_TEMPLATE_DECL so that computations in
@@ -10473,11 +10480,6 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
 
       if (!TREE_CONSTANT (itype))
 	{
-	  /* A variable sized array.  */
-	  itype = variable_size (itype);
-
-	  stabilize_vla_size (itype);
-
 	  if (sanitize_flags_p (SANITIZE_VLA)
 	      && current_function_decl != NULL_TREE)
 	    {
@@ -11318,6 +11320,17 @@ grokdeclarator (const cp_declarator *declarator,
       type = NULL_TREE;
       type_was_error_mark_node = true;
     }
+
+  /* Ignore erroneous attributes.  */
+  if (attrlist && *attrlist == error_mark_node)
+    *attrlist = NULL_TREE;
+
+  /* An object declared as __attribute__((deprecated)) suppresses
+     warnings of uses of other deprecated items.  */
+  temp_override<deprecated_states> ds (deprecated_state);
+  if (attrlist && lookup_attribute ("deprecated", *attrlist))
+    deprecated_state = DEPRECATED_SUPPRESS;
+
   cp_warn_deprecated_use (type);
   if (type && TREE_CODE (type) == TYPE_DECL)
     {
@@ -11637,13 +11650,13 @@ grokdeclarator (const cp_declarator *declarator,
 	  storage_class = sc_none;
 	  staticp = 0;
 	}
-      if (constexpr_p && cxx_dialect < cxx2a)
+      if (constexpr_p && cxx_dialect < cxx20)
 	{
 	  gcc_rich_location richloc (declspecs->locations[ds_virtual]);
 	  richloc.add_range (declspecs->locations[ds_constexpr]);
 	  pedwarn (&richloc, OPT_Wpedantic, "member %qD can be declared both "
-		   "%<virtual%> and %<constexpr%> only in %<-std=c++2a%> or "
-		   "%<-std=gnu++2a%>", dname);
+		   "%<virtual%> and %<constexpr%> only in %<-std=c++20%> or "
+		   "%<-std=gnu++20%>", dname);
 	}
     }
   friendp = decl_spec_seq_has_spec_p (declspecs, ds_friend);
@@ -11730,10 +11743,10 @@ grokdeclarator (const cp_declarator *declarator,
       if (consteval_p)
 	error_at (declspecs->locations[ds_consteval], "structured "
 		  "binding declaration cannot be %qs", "consteval");
-      if (thread_p && cxx_dialect < cxx2a)
+      if (thread_p && cxx_dialect < cxx20)
 	pedwarn (declspecs->locations[ds_thread], 0,
 		 "structured binding declaration can be %qs only in "
-		 "%<-std=c++2a%> or %<-std=gnu++2a%>",
+		 "%<-std=c++20%> or %<-std=gnu++20%>",
 		 declspecs->gnu_thread_keyword_p
 		 ? "__thread" : "thread_local");
       if (concept_p)
@@ -11752,10 +11765,10 @@ grokdeclarator (const cp_declarator *declarator,
 		    "register");
 	  break;
 	case sc_static:
-	  if (cxx_dialect < cxx2a)
+	  if (cxx_dialect < cxx20)
 	    pedwarn (loc, 0,
 		     "structured binding declaration can be %qs only in "
-		     "%<-std=c++2a%> or %<-std=gnu++2a%>", "static");
+		     "%<-std=c++20%> or %<-std=gnu++20%>", "static");
 	  break;
 	case sc_extern:
 	  error_at (loc, "structured binding declaration cannot be %qs",
@@ -11940,9 +11953,12 @@ grokdeclarator (const cp_declarator *declarator,
 	    attr_flags |= (int) ATTR_FLAG_FUNCTION_NEXT;
 	  if (declarator->kind == cdk_array)
 	    attr_flags |= (int) ATTR_FLAG_ARRAY_NEXT;
-	  /* Assume that any attributes that get applied late to templates will
-	     DTRT when applied to the declaration as a whole.  */
-	  tree late_attrs = splice_template_attributes (&attrs, type);
+	  tree late_attrs = NULL_TREE;
+	  if (decl_context != PARM)
+	    /* Assume that any attributes that get applied late to
+	       templates will DTRT when applied to the declaration
+	       as a whole.  */
+	    late_attrs = splice_template_attributes (&attrs, type);
 	  returned_attrs = decl_attributes (&type,
 					    chainon (returned_attrs, attrs),
 					    attr_flags);
@@ -13192,11 +13208,11 @@ grokdeclarator (const cp_declarator *declarator,
 			      "a destructor cannot be %qs", "concept");
                     return error_mark_node;
                   }
-		if (constexpr_p && cxx_dialect < cxx2a)
+		if (constexpr_p && cxx_dialect < cxx20)
 		  {
 		    error_at (declspecs->locations[ds_constexpr],
 			      "%<constexpr%> destructors only available"
-			      " with %<-std=c++2a%> or %<-std=gnu++2a%>");
+			      " with %<-std=c++20%> or %<-std=gnu++20%>");
 		    return error_mark_node;
 		  }
 		if (consteval_p)
@@ -14388,7 +14404,7 @@ grok_op_properties (tree decl, bool complain)
 	  || operator_code == ARRAY_REF
 	  || operator_code == NOP_EXPR)
 	{
-	  error_at (loc, "%qD must be a nonstatic member function", decl);
+	  error_at (loc, "%qD must be a non-static member function", decl);
 	  return false;
 	}
 
@@ -16883,6 +16899,7 @@ finish_function (bool inline_p)
   bool coro_p = flag_coroutines
 		&& !processing_template_decl
 		&& DECL_COROUTINE_P (fndecl);
+  bool coro_emit_helpers = false;
 
   /* When we get some parse errors, we can end up without a
      current_function_decl, so cope.  */
@@ -16911,18 +16928,16 @@ finish_function (bool inline_p)
 
   if (coro_p)
     {
-      if (!morph_fn_to_coro (fndecl, &resumer, &destroyer))
-	{
-	  DECL_SAVED_TREE (fndecl) = pop_stmt_list (DECL_SAVED_TREE (fndecl));
-	  poplevel (1, 0, 1);
-	  DECL_SAVED_TREE (fndecl) = error_mark_node;
-	  return fndecl;
-	}
+      /* Only try to emit the coroutine outlined helper functions if the
+	 transforms succeeded.  Otherwise, treat errors in the same way as
+	 a regular function.  */
+      coro_emit_helpers = morph_fn_to_coro (fndecl, &resumer, &destroyer);
 
       /* We should handle coroutine IFNs in middle end lowering.  */
       cfun->coroutine_component = true;
 
-      if (use_eh_spec_block (fndecl))
+      /* Do not try to process the ramp's EH unless outlining succeeded.  */
+      if (coro_emit_helpers && use_eh_spec_block (fndecl))
 	finish_eh_spec_block (TYPE_RAISES_EXCEPTIONS
 			      (TREE_TYPE (fndecl)),
 			      current_eh_spec_block);
@@ -17171,8 +17186,9 @@ finish_function (bool inline_p)
       && !DECL_OMP_DECLARE_REDUCTION_P (fndecl))
     cp_genericize (fndecl);
 
-  /* Emit the resumer and destroyer functions now.  */
-  if (coro_p)
+  /* Emit the resumer and destroyer functions now, providing that we have
+     not encountered some fatal error.  */
+  if (coro_emit_helpers)
     {
       emit_coro_helper (resumer);
       emit_coro_helper (destroyer);

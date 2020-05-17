@@ -262,6 +262,10 @@ LINKER = $(CC)
 LINKER_FLAGS = $(CFLAGS)
 endif
 
+# Enable Intel CET on Intel CET enabled host if needed.
+CET_HOST_FLAGS = @CET_HOST_FLAGS@
+COMPILER += $(CET_HOST_FLAGS)
+
 NO_PIE_CFLAGS = @NO_PIE_CFLAGS@
 NO_PIE_FLAG = @NO_PIE_FLAG@
 
@@ -2613,6 +2617,7 @@ GTFILES = $(CPPLIB_H) $(srcdir)/input.h $(srcdir)/coretypes.h \
   $(srcdir)/omp-offload.h \
   $(srcdir)/omp-offload.c \
   $(srcdir)/omp-expand.c \
+  $(srcdir)/omp-general.c \
   $(srcdir)/omp-low.c \
   $(srcdir)/targhooks.c $(out_file) $(srcdir)/passes.c $(srcdir)/cgraphunit.c \
   $(srcdir)/cgraphclones.c \

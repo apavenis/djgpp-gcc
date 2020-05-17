@@ -1,3 +1,165 @@
+2020-05-15  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR bootstrap/95147
+	* configure: Regenerated.
+
+2020-05-14  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* configure: Regenerated.
+
+2020-05-13  Alexandre Oliva <oliva@adacore.com>
+
+	PR libstdc++/77691
+	* include/experimental/memory_resource
+	(__resource_adaptor_imp::do_allocate): Handle max_align_t on
+	x86-vxworks as on x86-solaris.
+	(__resource_adaptor_imp::do_deallocate): Likewise.
+	* testsuite/experimental/memory_resource/new_delete_resource.cc:
+	Drop xfail.
+	(BAD_MAX_ALIGN_T): Define on x86-vxworks as on x86-solaris.
+	(test03): Drop max-align test for char-aligned alloc.
+
+2020-05-08  Ulrich Drepper  <drepper@redhat.com>
+
+	* include/bits/atomic_base.h (atomic_flag): Implement test member
+	function.
+	* include/std/version: Define __cpp_lib_atomic_flag_test.
+	* testsuite/29_atomics/atomic_flag/test/explicit.cc: New file.
+	* testsuite/29_atomics/atomic_flag/test/implicit.cc: New file.
+
+2020-05-07  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/94971 (partial)
+	* include/bits/ranges_algo.h (ranges::__sample_fn): Qualify
+	std::sample using macro to work in parallel mode.
+	(__sort_fn): Likewise for std::sort.
+	(ranges::__nth_element_fn): Likewise for std::nth_element.
+	* include/bits/stl_algobase.h (lexicographical_compare_three_way):
+	Likewise for std::__min_cmp.
+	* include/parallel/algobase.h (lexicographical_compare_three_way):
+	Add to namespace std::__parallel.
+
+	PR c/92472
+	* include/parallel/multiway_merge.h (_GuardedIterator::operator*)
+	(_GuardedIterator::operator _RAIter, _UnguardedIterator::operator*)
+	(_UnguardedIterator::operator _RAIter): Add const qualifier.
+	(operator<(_GuardedIterator&, _GuardedIterator&)
+	(operator<=(_GuardedIterator&, _GuardedIterator&)
+	(operator<(_UnguardedIterator&, _UnguardedIterator&)
+	(operator<=(_UnguardedIterator&, _UnguardedIterator&): Change
+	parameters to const references.
+
+2020-05-07  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* config/abi/post/sparc64-linux-gnu/baseline_symbols.txt: Update.
+	* config/abi/post/sparc64-linux-gnu/32/baseline_symbols.txt: Likewise.
+
+2020-05-06  François Dumont  <fdumont@gcc.gnu.org>
+
+	* include/bits/stl_algobase.h (struct _Bit_iterator): New declaration.
+	(std::__fill_a1(_Bit_iterator, _Bit_iterator, const bool&)): Likewise.
+	* include/bits/stl_bvector.h (__fill_bvector): Move outside
+	_GLIBCXX_STD_C namespace.
+	(fill(_Bit_iterator, _Bit_iterator, const bool&)): Likewise and rename
+	into...
+	(__fill_a1): ...this.
+	* testsuite/25_algorithms/fill/bvector/1.cc: New.
+
+2020-05-06  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* config/abi/post/x86_64-linux-gnu/x32/baseline_symbols.txt: Updated.
+
+2020-05-06  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* config/abi/post/i386-solaris/baseline_symbols.txt: Regenerate.
+	* config/abi/post/i386-solaris/amd64/baseline_symbols.txt:
+	Likewise.
+	* config/abi/post/sparc-solaris/baseline_symbols.txt: Likewise.
+	* config/abi/post/sparc-solaris/sparcv9/baseline_symbols.txt:
+	Likewise.
+
+2020-05-06  Martin Liska  <mliska@suse.cz>
+
+	Revert:
+	2020-05-05  Martin Liska  <mliska@suse.cz>
+	PR c/92472
+	* include/parallel/multiway_merge.h:
+	Use const for _Compare template argument.
+
+2020-05-06  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/xml/manual/abi.xml (abi.versioning.history): Document library
+	versions for GCC 9.[123] and 10.1 releases.
+	* doc/html/*: Regenerate.
+
+2020-05-06  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/abi/post/x86_64-linux-gnu/baseline_symbols.txt: Update.
+	* config/abi/post/x86_64-linux-gnu/32/baseline_symbols.txt: Update.
+	* config/abi/post/i386-linux-gnu/baseline_symbols.txt: Update.
+	* config/abi/post/i486-linux-gnu/baseline_symbols.txt: Update.
+	* config/abi/post/aarch64-linux-gnu/baseline_symbols.txt: Update.
+	* config/abi/post/s390x-linux-gnu/baseline_symbols.txt: Update.
+	* config/abi/post/powerpc64-linux-gnu/baseline_symbols.txt: Update.
+
+2020-05-05  Martin Liska  <mliska@suse.cz>
+
+	PR c/92472
+	* include/parallel/multiway_merge.h:
+	Use const for _Compare template argument.
+
+2020-05-04  Fangrui Song  <maskray@google.com>
+
+	* libsupc++/cxxabi.h (__cxa_finalize): Fix return type.
+
+2020-05-04  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/xml/faq.xml: Use working link for SGI STL FAQ.
+	* doc/html/*: Regenerate.
+
+	PR libstdc++/94906
+	* src/c++17/memory_resource.cc
+	(monotonic_buffer_resource::_Chunk::release): Use size_t for shift
+	operands.
+
+2020-05-04  Nathan Sidwell  <nathan@acm.org>
+
+	PR libstdc++/94747
+	* libsupc++/dyncast.cc (__dynamic_cast): Cast offsetof to
+	ptrdiff_t before negation, to show intent more clearly.
+
+2020-05-04  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/94936
+	* src/c++17/memory_resource.cc (synchronized_pool_resource::_TPools):
+	Add comment about single-threaded behaviour.
+	(synchronized_pool_resource::_TPools::move_nonempty_chunks()): Hoist
+	class member access out of loop.
+	(synchronized_pool_resource::synchronized_pool_resource())
+	(synchronized_pool_resource::~synchronized_pool_resource())
+	(synchronized_pool_resource::release()): Check __gthread_active_p
+	before creating and/or deleting the thread-specific data key.
+	(synchronized_pool_resource::_M_thread_specific_pools()): Adjust
+	assertions.
+	(synchronized_pool_resource::do_allocate(size_t, size_t)): Add fast
+	path for single-threaded case.
+	(synchronized_pool_resource::do_deallocate(void*, size_t, size_t)):
+	Likewise. Return if unable to find a pool that owns the allocation.
+	* testsuite/20_util/synchronized_pool_resource/allocate_single.cc:
+	New test.
+	* testsuite/20_util/synchronized_pool_resource/cons_single.cc: New
+	test.
+	* testsuite/20_util/synchronized_pool_resource/release_single.cc: New
+	test.
+
+2020-05-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/94933
+	* include/bits/stl_algobase.h (__fill_a1): Make overload for byte types
+	usable in constant expressions.
+	* testsuite/25_algorithms/fill_n/constexpr.cc: Test with bytes and
+	non-scalars.
+
 2020-05-01  Jonathan Wakely  <jwakely@redhat.com>
 
 	PR libstdc++/94901
