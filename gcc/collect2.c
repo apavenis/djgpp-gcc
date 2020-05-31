@@ -1180,18 +1180,27 @@ main (int argc, char **argv)
   *ld1++ = *ld2++ = ld_file_name;
 
   /* Make temp file names.  */
+
+#ifdef __DJGPP__
+#define CDTOR_C_NAME ".ctc"
+#define CDTOR_O_NAME ".cto"
+#else
+#define CDTOR_C_NAME ".cdtor.c"
+#define CDTOR_O_NAME ".cdtor.o"
+#endif
+
   if (save_temps)
     {
-      c_file = concat (output_file, ".cdtor.c", NULL);
-      o_file = concat (output_file, ".cdtor.o", NULL);
+      c_file = concat (output_file, CDTOR_C_NAME, NULL);
+      o_file = concat (output_file, CDTOR_O_NAME, NULL);
 #ifdef COLLECT_EXPORT_LIST
       export_file = concat (output_file, ".x", NULL);
 #endif
     }
   else
     {
-      c_file = make_temp_file (".cdtor.c");
-      o_file = make_temp_file (".cdtor.o");
+      c_file = make_temp_file (CDTOR_C_NAME);
+      o_file = make_temp_file (CDTOR_O_NAME);
 #ifdef COLLECT_EXPORT_LIST
       export_file = make_temp_file (".x");
 #endif
