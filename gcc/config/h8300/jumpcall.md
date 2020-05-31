@@ -37,62 +37,56 @@
     DONE;
   })
 
-(define_insn "branch_true"
+(define_insn "branch"
   [(set (pc)
-	(if_then_else (match_operator 1 "comparison_operator"
+	(if_then_else (match_operator 2 "comparison_operator"
 		       [(cc0) (const_int 0)])
-		      (label_ref (match_operand 0 "" ""))
-		      (pc)))]
-  ""
+		      (match_operand 0 "pc_or_label_operand" "")
+		      (match_operand 1 "pc_or_label_operand" "")))]
+  "operands[0] == pc_rtx || operands[1] == pc_rtx"
 {
   if ((cc_status.flags & CC_OVERFLOW_UNUSABLE) != 0
-      && (GET_CODE (operands[1]) == GT
-	  || GET_CODE (operands[1]) == GE
-	  || GET_CODE (operands[1]) == LE
-	  || GET_CODE (operands[1]) == LT))
+      && (GET_CODE (operands[2]) == GT
+	  || GET_CODE (operands[2]) == GE
+	  || GET_CODE (operands[2]) == LE
+	  || GET_CODE (operands[2]) == LT))
     {
       cc_status.flags &= ~CC_OVERFLOW_UNUSABLE;
       return 0;
     }
 
-  if (get_attr_length (insn) == 2)
-    return "b%j1	%l0";
-  else if (get_attr_length (insn) == 4)
-    return "b%j1	%l0:16";
+  if (operands[0] != pc_rtx)
+    {
+      if (get_attr_length (insn) == 2)
+	return "b%j2	%l0";
+      else if (get_attr_length (insn) == 4)
+	return "b%j2	%l0:16";
+      else
+	return "b%k2	.Lh8BR%=\;jmp	@%l0\\n.Lh8BR%=:";
+    }
   else
-    return "b%k1	.Lh8BR%=\;jmp	@%l0\\n.Lh8BR%=:";
+    {
+      if (get_attr_length (insn) == 2)
+	return "b%k2	%l1";
+      else if (get_attr_length (insn) == 4)
+	return "b%k2	%l1:16";
+      else
+	return "b%j2	.Lh8BR%=\;jmp	@%l1\\n.Lh8BR%=:";
+    }
 }
  [(set_attr "type" "branch")
    (set_attr "cc" "none")])
 
-(define_insn "branch_false"
-  [(set (pc)
-	(if_then_else (match_operator 1 "comparison_operator"
-		       [(cc0) (const_int 0)])
-		      (pc)
-		      (label_ref (match_operand 0 "" ""))))]
-  ""
-{
-  if ((cc_status.flags & CC_OVERFLOW_UNUSABLE) != 0
-      && (GET_CODE (operands[1]) == GT
-	  || GET_CODE (operands[1]) == GE
-	  || GET_CODE (operands[1]) == LE
-	  || GET_CODE (operands[1]) == LT))
-    {
-      cc_status.flags &= ~CC_OVERFLOW_UNUSABLE;
-      return 0;
-    }
-
-  if (get_attr_length (insn) == 2)
-    return "b%k1	%l0";
-  else if (get_attr_length (insn) == 4)
-    return "b%k1	%l0:16";
-  else
-    return "b%j1	.Lh8BR%=\;jmp	@%l0\\n.Lh8BR%=:";
-}
-  [(set_attr "type" "branch")
-   (set_attr "cc" "none")])
-
+;; The brabc/brabs patterns have been disabled because their length computation
+;; is horribly broken.  When we call out to a function via a SYMBOL_REF we get
+;; bogus default and minimum lengths.  The trick used by the PA port seems to
+;; fix the minimum, but not the default length.  The broken lengths can lead
+;; to bogusly using a short jump when a long jump was needed and thus
+;; incorrect code.
+;;
+;; Given the restricted addressing modes for operand 1, we could probably just
+;; open-code the necessary length computation in the two affected patterns
+;; rather than using a function call.  I think that would fix this problem.
 (define_insn "*brabc"
   [(set (pc)
 	(if_then_else (eq (zero_extract (match_operand:QI 1 "bit_memory_operand" "WU")
@@ -101,7 +95,7 @@
 			  (const_int 0))
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
-  "TARGET_H8300SX"
+  "0 && TARGET_H8300SX"
 {
   switch (get_attr_length (insn)
 	  - h8300_insn_length_from_table (insn, operands))
@@ -126,7 +120,7 @@
 			  (const_int 0))
 		      (label_ref (match_operand 0 "" ""))
 		      (pc)))]
-  "TARGET_H8300SX"
+  "0 && TARGET_H8300SX"
 {
   switch (get_attr_length (insn)
 	  - h8300_insn_length_from_table (insn, operands))

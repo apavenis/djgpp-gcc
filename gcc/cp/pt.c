@@ -4575,7 +4575,16 @@ process_template_parm (tree list, location_t parm_loc, tree parm,
 	  /* This is for distinguishing between real templates and template
 	     template parameters */
 	  TREE_TYPE (parm) = t;
-	  TREE_TYPE (DECL_TEMPLATE_RESULT (parm)) = t;
+
+	  /* any_template_parm_r expects to be able to get the targs of a
+	     DECL_TEMPLATE_RESULT.  */
+	  tree result = DECL_TEMPLATE_RESULT (parm);
+	  TREE_TYPE (result) = t;
+	  tree args = template_parms_to_args (DECL_TEMPLATE_PARMS (parm));
+	  tree tinfo = build_template_info (parm, args);
+	  retrofit_lang_decl (result);
+	  DECL_TEMPLATE_INFO (result) = tinfo;
+
 	  decl = parm;
 	}
       else
@@ -20989,7 +20998,7 @@ fn_type_unification (tree fn,
       /* Adjust any explicit template arguments before entering the
 	 substitution context.  */
       explicit_targs
-	= (coerce_template_parms (tparms, explicit_targs, NULL_TREE,
+	= (coerce_template_parms (tparms, explicit_targs, fn,
 				  complain|tf_partial,
 				  /*require_all_args=*/false,
 				  /*use_default_args=*/false));
@@ -25293,6 +25302,7 @@ instantiate_decl (tree d, bool defer_ok, bool expl_inst_class_mem_p)
     d = DECL_CLONED_FUNCTION (d);
 
   if (DECL_TEMPLATE_INSTANTIATED (d)
+      || TREE_TYPE (d) == error_mark_node
       || (TREE_CODE (d) == FUNCTION_DECL
 	  && DECL_DEFAULTED_FN (d) && DECL_INITIAL (d))
       || DECL_TEMPLATE_SPECIALIZATION (d))
@@ -29330,9 +29340,8 @@ declare_integer_pack (void)
 void
 init_template_processing (void)
 {
-  /* FIXME: enable sanitization (PR87847) */
-  decl_specializations = hash_table<spec_hasher>::create_ggc (37, false);
-  type_specializations = hash_table<spec_hasher>::create_ggc (37, false);
+  decl_specializations = hash_table<spec_hasher>::create_ggc (37);
+  type_specializations = hash_table<spec_hasher>::create_ggc (37);
 
   if (cxx_dialect >= cxx11)
     declare_integer_pack ();

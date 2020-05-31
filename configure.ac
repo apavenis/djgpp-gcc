@@ -1462,10 +1462,10 @@ case "$have_compiler:$host:$target:$enable_bootstrap" in
     ;;
 esac
 
-# When bootstrapping with GCC, build stage 1 in C++98 mode to ensure that a
-# C++98 compiler can still start the bootstrap.
+# When bootstrapping with GCC, build stage 1 in C++11 mode to ensure that a
+# C++11 compiler can still start the bootstrap.
 if test "$enable_bootstrap:$GXX" = "yes:yes"; then
-  CXX="$CXX -std=gnu++98"
+  CXX="$CXX -std=c++11"
 fi
 
 # Used for setting $lt_cv_objdir
@@ -2079,9 +2079,14 @@ if test -d ${srcdir}/gcc; then
         esac
 
         # Disable jit if -enable-host-shared not specified
-        case ${add_this_lang}:${language}:${host_shared} in
-          yes:jit:no)
-	    # PR jit/64780: explicitly specify --enable-host-shared
+        # but not if building for Mingw. All code in Windows
+        # is position independent code (PIC).
+        case $target in
+          *mingw*) ;;
+          *)
+          case ${add_this_lang}:${language}:${host_shared} in
+            yes:jit:no)
+	           # PR jit/64780: explicitly specify --enable-host-shared
 	    AC_MSG_ERROR([
 Enabling language "jit" requires --enable-host-shared.
 
@@ -2092,16 +2097,18 @@ If you want to build both the jit and the regular compiler, it is often
 best to do this via two separate configure/builds, in separate
 directories, to avoid imposing the performance cost of
 --enable-host-shared on the regular compiler.])
-	    ;;
-          all:jit:no)
-	    AC_MSG_WARN([--enable-host-shared required to build $language])
-            add_this_lang=unsupported
-            ;;
-          *:jit:no)
-            # Silently disable.
-            add_this_lang=unsupported
-            ;;
-	esac
+	            ;;
+            all:jit:no)
+	      AC_MSG_WARN([--enable-host-shared required to build $language])
+              add_this_lang=unsupported
+              ;;
+            *:jit:no)
+              # Silently disable.
+              add_this_lang=unsupported
+              ;;
+	        esac
+          ;;
+        esac
 
         # Disable a language that is unsupported by the target.
 	case "${add_this_lang}: $unsupported_languages " in

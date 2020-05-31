@@ -22,8 +22,11 @@ import unittest
 
 from git_email import GitEmail
 
+import unidiff
 
 script_path = os.path.dirname(os.path.realpath(__file__))
+
+unidiff_supports_renaming = hasattr(unidiff.PatchedFile(), 'is_rename')
 
 
 class TestGccChangelog(unittest.TestCase):
@@ -33,7 +36,8 @@ class TestGccChangelog(unittest.TestCase):
 
         filename = None
         patch_lines = []
-        lines = open(os.path.join(script_path, 'test_patches.txt')).read()
+        with open(os.path.join(script_path, 'test_patches.txt')) as f:
+            lines = f.read()
         for line in lines.split('\n'):
             if line.startswith('==='):
                 if patch_lines:
@@ -258,3 +262,59 @@ class TestGccChangelog(unittest.TestCase):
         email = self.from_patch_glob('0020-IPA-Avoid')
         assert (email.errors[0].message
                 == 'first line should start with a tab, asterisk and space')
+
+    def test_cherry_pick_format(self):
+        email = self.from_patch_glob('0001-c-Alias.patch')
+        assert not email.errors
+
+    def test_signatures(self):
+        email = self.from_patch_glob('0001-RISC-V-Make-unique.patch')
+        assert not email.errors
+        assert len(email.changelog_entries) == 1
+
+    def test_duplicate_top_level_author(self):
+        email = self.from_patch_glob('0001-Fortran-ProcPtr-function.patch')
+        assert not email.errors
+        assert len(email.changelog_entries[0].author_lines) == 1
+
+    def test_dr_entry(self):
+        email = self.from_patch_glob('0001-c-C-20-DR-2237.patch')
+        assert email.changelog_entries[0].prs == ['DR 2237']
+
+    def test_changes_only_in_ignored_location(self):
+        email = self.from_patch_glob('0001-go-in-ignored-location.patch')
+        assert not email.errors
+
+    def test_changelog_for_ignored_location(self):
+        email = self.from_patch_glob('0001-Update-merge.sh-to-reflect.patch')
+        assert (email.changelog_entries[0].lines[0]
+                == '\t* LOCAL_PATCHES: Use git hash instead of SVN id.')
+
+    def test_multiline_file_list(self):
+        email = self.from_patch_glob(
+            '0001-Ada-Reuse-Is_Package_Or_Generic_Package-where-possib.patch')
+        assert (email.changelog_entries[0].files
+                == ['contracts.adb', 'einfo.adb', 'exp_ch9.adb',
+                    'sem_ch12.adb', 'sem_ch4.adb', 'sem_ch7.adb',
+                    'sem_ch8.adb', 'sem_elab.adb', 'sem_type.adb',
+                    'sem_util.adb'])
+
+    @unittest.skipIf(not unidiff_supports_renaming,
+                     'Newer version of unidiff is needed (0.6.0+)')
+    def test_renamed_file(self):
+        email = self.from_patch_glob(
+            '0001-Ada-Add-support-for-XDR-streaming-in-the-default-run.patch')
+        assert not email.errors
+
+    def test_duplicite_author_lines(self):
+        email = self.from_patch_glob('0001-Fortran-type-is-real-kind-1.patch')
+        assert (email.changelog_entries[0].author_lines[0][0]
+                == 'Steven G. Kargl  <kargl@gcc.gnu.org>')
+        assert (email.changelog_entries[0].author_lines[1][0]
+                == 'Mark Eggleston  <markeggleston@gcc.gnu.org>')
+
+    def test_missing_change_description(self):
+        email = self.from_patch_glob('0001-Missing-change-description.patch')
+        assert len(email.errors) == 2
+        assert email.errors[0].message == 'missing description of a change'
+        assert email.errors[1].message == 'missing description of a change'

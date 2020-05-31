@@ -6749,6 +6749,14 @@ aarch64_layout_frame (void)
 			+ frame.sve_callee_adjust
 			+ frame.final_adjust, frame.frame_size));
 
+  if (!frame.emit_frame_chain && frame.callee_adjust == 0)
+    {
+      /* We've decided not to associate any register saves with the initial
+	 stack allocation.  */
+      frame.wb_candidate1 = INVALID_REGNUM;
+      frame.wb_candidate2 = INVALID_REGNUM;
+    }
+
   frame.laid_out = true;
 }
 
@@ -8180,7 +8188,11 @@ aarch64_expand_epilogue (bool for_sibcall)
   if (callee_adjust != 0)
     aarch64_pop_regs (reg1, reg2, callee_adjust, &cfi_ops);
 
-  if (callee_adjust != 0 || maybe_gt (initial_adjust, 65536))
+  /* If we have no register restore information, the CFA must have been
+     defined in terms of the stack pointer since the end of the prologue.  */
+  gcc_assert (cfi_ops || !frame_pointer_needed);
+
+  if (cfi_ops && (callee_adjust != 0 || maybe_gt (initial_adjust, 65536)))
     {
       /* Emit delayed restores and set the CFA to be SP + initial_adjust.  */
       insn = get_last_insn ();
@@ -15266,6 +15278,8 @@ static const struct aarch64_attribute_info aarch64_attributes[] =
      aarch64_handle_attr_branch_protection, OPT_mbranch_protection_ },
   { "sign-return-address", aarch64_attr_enum, false, NULL,
      OPT_msign_return_address_ },
+  { "outline-atomics", aarch64_attr_bool, true, NULL,
+     OPT_moutline_atomics},
   { NULL, aarch64_attr_custom, false, NULL, OPT____ }
 };
 
@@ -20191,7 +20205,8 @@ aarch64_evpc_rev_local (struct expand_vec_perm_d *d)
 
   if (d->vec_flags == VEC_SVE_PRED
       || !d->one_vector_p
-      || !d->perm[0].is_constant (&diff))
+      || !d->perm[0].is_constant (&diff)
+      || !diff)
     return false;
 
   size = (diff + 1) * GET_MODE_UNIT_SIZE (d->vmode);

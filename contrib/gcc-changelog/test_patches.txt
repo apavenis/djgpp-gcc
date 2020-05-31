@@ -2382,3 +2382,594 @@ index 00000000000..66c87d48694
 -- 
 2.26.1
 
+=== 0001-c-Alias.patch ===
+From 3f1a149fc35cdba988464562e2fb824b10652d6b Mon Sep 17 00:00:00 2001
+From: Nathan Sidwell <nathan@acm.org>
+Date: Tue, 19 May 2020 13:29:19 -0700
+Subject: [PATCH] c++: Alias template instantiation template info
+
+I discovered that the alias instantiation machinery would setup
+template_info, and then sometime later overwrite that with equivalent
+info.  This broke modules, because the template info, once set, is
+logically immutable.  Let's just not do that.
+
+	* pt.c (lookup_template_class_1): Do not reinit template_info of an
+	alias here.
+
+(cherry picked from commit 74744bb1f2847b5b9ce3e97e0fec9c23bb0e499f)
+---
+ gcc/cp/pt.c | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/gcc/cp/pt.c b/gcc/cp/pt.c
+index b8f03d18541..7230ac724ba 100644
+--- a/gcc/cp/pt.c
++++ b/gcc/cp/pt.c
+@@ -1 +1,2 @@
+
++
+-- 
+2.26.2
+=== 0001-RISC-V-Make-unique.patch ===
+From adce62f53d8ad00e8110a6a2de7962d7a850de16 Mon Sep 17 00:00:00 2001
+From: Keith Packard <keithp@keithp.com>
+Date: Wed, 29 Apr 2020 09:49:56 -0700
+Subject: [PATCH] RISC-V: Make unique SECCAT_SRODATA names start with .srodata
+ (not .sdata2)
+
+default_unique_section uses ".sdata2" as a prefix for SECCAT_SRODATA
+unique sections, but RISC-V uses ".srodata" instead. Override the
+TARGET_ASM_UNIQUE_SECTION function to catch this case, allowing the
+default to be used for all other sections.
+
+gcc/
+	* config/riscv/riscv.c (riscv_unique_section): New.
+	(TARGET_ASM_UNIQUE_SECTION): New.
+
+Signed-off-by: Keith Packard <keithp@keithp.com>
+Reviewed-by: Keith Packard <keithp@keithp.com>
+Reviewed-on: Keith Packard <keithp@keithp.com>
+Co-Authored-by: Keith Packard <keithp@keithp.com>
+---
+ gcc/ChangeLog            |  5 +++++
+ gcc/config/riscv/riscv.c | 40 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 45 insertions(+)
+
+diff --git a/gcc/config/riscv/riscv.c b/gcc/config/riscv/riscv.c
+index e4c08d780db..1ad9799fce4 100644
+--- a/gcc/config/riscv/riscv.c
++++ b/gcc/config/riscv/riscv.c
+@@ -1 +1,2 @@
+
++
+
+-- 
+2.26.2
+
+=== 0001-Fortran-ProcPtr-function.patch ===
+From eb069ae8819c3a84d7f78becc5501e21ee3a9554 Mon Sep 17 00:00:00 2001
+From: Mark Eggleston <markeggleston@gcc.gnu.org>
+Date: Thu, 7 May 2020 08:02:02 +0100
+Subject: [PATCH] Fortran  : ProcPtr function results: 'ppr@' in error message
+ PR39695
+
+The value 'ppr@' is set in the name of result symbol, the actual
+name of the symbol is in the procedure name symbol pointed
+to by the result symbol's namespace (ns). When reporting errors for
+symbols that have the proc_pointer attribute check whether the
+result attribute is set and set the name accordingly.
+
+2020-05-20  Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+gcc/fortran/
+
+	PR fortran/39695
+	* resolve.c (resolve_fl_procedure): Set name depending on
+	whether the result attribute is set.  For PROCEDURE/RESULT
+	conflict use the name in sym->ns->proc_name->name.
+	* symbol.c (gfc_add_type): Add check for function and result
+	attributes use sym->ns->proc_name->name if both are set.
+	Where the symbol cannot have a type use the name in
+	sym->ns->proc_name->name.
+
+2020-05-20  Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+gcc/testsuite/
+
+	PR fortran/39695
+	* gfortran.dg/pr39695_1.f90: New test.
+	* gfortran.dg/pr39695_2.f90: New test.
+	* gfortran.dg/pr39695_3.f90: New test.
+	* gfortran.dg/pr39695_4.f90: New test.
+---
+ gcc/fortran/ChangeLog                   | 11 +++++++++++
+ gcc/fortran/resolve.c                   |  6 ++++--
+ gcc/fortran/symbol.c                    |  7 +++++--
+ gcc/testsuite/ChangeLog                 |  8 ++++++++
+ gcc/testsuite/gfortran.dg/pr39695_1.f90 |  8 ++++++++
+ gcc/testsuite/gfortran.dg/pr39695_2.f90 | 12 ++++++++++++
+ gcc/testsuite/gfortran.dg/pr39695_3.f90 | 11 +++++++++++
+ gcc/testsuite/gfortran.dg/pr39695_4.f90 | 14 ++++++++++++++
+ 8 files changed, 73 insertions(+), 4 deletions(-)
+ create mode 100644 gcc/testsuite/gfortran.dg/pr39695_1.f90
+ create mode 100644 gcc/testsuite/gfortran.dg/pr39695_2.f90
+ create mode 100644 gcc/testsuite/gfortran.dg/pr39695_3.f90
+ create mode 100644 gcc/testsuite/gfortran.dg/pr39695_4.f90
+
+diff --git a/gcc/fortran/resolve.c b/gcc/fortran/resolve.c
+index f6e10ea379c..aaee5eb6b9b 100644
+--- a/gcc/fortran/resolve.c
++++ b/gcc/fortran/resolve.c
+@@ -1 +1,2 @@
+
++
+diff --git a/gcc/fortran/symbol.c b/gcc/fortran/symbol.c
+index 59f602d80d5..b96706138c9 100644
+--- a/gcc/fortran/symbol.c
++++ b/gcc/fortran/symbol.c
+@@ -1 +1,2 @@
+
++
+diff --git a/gcc/testsuite/gfortran.dg/pr39695_1.f90 b/gcc/testsuite/gfortran.dg/pr39695_1.f90
+new file mode 100644
+index 00000000000..4c4b3045f69
+--- /dev/null
++++ b/gcc/testsuite/gfortran.dg/pr39695_1.f90
+@@ -0,0 +1 @@
++
+diff --git a/gcc/testsuite/gfortran.dg/pr39695_2.f90 b/gcc/testsuite/gfortran.dg/pr39695_2.f90
+new file mode 100644
+index 00000000000..8534724959a
+--- /dev/null
++++ b/gcc/testsuite/gfortran.dg/pr39695_2.f90
+@@ -0,0 +1 @@
++
+diff --git a/gcc/testsuite/gfortran.dg/pr39695_3.f90 b/gcc/testsuite/gfortran.dg/pr39695_3.f90
+new file mode 100644
+index 00000000000..661e2540bb3
+--- /dev/null
++++ b/gcc/testsuite/gfortran.dg/pr39695_3.f90
+@@ -0,0 +1 @@
++
+diff --git a/gcc/testsuite/gfortran.dg/pr39695_4.f90 b/gcc/testsuite/gfortran.dg/pr39695_4.f90
+new file mode 100644
+index 00000000000..ecb0a43929f
+--- /dev/null
++++ b/gcc/testsuite/gfortran.dg/pr39695_4.f90
+@@ -0,0 +1 @@
++
+-- 
+2.26.2
+
+=== 0001-c-C-20-DR-2237.patch ===
+From 4b38d56dbac6742b038551a36ec80200313123a1 Mon Sep 17 00:00:00 2001
+From: Marek Polacek <polacek@redhat.com>
+Date: Sat, 4 Apr 2020 18:09:53 -0400
+Subject: [PATCH] c++: C++20 DR 2237, disallow simple-template-id in cdtor.
+
+This patch implements DR 2237 which says that a simple-template-id is
+no longer valid as the declarator-id of a constructor or destructor;
+see [diff.cpp17.class]#2.  It is not explicitly stated but out-of-line
+destructors with a simple-template-id are also meant to be ill-formed
+now.  (Out-of-line constructors like that are invalid since DR1435 I
+think.)  This change only applies to C++20; it is not a DR against C++17.
+
+I'm not crazy about the diagnostic in constructors but ISTM that
+cp_parser_constructor_declarator_p shouldn't print errors.
+
+	DR 2237
+	* parser.c (cp_parser_unqualified_id): Reject simple-template-id as
+	the declarator-id of a destructor.
+---
+diff --git a/gcc/cp/parser.c b/gcc/cp/parser.c
+index a6a5d975af3..a8082d39aca 100644
+--- a/gcc/cp/parser.c
++++ b/gcc/cp/parser.c
+@@ -1 +1,2 @@
+
++
+
+=== 0001-go-in-ignored-location.patch ===
+From 81994eab700da7fea6644541c163aa0f0f3b8cf1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Cl=C3=A9ment=20Chigot?= <chigot.c@gmail.com>
+Date: Tue, 19 May 2020 16:03:54 +0200
+Subject: libgo: update x/sys/cpu after gccgo support added
+
+Reviewed-on: https://go-review.googlesource.com/c/gofrontend/+/234597
+---
+ gcc/go/gofrontend/MERGE                       |  2 +-
+ .../sys/cpu/{cpu_aix_ppc64.go => cpu_aix.go}  |  2 +-
+ .../golang.org/x/sys/cpu/syscall_aix_gccgo.go | 27 +++++++++++++++++++
+ 3 files changed, 29 insertions(+), 2 deletions(-)
+ rename libgo/go/golang.org/x/sys/cpu/{cpu_aix_ppc64.go => cpu_aix.go} (96%)
+ create mode 100644 libgo/go/golang.org/x/sys/cpu/syscall_aix_gccgo.go
+
+diff --git a/gcc/go/gofrontend/MERGE b/gcc/go/gofrontend/MERGE
+index bc9c1f07eda..284374820b0 100644
+--- a/gcc/go/gofrontend/MERGE
++++ b/gcc/go/gofrontend/MERGE
+@@ -1 +1,2 @@
+
++
+diff --git a/libgo/go/golang.org/x/sys/cpu/cpu_aix_ppc64.go b/libgo/go/golang.org/x/sys/cpu/cpu_aix.go
+similarity index 96%
+rename from libgo/go/golang.org/x/sys/cpu/cpu_aix_ppc64.go
+rename to libgo/go/golang.org/x/sys/cpu/cpu_aix.go
+index b0ede112d4e..02d03129e50 100644
+--- a/libgo/go/golang.org/x/sys/cpu/cpu_aix_ppc64.go
++++ b/libgo/go/golang.org/x/sys/cpu/cpu_aix.go
+@@ -1 +1,2 @@
+
++
+diff --git a/libgo/go/golang.org/x/sys/cpu/syscall_aix_gccgo.go b/libgo/go/golang.org/x/sys/cpu/syscall_aix_gccgo.go
+new file mode 100644
+index 00000000000..2609cc49ae7
+--- /dev/null
++++ b/libgo/go/golang.org/x/sys/cpu/syscall_aix_gccgo.go
+@@ -0,0 +1 @@
++
+
+-- 
+2.27.0.rc0.183.gde8f92d652-goog
+=== 0001-Update-merge.sh-to-reflect.patch  ===
+From b3d566f570f4416299240b51654b70c74f6cba6a Mon Sep 17 00:00:00 2001
+From: Martin Liska <mliska@suse.cz>
+Date: Mon, 25 May 2020 20:55:29 +0200
+Subject: [PATCH] Update merge.sh to reflect usage of git.
+
+After switching to GIT, we should use it in libsanitizer
+merge script. I'll do merge from master as soon as
+PR95311 gets fixed.
+
+I'm going to install the patch.
+
+libsanitizer/ChangeLog:
+
+	* LOCAL_PATCHES: Use git hash instead of SVN id.
+	* merge.sh: Use git instead of VCS.  Update paths
+	relative to upstream git repository.
+---
+ libsanitizer/LOCAL_PATCHES |  2 +-
+ libsanitizer/merge.sh      | 10 ++++------
+ 2 files changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/libsanitizer/LOCAL_PATCHES b/libsanitizer/LOCAL_PATCHES
+index 292b7a6e489..7732de3d436 100644
+--- a/libsanitizer/LOCAL_PATCHES
++++ b/libsanitizer/LOCAL_PATCHES
+@@ -1 +1,2 @@
+
++
+diff --git a/libsanitizer/merge.sh b/libsanitizer/merge.sh
+index dfa7bf3d196..3f4f1629a22 100755
+--- a/libsanitizer/merge.sh
++++ b/libsanitizer/merge.sh
+@@ -1 +1,2 @@
+
++
+ 
+-- 
+2.26.2
+=== 0001-Ada-Reuse-Is_Package_Or_Generic_Package-where-possib.patch ===
+From 557b268fffffdeb0980a17411f458eee333f55c6 Mon Sep 17 00:00:00 2001
+From: Piotr Trojanek <trojanek@adacore.com>
+Date: Thu, 12 Dec 2019 11:45:24 +0100
+Subject: [PATCH] [Ada] Reuse Is_Package_Or_Generic_Package where possible
+
+2020-05-26  Piotr Trojanek  <trojanek@adacore.com>
+
+gcc/ada/
+
+	* contracts.adb, einfo.adb, exp_ch9.adb, sem_ch12.adb,
+	sem_ch4.adb, sem_ch7.adb, sem_ch8.adb, sem_elab.adb,
+	sem_type.adb, sem_util.adb: Reuse Is_Package_Or_Generic_Package
+	where possible (similarly, reuse Is_Concurrent_Type if it was
+	possible in the same expressions).
+---
+ gcc/ada/contracts.adb |  2 +-
+ gcc/ada/einfo.adb     | 22 +++++++++++-----------
+ gcc/ada/exp_ch9.adb   |  2 +-
+ gcc/ada/sem_ch12.adb  |  2 +-
+ gcc/ada/sem_ch4.adb   |  2 +-
+ gcc/ada/sem_ch7.adb   |  6 +++---
+ gcc/ada/sem_ch8.adb   |  6 +++---
+ gcc/ada/sem_elab.adb  |  2 +-
+ gcc/ada/sem_type.adb  |  2 +-
+ gcc/ada/sem_util.adb  |  6 +++---
+ 10 files changed, 26 insertions(+), 26 deletions(-)
+
+diff --git a/gcc/ada/contracts.adb b/gcc/ada/contracts.adb
+index 981bb91..d58f136 100644
+--- a/gcc/ada/contracts.adb
++++ b/gcc/ada/contracts.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/einfo.adb b/gcc/ada/einfo.adb
+index 98b508f..1df8ed0 100644
+--- a/gcc/ada/einfo.adb
++++ b/gcc/ada/einfo.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/exp_ch9.adb b/gcc/ada/exp_ch9.adb
+index 64ac353..392a221 100644
+--- a/gcc/ada/exp_ch9.adb
++++ b/gcc/ada/exp_ch9.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/sem_ch12.adb b/gcc/ada/sem_ch12.adb
+index dc3a3c2..209e060 100644
+--- a/gcc/ada/sem_ch12.adb
++++ b/gcc/ada/sem_ch12.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/sem_ch4.adb b/gcc/ada/sem_ch4.adb
+index 5910112..702f265 100644
+--- a/gcc/ada/sem_ch4.adb
++++ b/gcc/ada/sem_ch4.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/sem_ch7.adb b/gcc/ada/sem_ch7.adb
+index 6d9a1db..f217dfd 100644
+--- a/gcc/ada/sem_ch7.adb
++++ b/gcc/ada/sem_ch7.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/sem_ch8.adb b/gcc/ada/sem_ch8.adb
+index f083f7c..7f50b40 100644
+--- a/gcc/ada/sem_ch8.adb
++++ b/gcc/ada/sem_ch8.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/sem_elab.adb b/gcc/ada/sem_elab.adb
+index f3cac46..dbf3fac 100644
+--- a/gcc/ada/sem_elab.adb
++++ b/gcc/ada/sem_elab.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/sem_type.adb b/gcc/ada/sem_type.adb
+index e5d01dd..1868568 100644
+--- a/gcc/ada/sem_type.adb
++++ b/gcc/ada/sem_type.adb
+@@ -0,0 +1 @@
++
+diff --git a/gcc/ada/sem_util.adb b/gcc/ada/sem_util.adb
+index b980b4c..c1b1d9e 100644
+--- a/gcc/ada/sem_util.adb
++++ b/gcc/ada/sem_util.adb
+@@ -0,0 +1 @@
++
+-- 
+2.1.4
+
+=== 0001-Ada-Add-support-for-XDR-streaming-in-the-default-run.patch ===
+From ed248d9bc3b72b6888a1b9cd84a8ef26809249f0 Mon Sep 17 00:00:00 2001
+From: Arnaud Charlet <charlet@adacore.com>
+Date: Thu, 23 Apr 2020 05:46:29 -0400
+Subject: [PATCH] [Ada] Add support for XDR streaming in the default runtime
+
+--!# FROM: /homes/derodat/tron/gnat2fsf/gnat
+--!# COMMIT: 5ad4cabb9f70114eb61c025e91406d4fba253f95
+--!# Change-Id: I21f92cad27933747495cdfa544a048f62f944cbd
+--!# TN: T423-014
+
+Currently we provide a separate implementation of Stream_Attributes via
+s-stratt__xdr.adb which needs to be recompiled manually.
+
+This change introduces instead a new binder switch to choose at bind
+time which stream implementation to use and replaces s-stratt__xdr.adb
+by a new unit System.Stream_Attributes.XDR.
+
+2020-05-04  Arnaud Charlet  <charlet@adacore.com>
+
+gcc/ada/
+
+	* Makefile.rtl: Add s-statxd.o.
+	* bindgen.adb (Gen_Adainit): Add support for XDR_Stream.
+	* bindusg.adb (Display): Add mention of -xdr.
+	* gnatbind.adb: Process -xdr switch.
+	* init.c (__gl_xdr_stream): New.
+	* opt.ads (XDR_Stream): New.
+	* libgnat/s-stratt__xdr.adb: Rename to...
+	* libgnat/s-statxd.adb: this and adjust.
+	* libgnat/s-statxd.ads: New.
+	* libgnat/s-stratt.ads, libgnat/s-stratt.adb: Choose between
+	default and XDR implementation at runtime.
+	* libgnat/s-ststop.ads: Update comments.
+	* doc/gnat_rm/implementation_advice.rst: Update doc on XDR
+	streaming.
+	* gnat_rm.texi: Regenerate.
+---
+ gcc/ada/Makefile.rtl                          |   1 +
+ gcc/ada/bindgen.adb                           |  29 +-
+ gcc/ada/bindusg.adb                           |   5 +
+ gcc/ada/doc/gnat_rm/implementation_advice.rst |  35 +--
+ gcc/ada/gnat_rm.texi                          |  36 +--
+ gcc/ada/gnatbind.adb                          |   5 +
+ gcc/ada/init.c                                |   1 +
+ .../{s-stratt__xdr.adb => s-statxd.adb}       |  63 ++--
+ gcc/ada/libgnat/s-statxd.ads                  | 117 +++++++
+ gcc/ada/libgnat/s-stratt.adb                  | 286 +++++++++++++++---
+ gcc/ada/libgnat/s-stratt.ads                  |   7 +-
+ gcc/ada/libgnat/s-ststop.ads                  |   4 +-
+ gcc/ada/opt.ads                               |   6 +-
+ 13 files changed, 428 insertions(+), 167 deletions(-)
+ rename gcc/ada/libgnat/{s-stratt__xdr.adb => s-statxd.adb} (96%)
+ create mode 100644 gcc/ada/libgnat/s-statxd.ads
+
+diff --git a/gcc/ada/Makefile.rtl b/gcc/ada/Makefile.rtl
+index b340a9ef919..15e4f68ccdb 100644
+--- a/gcc/ada/Makefile.rtl
++++ b/gcc/ada/Makefile.rtl
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/bindgen.adb b/gcc/ada/bindgen.adb
+index 99ad3009d13..91b4cb38486 100644
+--- a/gcc/ada/bindgen.adb
++++ b/gcc/ada/bindgen.adb
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/bindusg.adb b/gcc/ada/bindusg.adb
+index 45215d2ebea..6fd55ee8721 100644
+--- a/gcc/ada/bindusg.adb
++++ b/gcc/ada/bindusg.adb
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/doc/gnat_rm/implementation_advice.rst b/gcc/ada/doc/gnat_rm/implementation_advice.rst
+index 31376d92461..998d0c597df 100644
+--- a/gcc/ada/doc/gnat_rm/implementation_advice.rst
++++ b/gcc/ada/doc/gnat_rm/implementation_advice.rst
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/gnat_rm.texi b/gcc/ada/gnat_rm.texi
+index c174073d508..d72f905a2df 100644
+--- a/gcc/ada/gnat_rm.texi
++++ b/gcc/ada/gnat_rm.texi
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/gnatbind.adb b/gcc/ada/gnatbind.adb
+index 4907082a42c..4372152b439 100644
+--- a/gcc/ada/gnatbind.adb
++++ b/gcc/ada/gnatbind.adb
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/init.c b/gcc/ada/init.c
+index f9f627ebcff..e76aa79c5a8 100644
+--- a/gcc/ada/init.c
++++ b/gcc/ada/init.c
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/libgnat/s-stratt__xdr.adb b/gcc/ada/libgnat/s-statxd.adb
+similarity index 96%
+rename from gcc/ada/libgnat/s-stratt__xdr.adb
+rename to gcc/ada/libgnat/s-statxd.adb
+index 7e32fcf9b91..fcefae7e6f2 100644
+--- a/gcc/ada/libgnat/s-stratt__xdr.adb
++++ b/gcc/ada/libgnat/s-statxd.adb
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/libgnat/s-statxd.ads b/gcc/ada/libgnat/s-statxd.ads
+new file mode 100644
+index 00000000000..cca5e5471bd
+--- /dev/null
++++ b/gcc/ada/libgnat/s-statxd.ads
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/libgnat/s-stratt.adb b/gcc/ada/libgnat/s-stratt.adb
+index 64f3f040081..366dabdc7b6 100644
+--- a/gcc/ada/libgnat/s-stratt.adb
++++ b/gcc/ada/libgnat/s-stratt.adb
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/libgnat/s-stratt.ads b/gcc/ada/libgnat/s-stratt.ads
+index 73369490146..c8c453aad2a 100644
+--- a/gcc/ada/libgnat/s-stratt.ads
++++ b/gcc/ada/libgnat/s-stratt.ads
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/libgnat/s-ststop.ads b/gcc/ada/libgnat/s-ststop.ads
+index d0da0609d9d..321460b89d8 100644
+--- a/gcc/ada/libgnat/s-ststop.ads
++++ b/gcc/ada/libgnat/s-ststop.ads
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/ada/opt.ads b/gcc/ada/opt.ads
+index 9e0263b431d..37f3d030e3f 100644
+--- a/gcc/ada/opt.ads
++++ b/gcc/ada/opt.ads
+@@ -1 +1,2 @@
+ 
++
+-- 
+2.20.1
+=== 0001-Fortran-type-is-real-kind-1.patch ===
+From 3ea6977d0f1813d982743a09660eec1760e981ec Mon Sep 17 00:00:00 2001
+From: Mark Eggleston <markeggleston@gcc.gnu.org>
+Date: Wed, 1 Apr 2020 09:52:41 +0100
+Subject: [PATCH] Fortran  : "type is( real(kind(1.)) )" spurious syntax error
+ PR94397
+
+Based on a patch in the comments of the PR. That patch fixed this
+problem but caused the test cases for PR93484 to fail. It has been
+changed to reduce initialisation expressions if the expression is
+not EXPR_VARIABLE and not EXPR_CONSTANT.
+
+2020-05-28  Steven G. Kargl  <kargl@gcc.gnu.org>
+	    Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+gcc/fortran/
+
+	PR fortran/94397
+	* match.c (gfc_match_type_spec): New variable ok initialised
+	to true. Set ok with the return value of gfc_reduce_init_expr
+	called only if the expression is not EXPR_CONSTANT and is not
+	EXPR_VARIABLE. Add !ok to the check for type not being integer
+	or the rank being greater than zero.
+
+2020-05-28  Mark Eggleston  <markeggleston@gcc.gnu.org>
+
+gcc/testsuite/
+
+	PR fortran/94397
+	* gfortran.dg/pr94397.F90: New test.
+---
+ gcc/fortran/match.c                   |  5 ++++-
+ gcc/testsuite/gfortran.dg/pr94397.F90 | 26 ++++++++++++++++++++++++++
+ 2 files changed, 30 insertions(+), 1 deletion(-)
+ create mode 100644 gcc/testsuite/gfortran.dg/pr94397.F90
+
+diff --git a/gcc/fortran/match.c b/gcc/fortran/match.c
+index 8ae34a94a95..82d2b5087e5 100644
+--- a/gcc/fortran/match.c
++++ b/gcc/fortran/match.c
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/testsuite/gfortran.dg/pr94397.F90 b/gcc/testsuite/gfortran.dg/pr94397.F90
+new file mode 100644
+index 00000000000..fda10c1a88b
+--- /dev/null
++++ b/gcc/testsuite/gfortran.dg/pr94397.F90
+@@ -0,0 +1 @@
++
+-- 
+2.26.2
+
+=== 0001-Missing-change-description.patch ===
+From 8ec655bd94615ba45adabae9b50df299edb74eda Mon Sep 17 00:00:00 2001
+From: Martin Liska <mliska@suse.cz>
+Date: Fri, 29 May 2020 13:42:57 +0200
+Subject: [PATCH] Test me.
+
+gcc/ChangeLog:
+
+	* ipa-icf-gimple.c (compare_gimple_asm):
+	* ipa-icf-gimple2.c (compare_gimple_asm): Good.
+	* ipa-icf-gimple3.c (compare_gimple_asm):
+---
+ contrib/gcc-changelog/git_commit.py | 10 ++++++++++
+ gcc/ipa-icf-gimple.c                |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/gcc/ipa-icf-gimple.c b/gcc/ipa-icf-gimple.c
+index 1cd5872c03d..6f95aedb3d3 100644
+--- a/gcc/ipa-icf-gimple.c
++++ b/gcc/ipa-icf-gimple.c
+@@ -850,3 +850,4 @@
+ }
+ 
+ } // ipa_icf_gimple namespace
++
+-- 
+2.26.2

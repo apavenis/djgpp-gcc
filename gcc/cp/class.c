@@ -729,9 +729,13 @@ build_vtbl_ref (tree instance, tree idx)
 tree
 build_vfn_ref (tree instance_ptr, tree idx)
 {
-  tree aref;
+  tree obtype = TREE_TYPE (TREE_TYPE (instance_ptr));
 
-  aref = build_vtbl_ref (cp_build_fold_indirect_ref (instance_ptr), idx);
+  /* Leave the INDIRECT_REF unfolded so cp_ubsan_maybe_instrument_member_call
+     can find instance_ptr.  */
+  tree ind = build1 (INDIRECT_REF, obtype, instance_ptr);
+
+  tree aref = build_vtbl_ref (ind, idx);
 
   /* When using function descriptors, the address of the
      vtable entry is treated as a function pointer.  */
@@ -1077,12 +1081,19 @@ add_method (tree type, tree method, bool via_using)
 	{
           if (!equivalently_constrained (fn, method))
 	    {
+	      if (processing_template_decl)
+		/* We can't check satisfaction in dependent context, wait until
+		   the class is instantiated.  */
+		continue;
+
 	      special_function_kind sfk = special_memfn_p (method);
 
-	      if (sfk == sfk_none || DECL_INHERITED_CTOR (fn))
-		/* Non-special member functions coexist if they are not
-		   equivalently constrained.  A member function is not hidden
-		   by an inherited constructor.  */
+	      if (sfk == sfk_none
+		  || DECL_INHERITED_CTOR (fn)
+		  || TREE_CODE (fn) == TEMPLATE_DECL)
+		/* Member function templates and non-special member functions
+		   coexist if they are not equivalently constrained.  A member
+		   function is not hidden by an inherited constructor.  */
 		continue;
 
 	      /* P0848: For special member functions, deleted, unsatisfied, or

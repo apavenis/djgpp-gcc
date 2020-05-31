@@ -420,6 +420,7 @@ const char *host_detect_local_cpu (int argc, const char **argv)
   unsigned int has_avx5124fmaps = 0, has_avx5124vnniw = 0;
   unsigned int has_gfni = 0, has_avx512vbmi2 = 0;
   unsigned int has_avx512bitalg = 0;
+  unsigned int has_avx512vpopcntdq = 0;
   unsigned int has_shstk = 0;
   unsigned int has_avx512vnni = 0, has_vaes = 0;
   unsigned int has_vpclmulqdq = 0;
@@ -528,6 +529,7 @@ const char *host_detect_local_cpu (int argc, const char **argv)
       has_vaes = ecx & bit_VAES;
       has_vpclmulqdq = ecx & bit_VPCLMULQDQ;
       has_avx512bitalg = ecx & bit_AVX512BITALG;
+      has_avx512vpopcntdq = ecx & bit_AVX512VPOPCNTDQ;
       has_movdiri = ecx & bit_MOVDIRI;
       has_movdir64b = ecx & bit_MOVDIR64B;
       has_enqcmd = ecx & bit_ENQCMD;
@@ -777,9 +779,12 @@ const char *host_detect_local_cpu (int argc, const char **argv)
 	case 0x37:
 	case 0x4a:
 	case 0x4d:
-	case 0x5a:
 	case 0x5d:
 	  /* Silvermont.  */
+	case 0x4c:
+	case 0x5a:
+	case 0x75:
+	  /* Airmont.  */
 	  cpu = "silvermont";
 	  break;
 	case 0x5c:
@@ -790,6 +795,12 @@ const char *host_detect_local_cpu (int argc, const char **argv)
 	case 0x7a:
 	  /* Goldmont Plus.  */
 	  cpu = "goldmont-plus";
+	  break;
+	case 0x86:
+	case 0x96:
+	case 0x9c:
+	  /* Tremont.  */
+	  cpu = "tremont";
 	  break;
 	case 0x0f:
 	  /* Merom.  */
@@ -841,6 +852,9 @@ const char *host_detect_local_cpu (int argc, const char **argv)
 	case 0x8e:
 	case 0x9e:
 	  /* Kaby Lake.  */
+	case 0xa5:
+	case 0xa6:
+	  /* Comet Lake.  */
 	  cpu = "skylake";
 	  break;
 	case 0x55:
@@ -850,6 +864,22 @@ const char *host_detect_local_cpu (int argc, const char **argv)
 	  else
 	    /* Skylake with AVX-512.  */
 	    cpu = "skylake-avx512";
+	  break;
+	case 0x6a:
+	case 0x6c:
+	  /* Ice Lake server.  */
+	  cpu = "icelake-server";
+	  break;
+	case 0x7e:
+	case 0x7d:
+	case 0x9d:
+	  /* Ice Lake client.  */
+	  cpu = "icelake-client";
+	  break;
+	case 0x8c:
+	case 0x8d:
+	  /* Tiger Lake.  */
+	  cpu = "tigerlake";
 	  break;
 	case 0x57:
 	  /* Knights Landing.  */
@@ -1161,6 +1191,7 @@ const char *host_detect_local_cpu (int argc, const char **argv)
       const char *avx512vp2intersect = has_avx512vp2intersect ? " -mavx512vp2intersect" : " -mno-avx512vp2intersect";
       const char *tsxldtrk = has_tsxldtrk ? " -mtsxldtrk " : " -mno-tsxldtrk";
       const char *avx512bitalg = has_avx512bitalg ? " -mavx512bitalg" : " -mno-avx512bitalg";
+      const char *avx512vpopcntdq = has_avx512vpopcntdq ? " -mavx512vpopcntdq" : " -mno-avx512vpopcntdq";
       const char *movdiri = has_movdiri ? " -mmovdiri" : " -mno-movdiri";
       const char *movdir64b = has_movdir64b ? " -mmovdir64b" : " -mno-movdir64b";
       const char *enqcmd = has_enqcmd ? " -menqcmd" : " -mno-enqcmd";
@@ -1182,9 +1213,9 @@ const char *host_detect_local_cpu (int argc, const char **argv)
 			avx512ifma, avx512vbmi, avx5124fmaps, avx5124vnniw,
 			clwb, mwaitx, clzero, pku, rdpid, gfni, shstk,
 			avx512vbmi2, avx512vnni, vaes, vpclmulqdq,
-			avx512bitalg, movdiri, movdir64b, waitpkg, cldemote,
-			ptwrite, avx512bf16, enqcmd, avx512vp2intersect,
-			serialize, tsxldtrk, NULL);
+			avx512bitalg, avx512vpopcntdq, movdiri, movdir64b,
+			waitpkg, cldemote, ptwrite, avx512bf16, enqcmd,
+			avx512vp2intersect, serialize, tsxldtrk, NULL);
     }
 
 done:
