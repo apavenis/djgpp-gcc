@@ -2130,7 +2130,7 @@ struct sm_aux
 
 static void
 execute_sm (class loop *loop, im_mem_ref *ref,
-	    hash_map<im_mem_ref *, sm_aux *> &aux_map)
+	    hash_map<im_mem_ref *, sm_aux *> &aux_map, bool maybe_mt)
 {
   gassign *load;
   struct fmt_data fmt_data;
@@ -2154,8 +2154,9 @@ execute_sm (class loop *loop, im_mem_ref *ref,
   for_each_index (&ref->mem.ref, force_move_till, &fmt_data);
 
   bool always_stored = ref_always_accessed_p (loop, ref, true);
-  if (bb_in_transaction (loop_preheader_edge (loop)->src)
-      || (! flag_store_data_races && ! always_stored))
+  if (maybe_mt
+      && (bb_in_transaction (loop_preheader_edge (loop)->src)
+	  || (! flag_store_data_races && ! always_stored)))
     multi_threaded_model_p = true;
 
   if (multi_threaded_model_p)
@@ -2244,7 +2245,7 @@ execute_sm_exit (class loop *loop, edge ex, vec<seq_entry> &seq,
       else
 	{
 	  sm_aux *aux = *aux_map.get (ref);
-	  if (!aux->store_flag)
+	  if (!aux->store_flag || kind == sm_ord)
 	    {
 	      gassign *store;
 	      store = gimple_build_assign (unshare_expr (ref->mem.ref),
@@ -2401,6 +2402,7 @@ sm_seq_valid_bb (class loop *loop, basic_block bb, tree vdef,
 		      if (edge_seq[i].second == sm_ord)
 			bitmap_set_bit (refs_not_supported, edge_seq[i].first);
 		      first_edge_seq[i].second = sm_other;
+		      first_edge_seq[i].from = NULL_TREE;
 		    }
 		  /* sm_other prevails.  */
 		  else if (first_edge_seq[i].second != edge_seq[i].second)
@@ -2409,7 +2411,14 @@ sm_seq_valid_bb (class loop *loop, basic_block bb, tree vdef,
 		      gcc_assert (bitmap_bit_p (refs_not_supported,
 						first_edge_seq[i].first));
 		      first_edge_seq[i].second = sm_other;
+		      first_edge_seq[i].from = NULL_TREE;
 		    }
+		  else if (first_edge_seq[i].second == sm_other
+			   && first_edge_seq[i].from != NULL_TREE
+			   && (edge_seq[i].from == NULL_TREE
+			       || !operand_equal_p (first_edge_seq[i].from,
+						    edge_seq[i].from, 0)))
+		    first_edge_seq[i].from = NULL_TREE;
 		}
 	      /* Any excess elements become sm_other since they are now
 		 coonditionally executed.  */
@@ -2435,17 +2444,19 @@ sm_seq_valid_bb (class loop *loop, basic_block bb, tree vdef,
 	  /* Use the sequence from the first edge and push SMs down.  */
 	  for (unsigned i = 0; i < first_edge_seq.length (); ++i)
 	    {
-	      if (first_edge_seq[i].second == sm_other)
-		break;
 	      unsigned id = first_edge_seq[i].first;
 	      seq.safe_push (first_edge_seq[i]);
 	      unsigned new_idx;
-	      if (first_edge_seq[i].second == sm_ord
+	      if ((first_edge_seq[i].second == sm_ord
+		   || (first_edge_seq[i].second == sm_other
+		       && first_edge_seq[i].from != NULL_TREE))
 		  && !sm_seq_push_down (seq, seq.length () - 1, &new_idx))
 		{
-		  bitmap_set_bit (refs_not_supported, id);
+		  if (first_edge_seq[i].second == sm_ord)
+		    bitmap_set_bit (refs_not_supported, id);
 		  /* Mark it sm_other.  */
 		  seq[new_idx].second = sm_other;
+		  seq[new_idx].from = NULL_TREE;
 		}
 	    }
 	  return 1;
@@ -2630,7 +2641,7 @@ hoist_memory_references (class loop *loop, bitmap mem_refs,
   EXECUTE_IF_SET_IN_BITMAP (mem_refs, 0, i, bi)
     {
       ref = memory_accesses.refs_list[i];
-      execute_sm (loop, ref, aux_map);
+      execute_sm (loop, ref, aux_map, bitmap_bit_p (refs_not_supported, i));
     }
 
   /* Materialize ordered store sequences on exits.  */

@@ -5556,6 +5556,7 @@ free_lang_data_in_type (tree type, class free_lang_data_d *fld)
     {
       if (TREE_CODE (type) == ENUMERAL_TYPE)
 	{
+	  tree it = NULL_TREE;
 	  ENUM_IS_OPAQUE (type) = 0;
 	  ENUM_IS_SCOPED (type) = 0;
 	  /* Type values are used only for C++ ODR checking.  Drop them
@@ -5568,8 +5569,27 @@ free_lang_data_in_type (tree type, class free_lang_data_d *fld)
 	  /* Simplify representation by recording only values rather
 	     than const decls.  */
 	    for (tree e = TYPE_VALUES (type); e; e = TREE_CHAIN (e))
-	      if (TREE_CODE (TREE_VALUE (e)) == CONST_DECL)
-		TREE_VALUE (e) = DECL_INITIAL (TREE_VALUE (e));
+	      {
+		if (TREE_CODE (TREE_VALUE (e)) == CONST_DECL)
+		  {
+		    TREE_VALUE (e) = DECL_INITIAL (TREE_VALUE (e));
+		    /* We can not stream values whose TREE_TYPE is type itself
+		       because that would create non-trivial CSS.  Canonicalize
+		       them to integer types.  */
+		  }
+		/* Some frontends use ENUMERAL_TYPE to represent the constants.
+		   This leads to nontrivial SCC components containing
+		   INTEGER_CST which is not good for streaming.  Convert them
+		   all to corresponding integer type.  */
+		if (TREE_CODE (TREE_TYPE (TREE_VALUE (e))) != INTEGER_TYPE)
+		  {
+		    if (!it)
+		      it = lang_hooks.types.type_for_size
+			       (TYPE_PRECISION (TREE_TYPE (TREE_VALUE (e))),
+				TYPE_UNSIGNED (TREE_TYPE (TREE_VALUE (e))));
+		    TREE_VALUE (e) = fold_convert (it, TREE_VALUE (e));
+		  }
+	       }
 	}
       free_lang_data_in_one_sizepos (&TYPE_MIN_VALUE (type));
       free_lang_data_in_one_sizepos (&TYPE_MAX_VALUE (type));
@@ -10330,6 +10350,8 @@ build_common_tree_nodes (bool signed_char)
   uint16_type_node = make_or_reuse_type (16, 1);
   uint32_type_node = make_or_reuse_type (32, 1);
   uint64_type_node = make_or_reuse_type (64, 1);
+  if (targetm.scalar_mode_supported_p (TImode))
+    uint128_type_node = make_or_reuse_type (128, 1);
 
   /* Decimal float types. */
   if (targetm.decimal_float_supported_p ())
@@ -13600,6 +13622,10 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
   if (!interior_zero_length)
     interior_zero_length = &int_0_len;
 
+  /* The object/argument referenced by the COMPONENT_REF and its type.  */
+  tree arg = TREE_OPERAND (ref, 0);
+  tree argtype = TREE_TYPE (arg);
+  /* The referenced member.  */
   tree member = TREE_OPERAND (ref, 1);
 
   tree memsize = DECL_SIZE_UNIT (member);
@@ -13611,7 +13637,7 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 
       bool trailing = array_at_struct_end_p (ref);
       bool zero_length = integer_zerop (memsize);
-      if (!trailing && (!interior_zero_length || !zero_length))
+      if (!trailing && !zero_length)
 	/* MEMBER is either an interior array or is an array with
 	   more than one element.  */
 	return memsize;
@@ -13630,9 +13656,14 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 		  offset_int minidx = wi::to_offset (min);
 		  offset_int maxidx = wi::to_offset (max);
 		  if (maxidx - minidx > 0)
-		    /* MEMBER is an array with more than 1 element.  */
+		    /* MEMBER is an array with more than one element.  */
 		    return memsize;
 		}
+
+      /* For a refernce to a zero- or one-element array member of a union
+	 use the size of the union instead of the size of the member.  */
+      if (TREE_CODE (argtype) == UNION_TYPE)
+	memsize = TYPE_SIZE_UNIT (argtype);
     }
 
   /* MEMBER is either a bona fide flexible array member, or a zero-length
@@ -13647,28 +13678,27 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
       if (!*interior_zero_length)
 	return NULL_TREE;
 
-      if (TREE_CODE (TREE_OPERAND (ref, 0)) != COMPONENT_REF)
+      if (TREE_CODE (arg) != COMPONENT_REF)
 	return NULL_TREE;
 
-      base = TREE_OPERAND (ref, 0);
+      base = arg;
       while (TREE_CODE (base) == COMPONENT_REF)
 	base = TREE_OPERAND (base, 0);
       baseoff = tree_to_poly_int64 (byte_position (TREE_OPERAND (ref, 1)));
     }
 
   /* BASE is the declared object of which MEMBER is either a member
-     or that is cast to REFTYPE (e.g., a char buffer used to store
-     a REFTYPE object).  */
-  tree reftype = TREE_TYPE (TREE_OPERAND (ref, 0));
+     or that is cast to ARGTYPE (e.g., a char buffer used to store
+     an ARGTYPE object).  */
   tree basetype = TREE_TYPE (base);
 
   /* Determine the base type of the referenced object.  If it's
-     the same as REFTYPE and MEMBER has a known size, return it.  */
+     the same as ARGTYPE and MEMBER has a known size, return it.  */
   tree bt = basetype;
   if (!*interior_zero_length)
     while (TREE_CODE (bt) == ARRAY_TYPE)
       bt = TREE_TYPE (bt);
-  bool typematch = useless_type_conversion_p (reftype, bt);
+  bool typematch = useless_type_conversion_p (argtype, bt);
   if (memsize && typematch)
     return memsize;
 
@@ -13684,7 +13714,7 @@ component_ref_size (tree ref, bool *interior_zero_length /* = NULL */)
 	  if (init)
 	    {
 	      memsize = TYPE_SIZE_UNIT (TREE_TYPE (init));
-	      if (tree refsize = TYPE_SIZE_UNIT (reftype))
+	      if (tree refsize = TYPE_SIZE_UNIT (argtype))
 		{
 		  /* Use the larger of the initializer size and the tail
 		     padding in the enclosing struct.  */

@@ -96,8 +96,6 @@ ensure_literal_type_for_constexpr_object (tree decl)
       if (CLASS_TYPE_P (stype) && !COMPLETE_TYPE_P (complete_type (stype)))
 	/* Don't complain here, we'll complain about incompleteness
 	   when we try to initialize the variable.  */;
-      else if (type_uses_auto (type))
-	/* We don't know the actual type yet.  */;
       else if (!literal_type_p (type))
 	{
 	  if (DECL_DECLARED_CONSTEXPR_P (decl))
@@ -1089,10 +1087,66 @@ struct constexpr_ctx {
   bool strict;
   /* Whether __builtin_is_constant_evaluated () should be true.  */
   bool manifestly_const_eval;
-  /* Whether we want to avoid doing anything that will cause extra DECL_UID
-     generation.  */
-  bool uid_sensitive;
 };
+
+/* This internal flag controls whether we should avoid doing anything during
+   constexpr evaluation that would cause extra DECL_UID generation, such as
+   template instantiation and function body copying.  */
+
+static bool uid_sensitive_constexpr_evaluation_value;
+
+/* An internal counter that keeps track of the number of times
+   uid_sensitive_constexpr_evaluation_p returned true.  */
+
+static unsigned uid_sensitive_constexpr_evaluation_true_counter;
+
+/* The accessor for uid_sensitive_constexpr_evaluation_value which also
+   increments the corresponding counter.  */
+
+static bool
+uid_sensitive_constexpr_evaluation_p ()
+{
+  if (uid_sensitive_constexpr_evaluation_value)
+    {
+      ++uid_sensitive_constexpr_evaluation_true_counter;
+      return true;
+    }
+  else
+    return false;
+}
+
+/* The default constructor for uid_sensitive_constexpr_evaluation_sentinel
+   enables the internal flag for uid_sensitive_constexpr_evaluation_p
+   during the lifetime of the sentinel object.  Upon its destruction, the
+   previous value of uid_sensitive_constexpr_evaluation_p is restored.  */
+
+uid_sensitive_constexpr_evaluation_sentinel
+::uid_sensitive_constexpr_evaluation_sentinel ()
+  : ovr (uid_sensitive_constexpr_evaluation_value, true)
+{
+}
+
+/* The default constructor for uid_sensitive_constexpr_evaluation_checker
+   records the current number of times that uid_sensitive_constexpr_evaluation_p
+   has been called and returned true.  */
+
+uid_sensitive_constexpr_evaluation_checker
+::uid_sensitive_constexpr_evaluation_checker ()
+  : saved_counter (uid_sensitive_constexpr_evaluation_true_counter)
+{
+}
+
+/* Returns true iff uid_sensitive_constexpr_evaluation_p is true, and
+   some constexpr evaluation was restricted due to u_s_c_e_p being called
+   and returning true during the lifetime of this checker object.  */
+
+bool
+uid_sensitive_constexpr_evaluation_checker::evaluation_restricted_p () const
+{
+  return (uid_sensitive_constexpr_evaluation_value
+	  && saved_counter != uid_sensitive_constexpr_evaluation_true_counter);
+}
+
 
 /* A table of all constexpr calls that have been evaluated by the
    compiler in this translation unit.  */
@@ -1156,7 +1210,7 @@ static GTY(()) hash_map<tree, tree> *fundef_copies_table;
    is parms, TYPE is result.  */
 
 static tree
-get_fundef_copy (const constexpr_ctx *ctx, constexpr_fundef *fundef)
+get_fundef_copy (constexpr_fundef *fundef)
 {
   tree copy;
   bool existed;
@@ -1173,7 +1227,7 @@ get_fundef_copy (const constexpr_ctx *ctx, constexpr_fundef *fundef)
     }
   else if (*slot == NULL_TREE)
     {
-      if (ctx->uid_sensitive)
+      if (uid_sensitive_constexpr_evaluation_p ())
 	return NULL_TREE;
 
       /* We've already used the function itself, so make a copy.  */
@@ -2292,8 +2346,8 @@ cxx_eval_call_expression (const constexpr_ctx *ctx, tree t,
 
   /* We can't defer instantiating the function any longer.  */
   if (!DECL_INITIAL (fun)
-      && !ctx->uid_sensitive
-      && DECL_TEMPLOID_INSTANTIATION (fun))
+      && DECL_TEMPLOID_INSTANTIATION (fun)
+      && !uid_sensitive_constexpr_evaluation_p ())
     {
       location_t save_loc = input_location;
       input_location = loc;
@@ -2454,7 +2508,7 @@ cxx_eval_call_expression (const constexpr_ctx *ctx, tree t,
 	  gcc_assert (at_eof >= 2 && ctx->quiet);
 	  *non_constant_p = true;
 	}
-      else if (tree copy = get_fundef_copy (ctx, new_call.fundef))
+      else if (tree copy = get_fundef_copy (new_call.fundef))
 	{
 	  tree body, parms, res;
 	  releasing_vec ctors;
@@ -3245,6 +3299,22 @@ get_or_insert_ctor_field (tree ctor, tree index, int pos_hint = -1)
     }
   else if (TREE_CODE (type) == ARRAY_TYPE || TREE_CODE (type) == VECTOR_TYPE)
     {
+      if (TREE_CODE (index) == RANGE_EXPR)
+	{
+	  /* Support for RANGE_EXPR index lookups is currently limited to
+	     accessing an existing element via POS_HINT, or appending a new
+	     element to the end of CTOR.  ??? Support for other access
+	     patterns may also be needed.  */
+	  vec<constructor_elt, va_gc> *elts = CONSTRUCTOR_ELTS (ctor);
+	  if (vec_safe_length (elts))
+	    {
+	      tree lo = TREE_OPERAND (index, 0);
+	      gcc_assert (array_index_cmp (elts->last().index, lo) < 0);
+	    }
+	  CONSTRUCTOR_APPEND_ELT (elts, index, NULL_TREE);
+	  return &elts->last();
+	}
+
       HOST_WIDE_INT i = find_array_ctor_elt (ctor, index, /*insert*/true);
       gcc_assert (i >= 0);
       constructor_elt *cep = CONSTRUCTOR_ELT (ctor, i);
@@ -6430,7 +6500,8 @@ cxx_eval_constant_expression (const constexpr_ctx *ctx, tree t,
 	    break;
 	  }
 
-	if (!processing_template_decl)
+	if (!processing_template_decl
+	    && !uid_sensitive_constexpr_evaluation_p ())
 	  r = evaluate_concept_check (t, tf_warning_or_error);
 	else
 	  *non_constant_p = true;
@@ -6485,7 +6556,8 @@ instantiate_cx_fn_r (tree *tp, int *walk_subtrees, void */*data*/)
       && DECL_DECLARED_CONSTEXPR_P (*tp)
       && !DECL_INITIAL (*tp)
       && !trivial_fn_p (*tp)
-      && DECL_TEMPLOID_INSTANTIATION (*tp))
+      && DECL_TEMPLOID_INSTANTIATION (*tp)
+      && !uid_sensitive_constexpr_evaluation_p ())
     {
       ++function_depth;
       instantiate_decl (*tp, /*defer_ok*/false, /*expl_inst*/false);
@@ -6552,8 +6624,7 @@ cxx_eval_outermost_constant_expr (tree t, bool allow_non_constant,
 				  bool strict = true,
 				  bool manifestly_const_eval = false,
 				  bool constexpr_dtor = false,
-				  tree object = NULL_TREE,
-				  bool uid_sensitive = false)
+				  tree object = NULL_TREE)
 {
   auto_timevar time (TV_CONSTEXPR);
 
@@ -6569,8 +6640,7 @@ cxx_eval_outermost_constant_expr (tree t, bool allow_non_constant,
   constexpr_global_ctx global_ctx;
   constexpr_ctx ctx = { &global_ctx, NULL, NULL, NULL, NULL, NULL, NULL,
 			allow_non_constant, strict,
-			manifestly_const_eval || !allow_non_constant,
-			uid_sensitive };
+			manifestly_const_eval || !allow_non_constant };
 
   tree type = initialized_type (t);
   tree r = t;
@@ -6660,8 +6730,7 @@ cxx_eval_outermost_constant_expr (tree t, bool allow_non_constant,
   auto_vec<tree, 16> cleanups;
   global_ctx.cleanups = &cleanups;
 
-  if (!uid_sensitive)
-    instantiate_constexpr_fns (r);
+  instantiate_constexpr_fns (r);
   r = cxx_eval_constant_expression (&ctx, r,
 				    false, &non_constant_p, &overflow_p);
 
@@ -6909,14 +6978,12 @@ fold_simple (tree t)
    Otherwise, if T does not have TREE_CONSTANT set, returns T.
    Otherwise, returns a version of T without TREE_CONSTANT.
    MANIFESTLY_CONST_EVAL is true if T is manifestly const-evaluated
-   as per P0595.  UID_SENSITIVE is true if we can't do anything that
-   would affect DECL_UID ordering.  */
+   as per P0595.  */
 
 static GTY((deletable)) hash_map<tree, tree> *cv_cache;
 
 tree
-maybe_constant_value (tree t, tree decl, bool manifestly_const_eval,
-		      bool uid_sensitive)
+maybe_constant_value (tree t, tree decl, bool manifestly_const_eval)
 {
   tree r;
 
@@ -6934,8 +7001,7 @@ maybe_constant_value (tree t, tree decl, bool manifestly_const_eval,
     return t;
 
   if (manifestly_const_eval)
-    return cxx_eval_outermost_constant_expr (t, true, true, true, false,
-					     decl, uid_sensitive);
+    return cxx_eval_outermost_constant_expr (t, true, true, true, false, decl);
 
   if (cv_cache == NULL)
     cv_cache = hash_map<tree, tree>::create_ggc (101);
@@ -6950,14 +7016,15 @@ maybe_constant_value (tree t, tree decl, bool manifestly_const_eval,
       return r;
     }
 
-  r = cxx_eval_outermost_constant_expr (t, true, true, false, false,
-					decl, uid_sensitive);
+  uid_sensitive_constexpr_evaluation_checker c;
+  r = cxx_eval_outermost_constant_expr (t, true, true, false, false, decl);
   gcc_checking_assert (r == t
 		       || CONVERT_EXPR_P (t)
 		       || TREE_CODE (t) == VIEW_CONVERT_EXPR
 		       || (TREE_CONSTANT (t) && !TREE_CONSTANT (r))
 		       || !cp_tree_equal (r, t));
-  cv_cache->put (t, r);
+  if (!c.evaluation_restricted_p ())
+    cv_cache->put (t, r);
   return r;
 }
 
@@ -8305,6 +8372,14 @@ bool
 is_constant_expression (tree t)
 {
   return potential_constant_expression_1 (t, false, true, true, tf_none);
+}
+
+/* As above, but expect an rvalue.  */
+
+bool
+is_rvalue_constant_expression (tree t)
+{
+  return potential_constant_expression_1 (t, true, true, true, tf_none);
 }
 
 /* Like above, but complain about non-constant expressions.  */

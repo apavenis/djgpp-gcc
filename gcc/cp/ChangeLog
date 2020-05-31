@@ -1,3 +1,245 @@
+2020-05-30  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (morph_fn_to_coro): Revise initialization
+	of the frame pointer to avoid an unused value.
+
+2020-05-30  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/95386
+	* constraint.cc (satisfaction_value): Accept INTEGER_CST of any
+	boolean type.
+
+2020-05-29  Patrick Palka  <ppalka@redhat.com>
+	    Jason Merrill  <jason@redhat.com>
+
+	PR c++/95181
+	* class.c (add_method): Let special member function templates
+	coexist if they are not equivalently constrained, or in a class
+	template.
+
+2020-05-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/95371
+	* pt.c (process_template_parm): Set DECL_TEMPLATE_INFO
+	on the DECL_TEMPLATE_RESULT.
+
+2020-05-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/95344
+	* cp-gimplify.c (cp_fold) <case MODIFY_EXPR>: Don't set
+	TREE_THIS_VOLATILE here.
+	(cp_fold): Set it here along with TREE_NO_WARNING.
+
+2020-05-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/95311
+	PR c++/95221
+	* class.c (build_vfn_ref): Don't fold the INDIRECT_REF.
+
+2020-05-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/92652
+	PR c++/93698
+	PR c++/94128
+	* parser.c (cp_parser_requires_clause_expression): Temporarily
+	increment processing_template_decl only if it is 0.
+	(cp_parser_constraint_expression): Likewise.
+	(cp_parser_requires_expression): Likewise.
+
+2020-05-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/95241
+	* constexpr.c (get_or_insert_ctor_field): Add limited support
+	for RANGE_EXPR index lookups.
+
+2020-05-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/95328
+	* decl.c (cp_finish_decomp): Call complete_type before checking
+	COMPLETE_TYPE_P.
+
+2020-05-28  Jason Merrill  <jason@redhat.com>
+
+	PR c++/94926
+	* decl.c (cp_finish_decl): Revert r9-297 change.
+	(check_static_variable_definition): Likewise.
+	* constexpr.c (ensure_literal_type_for_constexpr_object): Likewise.
+	* pt.c (instantiate_decl): Return early on type error.
+
+2020-05-27  Jason Merrill  <jason@redhat.com>
+
+	PR c++/95319
+	* decl.c (reshape_init_array_1): Don't reuse in overload context.
+
+2020-05-27  Jason Merrill  <jason@redhat.com>
+
+	* call.c (build_new_op_1): Suppress
+	warn_zero_as_null_pointer_constant across comparison of <=> result
+	to 0.
+
+2020-05-27  Jason Merrill  <jason@redhat.com>
+
+	PR c++/95222
+	* decl.c (grokdeclarator): Don't shift attributes in TYPENAME
+	context.
+
+2020-05-27  Nathan Sidwell  <nathan@acm.org>
+
+	PR c++/95263
+	* pt.c (lookup_template_class_1): Restore alias template mutation.
+
+2020-05-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/95197
+	* cp-gimplify.c: Include omp-general.h.
+	(cp_genericize_r) <case OMP_DISTRIBUTE>: For class iteration
+	variables in composite distribute parallel for, instantiate copy
+	ctor of their types.
+
+2020-05-23  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94038
+	* constexpr.c (cxx_eval_constant_expression)
+	<case TEMPLATE_ID_EXPR>: Don't evaluate the concept when
+	constexpr evaluation is uid-sensitive.
+
+2020-05-21  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/94038
+	* constexpr.c (constexpr_ctx::uid_sensitive): Remove field.
+	(uid_sensitive_constexpr_evaluation_value): Define.
+	(uid_sensitive_constexpr_evaluation_true_counter): Define.
+	(uid_sensitive_constexpr_evaluation_p): Define.
+	(uid_sensitive_constexpr_evaluation_sentinel): Define its
+	constructor.
+	(uid_sensitive_constexpr_evaluation_checker): Define its
+	constructor and its evaluation_restricted_p method.
+	(get_fundef_copy): Remove 'ctx' parameter.  Use u_s_c_e_p
+	instead of constexpr_ctx::uid_sensitive.
+	(cxx_eval_call_expression): Use u_s_c_e_p instead, and test it
+	last.  Adjust call to get_fundef_copy.
+	(instantiate_cx_fn_r): Test u_s_c_e_p so that we increment the
+	counter if necessary.
+	(cxx_eval_outermost_constant_expr): Remove 'uid_sensitive'
+	parameter.  Adjust function body accordingly.
+	(maybe_constant_value): Remove 'uid_sensitive' parameter and
+	adjust function body accordingly.  Set up a
+	uid_sensitive_constexpr_evaluation_checker, and use it to
+	conditionally update the cv_cache.
+	* cp-gimplify.c (cp_fold): Set up a
+	uid_sensitive_constexpr_evaluation_checker, and use it to
+	conditionally update the fold_cache.
+	* cp-tree.h (maybe_constant_value): Update declaration.
+	(struct uid_sensitive_constexpr_evaluation_sentinel): Define.
+	(struct sensitive_constexpr_evaluation_checker): Define.
+	* expr.c (fold_for_warn): Set up a
+	uid_sensitive_constexpr_evaluation_sentinel before calling
+	the folding subroutines.  Drop all but the first argument to
+	maybe_constant_value.
+
+2020-05-20  Marek Polacek  <polacek@redhat.com>
+
+	DR 2237
+	* parser.c (cp_parser_unqualified_id): Reject simple-template-id as
+	the declarator-id of a destructor.
+	(cp_parser_constructor_declarator_p): Reject simple-template-id as
+	the declarator-id of a constructor.
+
+2020-05-20  Marek Polacek  <polacek@redhat.com>
+
+	DR 2289
+	PR c++/94553
+	* cp-tree.h (SD_DECOMPOSITION): New flag.
+	* decl.c (duplicate_decls): Make sure a structured binding is unique
+	in its declarative region.
+	(start_decl): If INITIALIZED is SD_DECOMPOSITION, call
+	fit_decomposition_lang_decl.
+	(grokdeclarator): Compare INITIALIZED directly to SD_* flags.
+	* parser.c (cp_parser_decomposition_declaration): Pass SD_DECOMPOSITION
+	to start_decl.
+
+2020-05-20  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/95223
+	* typeck.c (structural_comptypes): Don't perform
+	context-dependent resolution of TYPENAME_TYPEs when
+	comparing_specializations.
+
+2020-05-19  Nathan Sidwell  <nathan@acm.org>
+
+	* pt.c (lookup_template_class_1): Do not reinit template_info of an
+	alias here.
+
+2020-05-18  Martin Sebor  <msebor@redhat.com>
+
+	PR c++/94923
+	* call.c ((maybe_warn_class_memaccess): Use is_byte_access_type.
+	* cp-tree.h (is_dummy_object): Return bool.
+	(is_byte_access_type): Declare new function.
+	* tree.c (is_dummy_object): Return bool.
+	(is_byte_access_type): Define new function.
+
+2020-05-19  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/87847
+	* pt.c (init_template_processing): Enable sanitization for
+	decl_specializations and type_specializations.
+
+	PR c++/66439
+	* pt.c (fn_type_unification): Pass 'fn' instead of NULL_TREE as
+	the 'in_decl' parameter to coerce_template_parms.
+
+2020-05-18  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/94955
+	* typeck.c (cp_build_binary_op): Use fold_for_warn instead of
+	cp_fold_rvalue.
+
+2020-05-18  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/94937
+	* cvt.c (cp_get_fndecl_from_callee): Return NULL_TREE if the function
+	type is not INDIRECT_TYPE_P.
+	* decl.c (omp_declare_variant_finalize_one): Call
+	cp_get_callee_fndecl_nofold instead of looking for the function decl
+	manually.
+
+2020-05-18  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/90915
+	* parser.c (cp_parser_has_attribute_expression): Sorry on a
+	type-dependent argument.
+
+2020-05-18  Marek Polacek  <polacek@redhat.com>
+
+	DR 1512
+	PR c++/87699
+	* call.c (add_builtin_candidate) <case EQ_EXPR>: Create candidate
+	operator functions when type is std::nullptr_t for ==/!=.
+	* typeck.c (composite_pointer_type_r): Add a bool * parameter.  Use it
+	to maybe add "const" to the pointer type.
+	(composite_pointer_type): Update the call to composite_pointer_type_r.
+	(cp_build_binary_op): Turn two warning_at into error_at.  Print the
+	types.
+
+2020-05-18  Jason Merrill  <jason@redhat.com>
+
+	* call.c (build_over_call): Remove unnecessary
+	cp_stabilize_reference.
+
+2020-05-18  Marek Polacek  <polacek@redhat.com>
+
+	* call.c (add_builtin_candidate): Don't create a builtin overload
+	candidate for ++ when type is bool in C++17.
+
+2020-05-18  Marek Polacek  <polacek@redhat.com>
+
+	* cfns.h: Regenerated.
+
+2020-05-17  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (morph_fn_to_coro): Initialize the gro variable.
+
 2020-05-16  Iain Sandoe  <iain@sandoe.co.uk>
 
 	* coroutines.cc (finish_co_return_stmt): Implement rules

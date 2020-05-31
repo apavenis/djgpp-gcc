@@ -6108,6 +6108,15 @@ cp_parser_unqualified_id (cp_parser* parser,
 	    return build_min_nt_loc (loc, BIT_NOT_EXPR, make_auto ());
 	  }
 
+	/* DR 2237 (C++20 only): A simple-template-id is no longer valid as the
+	   declarator-id of a constructor or destructor.  */
+	if (token->type == CPP_TEMPLATE_ID && cxx_dialect >= cxx20)
+	  {
+	    if (!cp_parser_simulate_error (parser))
+	      error_at (tilde_loc, "template-id not allowed for destructor");
+	    return error_mark_node;
+	  }
+
 	/* If there was an explicit qualification (S::~T), first look
 	   in the scope given by the qualification (i.e., S).
 
@@ -8679,7 +8688,12 @@ cp_parser_has_attribute_expression (cp_parser *parser)
   location_t atloc = cp_lexer_peek_token (parser->lexer)->location;
   if (tree attr = cp_parser_gnu_attribute_list (parser, /*exactly_one=*/true))
     {
-      if (oper != error_mark_node)
+      if (oper == error_mark_node)
+	/* Nothing.  */;
+      else if (type_dependent_expression_p (oper))
+	sorry_at (atloc, "%<__builtin_has_attribute%> with dependent argument "
+		  "not supported yet");
+      else
 	{
 	  /* Fold constant expressions used in attributes first.  */
 	  cp_check_const_attributes (attr);
@@ -10170,10 +10184,10 @@ cp_parser_constant_expression (cp_parser* parser,
       if (TREE_TYPE (expression)
 	  && TREE_CODE (TREE_TYPE (expression)) == ARRAY_TYPE)
 	decay = build_address (expression);
-      bool is_const = potential_rvalue_constant_expression (decay);
+      bool is_const = is_rvalue_constant_expression (decay);
       parser->non_integral_constant_expression_p = !is_const;
       if (!is_const && !allow_non_constant_p)
-	require_potential_rvalue_constant_expression (decay);
+	require_rvalue_constant_expression (decay);
     }
   if (allow_non_constant_p)
     *non_constant_p = parser->non_integral_constant_expression_p;
@@ -13969,7 +13983,7 @@ cp_parser_decomposition_declaration (cp_parser *parser,
 	  declarator->id_loc = e.get_location ();
 	}
       tree elt_pushed_scope;
-      tree decl2 = start_decl (declarator, &decl_specs, SD_INITIALIZED,
+      tree decl2 = start_decl (declarator, &decl_specs, SD_DECOMPOSITION,
 			       NULL_TREE, NULL_TREE, &elt_pushed_scope);
       if (decl2 == error_mark_node)
 	decl = error_mark_node;
@@ -21352,6 +21366,8 @@ cp_parser_direct_declarator (cp_parser* parser,
 		/* OK */;
 	      else if (error_operand_p (bounds))
 		/* Already gave an error.  */;
+	      else if (!cp_parser_uncommitted_to_tentative_parse_p (parser))
+		/* Let compute_array_index_type diagnose this.  */;
 	      else if (!parser->in_function_body
 		       || current_binding_level->kind == sk_function_parms)
 		{
@@ -27647,11 +27663,16 @@ static tree
 cp_parser_requires_clause_expression (cp_parser *parser, bool lambda_p)
 {
   processing_constraint_expression_sentinel parsing_constraint;
-  ++processing_template_decl;
+  temp_override<int> ovr (processing_template_decl);
+  if (!processing_template_decl)
+    /* Adjust processing_template_decl so that we always obtain template
+       trees here.  We don't do the usual ++processing_template_decl
+       because that would skew the template parameter depth of a lambda
+       within if we're already inside a template.  */
+    processing_template_decl = 1;
   cp_expr expr = cp_parser_constraint_logical_or_expression (parser, lambda_p);
   if (check_for_bare_parameter_packs (expr))
     expr = error_mark_node;
-  --processing_template_decl;
   return expr;
 }
 
@@ -27668,12 +27689,14 @@ static tree
 cp_parser_constraint_expression (cp_parser *parser)
 {
   processing_constraint_expression_sentinel parsing_constraint;
-  ++processing_template_decl;
+  temp_override<int> ovr (processing_template_decl);
+  if (!processing_template_decl)
+    /* As in cp_parser_requires_clause_expression.  */
+    processing_template_decl = 1;
   cp_expr expr = cp_parser_binary_expression (parser, false, true,
 					      PREC_NOT_OPERATOR, NULL);
   if (check_for_bare_parameter_packs (expr))
     expr = error_mark_node;
-  --processing_template_decl;
   expr.maybe_add_location_wrapper ();
   return expr;
 }
@@ -27782,9 +27805,11 @@ cp_parser_requires_expression (cp_parser *parser)
       parms = NULL_TREE;
 
     /* Parse the requirement body. */
-    ++processing_template_decl;
+    temp_override<int> ovr (processing_template_decl);
+    if (!processing_template_decl)
+      /* As in cp_parser_requires_clause_expression.  */
+      processing_template_decl = 1;
     reqs = cp_parser_requirement_body (parser);
-    --processing_template_decl;
     if (reqs == error_mark_node)
       return error_mark_node;
   }
@@ -28623,7 +28648,9 @@ cp_parser_constructor_declarator_p (cp_parser *parser, cp_parser_flags flags,
   if (next_token->type != CPP_NAME
       && next_token->type != CPP_SCOPE
       && next_token->type != CPP_NESTED_NAME_SPECIFIER
-      && next_token->type != CPP_TEMPLATE_ID)
+      /* DR 2237 (C++20 only): A simple-template-id is no longer valid as the
+	 declarator-id of a constructor or destructor.  */
+      && (next_token->type != CPP_TEMPLATE_ID || cxx_dialect >= cxx20))
     return false;
 
   /* Parse tentatively; we are going to roll back all of the tokens

@@ -1,3 +1,184 @@
+2020-05-29  H.J. Lu  <hjl.tools@gmail.com>
+
+	PR bootstrap/95413
+	* configure: Regenerated.
+
+2020-05-29  François Dumont  <fdumont@gcc.gnu.org>
+
+	PR libstdc++/95079
+	* include/bits/hashtable_policy.h (_Insert_base<>::try_emplace): New.
+	* include/bits/unordered_map.h (unordered_map<>::try_emplace): Adapt.
+	(unordered_map<>::insert_or_assign): Adapt.
+
+2020-05-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/95282
+	* include/bits/atomic_base.h (__atomic_impl::load): Add
+	cv-qualifiers to parameter so that _Tp is deduced as the
+	unqualified type.
+	* testsuite/29_atomics/atomic_float/95282.cc: New test.
+
+2020-05-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/95322
+	* include/std/ranges (transform_view::_Sentinel): Allow hidden
+	friends to work with _Iterator<true> and _Iterator<false>.
+	(join_view::_Sentinel): Likewise.
+	* testsuite/std/ranges/adaptors/95322.cc: New test.
+
+2020-05-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/94354
+	* include/bits/stl_iterator.h (reverse_iterator): Fix comparison
+	operators to use the correct operations on the underlying
+	iterators.
+	* testsuite/24_iterators/reverse_iterator/rel_ops.cc: New test.
+
+2020-05-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/18_support/comparisons/categories/zero_neg.cc: New test.
+
+2020-05-26  Patrick Palka  <ppalka@redhat.com>
+
+	PR libstdc++/95322
+	* include/bits/stl_iterator.h (__detail::_Common_iter_proxy):
+	Remove and instead define it ...
+	(common_iterator::_Proxy): ... here.
+	(common_iterator::operator->): Use it.
+	* testsuite/24_iterators/common_iterator/2.cc: New test.
+	* testsuite/std/ranges/adaptors/95322.cc: New test.
+
+2020-05-23  Patrick Palka  <ppalka@redhat.com>
+
+	PR libstdc++/93978
+	* testsuite/std/ranges/adaptors/93978.cc: Add -Wall to
+	dg-additional-options.  Avoid unused-but-set-variable warning.
+
+2020-05-23  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/95289
+	* include/debug/helper_functions.h (__get_distance): Only declare
+	as a constexpr function for C++14 and up.
+	* testsuite/25_algorithms/copy/debug/95289.cc: New test.
+
+	* include/bits/fs_path.h (__detail::_S_range_begin)
+	(__detail::_S_range_end, path::_S_string_from_iter): Replace with
+	overloaded function template __detail::__effective_range.
+	(__detail::__effective_range): New overloaded function template to
+	create a basic_string or basic_string_view for an effective range.
+	(__detail::__value_type_is_char): Use __detail::__effective_range.
+	Do not use remove_const on value type.
+	(__detail::__value_type_is_char_or_char8_t): Likewise.
+	(path::path(const Source&, format))
+	(path::path(const Source&, const locale&))
+	(path::operator/=(const Source&), path::append(const Source&))
+	(path::concat(const Source&)): Use __detail::__effective_range.
+	(path::_S_to_string(InputIterator, InputIterator)): New function
+	template to create a string view if possible, or string otherwise.
+	(path::_S_convert): Add overloads that convert a string returned
+	by __detail::__effective_range. Use if-constexpr to inline conversion
+	logic from all overloads of _Cvt::_S_convert.
+	(path::_S_convert_loc): Add overload that converts a string. Use
+	_S_to_string to avoid allocation when possible.
+	(path::_Cvt): Remove.
+	(path::operator+=(CharT)): Remove indirection through path::concat.
+	* include/experimental/bits/fs_path.h (path::_S_convert_loc): Add
+	overload for non-const pointers, to avoid constructing a std::string.
+	* src/c++17/fs_path.cc (path::_S_convert_loc): Replace conditional
+	compilation with call to _S_convert.
+
+	* include/bits/fs_path.h (__detail::_S_range_begin)
+	(__detail::_S_range_end): Remove unintentional static specifiers.
+	* include/experimental/bits/fs_path.h (__detail::_S_range_begin)
+	(__detail::_S_range_end): Likewise.
+
+	* include/bits/fs_path.h (filesystem::__detail::__is_encoded_char):
+	Replace alias template with variable template. Don't remove const.
+	(filesystem::__detail::__is_path_src): Replace overloaded function
+	template with variable template and specializations.
+	(filesystem::__detail::__is_path_iter_src): Replace alias template
+	with class template.
+	(filesystem::__detail::_Path): Use __is_path_src. Remove support for
+	iterator pairs.
+	(filesystem::__detail::_Path2): New alias template for checking
+	InputIterator requirements.
+	(filesystem::__detail::__constructible_from): Remove.
+	(filesystem::path): Replace _Path<Iter, Iter> with _Path2<Iter>.
+	* testsuite/27_io/filesystem/path/construct/80762.cc: Check with two
+	constructor arguments of void and void* types.
+
+2020-05-21  Matthias Kretz  <kretz@kde.org>
+
+	* testsuite/Makefile.am: Remove dup target_triplet and set tool,
+	allowing runtest to work without arguments.
+	* testsuite/Makefile.in: Regenerate.
+
+2020-05-21  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/93983
+	* include/bits/iterator_concepts.h (__detail::__cpp17_iterator):
+	Reorder constraints to avoid recursion when constructors use
+	iterator_traits (LWG 3420).
+	* testsuite/24_iterators/customization_points/lwg3420.cc: New test.
+
+	* include/experimental/socket (basic_socket::is_open()
+	(basic_socket_acceptor::is_open()): Use _GLIBCXX_NODISCARD macro.
+
+	* include/experimental/bits/net.h (__endpoint, __protocol)
+	(__acceptable_protocol, __inet_protocol): New concepts.
+	(__detail::__is_endpoint): Move trait from <experimental/socket>.
+	(__is_protocol, __is_acceptable_protocol, __is_inet_protocol): New
+	traits.
+	(__endpoint, __protocol, __acceptable_protocol): New variable
+	templates.
+	* include/experimental/socket (__is_endpoint): Move to net.h header.
+	(basic_socket, basic_socket_acceptor): Check requirements.
+
+	* include/experimental/executor (use_future_t::use_future_t()): Fix
+	incorrect noexcept-specifier.
+	* include/experimental/internet (basic_resolver_results): Adjust
+	whitespace.
+	* include/experimental/socket (__basic_socket_impl::release): Add
+	member function.
+	(basic_socket(io_context&, const endpoint_type&)): Fix argument to
+	target constructor.
+	(basic_socket::release(), basic_socket::release(error_code&)): Add
+	missing member functions.
+	(basic_socket::is_open()): Add nodiscard attribute.
+	(basic_socket::close(error_code&)): Pass argument to base function.
+	(basic_socket_acceptor::release())
+	(basic_socket_acceptor::release(error_code&)): Add missing member
+	functions.
+	(basic_socket_acceptor::is_open()): Add nodiscard attribute.
+	(basic_socket_streambuf::error()): Add noexcept.
+	(basic_socket_iostream::error()): Likewise.
+	* testsuite/experimental/net/socket/basic_socket.cc: New test.
+
+	* include/experimental/buffer: Replace typedefs with
+	alias-declarations.
+	* include/experimental/executor: Likewise.
+	* include/experimental/internet: Likewise.
+	* include/experimental/socket: Likewise.
+	* include/experimental/timer: Likewise.
+
+2020-05-19  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/94087
+	* src/c++11/random.cc (__x86_rdseed): Allow fallback function to be
+	passed in.
+	(__x86_rdseed_rdrand): New function that uses rdseed with rdrand
+	fallback.
+	(random_device::_M_init): Use __x86_rdseed_rdrand when both
+	instructions are available.
+	* testsuite/26_numerics/random/random_device/94087.cc: New test.
+
+2020-05-19  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/66439
+	* testsuite/20_util/pair/astuple/get_neg.cc: Prune "type/value
+	mismatch" messages.
+	* testsuite/20_util/tuple/element_access/get_neg.cc: Likewise.
+
 2020-05-15  H.J. Lu  <hongjiu.lu@intel.com>
 
 	PR bootstrap/95147

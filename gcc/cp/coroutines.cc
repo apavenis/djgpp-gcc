@@ -1102,7 +1102,8 @@ finish_co_return_stmt (location_t kw, tree expr)
 		" %<co_return%> statement");
 
   expr = build2_loc (kw, CO_RETURN_EXPR, void_type_node, expr, co_ret_call);
-  return finish_expr_stmt (expr);
+  expr = maybe_cleanup_point_expr_void (expr);
+  return add_stmt (expr);
 }
 
 /* We need to validate the arguments to __builtin_coro_promise, since the
@@ -3888,11 +3889,9 @@ morph_fn_to_coro (tree orig, tree *resumer, tree *destroyer)
   /* The decl_expr for the coro frame pointer, initialize to zero so that we
      can pass it to the IFN_CO_FRAME (since there's no way to pass a type,
      directly apparently).  This avoids a "used uninitialized" warning.  */
-  tree r = build_stmt (fn_start, DECL_EXPR, coro_fp);
   tree zeroinit = build1 (CONVERT_EXPR, coro_frame_ptr, integer_zero_node);
-  r = build2 (INIT_EXPR, TREE_TYPE (coro_fp), coro_fp, zeroinit);
-  r = coro_build_cvt_void_expr_stmt (r, fn_start);
-  add_stmt (r);
+  DECL_INITIAL (coro_fp) = zeroinit;
+  add_decl_expr (coro_fp);
 
   /* The CO_FRAME internal function is a mechanism to allow the middle end
      to adjust the allocation in response to optimisations.  We provide the
@@ -4046,7 +4045,7 @@ morph_fn_to_coro (tree orig, tree *resumer, tree *destroyer)
     }
 
   tree allocated = build1 (CONVERT_EXPR, coro_frame_ptr, new_fn);
-  r = build2 (INIT_EXPR, TREE_TYPE (coro_fp), coro_fp, allocated);
+  tree r = build2 (INIT_EXPR, TREE_TYPE (coro_fp), coro_fp, allocated);
   r = coro_build_cvt_void_expr_stmt (r, fn_start);
   add_stmt (r);
 
@@ -4285,7 +4284,8 @@ morph_fn_to_coro (tree orig, tree *resumer, tree *destroyer)
   tree gro_context_body = push_stmt_list ();
   bool gro_is_void_p = VOID_TYPE_P (TREE_TYPE (get_ro));
 
-  tree gro, gro_bind_vars = NULL_TREE;
+  tree gro = NULL_TREE;
+  tree gro_bind_vars = NULL_TREE;
   /* We have to sequence the call to get_return_object before initial
      suspend.  */
   if (gro_is_void_p)

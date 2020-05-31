@@ -1705,6 +1705,9 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
 	  inform (olddecl_loc, "previous declaration %q#D", olddecl);
 	  return error_mark_node;
 	}
+      else if ((VAR_P (olddecl) && DECL_DECOMPOSITION_P (olddecl))
+	       || (VAR_P (newdecl) && DECL_DECOMPOSITION_P (newdecl)))
+	/* A structured binding must be unique in its declarative region.  */;
       else if (DECL_IMPLICIT_TYPEDEF_P (olddecl)
 	       || DECL_IMPLICIT_TYPEDEF_P (newdecl))
 	/* One is an implicit typedef, that's ok.  */
@@ -5190,13 +5193,17 @@ groktypename (cp_decl_specifier_seq *type_specifiers,
    declarations appearing in the body of the class go through
    grokfield.)  The DECL corresponding to the DECLARATOR is returned.
    If an error occurs, the error_mark_node is returned instead.
-   
+
    DECLSPECS are the decl-specifiers for the declaration.  INITIALIZED is
    SD_INITIALIZED if an explicit initializer is present, or SD_DEFAULTED
    for an explicitly defaulted function, or SD_DELETED for an explicitly
    deleted function, but 0 (SD_UNINITIALIZED) if this is a variable
-   implicitly initialized via a default constructor.  ATTRIBUTES and
-   PREFIX_ATTRIBUTES are GNU attributes associated with this declaration.
+   implicitly initialized via a default constructor.  It can also be
+   SD_DECOMPOSITION which behaves much like SD_INITIALIZED, but we also
+   mark the new decl as DECL_DECOMPOSITION_P.
+
+   ATTRIBUTES and PREFIX_ATTRIBUTES are GNU attributes associated with this
+   declaration.
 
    The scope represented by the context of the returned DECL is pushed
    (if it is not the global namespace) and is assigned to
@@ -5232,11 +5239,7 @@ start_decl (const cp_declarator *declarator,
   if (context != global_namespace)
     *pushed_scope_p = push_scope (context);
 
-  /* Is it valid for this decl to have an initializer at all?
-     If not, set INITIALIZED to zero, which will indirectly
-     tell `cp_finish_decl' to ignore the initializer once it is parsed.  */
-  if (initialized
-      && TREE_CODE (decl) == TYPE_DECL)
+  if (initialized && TREE_CODE (decl) == TYPE_DECL)
     {
       error_at (DECL_SOURCE_LOCATION (decl),
 		"typedef %qD is initialized (use %qs instead)",
@@ -5388,6 +5391,10 @@ start_decl (const cp_declarator *declarator,
 		   "declaration of %q#D outside of class is not definition",
 		   decl);
     }
+
+  /* Create a DECL_LANG_SPECIFIC so that DECL_DECOMPOSITION_P works.  */
+  if (initialized == SD_DECOMPOSITION)
+    fit_decomposition_lang_decl (decl, NULL_TREE);
 
   was_public = TREE_PUBLIC (decl);
 
@@ -6022,8 +6029,10 @@ reshape_init_array_1 (tree elt_type, tree max_index, reshape_iter *d,
 
   /* The initializer for an array is always a CONSTRUCTOR.  If this is the
      outermost CONSTRUCTOR and the element type is non-aggregate, we don't need
-     to build a new one.  */
+     to build a new one.  But don't reuse if not complaining; if this is
+     tentative, we might also reshape to another type (95319).  */
   bool reuse = (first_initializer_p
+		&& (complain & tf_error)
 		&& !CP_AGGREGATE_TYPE_P (elt_type)
 		&& !TREE_SIDE_EFFECTS (first_initializer_p));
   if (reuse)
@@ -7295,17 +7304,7 @@ omp_declare_variant_finalize_one (tree decl, tree attr)
   if (variant == error_mark_node && !processing_template_decl)
     return true;
 
-  variant = cp_get_callee (variant);
-  if (variant)
-    {
-      if (TREE_CODE (variant) == FUNCTION_DECL)
-	;
-      else if (TREE_TYPE (variant) && INDIRECT_TYPE_P (TREE_TYPE (variant)))
-	variant = cp_get_fndecl_from_callee (variant, false);
-      else
-	variant = NULL_TREE;
-    }
-
+  variant = cp_get_callee_fndecl_nofold (variant);
   input_location = save_loc;
 
   if (variant)
@@ -7468,18 +7467,24 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
       && (DECL_INITIAL (decl) || init))
     DECL_INITIALIZED_IN_CLASS_P (decl) = 1;
 
-  /* Do auto deduction unless decl is a function or an uninstantiated
-     template specialization.  */
   if (TREE_CODE (decl) != FUNCTION_DECL
-      && !(init == NULL_TREE
-	   && DECL_LANG_SPECIFIC (decl)
-	   && DECL_TEMPLATE_INSTANTIATION (decl)
-	   && !DECL_TEMPLATE_INSTANTIATED (decl))
       && (auto_node = type_uses_auto (type)))
     {
       tree d_init;
       if (init == NULL_TREE)
-	gcc_assert (CLASS_PLACEHOLDER_TEMPLATE (auto_node));
+	{
+	  if (DECL_LANG_SPECIFIC (decl)
+	      && DECL_TEMPLATE_INSTANTIATION (decl)
+	      && !DECL_TEMPLATE_INSTANTIATED (decl))
+	    {
+	      /* init is null because we're deferring instantiating the
+		 initializer until we need it.  Well, we need it now.  */
+	      instantiate_decl (decl, /*defer_ok*/true, /*expl*/false);
+	      return;
+	    }
+
+	  gcc_assert (CLASS_PLACEHOLDER_TEMPLATE (auto_node));
+	}
       d_init = init;
       if (d_init)
 	{
@@ -7615,7 +7620,7 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	  init = boolean_true_node;
 	}
       else if (init
-	       && init_const_expr_p
+	       && (init_const_expr_p || DECL_DECLARED_CONSTEXPR_P (decl))
 	       && !TYPE_REF_P (type)
 	       && decl_maybe_constant_var_p (decl)
 	       && !(dep_init = value_dependent_init_p (init)))
@@ -8395,6 +8400,8 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
       error_at (loc, "cannot decompose lambda closure type %qT", type);
       goto error_out;
     }
+  else if (processing_template_decl && complete_type (type) == error_mark_node)
+    goto error_out;
   else if (processing_template_decl && !COMPLETE_TYPE_P (type))
     pedwarn (loc, 0, "structured binding refers to incomplete class type %qT",
 	     type);
@@ -10172,7 +10179,6 @@ check_static_variable_definition (tree decl, tree type)
      in check_initializer.  Similarly for inline static data members.  */
   else if (DECL_P (decl)
       && (DECL_DECLARED_CONSTEXPR_P (decl)
-	  || undeduced_auto_decl (decl)
 	  || DECL_VAR_DECLARED_INLINE_P (decl)))
     ;
   else if (cxx_dialect >= cxx11 && !INTEGRAL_OR_ENUMERATION_TYPE_P (type))
@@ -10331,13 +10337,14 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
      dependent type or whose size is specified by a constant expression
      that is value-dependent.  */
   /* We can only call value_dependent_expression_p on integral constant
-     expressions; treat non-constant expressions as dependent, too.  */
+     expressions.  */
   if (processing_template_decl
-      && (!TREE_CONSTANT (size) || value_dependent_expression_p (size)))
+      && potential_constant_expression (size)
+      && value_dependent_expression_p (size))
     {
-      /* We cannot do any checking for a SIZE that isn't known to be
-	 constant. Just build the index type and mark that it requires
+      /* Just build the index type and mark that it requires
 	 structural equality checks.  */
+    in_template:
       itype = build_index_type (build_min (MINUS_EXPR, sizetype,
 					   size, size_one_node));
       TYPE_DEPENDENT_P (itype) = 1;
@@ -10450,8 +10457,7 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
     }
 
   if (processing_template_decl && !TREE_CONSTANT (size))
-    /* A variable sized array.  */
-    itype = build_min (MINUS_EXPR, sizetype, size, integer_one_node);
+    goto in_template;
   else
     {
       if (!TREE_CONSTANT (size))
@@ -11007,7 +11013,7 @@ grokdeclarator (const cp_declarator *declarator,
   else if (decl_context == TPARM)
     template_parm_flag = true, decl_context = PARM;
 
-  if (initialized > 1)
+  if (initialized == SD_DEFAULTED || initialized == SD_DELETED)
     funcdef_flag = true;
 
   location_t typespec_loc = smallest_type_location (type_quals,
@@ -11954,7 +11960,7 @@ grokdeclarator (const cp_declarator *declarator,
 	  if (declarator->kind == cdk_array)
 	    attr_flags |= (int) ATTR_FLAG_ARRAY_NEXT;
 	  tree late_attrs = NULL_TREE;
-	  if (decl_context != PARM)
+	  if (decl_context != PARM && decl_context != TYPENAME)
 	    /* Assume that any attributes that get applied late to
 	       templates will DTRT when applied to the declaration
 	       as a whole.  */
@@ -13314,7 +13320,7 @@ grokdeclarator (const cp_declarator *declarator,
 		     || (!dependent_type_p (type)
 			 && !COMPLETE_TYPE_P (complete_type (type))
 			 && (!complete_or_array_type_p (type)
-			     || initialized == 0))))
+			     || initialized == SD_UNINITIALIZED))))
 	  {
 	    if (TREE_CODE (type) != ARRAY_TYPE
 		|| !COMPLETE_TYPE_P (TREE_TYPE (type)))
@@ -13964,7 +13970,10 @@ grokparms (tree parmlist, tree *parms)
 	break;
 
       if (! decl || TREE_TYPE (decl) == error_mark_node)
-	continue;
+	{
+	  any_error = 1;
+	  continue;
+	}
 
       type = TREE_TYPE (decl);
       if (VOID_TYPE_P (type))
@@ -14017,7 +14026,8 @@ grokparms (tree parmlist, tree *parms)
 	      TREE_TYPE (decl) = type;
 	    }
 	  else if (abstract_virtuals_error (decl, type))
-	    any_error = 1;  /* Seems like a good idea.  */
+	    /* Ignore any default argument.  */
+	    init = NULL_TREE;
 	  else if (cxx_dialect < cxx17 && INDIRECT_TYPE_P (type))
 	    {
 	      /* Before C++17 DR 393:
@@ -14046,9 +14056,7 @@ grokparms (tree parmlist, tree *parms)
 			 decl, t);
 	    }
 
-	  if (any_error)
-	    init = NULL_TREE;
-	  else if (init && !processing_template_decl)
+	  if (init && !processing_template_decl)
 	    init = check_default_argument (decl, init, tf_warning_or_error);
 	}
 
@@ -14061,6 +14069,12 @@ grokparms (tree parmlist, tree *parms)
   if (parm)
     result = chainon (result, void_list_node);
   *parms = decls;
+  if (any_error)
+    result = NULL_TREE;
+
+  if (any_error)
+    /* We had parm errors, recover by giving the function (...) type.  */
+    result = NULL_TREE;
 
   return result;
 }

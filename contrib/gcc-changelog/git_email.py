@@ -37,7 +37,8 @@ class GitEmail(GitCommit):
         date = None
         author = None
 
-        lines = open(self.filename).read().splitlines()
+        with open(self.filename, 'r') as f:
+            lines = f.read().splitlines()
         lines = list(takewhile(lambda line: line != '---', lines))
         for line in lines:
             if line.startswith(DATE_PREFIX):
@@ -49,13 +50,22 @@ class GitEmail(GitCommit):
 
         modified_files = []
         for f in diff:
+            # Strip "a/" and "b/" prefixes
+            source = f.source_file[2:]
+            target = f.target_file[2:]
+
             if f.is_added_file:
                 t = 'A'
             elif f.is_removed_file:
                 t = 'D'
+            elif f.is_rename:
+                # Consider that renamed files are two operations: the deletion
+                # of the original name and the addition of the new one.
+                modified_files.append((source, 'D'))
+                t = 'A'
             else:
                 t = 'M'
-            modified_files.append((f.path, t))
+            modified_files.append((target, t))
         super().__init__(None, date, author, body, modified_files,
                          strict=strict)
 

@@ -393,6 +393,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   // _GLIBCXX_RESOLVE_LIB_DEFECTS
   // DR 280. Comparison of reverse_iterator to const reverse_iterator.
+
   template<typename _IteratorL, typename _IteratorR>
     inline _GLIBCXX17_CONSTEXPR bool
     operator==(const reverse_iterator<_IteratorL>& __x,
@@ -403,31 +404,31 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     inline _GLIBCXX17_CONSTEXPR bool
     operator<(const reverse_iterator<_IteratorL>& __x,
 	      const reverse_iterator<_IteratorR>& __y)
-    { return __y.base() < __x.base(); }
+    { return __x.base() > __y.base(); }
 
   template<typename _IteratorL, typename _IteratorR>
     inline _GLIBCXX17_CONSTEXPR bool
     operator!=(const reverse_iterator<_IteratorL>& __x,
 	       const reverse_iterator<_IteratorR>& __y)
-    { return !(__x == __y); }
+    { return __x.base() != __y.base(); }
 
   template<typename _IteratorL, typename _IteratorR>
     inline _GLIBCXX17_CONSTEXPR bool
     operator>(const reverse_iterator<_IteratorL>& __x,
 	      const reverse_iterator<_IteratorR>& __y)
-    { return __y < __x; }
+    { return __x.base() < __y.base(); }
 
   template<typename _IteratorL, typename _IteratorR>
     inline _GLIBCXX17_CONSTEXPR bool
     operator<=(const reverse_iterator<_IteratorL>& __x,
 	       const reverse_iterator<_IteratorR>& __y)
-    { return !(__y < __x); }
+    { return __x.base() >= __y.base(); }
 
   template<typename _IteratorL, typename _IteratorR>
     inline _GLIBCXX17_CONSTEXPR bool
     operator>=(const reverse_iterator<_IteratorL>& __x,
 	       const reverse_iterator<_IteratorR>& __y)
-    { return !(__x < __y); }
+    { return __x.base() <= __y.base(); }
 #else // C++20
   template<typename _IteratorL, typename _IteratorR>
     constexpr bool
@@ -1568,23 +1569,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   namespace __detail
   {
-    template<input_or_output_iterator _It>
-      class _Common_iter_proxy
-      {
-	iter_value_t<_It> _M_keep;
-
-	_Common_iter_proxy(iter_reference_t<_It>&& __x)
-	: _M_keep(std::move(__x)) { }
-
-	template<typename _Iter, typename _Sent>
-	  friend class common_iterator;
-
-      public:
-	const iter_value_t<_It>*
-	operator->() const
-	{ return std::__addressof(_M_keep); }
-      };
-
     template<typename _It>
       concept __common_iter_has_arrow = indirectly_readable<const _It>
 	&& (requires(const _It& __it) { __it.operator->(); }
@@ -1612,6 +1596,21 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       static constexpr bool
       _S_noexcept()
       { return _S_noexcept1<_It, _It2>() && _S_noexcept1<_Sent, _Sent2>(); }
+
+    class _Proxy
+    {
+      iter_value_t<_It> _M_keep;
+
+      _Proxy(iter_reference_t<_It>&& __x)
+      : _M_keep(std::move(__x)) { }
+
+      friend class common_iterator;
+
+    public:
+      const iter_value_t<_It>*
+      operator->() const
+      { return std::__addressof(_M_keep); }
+    };
 
   public:
     constexpr
@@ -1769,7 +1768,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  return std::__addressof(__tmp);
 	}
       else
-	return _Common_iter_proxy(*_M_it);
+	return _Proxy{*_M_it};
     }
 
     common_iterator&

@@ -6185,17 +6185,29 @@ vectorizable_reduction (loop_vec_info loop_vinfo,
      The last use is the reduction variable.  In case of nested cycle this
      assumption is not true: we use reduc_index to record the index of the
      reduction variable.  */
-  reduc_def = PHI_RESULT (reduc_def_phi);
+  /* ???  To get at invariant/constant uses on the SLP node we have to
+     get to it here, slp_node is still the reduction PHI.  */
+  slp_tree slp_for_stmt_info = NULL;
+  if (slp_node)
+    {
+      slp_for_stmt_info = slp_node_instance->root;
+      /* And then there's reduction chain with a conversion ...  */
+      if (SLP_TREE_REPRESENTATIVE (slp_for_stmt_info) != stmt_info)
+	slp_for_stmt_info = SLP_TREE_CHILDREN (slp_for_stmt_info)[0];
+      gcc_assert (SLP_TREE_REPRESENTATIVE (slp_for_stmt_info) == stmt_info);
+    }
+  slp_tree *slp_op = XALLOCAVEC (slp_tree, op_type);
   for (i = 0; i < op_type; i++)
     {
-      tree op = gimple_op (stmt, i + 1);
       /* The condition of COND_EXPR is checked in vectorizable_condition().  */
       if (i == 0 && code == COND_EXPR)
         continue;
 
       stmt_vec_info def_stmt_info;
       enum vect_def_type dt;
-      if (!vect_is_simple_use (op, loop_vinfo, &dt, &tem,
+      tree op;
+      if (!vect_is_simple_use (loop_vinfo, stmt_info, slp_for_stmt_info,
+			       i, &op, &slp_op[i], &dt, &tem,
 			       &def_stmt_info))
 	{
 	  if (dump_enabled_p ())
@@ -6728,6 +6740,21 @@ vectorizable_reduction (loop_vec_info loop_vinfo,
 			 "reduction operation\n");
       return false;
     }
+
+  if (slp_node
+      && !(!single_defuse_cycle
+	   && code != DOT_PROD_EXPR
+	   && code != WIDEN_SUM_EXPR
+	   && code != SAD_EXPR
+	   && reduction_type != FOLD_LEFT_REDUCTION))
+    for (i = 0; i < op_type; i++)
+      if (!vect_maybe_update_slp_op_vectype (slp_op[i], vectype_in))
+	{
+	  if (dump_enabled_p ())
+	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			     "incompatible vector types for invariants\n");
+	  return false;
+	}
 
   if (slp_node)
     vec_num = SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node);
@@ -7528,7 +7555,13 @@ vectorizable_induction (loop_vec_info loop_vinfo,
       unsigned group_size = SLP_TREE_SCALAR_STMTS (slp_node).length ();
       unsigned nvects = SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node);
       unsigned elts = const_nunits * nvects;
-      unsigned nivs = least_common_multiple (group_size,
+      /* Compute the number of distinct IVs we need.  First reduce
+	 group_size if it is a multiple of const_nunits so we get
+	 one IV for a group_size of 4 but const_nunits 2.  */
+      unsigned group_sizep = group_size;
+      if (group_sizep % const_nunits == 0)
+	group_sizep = group_sizep / const_nunits;
+      unsigned nivs = least_common_multiple (group_sizep,
 					     const_nunits) / const_nunits;
       gcc_assert (elts % group_size == 0);
       tree elt = init_expr;
@@ -7576,6 +7609,12 @@ vectorizable_induction (loop_vec_info loop_vinfo,
 
 	  SLP_TREE_VEC_STMTS (slp_node).quick_push (induction_phi_info);
 	}
+      /* Fill up to the number of vectors we need for the whole group.  */
+      nivs = least_common_multiple (group_size,
+				    const_nunits) / const_nunits;
+      for (; ivn < nivs; ++ivn)
+	SLP_TREE_VEC_STMTS (slp_node)
+	  .quick_push (SLP_TREE_VEC_STMTS (slp_node)[0]);
 
       /* Re-use IVs when we can.  */
       if (ivn < nvects)
@@ -7913,6 +7952,10 @@ vectorizable_live_operation (loop_vec_info loop_vinfo,
 	     all involved stmts together.  */
 	  else if (slp_index != 0)
 	    return true;
+	  else
+	    /* For SLP reductions the meta-info is attached to
+	       the representative.  */
+	    stmt_info = SLP_TREE_REPRESENTATIVE (slp_node);
 	}
       stmt_vec_info reduc_info = info_for_reduction (loop_vinfo, stmt_info);
       gcc_assert (reduc_info->is_reduc_info);

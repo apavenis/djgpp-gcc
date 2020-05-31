@@ -1,3 +1,1104 @@
+2020-05-31  Jim Wilson  <jimw@sifive.com>
+
+	* config/riscv/riscv.md (zero_extendsidi2_shifted): New.
+
+2020-05-30  Jonathan Yong  <10walls@gmail.com>
+
+	* config/i386/mingw32.h (REAL_LIBGCC_SPEC): Insert -lkernel32
+	after -lmsvcrt. This is necessary as libmsvcrt.a is not a pure
+	import library, but also contains some functions that invoke
+	others in KERNEL32.DLL.
+
+2020-05-29  Segher Boessenkool  <segher@kernel.crashing.org>
+
+	* config/rs6000/altivec.md (altivec_vmrghw_direct): Prefer VSX form.
+	(altivec_vmrglw_direct): Ditto.
+	(altivec_vperm_<mode>_direct): Ditto.
+	(altivec_vperm_v8hiv16qi): Ditto.
+	(*altivec_vperm_<mode>_uns_internal): Ditto.
+	(*altivec_vpermr_<mode>_internal): Ditto.
+	(vperm_v8hiv4si): Ditto.
+	(vperm_v16qiv8hi): Ditto.
+
+2020-05-29  Jan Hubicka  <jh@suse.cz>
+
+	* lto-streamer-in.c (streamer_read_chain): Move here from
+	tree-streamer-in.c.
+	(stream_read_tree_ref): New.
+	(lto_input_tree_1): Simplify.
+	* lto-streamer-out.c (stream_write_tree_ref): New.
+	(lto_write_tree_1): Simplify.
+	(lto_output_tree_1): Simplify.
+	(DFS::DFS_write_tree): Simplify.
+	(streamer_write_chain): Move here from tree-stremaer-out.c.
+	* lto-streamer.h (lto_output_tree_ref): Update prototype.
+	(stream_read_tree_ref): Declare
+	(stream_write_tree_ref): Declare
+	* tree-streamer-in.c (streamer_read_chain): Update to use
+	stream_read_tree_ref.
+	(lto_input_ts_common_tree_pointers): Likewise.
+	(lto_input_ts_vector_tree_pointers): Likewise.
+	(lto_input_ts_poly_tree_pointers): Likewise.
+	(lto_input_ts_complex_tree_pointers): Likewise.
+	(lto_input_ts_decl_minimal_tree_pointers): Likewise.
+	(lto_input_ts_decl_common_tree_pointers): Likewise.
+	(lto_input_ts_decl_with_vis_tree_pointers): Likewise.
+	(lto_input_ts_field_decl_tree_pointers): Likewise.
+	(lto_input_ts_function_decl_tree_pointers): Likewise.
+	(lto_input_ts_type_common_tree_pointers): Likewise.
+	(lto_input_ts_type_non_common_tree_pointers): Likewise.
+	(lto_input_ts_list_tree_pointers): Likewise.
+	(lto_input_ts_vec_tree_pointers): Likewise.
+	(lto_input_ts_exp_tree_pointers): Likewise.
+	(lto_input_ts_block_tree_pointers): Likewise.
+	(lto_input_ts_binfo_tree_pointers): Likewise.
+	(lto_input_ts_constructor_tree_pointers): Likewise.
+	(lto_input_ts_omp_clause_tree_pointers): Likewise.
+	* tree-streamer-out.c (streamer_write_chain): Update to use
+	stream_write_tree_ref.
+	(write_ts_common_tree_pointers): Likewise.
+	(write_ts_vector_tree_pointers): Likewise.
+	(write_ts_poly_tree_pointers): Likewise.
+	(write_ts_complex_tree_pointers): Likewise.
+	(write_ts_decl_minimal_tree_pointers): Likewise.
+	(write_ts_decl_common_tree_pointers): Likewise.
+	(write_ts_decl_non_common_tree_pointers): Likewise.
+	(write_ts_decl_with_vis_tree_pointers): Likewise.
+	(write_ts_field_decl_tree_pointers): Likewise.
+	(write_ts_function_decl_tree_pointers): Likewise.
+	(write_ts_type_common_tree_pointers): Likewise.
+	(write_ts_type_non_common_tree_pointers): Likewise.
+	(write_ts_list_tree_pointers): Likewise.
+	(write_ts_vec_tree_pointers): Likewise.
+	(write_ts_exp_tree_pointers): Likewise.
+	(write_ts_block_tree_pointers): Likewise.
+	(write_ts_binfo_tree_pointers): Likewise.
+	(write_ts_constructor_tree_pointers): Likewise.
+	(write_ts_omp_clause_tree_pointers): Likewise.
+	(streamer_write_tree_body): Likewise.
+	(streamer_write_integer_cst): Likewise.
+	* tree-streamer.h (streamer_read_chain):Declare.
+	(streamer_write_chain):Declare.
+	(streamer_write_tree_body): Update prototype.
+	(streamer_write_integer_cst): Update prototype.
+
+2020-05-29  H.J. Lu  <hjl.tools@gmail.com>
+
+	PR bootstrap/95413
+	* configure: Regenerated.
+
+2020-05-29  Andrew Stubbs  <ams@codesourcery.com>
+
+	* config/gcn/gcn-valu.md (add<mode>3_vcc_zext_dup): Add early clobber.
+	(add<mode>3_vcc_zext_dup_exec): Likewise.
+	(add<mode>3_vcc_zext_dup2): Likewise.
+	(add<mode>3_vcc_zext_dup2_exec): Likewise.
+
+2020-05-29  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95272
+	* tree-vectorizer.h (_slp_tree::representative): Add.
+	(SLP_TREE_REPRESENTATIVE): Likewise.
+	* tree-vect-loop.c (vectorizable_reduction): Adjust SLP
+	node gathering.
+	(vectorizable_live_operation): Use the representative to
+	attach the reduction info to.
+	* tree-vect-slp.c (_slp_tree::_slp_tree): Initialize
+	SLP_TREE_REPRESENTATIVE.
+	(vect_create_new_slp_node): Likewise.
+	(slp_copy_subtree): Copy it.
+	(vect_slp_rearrange_stmts): Re-arrange even COND_EXPR stmts.
+	(vect_slp_analyze_node_operations_1): Pass the representative
+	to vect_analyze_stmt.
+	(vect_schedule_slp_instance): Pass the representative to
+	vect_transform_stmt.
+
+2020-05-29  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95356
+	* tree-vect-stmts.c (vectorizable_shift): Do in-place SLP
+	node hacking during analysis.
+
+2020-05-29  Jan Hubicka  <hubicka@ucw.cz>
+
+	PR lto/95362
+	* lto-streamer-out.c (lto_output_tree): Disable redundant streaming.
+
+2020-05-29  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95403
+	* tree-vect-stmts.c (vect_init_vector_1): Guard against NULL
+	stmt_vinfo.
+
+2020-05-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/95315
+	* omp-general.c (omp_resolve_declare_variant): Fix up addition of
+	declare variant cgraph node removal callback.
+
+2020-05-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/95052
+	* expr.c (store_expr): If expr_size is constant and significantly
+	larger than TREE_STRING_LENGTH, set temp to just the
+	TREE_STRING_LENGTH portion of the STRING_CST.
+
+2020-05-29  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95393
+	* tree-ssa-phiopt.c (minmax_replacement): Use gimple_build
+	to build the min/max expression so we simplify cases like
+	MAX(0, s) immediately.
+
+2020-05-29  Joe Ramsay  <joe.ramsay@arm.com>
+
+	* config/aarch64/aarch64-sve.md (<LOGICAL:optab><mode>3): Add support
+	for unpacked EOR, ORR, AND.
+
+2020-05-28  Nicolas Bértolo  <nicolasbertolo@gmail.com>
+
+	* Makefile.in: don't look for libiberty in the "pic" subdirectory
+	when building for Mingw. Add dependency on xgcc with the proper
+	extension.
+
+2020-05-28  Jeff Law  <law@redhat.com>
+
+	* config/h8300/logical.md (bclrhi_msx): Remove pattern.
+
+2020-05-28  Jeff Law  <law@redhat.com>
+
+	* config/h8300/logical.md (HImode H8/SX bit-and splitter): Don't
+	make a nonzero adjustment to the memory offset.
+	(b<ior,xor>hi_msx): Turn into a splitter.
+
+2020-05-28  Eric Botcazou  <ebotcazou@gcc.gnu.org>
+
+	* gimple-ssa-store-merging.c (merged_store_group::can_be_merged_into):
+	Fix off-by-one error.
+
+2020-05-28  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.h (aarch64_frame): Add a comment above
+	wb_candidate1 and wb_candidate2.
+	* config/aarch64/aarch64.c (aarch64_layout_frame): Invalidate
+	wb_candidate1 and wb_candidate2 if we decided not to use them.
+
+2020-05-28  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR testsuite/95361
+	* config/aarch64/aarch64.c (aarch64_expand_epilogue): Assert that
+	we have at least some CFI operations when using a frame pointer.
+	Only redefine the CFA if we have CFI operations.
+
+2020-05-28  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.c (vect_prologue_cost_for_slp): Remove
+	case for !SLP_TREE_VECTYPE.
+	(vect_slp_analyze_node_operations): Adjust.
+
+2020-05-28  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (_slp_tree::vec_defs): Add.
+	(SLP_TREE_VEC_DEFS): Likewise.
+	* tree-vect-slp.c (_slp_tree::_slp_tree): Adjust.
+	(_slp_tree::~_slp_tree): Likewise.
+	(vect_mask_constant_operand_p): Remove unused function.
+	(vect_get_constant_vectors): Rename to...
+	(vect_create_constant_vectors): ... this.  Take the
+	invariant node as argument and code generate it.  Remove
+	dead code, remove temporary asserts.  Pass a NULL stmt_info
+	to vect_init_vector.
+	(vect_get_slp_defs): Simplify.
+	(vect_schedule_slp_instance): Code-generate externals and
+	invariants using vect_create_constant_vectors.
+
+2020-05-28  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-stmts.c (vect_finish_stmt_generation_1):
+	Conditionalize stmt_info use, assert the new stmt cannot throw
+	when not specified.
+	(vect_finish_stmt_generation): Adjust assert.
+
+2020-05-28  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95273
+	PR tree-optimization/95356
+	* tree-vect-stmts.c (vectorizable_shift): Adjust when and to
+	what we set the vector type of the shift operand SLP node
+	again.
+
+2020-05-28  Andrea Corallo  <andrea.corallo@arm.com>
+
+	* config/arm/arm.c (mve_vector_mem_operand): Fix unwanted
+	fall-throughs.
+
+2020-05-28  Martin Liska  <mliska@suse.cz>
+
+	PR web/95380
+	* doc/invoke.texi: Add missing params, remove max-once-peeled-insns and
+	rename ipcp-unit-growth to ipa-cp-unit-growth.
+
+2020-05-28  Hongtao Liu  <hongtao.liu@intel.com>
+
+	* config/i386/sse.md (*avx512vl_<code>v2div2qi2_store_1): Rename
+	from *avx512vl_<code>v2div2qi_store and refine memory size of
+	the pattern.
+	(*avx512vl_<code>v2div2qi2_mask_store_1): Ditto.
+	(*avx512vl_<code><mode>v4qi2_store_1): Ditto.
+	(*avx512vl_<code><mode>v4qi2_mask_store_1): Ditto.
+	(*avx512vl_<code><mode>v8qi2_store_1): Ditto.
+	(*avx512vl_<code><mode>v8qi2_mask_store_1): Ditto.
+	(*avx512vl_<code><mode>v4hi2_store_1): Ditto.
+	(*avx512vl_<code><mode>v4hi2_mask_store_1): Ditto.
+	(*avx512vl_<code>v2div2hi2_store_1): Ditto.
+	(*avx512vl_<code>v2div2hi2_mask_store_1): Ditto.
+	(*avx512vl_<code>v2div2si2_store_1): Ditto.
+	(*avx512vl_<code>v2div2si2_mask_store_1): Ditto.
+	(*avx512f_<code>v8div16qi2_store_1): Ditto.
+	(*avx512f_<code>v8div16qi2_mask_store_1): Ditto.
+	(*avx512vl_<code>v2div2qi2_store_2): New define_insn_and_split.
+	(*avx512vl_<code>v2div2qi2_mask_store_2): Ditto.
+	(*avx512vl_<code><mode>v4qi2_store_2): Ditto.
+	(*avx512vl_<code><mode>v4qi2_mask_store_2): Ditto.
+	(*avx512vl_<code><mode>v8qi2_store_2): Ditto.
+	(*avx512vl_<code><mode>v8qi2_mask_store_2): Ditto.
+	(*avx512vl_<code><mode>v4hi2_store_2): Ditto.
+	(*avx512vl_<code><mode>v4hi2_mask_store_2): Ditto.
+	(*avx512vl_<code>v2div2hi2_store_2): Ditto.
+	(*avx512vl_<code>v2div2hi2_mask_store_2): Ditto.
+	(*avx512vl_<code>v2div2si2_store_2): Ditto.
+	(*avx512vl_<code>v2div2si2_mask_store_2): Ditto.
+	(*avx512f_<code>v8div16qi2_store_2): Ditto.
+	(*avx512f_<code>v8div16qi2_mask_store_2): Ditto.
+	* config/i386/i386-builtin-types.def: Adjust builtin type.
+	* config/i386/i386-expand.c: Ditto.
+	* config/i386/i386-builtin.def: Adjust builtin.
+	* config/i386/avx512fintrin.h: Ditto.
+	* config/i386/avx512vlbwintrin.h: Ditto.
+	* config/i386/avx512vlintrin.h: Ditto.
+
+2020-05-28  Dong JianQiang  <dongjianqiang2@huawei.com>
+
+	PR gcov-profile/95332
+	* gcov-io.c (gcov_var::endian): Move field.
+	(from_file): Add IN_GCOV_TOOL check.
+	* gcov-io.h (gcov_magic): Ditto.
+
+2020-05-28  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* config/xtensa/xtensa.c (xtensa_delegitimize_address): New
+	function.
+	(TARGET_DELEGITIMIZE_ADDRESS): New macro.
+
+2020-05-27  Eric Botcazou  <ebotcazou@gcc.gnu.org>
+
+	* builtin-types.def (BT_UINT128): New primitive type.
+	(BT_FN_UINT128_UINT128): New function type.
+	* builtins.def (BUILT_IN_BSWAP128): New GCC builtin.
+	* doc/extend.texi (__builtin_bswap128): Document it.
+	* builtins.c (expand_builtin): Deal with BUILT_IN_BSWAP128.
+	(is_inexpensive_builtin): Likewise.
+	* fold-const-call.c (fold_const_call_ss): Likewise.
+	* fold-const.c (tree_call_nonnegative_warnv_p): Likewise.
+	* tree-ssa-ccp.c (evaluate_stmt): Likewise.
+	* tree-vect-stmts.c (vect_get_data_ptr_increment): Likewise.
+	(vectorizable_call): Likewise.
+	* optabs.c (expand_unop): Always use the double word path for it.
+	* tree-core.h (enum tree_index): Add TI_UINT128_TYPE.
+	* tree.h (uint128_type_node): New global type.
+	* tree.c (build_common_tree_nodes): Build it if TImode is supported.
+
+2020-05-27  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/mmx.md (*mmx_haddv2sf3): Remove SSE alternatives.
+	(mmx_hsubv2sf3): Ditto.
+	(mmx_haddsubv2sf3): New expander.
+	(*mmx_haddsubv2sf3): Rename from mmx_addsubv2sf3. Correct
+	RTL template to model horizontal subtraction and addition.
+	* config/i386/i386-builtin.def (IX86_BUILTIN_PFPNACC):
+	Update for rename.
+
+2020-05-27  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/95355
+	* config/i386/sse.md
+	(<mask_codefor>avx512f_<code>v16qiv16si2<mask_name>):
+	Remove %q operand modifier from insn template.
+	(avx512f_<code>v8hiv8di2<mask_name>): Ditto.
+
+2020-05-27  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/mmx.md (mmx_pswapdsf2): Add SSE alternatives.
+	Enable insn pattern for TARGET_MMX_WITH_SSE.
+	(*mmx_movshdup): New insn pattern.
+	(*mmx_movsldup): Ditto.
+	(*mmx_movss): Ditto.
+	* config/i386/i386-expand.c (ix86_vectorize_vec_perm_const):
+	Handle E_V2SFmode.
+	(expand_vec_perm_movs): Handle E_V2SFmode.
+	(expand_vec_perm_even_odd): Ditto.
+	(expand_vec_perm_broadcast_1): Assert that E_V2SFmode
+	is already handled by standard shuffle patterns.
+
+2020-05-27  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95295
+	* tree-ssa-loop-im.c (sm_seq_valid_bb): Fix sinking after
+	merging stores from paths.
+
+2020-05-27  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95356
+	* tree-vect-stmts.c (vectorizable_shift): Adjust vector
+	type for the shift operand.
+
+2020-05-27  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95335
+	* tree-vect-slp.c (vect_slp_analyze_node_operations): Reset
+	lvisited for nodes made external.
+
+2020-05-27  Richard Biener  <rguenther@suse.de>
+
+	* dump-context.h (debug_dump_context): New class.
+	(dump_context): Make it friend.
+	* dumpfile.c (debug_dump_context::debug_dump_context):
+	Implement.
+	(debug_dump_context::~debug_dump_context): Likewise.
+	* tree-vect-slp.c: Include dump-context.h.
+	(vect_print_slp_tree): Dump a single SLP node.
+	(debug): New overload for slp_tree.
+	(vect_print_slp_graph): Rename from vect_print_slp_tree and
+	use that.
+	(vect_analyze_slp_instance): Adjust.
+
+2020-05-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/95315
+	* omp-general.c (omp_declare_variant_remove_hook): New function.
+	(omp_resolve_declare_variant): Always return base if it is already
+	declare_variant_alt magic decl itself.  Register
+	omp_declare_variant_remove_hook as cgraph node removal hook.
+
+2020-05-27  Jeff Law  <law@redhat.com>
+
+	* config/h8300/testcompare.md (tst_extzv_1_n): Do not accept constants
+	for the primary input operand.
+	(tstsi_variable_bit_qi): Similarly.
+
+2020-05-26  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/mmx.md (mmx_pswapdv2si2): Add SSE2 alternative.
+
+2020-05-26  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR ipa/95320
+	* ipa-utils.h (odr_type_p): Also permit calls with
+	only flag_generate_offload set.
+
+2020-05-26  Alexandre Oliva  <oliva@adacore.com>
+
+	* gcc.c (validate_switches): Add braced parameter.  Adjust all
+	callers.  Expected and skip trailing brace only if braced.
+	Return after handling one atom otherwise.
+	(DUMPS_OPTIONS): New.
+	(cpp_debug_options): Define in terms of it.
+
+2020-05-26  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95327
+	* tree-vect-stmts.c (vectorizable_shift): Compute op1_vectype
+	when we are not using a scalar shift.
+
+2020-05-26  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/mmx.md (*mmx_pshufd_1): New insn pattern.
+	* config/i386/i386-expand.c (ix86_vectorize_vec_perm_const):
+	Handle E_V2SImode and E_V4HImode.
+	(expand_vec_perm_even_odd_1): Handle E_V4HImode.
+	Assert that E_V2SImode is already handled.
+	(expand_vec_perm_broadcast_1): Assert that E_V2SImode
+	is already handled by standard shuffle patterns.
+
+2020-05-26  Jan Hubicka  <jh@suse.cz>
+
+	* tree.c (free_lang_data_in_type): Simpify types of TYPE_VALUES in
+	enumeral types.
+
+2020-05-26  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/95197
+	* gimplify.c (find_combined_omp_for): Move to omp-general.c.
+	* omp-general.h (find_combined_omp_for): Declare.
+	* omp-general.c: Include tree-iterator.h.
+	(find_combined_omp_for): New function, moved from gimplify.c.
+
+2020-05-26  Alexandre Oliva  <oliva@adacore.com>
+
+	* common.opt (aux_base_name): Define.
+	(dumpbase, dumpdir): Mark as Driver options.
+	(-dumpbase, -dumpdir): Likewise.
+	(dumpbase-ext, -dumpbase-ext): New.
+	(auxbase, auxbase-strip): Drop.
+	* doc/invoke.texi (-dumpbase, -dumpbase-ext, -dumpdir):
+	Document.
+	(-o): Introduce the notion of primary output, mention it
+	influences auxiliary and dump output names as well, add
+	examples.
+	(-save-temps): Adjust, move examples into -dump*.
+	(-save-temps=cwd, -save-temps=obj): Likewise.
+	(-fdump-final-insns): Adjust.
+	* dwarf2out.c (gen_producer_string): Drop auxbase and
+	auxbase_strip; add dumpbase_ext.
+	* gcc.c (enum save_temps): Add SAVE_TEMPS_DUMP.
+	(save_temps_prefix, save_temps_length): Drop.
+	(save_temps_overrides_dumpdir): New.
+	(dumpdir, dumpbase, dumpbase_ext): New.
+	(dumpdir_length, dumpdir_trailing_dash_added): New.
+	(outbase, outbase_length): New.
+	(The Specs Language): Introduce %".  Adjust %b and %B.
+	(ASM_FINAL_SPEC): Use %b.dwo for an aux output name always.
+	Precede object file with %w when it's the primary output.
+	(cpp_debug_options): Do not pass on incoming -dumpdir,
+	-dumpbase and -dumpbase-ext options; recompute them with
+	%:dumps.
+	(cc1_options): Drop auxbase with and without compare-debug;
+	use cpp_debug_options instead of dumpbase.  Mark asm output
+	with %w when it's the primary output.
+	(static_spec_functions): Drop %:compare-debug-auxbase-opt and
+	%:replace-exception.  Add %:dumps.
+	(driver_handle_option): Implement -save-temps=*/-dumpdir
+	mutual overriding logic.  Save dumpdir, dumpbase and
+	dumpbase-ext options.  Do not save output_file in
+	save_temps_prefix.
+	(adds_single_suffix_p): New.
+	(single_input_file_index): New.
+	(process_command): Combine output dir, output base name, and
+	dumpbase into dumpdir and outbase.
+	(set_collect_gcc_options): Pass a possibly-adjusted -dumpdir.
+	(do_spec_1): Optionally dumpdir instead of save_temps_prefix,
+	and outbase instead of input_basename in %b, %B and in
+	-save-temps aux files.  Handle empty argument %".
+	(driver::maybe_run_linker): Adjust dumpdir and auxbase.
+	(compare_debug_dump_opt_spec_function): Adjust gkd dump file
+	naming.  Spec-quote the computed -fdump-final-insns file name.
+	(debug_auxbase_opt): Drop.
+	(compare_debug_self_opt_spec_function): Drop auxbase-strip
+	computation.
+	(compare_debug_auxbase_opt_spec_function): Drop.
+	(not_actual_file_p): New.
+	(replace_extension_spec_func): Drop.
+	(dumps_spec_func): New.
+	(convert_white_space): Split-out parts into...
+	(quote_string, whitespace_to_convert_p): ... these.  New.
+	(quote_spec_char_p, quote_spec, quote_spec_arg): New.
+	(driver::finalize): Release and reset new variables; drop
+	removed ones.
+	* lto-wrapper.c (HAVE_TARGET_EXECUTABLE_SUFFIX): Define if...
+	(TARGET_EXECUTABLE_SUFFIX): ... is defined; define this to the
+	empty string otherwise.
+	(DUMPBASE_SUFFIX): Drop leading period.
+	(debug_objcopy): Use concat.
+	(run_gcc): Recognize -save-temps=* as -save-temps too.  Obey
+	-dumpdir.  Pass on empty dumpdir and dumpbase with a directory
+	component.  Simplify temp file names.
+	* opts.c (finish_options): Drop aux base name handling.
+	(common_handle_option): Drop auxbase-strip handling.
+	* toplev.c (print_switch_values): Drop auxbase, add
+	dumpbase-ext.
+	(process_options): Derive aux_base_name from dump_base_name
+	and dump_base_ext.
+	(lang_dependent_init): Compute dump_base_ext along with
+	dump_base_name.  Disable stack usage and callgraph-info	during
+	lto generation and compare-debug recompilation.
+
+2020-05-26  Hongtao Liu  <hongtao.liu@intel.com>
+	    Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/95211
+	PR target/95256
+	* config/i386/sse.md (<floatunssuffix>v2div2sf2): New expander.
+	(fix<fixunssuffix>_truncv2sfv2di2): Ditto.
+	(avx512dq_float<floatunssuffix>v2div2sf2): Renaming from
+	float<floatunssuffix>v2div2sf2.
+	(avx512dq_fix<fixunssuffix>_truncv2sfv2di2<mask_name>):
+	Renaming from fix<fixunssuffix>_truncv2sfv2di2<mask_name>.
+	(vec_pack<floatprefix>_float_<mode>): Adjust icode name.
+	(vec_unpack_<fixprefix>fix_trunc_lo_<mode>): Ditto.
+	(vec_unpack_<fixprefix>fix_trunc_hi_<mode>): Ditto.
+	* config/i386/i386-builtin.def: Ditto.
+	* emit-rtl.c (validate_subreg): Allow use of *paradoxical* vector
+	subregs when both omode and imode are vector mode and
+	have the same inner mode.
+
+2020-05-25  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gimple-ssa-store-merging.c (merged_store_group::can_be_merged_into):
+	Only turn MEM_REFs into bit-field stores for small bit-field regions.
+	(imm_store_chain_info::output_merged_store): Be prepared for sources
+	with non-integral type in the bit-field insertion case.
+	(pass_store_merging::process_store): Use MAX_BITSIZE_MODE_ANY_INT as
+	the largest size for the bit-field case.
+
+2020-05-25  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/mmx.md (*vec_dupv2sf): Redefine as define_insn.
+	(mmx_pshufw_1): Change Yv constraint to xYw.  Correct type attribute.
+	(*vec_dupv4hi): Redefine as define_insn.
+	Remove alternative with general register input.
+	(*vec_dupv2si): Ditto.
+
+2020-05-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95309
+	* tree-vect-slp.c (vect_get_constant_vectors): Move number
+	of vector computation ...
+	(vect_slp_analyze_node_operations): ... to analysis phase.
+
+2020-05-25  Jan Hubicka  <hubicka@ucw.cz>
+
+	* lto-streamer-out.c (lto_output_tree): Add streamer_debugging check.
+	* lto-streamer.h (streamer_debugging): New constant
+	* tree-streamer-in.c (streamer_read_tree_bitfields): Add
+	streamer_debugging check.
+	(streamer_get_pickled_tree): Likewise.
+	* tree-streamer-out.c (pack_ts_base_value_fields): Likewise.
+
+2020-05-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95308
+	* tree-ssa-forwprop.c (pass_forwprop::execute): Generalize
+	test for TARGET_MEM_REFs.
+
+2020-05-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95295
+	* tree-ssa-loop-im.c (sm_seq_valid_bb): Compare remat stores
+	RHSes and drop to full sm_other if they are not equal.
+
+2020-05-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95271
+	* tree-vect-stmts.c (vectorizable_bswap): Update invariant SLP
+	children vector type.
+	(vectorizable_call): Pass down slp ops.
+
+2020-05-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95297
+	* tree-vect-stmts.c (vectorizable_shift): For scalar_shift_arg
+	skip updating operand 1 vector type.
+
+2020-05-25  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95284
+	* tree-ssa-sink.c (sink_common_stores_to_bb): Amend previous
+	fix.
+
+2020-05-25  Hongtao Liu  <hongtao.liu@intel.com>
+
+	PR target/95125
+	* config/i386/sse.md (sf2dfmode_lower): New mode attribute.
+	(trunc<mode><sf2dfmode_lower>2) New expander.
+	(extend<sf2dfmode_lower><mode>2): Ditto.
+
+2020-05-23 Iain Sandoe <iain@sandoe.co.uk>
+
+	* config/darwin.h (ASM_GENERATE_INTERNAL_LABEL): Make
+	ubsan_{data,type},ASAN symbols linker-visible.
+
+2020-05-22  Jan Hubicka  <hubicka@ucw.cz>
+
+	* lto-streamer-out.c (DFS::DFS): Silence warning.
+
+2020-05-22  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/95255
+	* config/i386/i386.md (<rounding_insn><mode>2): Do not try to
+	expand non-sse4 ROUND_ROUNDEVEN rounding via SSE support routines.
+
+2020-05-22  Jan Hubicka  <hubicka@ucw.cz>
+
+	* lto-streamer-out.c (lto_output_tree): Do not stream final ref if
+	it is not needed.
+
+2020-05-22  Jan Hubicka  <hubicka@ucw.cz>
+
+	* lto-section-out.c (lto_output_decl_index): Adjust dump indentation.
+	* lto-streamer-out.c (create_output_block): Fix whitespace
+	(lto_write_tree_1): Add (debug) dump.
+	(DFS::DFS): Add dump.
+	(DFS::DFS_write_tree_body): Do not dump here.
+	(lto_output_tree): Improve dumping; do not stream ref when not needed.
+	(produce_asm_for_decls): Fix whitespace.
+	* tree-streamer-out.c (streamer_write_tree_header): Add dump.
+	* tree-streamer-out.c (streamer_write_integer_cst): Add debug dump.
+
+2020-05-22  Hongtao.liu  <hongtao.liu@intel.com>
+
+	PR target/92658
+	* config/i386/sse.md (trunc<pmov_src_lower><mode>2): New expander
+	(truncv32hiv32qi2): Ditto.
+	(trunc<ssedoublemodelower><mode>2): Ditto.
+	(trunc<mode><pmov_dst_3>2): Ditto.
+	(trunc<mode><pmov_dst_mode_4>2): Ditto.
+	(truncv2div2si2): Ditto.
+	(truncv8div8qi2): Ditto.
+	(avx512f_<code>v8div16qi2): Renaming from *avx512f_<code>v8div16qi2.
+	(avx512vl_<code>v2div2si): Renaming from *avx512vl_<code>v2div2si2.
+	(avx512vl_<code><mode>v2<ssecakarnum>qi2): Renaming from
+	*avx512vl_<code><mode>v<ssescalarnum>qi2.
+
+2020-05-22  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/95258
+	* config/i386/driver-i386.c (host_detect_local_cpu): Detect
+	AVX512VPOPCNTDQ.
+
+2020-05-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95268
+	* tree-ssa-sink.c (sink_common_stores_to_bb): Handle clobbers
+	properly.
+
+2020-05-22  Jan Hubicka  <hubicka@ucw.cz>
+
+	* tree-streamer.c (record_common_node): Fix hash value of pre-streamed
+	nodes.
+
+2020-05-22  Jan Hubicka  <hubicka@ucw.cz>
+
+	* lto-streamer-in.c (lto_read_tree): Do not stream end markers.
+	(lto_input_scc): Optimize streaming of entry lengths.
+	* lto-streamer-out.c (lto_write_tree): Do not stream end markers
+	(DFS::DFS): Optimize stremaing of entry lengths
+
+2020-05-22  Richard Biener  <rguenther@suse.de>
+
+	PR lto/95190
+	* doc/invoke.texi (flto): Document behavior of diagnostic
+	options.
+
+2020-05-22  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (vect_is_simple_use): New overload.
+	(vect_maybe_update_slp_op_vectype): New.
+	* tree-vect-stmts.c (vect_is_simple_use): New overload
+	accessing operands of SLP vs. non-SLP operation transparently.
+	(vect_maybe_update_slp_op_vectype): New function updating
+	the possibly shared SLP operands vector type.
+	(vectorizable_operation): Be a bit more SLP vs non-SLP agnostic
+	using the new vect_is_simple_use overload;  update SLP invariant
+	operand nodes vector type.
+	(vectorizable_comparison): Likewise.
+	(vectorizable_call): Likewise.
+	(vectorizable_conversion): Likewise.
+	(vectorizable_shift): Likewise.
+	(vectorizable_store): Likewise.
+	(vectorizable_condition): Likewise.
+	(vectorizable_assignment): Likewise.
+	* tree-vect-loop.c (vectorizable_reduction): Likewise.
+	* tree-vect-slp.c (vect_get_constant_vectors): Enforce
+	present SLP_TREE_VECTYPE and check it matches previous
+	behavior.
+
+2020-05-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95248
+	* tree-ssa-loop-im.c (sm_seq_valid_bb): Remove bogus early out.
+
+2020-05-22  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (_slp_tree::_slp_tree): New.
+	(_slp_tree::~_slp_tree): Likewise.
+	* tree-vect-slp.c (_slp_tree::_slp_tree): Factor out code
+	from allocators.
+	(_slp_tree::~_slp_tree): Implement.
+	(vect_free_slp_tree): Simplify.
+	(vect_create_new_slp_node): Likewise.  Add nops parameter.
+	(vect_build_slp_tree_2): Adjust.
+	(vect_analyze_slp_instance): Likewise.
+
+2020-05-21  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* adjust-alignment.c: Include memmodel.h.
+
+2020-05-21  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/95260
+	* config/i386/cpuid.h: Use hexadecimal in comments.
+
+2020-05-21  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/95212
+	* config/i386/i386-builtins.c (processor_features): Move
+	F_AVX512VP2INTERSECT after F_AVX512BF16.
+	(isa_names_table): Likewise.
+
+2020-05-21  Martin Liska  <mliska@suse.cz>
+
+	* common/config/aarch64/aarch64-common.c (aarch64_handle_option):
+	Handle OPT_moutline_atomics.
+	* config/aarch64/aarch64.c: Add outline-atomics to
+	aarch64_attributes.
+	* doc/extend.texi: Document the newly added target attribute.
+
+2020-05-21  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/95218
+
+	* config/i386/mmx.md (*mmx_<code>v2sf): Do not mark
+	operands 1 and 2 commutative.  Manually swap operands.
+	(*mmx_nabsv2sf2): Ditto.
+
+	Partially revert:
+	2020-05-18  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (*<code>tf2_1):
+	Mark operands 1 and 2 commutative.
+	(*nabstf2_1): Ditto.
+	* config/i386/sse.md (*<code><mode>2): Mark operands 1 and 2
+	commutative.  Do not swap operands.
+	(*nabs<mode>2): Ditto.
+
+2020-05-20  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/95229
+	* config/i386/sse.md (<code>v8qiv8hi2): Use
+	simplify_gen_subreg instead of simplify_subreg.
+	(<code>v8qiv8si2): Ditto.
+	(<code>v4qiv4si2): Ditto.
+	(<code>v4hiv4si2): Ditto.
+	(<code>v8qiv8di2): Ditto.
+	(<code>v4qiv4di2): Ditto.
+	(<code>v2qiv2di2): Ditto.
+	(<code>v4hiv4di2): Ditto.
+	(<code>v2hiv2di2): Ditto.
+	(<code>v2siv2di2): Ditto.
+
+2020-05-20  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/95238
+	* config/i386/i386.md (*pushsi2_rex64):
+	Use "e" constraint instead of "i".
+
+2020-05-20  Jan Hubicka  <hubicka@ucw.cz>
+
+	* lto-streamer-in.c (lto_input_scc): Add SHARED_SCC parameter.
+	(lto_input_tree_1): Strenghten sanity check.
+	(lto_input_tree): Update call of lto_input_scc.
+	* lto-streamer-out.c: Include ipa-utils.h
+	(create_output_block): Initialize local_trees if merigng is going
+	to happen.
+	(destroy_output_block): Destroy local_trees.
+	(DFS): Add max_local_entry.
+	(local_tree_p): New function.
+	(DFS::DFS): Initialize and maintain it.
+	(DFS::DFS_write_tree): Decide on streaming format.
+	(lto_output_tree): Stream inline singleton SCCs
+	* lto-streamer.h (enum LTO_tags): Add LTO_trees.
+	(struct output_block): Add local_trees.
+	(lto_input_scc): Update prototype.
+
+2020-05-20  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/95223
+	* hash-table.h (hash_table::find_with_hash): Move up the call to
+	hash_table::verify.
+
+2020-05-20  Martin Liska  <mliska@suse.cz>
+
+	* lto-compress.c (lto_compression_zstd): Fill up
+	num_compressed_il_bytes.
+	(lto_uncompression_zstd): Likewise for num_uncompressed_il_bytes here.
+
+2020-05-20  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95219
+	* tree-vect-loop.c (vectorizable_induction): Reduce
+	group_size before computing the number of required IVs.
+
+2020-05-20  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/95231
+	* tree-inline.c (remap_gimple_stmt): Revert adjusting
+	COND_EXPR and VEC_COND_EXPR for a -fnon-call-exception boundary.
+
+2020-05-20  Srinath Parvathaneni  <srinath.parvathaneni@arm.com>
+	    Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	PR target/94959
+	* config/arm/arm-protos.h (arm_mode_base_reg_class): Function
+	declaration.
+	(mve_vector_mem_operand): Likewise.
+	* config/arm/arm.c (thumb2_legitimate_address_p): For MVE target check
+	the load from memory to a core register is legitimate for give mode.
+	(mve_vector_mem_operand): Define function.
+	(arm_print_operand): Modify comment.
+	(arm_mode_base_reg_class): Define.
+	* config/arm/arm.h (MODE_BASE_REG_CLASS): Modify to add check for
+	TARGET_HAVE_MVE and expand to arm_mode_base_reg_class on TRUE.
+	* config/arm/constraints.md (Ux): Likewise.
+	(Ul): Likewise.
+	* config/arm/mve.md (mve_mov): Replace constraint Us with Ux and also
+	add support for missing Vector Store Register and Vector Load Register.
+	Add a new alternative to support load from memory to PC (or label) in
+	vector store/load.
+	(mve_vstrbq_<supf><mode>): Modify constraint Us to Ux.
+	(mve_vldrbq_<supf><mode>): Modify constriant Us to Ux, predicate to
+	mve_memory_operand and also modify the MVE instructions to emit.
+	(mve_vldrbq_z_<supf><mode>): Modify constraint Us to Ux.
+	(mve_vldrhq_fv8hf): Modify constriant Us to Ux, predicate to
+	mve_memory_operand and also modify the MVE instructions to emit.
+	(mve_vldrhq_<supf><mode>): Modify constriant Us to Ux, predicate to
+	mve_memory_operand and also modify the MVE instructions to emit.
+	(mve_vldrhq_z_fv8hf): Likewise.
+	(mve_vldrhq_z_<supf><mode>): Likewise.
+	(mve_vldrwq_fv4sf): Likewise.
+	(mve_vldrwq_<supf>v4si): Likewise.
+	(mve_vldrwq_z_fv4sf): Likewise.
+	(mve_vldrwq_z_<supf>v4si): Likewise.
+	(mve_vld1q_f<mode>): Modify constriant Us to Ux.
+	(mve_vld1q_<supf><mode>): Likewise.
+	(mve_vstrhq_fv8hf): Modify constriant Us to Ux, predicate to
+	mve_memory_operand.
+	(mve_vstrhq_p_fv8hf): Modify constriant Us to Ux, predicate to
+	mve_memory_operand and also modify the MVE instructions to emit.
+	(mve_vstrhq_p_<supf><mode>): Likewise.
+	(mve_vstrhq_<supf><mode>): Modify constriant Us to Ux, predicate to
+	mve_memory_operand.
+	(mve_vstrwq_fv4sf): Modify constriant Us to Ux.
+	(mve_vstrwq_p_fv4sf): Modify constriant Us to Ux and also modify the MVE
+	instructions to emit.
+	(mve_vstrwq_p_<supf>v4si): Likewise.
+	(mve_vstrwq_<supf>v4si): Likewise.Modify constriant Us to Ux.
+	* config/arm/predicates.md (mve_memory_operand): Define.
+
+2020-05-30  Richard Biener  <rguenther@suse.de>
+
+	PR c/95141
+	* c-fold.c (c_fully_fold_internal): Enhance guard on
+	overflow_warning.
+
+2020-05-20  Kito Cheng  <kito.cheng@sifive.com>
+
+	PR target/90811
+	* Makefile.in (OBJS): Add adjust-alignment.o.
+	* adjust-alignment.c (pass_data_adjust_alignment): New.
+	(pass_adjust_alignment): New.
+	(pass_adjust_alignment::execute): New.
+	(make_pass_adjust_alignment): New.
+	* tree-pass.h (make_pass_adjust_alignment): New.
+	* passes.def: Add pass_adjust_alignment.
+
+2020-05-19  Alex Coplan  <alex.coplan@arm.com>
+
+	PR target/94591
+	* config/aarch64/aarch64.c (aarch64_evpc_rev_local): Don't match
+	identity permutation.
+
+2020-05-19  Jozef Lawrynowicz  <jozef.l@mittosystems.com>
+
+	* doc/sourcebuild.texi: Document new short_eq_int, ptr_eq_short,
+	msp430_small, msp430_large and size24plus DejaGNU effective
+	targets.
+	Improve grammar in descriptions for size20plus and size32plus effective
+	targets.
+
+2020-05-19  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* config/bpf/bpf.c (bpf_compute_frame_layout): Include space for
+	callee saved registers only in xBPF.
+	(bpf_expand_prologue): Save callee saved registers only in xBPF.
+	(bpf_expand_epilogue): Likewise for restoring.
+	* doc/invoke.texi (eBPF Options): Document this is activated by
+	-mxbpf.
+
+2020-05-19  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* config/bpf/bpf.opt (mxbpf): New option.
+	* doc/invoke.texi (Option Summary): Add -mxbpf.
+	(eBPF Options): Document -mxbbpf.
+
+2020-05-19  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/92658
+	* config/i386/sse.md (<code>v16qiv16hi2): New expander.
+	(<code>v32qiv32hi2): Ditto.
+	(<code>v8qiv8hi2): Ditto.
+	(<code>v16qiv16si2): Ditto.
+	(<code>v8qiv8si2): Ditto.
+	(<code>v4qiv4si2): Ditto.
+	(<code>v16hiv16si2): Ditto.
+	(<code>v8hiv8si2): Ditto.
+	(<code>v4hiv4si2): Ditto.
+	(<code>v8qiv8di2): Ditto.
+	(<code>v4qiv4di2): Ditto.
+	(<code>v2qiv2di2): Ditto.
+	(<code>v8hiv8di2): Ditto.
+	(<code>v4hiv4di2): Ditto.
+	(<code>v2hiv2di2): Ditto.
+	(<code>v8siv8di2): Ditto.
+	(<code>v4siv4di2): Ditto.
+	(<code>v2siv2di2): Ditto.
+
+2020-05-19  Kito Cheng  <kito.cheng@sifive.com>
+
+	* common/config/riscv/riscv-common.c (riscv_implied_info_t): New.
+	(riscv_implied_info): New.
+	(riscv_subset_list): Add handle_implied_ext.
+	(riscv_subset_list::to_string): New parameter version_p to
+	control output format.
+	(riscv_subset_list::handle_implied_ext): New.
+	(riscv_subset_list::parse_std_ext): Call handle_implied_ext.
+	(riscv_arch_str): New parameter version_p to control output format.
+	(riscv_expand_arch): New.
+	* config/riscv/riscv-protos.h (riscv_arch_str): New parameter,
+	version_p.
+	* config/riscv/riscv.h (riscv_expand_arch): New,
+	(EXTRA_SPEC_FUNCTIONS): Define.
+	(ASM_SPEC): Transform -march= via riscv_expand_arch.
+
+2020-05-19  Kito Cheng  <kito.cheng@sifive.com>
+
+	* riscv-common.c (parse_sv_or_non_std_ext): Rename to
+	parse_multiletter_ext.
+	(parse_multiletter_ext): Add parsing `h` and `z`, drop `sx`,
+	adjust parsing order for 's' and 'x'.
+
+2020-05-19  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (_slp_tree::vectype): Add field.
+	(SLP_TREE_VECTYPE): New.
+	* tree-vect-slp.c (vect_create_new_slp_node): Initialize
+	SLP_TREE_VECTYPE.
+	(vect_create_new_slp_node): Likewise.
+	(vect_prologue_cost_for_slp): Move here from tree-vect-stmts.c
+	and simplify.
+	(vect_slp_analyze_node_operations): Walk nodes children for
+	invariant costing.
+	(vect_get_constant_vectors): Use local scope op variable.
+	* tree-vect-stmts.c (vect_prologue_cost_for_slp_op): Remove here.
+	(vect_model_simple_cost): Adjust.
+	(vect_model_store_cost): Likewise.
+	(vectorizable_store): Likewise.
+
+2020-05-18  Martin Sebor  <msebor@redhat.com>
+
+	PR middle-end/92815
+	* tree-object-size.c (decl_init_size): New function.
+	(addr_object_size): Call it.
+	* tree.h (last_field): Declare.
+	(first_field): Add attribute nonnull.
+
+2020-05-18  Martin Sebor  <msebor@redhat.com>
+
+	PR middle-end/94940
+	* tree-vrp.c (vrp_prop::check_mem_ref): Remove unreachable code.
+	* tree.c (component_ref_size): Correct the handling or array members
+	of unions.
+	Drop a pointless test.
+	Rename a local variable.
+
+2020-05-18  Jason Merrill  <jason@redhat.com>
+
+	* aclocal.m4: Add ax_cxx_compile_stdcxx.m4.
+	* configure.ac: Use AX_CXX_COMPILE_STDCXX(11).
+
+2020-05-14  Jason Merrill  <jason@redhat.com>
+
+	* doc/install.texi (Prerequisites): Update boostrap compiler
+	requirement to C++11/GCC 4.8.
+
+2020-05-18  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	PR tree-optimization/94952
+	* gimple-ssa-store-merging.c (pass_store_merging::process_store):
+	Initialize variables bitpos, bitregion_start, and bitregion_end in
+	order to silence warnings about use of uninitialized variables.
+
+2020-05-18  Carl Love  <cel@us.ibm.com>
+
+	PR target/94833
+	* config/rs6000/vsx.md (define_expand): Fix instruction generation for
+	first_match_index_<mode>.
+	* testsuite/gcc.target/powerpc/builtins-8-p9-runnable.c (main): Add
+	additional test cases with zero vector elements.
+
+2020-05-18  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/95169
+	* config/i386/i386-expand.c (ix86_expand_int_movcc):
+	 Avoid reversing a non-trapping comparison to a trapping one.
+
+2020-05-18  Alex Coplan  <alex.coplan@arm.com>
+
+	* config/arm/arm.c (output_move_double): Fix codegen when loading into
+	a register pair with an odd base register.
+
+2020-05-18  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386-expand.c (ix86_expand_fp_absneg_operator):
+	Do not emit FLAGS_REG clobber for TFmode.
+	* config/i386/i386.md (*<code>tf2_1): Rewrite as
+	define_insn_and_split.  Mark operands 1 and 2 commutative.
+	(*nabstf2_1): Ditto.
+	(absneg SSE splitter): Use MODEF mode iterator instead of SSEMODEF.
+	Do not swap memory operands.  Simplify RTX generation.
+	(neg abs SSE splitter): Ditto.
+	* config/i386/sse.md (*<code><mode>2): Mark operands 1 and 2
+	commutative.  Do not swap operands.  Simplify RTX generation.
+	(*nabs<mode>2): Ditto.
+
+2020-05-18  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.c (vect_slp_bb): Start after labels.
+	(vect_get_constant_vectors): Really place init stmt after scalar defs.
+	* tree-vect-stmts.c (vect_init_vector_1): Insert before
+	region begin.
+
+2020-05-18  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* config/i386/driver-i386.c (host_detect_local_cpu): Support
+	Intel Airmont, Tremont, Comet Lake, Ice Lake and Tiger Lake
+	processor families.
+
+2020-05-18  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/95171
+	* tree-inline.c (remap_gimple_stmt): Split out trapping compares
+	when inlining into a non-call EH function.
+
+2020-05-18  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/95172
+	* tree-ssa-loop-im.c (execute_sm): Get flag whether we
+	eventually need the conditional processing.
+	(execute_sm_exit): When processing an orderd sequence
+	avoid doing any conditional processing.
+	(hoist_memory_references): Pass down whether all edges
+	have ordered processing for a ref to execute_sm.
+
+2020-05-17 Jeff Law  <law@redhat.com>
+
+	* config/h8300/predicates.md (pc_or_label_operand): New predicate.
+	* config/h8300/jumpcall.md (branch_true, branch_false): Consolidate
+	into a single pattern using pc_or_label_operand.
+	* config/h8300/combiner.md (bit branch patterns): Likewise.
+	* config/h8300/peepholes.md (HImode and SImode branches): Likewise.
+
+2020-05-17  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/95021
+	* config/i386/i386-features.c (has_non_address_hard_reg):
+	Renamed to ...
+	(pseudo_reg_set): This.  Return the SET expression.  Ignore
+	pseudo register push.
+	(general_scalar_to_vector_candidate_p): Combine single_set and
+	has_non_address_hard_reg calls to pseudo_reg_set.
+	(timode_scalar_to_vector_candidate_p): Likewise.
+	* config/i386/i386.md (*pushv1ti2): New pattern.
+
 2020-05-17  Aldy Hernandez  <aldyh@redhat.com>
 
 	Revert:

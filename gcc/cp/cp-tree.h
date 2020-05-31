@@ -5694,8 +5694,10 @@ enum overload_flags { NO_SPECIAL = 0, DTOR_FLAG, TYPENAME_FLAG };
 /* Used with start_decl's initialized parameter.  */
 #define SD_UNINITIALIZED     0
 #define SD_INITIALIZED       1
-#define SD_DEFAULTED         2
-#define SD_DELETED           3
+/* Like SD_INITIALIZED, but also mark the new decl as DECL_DECOMPOSITION_P.  */
+#define SD_DECOMPOSITION     2
+#define SD_DEFAULTED         3
+#define SD_DELETED           4
 
 /* Returns nonzero iff TYPE1 and TYPE2 are the same type, or if TYPE2
    is derived from TYPE1, or if TYPE2 is a pointer (reference) to a
@@ -7460,7 +7462,8 @@ extern tree no_linkage_check			(tree, bool);
 extern void debug_binfo				(tree);
 extern tree build_dummy_object			(tree);
 extern tree maybe_dummy_object			(tree, tree *);
-extern int is_dummy_object			(const_tree);
+extern bool is_dummy_object			(const_tree);
+extern bool is_byte_access_type			(tree);
 extern const struct attribute_spec cxx_attribute_table[];
 extern tree make_ptrmem_cst			(tree, tree);
 extern tree cp_build_type_attribute_variant     (tree, tree);
@@ -7936,6 +7939,7 @@ extern tree constexpr_fn_retval		(tree);
 extern tree ensure_literal_type_for_constexpr_object (tree);
 extern bool potential_constant_expression       (tree);
 extern bool is_constant_expression (tree);
+extern bool is_rvalue_constant_expression (tree);
 extern bool is_nondependent_constant_expression (tree);
 extern bool is_nondependent_static_init_expression (tree);
 extern bool is_static_init_expression    (tree);
@@ -7947,7 +7951,7 @@ extern bool require_potential_rvalue_constant_expression (tree);
 extern tree cxx_constant_value			(tree, tree = NULL_TREE);
 extern void cxx_constant_dtor			(tree, tree);
 extern tree cxx_constant_init			(tree, tree = NULL_TREE);
-extern tree maybe_constant_value		(tree, tree = NULL_TREE, bool = false, bool = false);
+extern tree maybe_constant_value		(tree, tree = NULL_TREE, bool = false);
 extern tree maybe_constant_init			(tree, tree = NULL_TREE, bool = false);
 extern tree fold_non_dependent_expr		(tree,
 						 tsubst_flags_t = tf_warning_or_error,
@@ -7965,6 +7969,27 @@ extern vec<tree> cx_error_context               (void);
 extern tree fold_sizeof_expr			(tree);
 extern void clear_cv_and_fold_caches		(bool = true);
 extern tree unshare_constructor			(tree CXX_MEM_STAT_INFO);
+
+/* An RAII sentinel used to restrict constexpr evaluation so that it
+   doesn't do anything that causes extra DECL_UID generation.  */
+
+struct uid_sensitive_constexpr_evaluation_sentinel
+{
+  temp_override<bool> ovr;
+  uid_sensitive_constexpr_evaluation_sentinel ();
+};
+
+/* Used to determine whether uid_sensitive_constexpr_evaluation_p was
+   called and returned true, indicating that we've restricted constexpr
+   evaluation in order to avoid UID generation.  We use this to control
+   updates to the fold_cache and cv_cache.  */
+
+struct uid_sensitive_constexpr_evaluation_checker
+{
+  const unsigned saved_counter;
+  uid_sensitive_constexpr_evaluation_checker ();
+  bool evaluation_restricted_p () const;
+};
 
 /* In cp-ubsan.c */
 extern void cp_ubsan_maybe_instrument_member_call (tree);

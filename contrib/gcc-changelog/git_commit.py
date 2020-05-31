@@ -127,9 +127,10 @@ bug_components = set([
 
 ignored_prefixes = [
     'gcc/d/dmd/',
-    'gcc/go/frontend/',
+    'gcc/go/gofrontend/',
+    'gcc/testsuite/go.test/test/',
     'libgo/',
-    'libphobos/libdruntime',
+    'libphobos/libdruntime/',
     'libphobos/src/',
     'libsanitizer/',
     ]
@@ -143,13 +144,21 @@ misc_files = [
 author_line_regex = \
         re.compile(r'^(?P<datetime>\d{4}-\d{2}-\d{2})\ {2}(?P<name>.*  <.*>)')
 additional_author_regex = re.compile(r'^\t(?P<spaces>\ *)?(?P<name>.*  <.*>)')
-changelog_regex = re.compile(r'^([a-z0-9+-/]*)/ChangeLog:?')
+changelog_regex = re.compile(r'^(?:[fF]or +)?([a-z0-9+-/]*)/ChangeLog:?')
 pr_regex = re.compile(r'\tPR (?P<component>[a-z+-]+\/)?([0-9]+)$')
+dr_regex = re.compile(r'\tDR ([0-9]+)$')
 star_prefix_regex = re.compile(r'\t\*(?P<spaces>\ *)(?P<content>.*)')
 
 LINE_LIMIT = 100
 TAB_WIDTH = 8
 CO_AUTHORED_BY_PREFIX = 'co-authored-by: '
+CHERRY_PICK_PREFIX = '(cherry picked from commit '
+REVIEWED_BY_PREFIX = 'reviewed-by: '
+REVIEWED_ON_PREFIX = 'reviewed-on: '
+SIGNED_OFF_BY_PREFIX = 'signed-off-by: '
+
+REVIEW_PREFIXES = (REVIEWED_BY_PREFIX, REVIEWED_ON_PREFIX,
+                   SIGNED_OFF_BY_PREFIX)
 
 
 class Error:
@@ -176,14 +185,32 @@ class ChangeLogEntry:
     @property
     def files(self):
         files = []
+
+        # Whether the content currently processed is between a star prefix the
+        # end of the file list: a colon or an open paren.
+        in_location = False
+
         for line in self.lines:
+            # If this line matches the star prefix, start the location
+            # processing on the information that follows the star.
             m = star_prefix_regex.match(line)
             if m:
+                in_location = True
                 line = m.group('content')
+
+            if in_location:
+                # Strip everything that is not a filename in "line": entities
+                # "(NAME)", entry text (the colon, if present, and anything
+                # that follows it).
                 if '(' in line:
                     line = line[:line.index('(')]
+                    in_location = False
                 if ':' in line:
                     line = line[:line.index(':')]
+                    in_location = False
+
+                # At this point, all that 's left is a list of filenames
+                # separated by commas and whitespaces.
                 for file in line.split(','):
                     file = file.strip()
                     if file:
@@ -205,6 +232,12 @@ class ChangeLogEntry:
     def is_empty(self):
         return not self.lines and self.prs == self.initial_prs
 
+    def contains_author(self, author):
+        for author_lines in self.author_lines:
+            if author_lines[0] == author:
+                return True
+        return False
+
 
 class GitCommit:
     def __init__(self, hexsha, date, author, body, modified_files,
@@ -225,6 +258,8 @@ class GitCommit:
         project_files = [f for f in self.modified_files
                          if self.is_changelog_filename(f[0])
                          or f[0] in misc_files]
+        ignored_files = [f for f in self.modified_files
+                         if self.in_ignored_location(f[0])]
         if len(project_files) == len(self.modified_files):
             # All modified files are only MISC files
             return
@@ -234,9 +269,12 @@ class GitCommit:
                                      'separately from normal commits'))
             return
 
-        self.parse_lines()
+        all_are_ignored = (len(project_files) + len(ignored_files)
+                           == len(self.modified_files))
+        self.parse_lines(all_are_ignored)
         if self.changes:
             self.parse_changelog()
+            self.check_for_empty_description()
             self.deduce_changelog_locations()
             if not self.errors:
                 self.check_mentioned_files()
@@ -282,7 +320,7 @@ class GitCommit:
                 modified_files.append((parts[2], 'A'))
         return modified_files
 
-    def parse_lines(self):
+    def parse_lines(self, all_are_ignored):
         body = self.lines
 
         for i, b in enumerate(body):
@@ -290,11 +328,12 @@ class GitCommit:
                 continue
             if (changelog_regex.match(b) or self.find_changelog_location(b)
                     or star_prefix_regex.match(b) or pr_regex.match(b)
-                    or author_line_regex.match(b)):
+                    or dr_regex.match(b) or author_line_regex.match(b)):
                 self.changes = body[i:]
                 return
-        self.errors.append(Error('cannot find a ChangeLog location in '
-                                 'message'))
+        if not all_are_ignored:
+            self.errors.append(Error('cannot find a ChangeLog location in '
+                                     'message'))
 
     def parse_changelog(self):
         last_entry = None
@@ -343,11 +382,18 @@ class GitCommit:
                         continue
                     else:
                         pr_line = line.lstrip()
+                elif dr_regex.match(line):
+                    pr_line = line.lstrip()
 
-                if line.lower().startswith(CO_AUTHORED_BY_PREFIX):
+                lowered_line = line.lower()
+                if lowered_line.startswith(CO_AUTHORED_BY_PREFIX):
                     name = line[len(CO_AUTHORED_BY_PREFIX):]
                     author = self.format_git_author(name)
                     self.co_authors.append(author)
+                    continue
+                elif lowered_line.startswith(REVIEW_PREFIXES):
+                    continue
+                elif line.startswith(CHERRY_PICK_PREFIX):
                     continue
 
                 # ChangeLog name will be deduced later
@@ -369,7 +415,8 @@ class GitCommit:
                         self.changelog_entries.append(last_entry)
                         will_deduce = True
                 elif author_tuple:
-                    last_entry.author_lines.append(author_tuple)
+                    if not last_entry.contains_author(author_tuple[0]):
+                        last_entry.author_lines.append(author_tuple)
                     continue
 
                 if not line.startswith('\t'):
@@ -393,6 +440,15 @@ class GitCommit:
                             self.errors.append(Error(msg, line))
                         else:
                             last_entry.lines.append(line)
+
+    def check_for_empty_description(self):
+        for entry in self.changelog_entries:
+            for i, line in enumerate(entry.lines):
+                if (star_prefix_regex.match(line) and line.endswith(':') and
+                    (i == len(entry.lines) - 1
+                     or star_prefix_regex.match(entry.lines[i + 1]))):
+                    msg = 'missing description of a change'
+                    self.errors.append(Error(msg, line))
 
     def get_file_changelog_location(self, changelog_file):
         for file in self.modified_files:
@@ -500,11 +556,11 @@ class GitCommit:
                     err = Error(msg % (entry.folder, changelog_location), file)
                     self.errors.append(err)
 
-    def to_changelog_entries(self):
+    def to_changelog_entries(self, use_commit_ts=False):
         for entry in self.changelog_entries:
             output = ''
             timestamp = entry.datetime
-            if not timestamp:
+            if not timestamp or use_commit_ts:
                 timestamp = self.date.strftime('%Y-%m-%d')
             authors = entry.authors if entry.authors else [self.author]
             # add Co-Authored-By authors to all ChangeLog entries
