@@ -109,7 +109,7 @@ fs::path PkgBuilder::find_source_dir(const fs::path& base_dir)
 {
     std::set<fs::path> results;
 
-    for (const fs::path& p : fs::recursive_directory_iterator(base_dir)) {
+    for (const fs::path& p : fs::directory_iterator(base_dir)) {
         const std::string exp = base_dir.string() + "/gcc-";
         if (fs::is_directory(p) and (p.string().substr(0, exp.length()) == exp)) {
             if (fs::is_regular_file(p / "gcc" / "BASE-VER")
@@ -119,6 +119,22 @@ fs::path PkgBuilder::find_source_dir(const fs::path& base_dir)
                 )
             {
                 results.insert(p);
+            }
+        }
+    };
+
+    if (results.empty()) {
+        for (const fs::path& p : fs::recursive_directory_iterator(base_dir)) {
+            const std::string exp = base_dir.string() + "/gcc-";
+            if (fs::is_directory(p) and (p.string().substr(0, exp.length()) == exp)) {
+                if (fs::is_regular_file(p / "gcc" / "BASE-VER")
+                    and fs::is_regular_file(p / "gcc" / "DATESTAMP")
+                    and fs::is_regular_file(p / "gcc" / "gcc.c")
+                    and fs::is_regular_file(p / "gcc" / "DEV-PHASE")
+                   )
+                {
+                    results.insert(p);
+                }
             }
         }
     };

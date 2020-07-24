@@ -8,7 +8,7 @@ SRCS = \
 	CRename.cpp \
 	FileRename.cpp \
 	FileRemove.cpp \
-	ManifestDefs.cpp \
+	MftDefs.cpp \
 	ManifestInfo.cpp
 
 OBJS = $(patsubst %.cpp,%.o,$(SRCS))
