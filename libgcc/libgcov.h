@@ -45,6 +45,10 @@
 #include "libgcc_tm.h"
 #include "gcov.h"
 
+#ifdef __DJGPP__
+#include <stdint.h>
+#endif // __DJGPP__
+
 #if __CHAR_BIT__ == 8
 typedef unsigned gcov_unsigned_t __attribute__ ((mode (SI)));
 typedef unsigned gcov_position_t __attribute__ ((mode (SI)));
