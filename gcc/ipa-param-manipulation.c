@@ -111,6 +111,9 @@ ipa_dump_adjusted_parameters (FILE *f,
   unsigned i, len = vec_safe_length (adj_params);
   bool first = true;
 
+  if (!len)
+    return;
+
   fprintf (f, "    IPA adjusted parameters: ");
   for (i = 0; i < len; i++)
     {
@@ -780,6 +783,13 @@ ipa_param_adjustments::modify_call (gcall *stmt,
     {
       vec<tree, va_gc> **debug_args = NULL;
       unsigned i = 0;
+      cgraph_node *callee_node = cgraph_node::get (callee_decl);
+
+      /* FIXME: we don't seem to be able to insert debug args before clone
+	 is materialized.  Materializing them early leads to extra memory
+	 use.  */
+      if (callee_node->clone_of)
+	callee_node->get_untransformed_body ();
       for (tree old_parm = DECL_ARGUMENTS (old_decl);
 	   old_parm && i < old_nargs && ((int) i) < m_always_copy_start;
 	   old_parm = DECL_CHAIN (old_parm), i++)
@@ -787,7 +797,11 @@ ipa_param_adjustments::modify_call (gcall *stmt,
 	  if (!is_gimple_reg (old_parm) || kept[i])
 	    continue;
 	  tree origin = DECL_ORIGIN (old_parm);
-	  tree arg = gimple_call_arg (stmt, i);
+	  tree arg;
+	  if (transitive_remapping)
+	    arg = gimple_call_arg (stmt, index_map[i]);
+	  else
+	    arg = gimple_call_arg (stmt, i);
 
 	  if (!useless_type_conversion_p (TREE_TYPE (origin), TREE_TYPE (arg)))
 	    {
@@ -899,7 +913,7 @@ ipa_param_adjustments::dump (FILE *f)
   fprintf (f, "    m_always_copy_start: %i\n", m_always_copy_start);
   ipa_dump_adjusted_parameters (f, m_adj_params);
   if (m_skip_return)
-    fprintf (f, "     Will SKIP return.\n");
+    fprintf (f, "    Will SKIP return.\n");
 }
 
 /* Dump information contained in the object in textual form to stderr.  */

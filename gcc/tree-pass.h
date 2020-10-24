@@ -474,10 +474,10 @@ extern gimple_opt_pass *make_pass_sanopt (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_oacc_kernels (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_oacc (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_oacc_kernels (gcc::context *ctxt);
-extern gimple_opt_pass *make_pass_gen_hsail (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_warn_nonnull_compare (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_sprintf_length (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_walloca (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_modref (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_coroutine_lower_builtins (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_coroutine_early_expand_ifns (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_adjust_alignment (gcc::context *ctxt);
@@ -506,8 +506,8 @@ extern ipa_opt_pass_d *make_pass_ipa_cp (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_sra (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_icf (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_devirt (gcc::context *ctxt);
+extern ipa_opt_pass_d *make_pass_ipa_odr (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_reference (gcc::context *ctxt);
-extern ipa_opt_pass_d *make_pass_ipa_hsa (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_pure_const (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_pta (gcc::context *ctxt);
 extern simple_ipa_opt_pass *make_pass_ipa_tm (gcc::context *ctxt);
@@ -518,8 +518,7 @@ extern ipa_opt_pass_d *make_pass_ipa_profile (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_cdtor_merge (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_single_use (gcc::context *ctxt);
 extern ipa_opt_pass_d *make_pass_ipa_comdats (gcc::context *ctxt);
-extern simple_ipa_opt_pass *make_pass_materialize_all_clones (gcc::context *
-							      ctxt);
+extern ipa_opt_pass_d *make_pass_ipa_modref (gcc::context *ctxt);
 
 extern gimple_opt_pass *make_pass_cleanup_cfg_post_optimizing (gcc::context
 							       *ctxt);
@@ -626,6 +625,7 @@ extern gimple_opt_pass *make_pass_local_fn_summary (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_update_address_taken (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_convert_switch (gcc::context *ctxt);
 extern gimple_opt_pass *make_pass_lower_vaarg (gcc::context *ctxt);
+extern gimple_opt_pass *make_pass_gimple_isel (gcc::context *ctxt);
 
 /* Current optimization pass.  */
 extern opt_pass *current_pass;

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1999-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -100,9 +100,6 @@ package Targparm is
    --  Opt.Task_Dispatching_Policy is set to the first character of the
    --  policy name, and Opt.Task_Dispatching_Policy_Sloc is set to
    --  System_Location.
-
-   --  If a pragma Polling (On) appears, then the flag Opt.Polling_Required
-   --  is set to True.
 
    --  If a pragma Detect_Blocking appears, then the flag Opt.Detect_Blocking
    --  is set to True.

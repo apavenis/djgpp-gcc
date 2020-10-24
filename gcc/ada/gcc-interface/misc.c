@@ -35,6 +35,7 @@
 #include "stor-layout.h"
 #include "print-tree.h"
 #include "toplev.h"
+#include "tree-pass.h"
 #include "langhooks.h"
 #include "langhooks-def.h"
 #include "plugin.h"
@@ -47,6 +48,7 @@
 #include "atree.h"
 #include "namet.h"
 #include "nlists.h"
+#include "snames.h"
 #include "uintp.h"
 #include "fe.h"
 #include "sinfo.h"
@@ -164,7 +166,6 @@ gnat_handle_option (size_t scode, const char *arg, HOST_WIDE_INT value,
       /* These are handled by the front-end.  */
       break;
 
-    case OPT_fopenacc:
     case OPT_fshort_enums:
     case OPT_fsigned_char:
     case OPT_funsigned_char:
@@ -306,6 +307,9 @@ internal_error_function (diagnostic_context *context, const char *msgid,
 
   /* Warn if plugins present.  */
   warn_if_plugins ();
+
+  /* Dump the representation of the function.  */
+  emergency_dump_function ();
 
   /* Reset the pretty-printer.  */
   pp_clear_output_area (context->printer);
@@ -467,9 +471,6 @@ gnat_print_decl (FILE *file, tree node, int indent)
       if (DECL_LOOP_PARM_P (node))
 	print_node (file, "induction var", DECL_INDUCTION_VAR (node),
 		    indent + 4);
-      else
-	print_node (file, "renamed object", DECL_RENAMED_OBJECT (node),
-		    indent + 4);
       break;
 
     default:
@@ -617,10 +618,9 @@ gnat_get_fixed_point_type_info (const_tree type,
 {
   tree scale_factor;
 
-  /* GDB cannot handle fixed-point types yet, so rely on GNAT encodings
-     instead for it.  */
+  /* Do nothing if the GNAT encodings are used.  */
   if (!TYPE_IS_FIXED_POINT_P (type)
-      || gnat_encodings != DWARF_GNAT_ENCODINGS_MINIMAL)
+      || gnat_encodings == DWARF_GNAT_ENCODINGS_ALL)
     return false;
 
   scale_factor = TYPE_SCALE_FACTOR (type);
@@ -1002,6 +1002,10 @@ get_array_bit_stride (tree comp_type)
   /* Simple case: the array contains an integral type: return its RM size.  */
   if (INTEGRAL_TYPE_P (comp_type))
     return TYPE_RM_SIZE (comp_type);
+
+  /* Likewise for record or union types.  */
+  if (RECORD_OR_UNION_TYPE_P (comp_type) && !TYPE_FAT_POINTER_P (comp_type))
+    return TYPE_ADA_SIZE (comp_type);
 
   /* The gnat_get_array_descr_info debug hook expects a debug tyoe.  */
   comp_type = maybe_debug_type (comp_type);

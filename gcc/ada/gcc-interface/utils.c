@@ -50,6 +50,7 @@
 #include "types.h"
 #include "atree.h"
 #include "nlists.h"
+#include "snames.h"
 #include "uintp.h"
 #include "fe.h"
 #include "sinfo.h"
@@ -91,6 +92,7 @@ static tree handle_nonnull_attribute (tree *, tree, tree, int, bool *);
 static tree handle_sentinel_attribute (tree *, tree, tree, int, bool *);
 static tree handle_noreturn_attribute (tree *, tree, tree, int, bool *);
 static tree handle_stack_protect_attribute (tree *, tree, tree, int, bool *);
+static tree handle_no_stack_protector_attribute (tree *, tree, tree, int, bool *);
 static tree handle_noinline_attribute (tree *, tree, tree, int, bool *);
 static tree handle_noclone_attribute (tree *, tree, tree, int, bool *);
 static tree handle_noicf_attribute (tree *, tree, tree, int, bool *);
@@ -113,6 +115,13 @@ static const struct attribute_spec::exclusions attr_cold_hot_exclusions[] =
   { "cold", true,  true,  true  },
   { "hot" , true,  true,  true  },
   { NULL  , false, false, false }
+};
+
+static const struct attribute_spec::exclusions attr_stack_protect_exclusions[] =
+{
+  { "stack_protect", true, false, false },
+  { "no_stack_protector", true, false, false },
+  { NULL, false, false, false },
 };
 
 /* Fake handler for attributes we don't properly support, typically because
@@ -140,7 +149,11 @@ const struct attribute_spec gnat_internal_attribute_table[] =
   { "noreturn",     0, 0,  true,  false, false, false,
     handle_noreturn_attribute, NULL },
   { "stack_protect",0, 0, true,  false, false, false,
-    handle_stack_protect_attribute, NULL },
+    handle_stack_protect_attribute,
+    attr_stack_protect_exclusions },
+  { "no_stack_protector",0, 0, true,  false, false, false,
+    handle_no_stack_protector_attribute,
+    attr_stack_protect_exclusions },
   { "noinline",     0, 0,  true,  false, false, false,
     handle_noinline_attribute, NULL },
   { "noclone",      0, 0,  true,  false, false, false,
@@ -1342,7 +1355,7 @@ make_type_from_size (tree type, tree size_tree, bool for_biased)
 	 not already have the proper size and the size is not too large.  */
       if (BIT_PACKED_ARRAY_TYPE_P (type)
 	  || (TYPE_PRECISION (type) == size && biased_p == for_biased)
-	  || size > LONG_LONG_TYPE_SIZE)
+	  || size > (Enable_128bit_Types ? 128 : LONG_LONG_TYPE_SIZE))
 	break;
 
       biased_p |= for_biased;
@@ -2561,7 +2574,7 @@ copy_type (tree type)
     }
 
   /* And the contents of the language-specific slot if needed.  */
-  if ((INTEGRAL_TYPE_P (type) || TREE_CODE (type) == REAL_TYPE)
+  if ((INTEGRAL_TYPE_P (type) || SCALAR_FLOAT_TYPE_P (type))
       && TYPE_RM_VALUES (type))
     {
       TYPE_RM_VALUES (new_type) = NULL_TREE;
@@ -2904,6 +2917,31 @@ aggregate_type_contains_array_p (tree type, bool self_referential)
     }
 }
 
+/* Return true if TYPE is a type with variable size or a padding type with a
+   field of variable size or a record that has a field with such a type.  */
+
+static bool
+type_has_variable_size (tree type)
+{
+  tree field;
+
+  if (!TREE_CONSTANT (TYPE_SIZE (type)))
+    return true;
+
+  if (TYPE_IS_PADDING_P (type)
+      && !TREE_CONSTANT (DECL_SIZE (TYPE_FIELDS (type))))
+    return true;
+
+  if (!RECORD_OR_UNION_TYPE_P (type))
+    return false;
+
+  for (field = TYPE_FIELDS (type); field; field = DECL_CHAIN (field))
+    if (type_has_variable_size (TREE_TYPE (field)))
+      return true;
+
+  return false;
+}
+
 /* Return a FIELD_DECL node.  NAME is the field's name, TYPE is its type and
    RECORD_TYPE is the type of the enclosing record.  If SIZE is nonzero, it
    is the specified size of the field.  If POS is nonzero, it is the bit
@@ -2973,13 +3011,15 @@ create_field_decl (tree name, tree type, tree record_type, tree size, tree pos,
 
   DECL_PACKED (field_decl) = pos ? DECL_BIT_FIELD (field_decl) : packed;
 
-  /* If FIELD_TYPE is BLKmode, we must ensure this is aligned to at least a
-     byte boundary since GCC cannot handle less-aligned BLKmode bitfields.
+  /* If FIELD_TYPE has BLKmode, we must ensure this is aligned to at least
+     a byte boundary since GCC cannot handle less aligned BLKmode bitfields.
+     Likewise if it has a variable size and no specified position because
+     variable-sized objects need to be aligned to at least a byte boundary.
      Likewise for an aggregate without specified position that contains an
-     array, because in this case slices of variable length of this array
-     must be handled by GCC and variable-sized objects need to be aligned
-     to at least a byte boundary.  */
+     array because, in this case, slices of variable length of this array
+     must be handled by GCC and have variable size.  */
   if (packed && (TYPE_MODE (type) == BLKmode
+		 || (!pos && type_has_variable_size (type))
 		 || (!pos
 		     && AGGREGATE_TYPE_P (type)
 		     && aggregate_type_contains_array_p (type, false))))
@@ -3016,7 +3056,7 @@ create_field_decl (tree name, tree type, tree record_type, tree size, tree pos,
       unsigned int known_align;
 
       if (tree_fits_uhwi_p (pos))
-	known_align = tree_to_uhwi (pos) & - tree_to_uhwi (pos);
+	known_align = tree_to_uhwi (pos) & -tree_to_uhwi (pos);
       else
 	known_align = BITS_PER_UNIT;
 
@@ -5879,7 +5919,16 @@ gnat_write_global_declarations (void)
 	  }
     }
 
-  /* Output debug information for all global type declarations first.  This
+  /* First output the integral global variables, so that they can be referenced
+     as bounds by the global dynamic types.  Skip external variables, unless we
+     really need to emit debug info for them:, e.g. imported variables.  */
+  FOR_EACH_VEC_SAFE_ELT (global_decls, i, iter)
+    if (TREE_CODE (iter) == VAR_DECL
+	&& INTEGRAL_TYPE_P (TREE_TYPE (iter))
+	&& (!DECL_EXTERNAL (iter) || !DECL_IGNORED_P (iter)))
+      rest_of_decl_compilation (iter, true, 0);
+
+  /* Now output debug information for the global type declarations.  This
      ensures that global types whose compilation hasn't been finalized yet,
      for example pointers to Taft amendment types, have their compilation
      finalized in the right context.  */
@@ -5887,7 +5936,20 @@ gnat_write_global_declarations (void)
     if (TREE_CODE (iter) == TYPE_DECL && !DECL_IGNORED_P (iter))
       debug_hooks->type_decl (iter, false);
 
-  /* Output imported functions.  */
+  /* Then output the other global variables.  We need to do that after the
+     information for global types is emitted so that they are finalized.  */
+  FOR_EACH_VEC_SAFE_ELT (global_decls, i, iter)
+    if (TREE_CODE (iter) == VAR_DECL
+	&& !INTEGRAL_TYPE_P (TREE_TYPE (iter))
+	&& (!DECL_EXTERNAL (iter) || !DECL_IGNORED_P (iter)))
+      rest_of_decl_compilation (iter, true, 0);
+
+  /* Output debug information for the global constants.  */
+  FOR_EACH_VEC_SAFE_ELT (global_decls, i, iter)
+    if (TREE_CODE (iter) == CONST_DECL && !DECL_IGNORED_P (iter))
+      debug_hooks->early_global_decl (iter);
+
+  /* Output it for the imported functions.  */
   FOR_EACH_VEC_SAFE_ELT (global_decls, i, iter)
     if (TREE_CODE (iter) == FUNCTION_DECL
 	&& DECL_EXTERNAL (iter)
@@ -5896,21 +5958,7 @@ gnat_write_global_declarations (void)
 	&& DECL_FUNCTION_IS_DEF (iter))
       debug_hooks->early_global_decl (iter);
 
-  /* Output global constants.  */
-  FOR_EACH_VEC_SAFE_ELT (global_decls, i, iter)
-    if (TREE_CODE (iter) == CONST_DECL && !DECL_IGNORED_P (iter))
-      debug_hooks->early_global_decl (iter);
-
-  /* Then output the global variables.  We need to do that after the debug
-     information for global types is emitted so that they are finalized.  Skip
-     external global variables, unless we need to emit debug info for them:
-     this is useful for imported variables, for instance.  */
-  FOR_EACH_VEC_SAFE_ELT (global_decls, i, iter)
-    if (TREE_CODE (iter) == VAR_DECL
-	&& (!DECL_EXTERNAL (iter) || !DECL_IGNORED_P (iter)))
-      rest_of_decl_compilation (iter, true, 0);
-
-  /* Output the imported modules/declarations.  In GNAT, these are only
+  /* Output it for the imported modules/declarations.  In GNAT, these are only
      materializing subprogram.  */
   FOR_EACH_VEC_SAFE_ELT (global_decls, i, iter)
    if (TREE_CODE (iter) == IMPORTED_DECL && !DECL_IGNORED_P (iter))
@@ -6523,6 +6571,23 @@ handle_stack_protect_attribute (tree *node, tree name, tree, int,
 
   return NULL_TREE;
 }
+
+/* Handle a "no_stack_protector" attribute; arguments as in
+   struct attribute_spec.handler.  */
+
+static tree
+handle_no_stack_protector_attribute (tree *node, tree name, tree, int,
+				   bool *no_add_attrs)
+{
+  if (TREE_CODE (*node) != FUNCTION_DECL)
+    {
+      warning (OPT_Wattributes, "%qE attribute ignored", name);
+      *no_add_attrs = true;
+    }
+
+  return NULL_TREE;
+}
+
 
 /* Handle a "noinline" attribute; arguments as in
    struct attribute_spec.handler.  */

@@ -22,7 +22,7 @@ from itertools import takewhile
 
 from dateutil.parser import parse
 
-from git_commit import GitCommit
+from git_commit import GitCommit, GitInfo
 
 from unidiff import PatchSet
 
@@ -66,10 +66,14 @@ class GitEmail(GitCommit):
             else:
                 t = 'M'
             modified_files.append((target, t))
-        super().__init__(None, date, author, body, modified_files,
-                         strict=strict)
+        git_info = GitInfo(None, date, author, body, modified_files)
+        super().__init__(git_info, strict=strict,
+                         commit_to_info_hook=lambda x: None)
 
 
+# With zero arguments, process every patch file in the ./patches directory.
+# With one argument, process the named patch file.
+# Patch files must be in 'git format-patch' format.
 if __name__ == '__main__':
     if len(sys.argv) == 1:
         allfiles = []
@@ -97,6 +101,7 @@ if __name__ == '__main__':
             print('OK')
             email.print_output()
         else:
-            if not email.lines:
+            if not email.info.lines:
                 print('Error: patch contains no parsed lines', file=sys.stderr)
             email.print_errors()
+            sys.exit(1)

@@ -96,6 +96,7 @@ bits_srcdir = ${glibcxx_srcdir}/include/bits
 bits_builddir = ./bits
 bits_headers = \
 	${bits_srcdir}/algorithmfwd.h \
+	${bits_srcdir}/align.h \
 	${bits_srcdir}/alloc_traits.h \
 	${bits_srcdir}/allocated_ptr.h \
 	${bits_srcdir}/allocator.h \
@@ -129,7 +130,6 @@ bits_headers = \
 	${bits_srcdir}/hashtable.h \
 	${bits_srcdir}/hashtable_policy.h \
 	${bits_srcdir}/indirect_array.h \
-	${bits_srcdir}/int_limits.h \
 	${bits_srcdir}/invoke.h \
 	${bits_srcdir}/ios_base.h \
 	${bits_srcdir}/istream.tcc \
@@ -144,6 +144,7 @@ bits_headers = \
 	${bits_srcdir}/locale_facets_nonio.tcc \
 	${bits_srcdir}/localefwd.h \
 	${bits_srcdir}/mask_array.h \
+	${bits_srcdir}/max_size_type.h \
 	${bits_srcdir}/memoryfwd.h \
 	${bits_srcdir}/move.h \
 	${bits_srcdir}/node_handle.h \
@@ -157,10 +158,12 @@ bits_headers = \
 	${bits_srcdir}/random.h \
 	${bits_srcdir}/random.tcc \
 	${bits_srcdir}/range_access.h \
-	${bits_srcdir}/range_cmp.h \
 	${bits_srcdir}/ranges_algobase.h \
 	${bits_srcdir}/ranges_algo.h \
+	${bits_srcdir}/ranges_base.h \
+	${bits_srcdir}/ranges_cmp.h \
 	${bits_srcdir}/ranges_uninitialized.h \
+	${bits_srcdir}/ranges_util.h \
 	${bits_srcdir}/refwrap.h \
 	${bits_srcdir}/regex.h \
 	${bits_srcdir}/regex.tcc \
@@ -219,6 +222,7 @@ bits_headers = \
 	${bits_srcdir}/unordered_map.h \
 	${bits_srcdir}/unordered_set.h \
 	${bits_srcdir}/uses_allocator.h \
+	${bits_srcdir}/uses_allocator_args.h \
 	${bits_srcdir}/valarray_array.h \
 	${bits_srcdir}/valarray_array.tcc \
 	${bits_srcdir}/valarray_before.h \

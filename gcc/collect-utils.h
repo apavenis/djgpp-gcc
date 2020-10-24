@@ -27,16 +27,17 @@ extern void fatal_signal (int);
 
 extern struct pex_obj *collect_execute (const char *, char **,
 					const char *, const char *,
-					int, bool);
+					int, bool, const char *);
 extern int collect_wait (const char *, struct pex_obj *);
 extern void do_wait (const char *, struct pex_obj *);
-extern void fork_execute (const char *, char **, bool);
+extern void fork_execute (const char *, char **, bool, const char *);
 extern void utils_cleanup (bool);
 
 
 extern bool debug;
 extern bool verbose;
 extern bool save_temps;
+extern const char *dumppfx;
 
 /* Provided by the tool itself.  */
 

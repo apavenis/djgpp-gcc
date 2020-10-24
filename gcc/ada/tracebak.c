@@ -6,7 +6,7 @@
  *                                                                          *
  *                          C Implementation File                           *
  *                                                                          *
- *            Copyright (C) 2000-2019, Free Software Foundation, Inc.       *
+ *            Copyright (C) 2000-2020, Free Software Foundation, Inc.       *
  *                                                                          *
  * GNAT is free software;  you can  redistribute it  and/or modify it under *
  * terms of the  GNU General Public License as published  by the Free Soft- *
@@ -689,6 +689,9 @@ __gnat_backtrace (void ** traceback __attribute__((unused)),
  *------------------------------------------------------------------*/
 
 #elif defined (USE_GENERIC_UNWINDER)
+
+/* No warning since the cases where FRAME_LEVEL > 0 are known to work.  */
+#pragma GCC diagnostic ignored "-Wframe-address"
 
 #ifndef CURRENT_STACK_FRAME
 # define CURRENT_STACK_FRAME  ({ char __csf; &__csf; })

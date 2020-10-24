@@ -123,7 +123,9 @@ enum include_type
    /* Non-directive including mechanisms.  */
    IT_CMDLINE,  /* -include */
    IT_DEFAULT,  /* forced header  */
-   IT_MAIN,     /* main  */
+   IT_MAIN,     /* main, start on line 1 */
+   IT_PRE_MAIN,  /* main, but there will be a preamble before line
+		    1 */
 
    IT_DIRECTIVE_HWM = IT_IMPORT + 1,  /* Directives below this.  */
    IT_HEADER_HWM = IT_DEFAULT + 1     /* Header files below this.  */
@@ -515,9 +517,9 @@ struct cpp_reader
      set to -1 to disable it or to a non-negative value to enable it.  */
   time_t source_date_epoch;
 
-  /* EOF token, and a token forcing paste avoidance.  */
+  /* A token forcing paste avoidance, and one demarking macro arguments.  */
   cpp_token avoid_paste;
-  cpp_token eof;
+  cpp_token endarg;
 
   /* Opaque handle to the dependencies of mkdeps.c.  */
   class mkdeps *deps;

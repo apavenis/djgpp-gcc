@@ -1910,10 +1910,6 @@ Alphabetical List of All Switches
   Note that this option should be used only for compiling -- the
   code is likely to malfunction at run time.
 
-  Note that when :switch:`-gnatct` is used to generate trees for input
-  into ASIS tools, these representation clauses are removed
-  from the tree and ignored. This means that the tool will not see them.
-
 
 .. index:: -gnatjnn  (gcc)
 
@@ -2062,15 +2058,6 @@ Alphabetical List of All Switches
   Cancel effect of previous :switch:`-gnatp` switch.
 
 
-.. index:: -gnatP  (gcc)
-
-:switch:`-gnatP`
-  Enable polling. This is required on some systems (notably Windows NT) to
-  obtain asynchronous abort and asynchronous transfer of control capability.
-  See ``Pragma_Polling`` in the :title:`GNAT_Reference_Manual` for full
-  details.
-
-
 .. index:: -gnatq  (gcc)
 
 :switch:`-gnatq`
@@ -2110,12 +2097,6 @@ Alphabetical List of All Switches
 
 :switch:`-gnatS`
   Print package Standard.
-
-
-.. index:: -gnatt  (gcc)
-
-:switch:`-gnatt`
-  Generate tree output file.
 
 
 .. index:: -gnatT  (gcc)
@@ -2599,14 +2580,6 @@ format:
   environments) that are driven from the :file:`ALI` file. This switch
   implies :switch:`-gnatq`, since the semantic phase must be run to get a
   meaningful ALI file.
-
-  In addition, if :switch:`-gnatt` is also specified, then the tree file is
-  generated even if there are illegalities. It may be useful in this case
-  to also specify :switch:`-gnatq` to ensure that full semantic processing
-  occurs. The resulting tree file can be processed by ASIS, for the purpose
-  of providing partial information about illegal units, but if the error
-  causes the tree to be badly malformed, then ASIS may crash during the
-  analysis.
 
   When :switch:`-gnatQ` is used and the generated :file:`ALI` file is marked as
   being in error, ``gnatmake`` will attempt to recompile the source when it
@@ -3892,8 +3865,14 @@ of the pragma in the :title:`GNAT_Reference_manual`).
 
   This switch activates warnings for access to variables which
   may not be properly initialized. The default is that
-  such warnings are generated.
+  such warnings are generated. This switch will also be emitted when
+  initializing an array or record object via the following aggregate:
 
+  .. code-block:: ada
+
+       Array_Or_Record : XXX := (others => <>);
+
+  unless the relevant type fully initializes all components.
 
 .. index:: -gnatwV  (gcc)
 
@@ -3902,17 +3881,6 @@ of the pragma in the :title:`GNAT_Reference_manual`).
 
   This switch suppresses warnings for access to variables which
   may not be properly initialized.
-  For variables of a composite type, the warning can also be suppressed in
-  Ada 2005 by using a default initialization with a box. For example, if
-  Table is an array of records whose components are only partially uninitialized,
-  then the following code:
-
-  .. code-block:: ada
-
-       Tab : Table := (others => <>);
-
-  will suppress warnings on subsequent statements that access components
-  of variable Tab.
 
 
 .. index:: -gnatw.v  (gcc)
@@ -4421,7 +4389,7 @@ to the default checks required by Ada as described above.
 
   All validity checks are turned on.
   That is, :switch:`-gnatVa` is
-  equivalent to ``gnatVcdfimorst``.
+  equivalent to ``gnatVcdfimoprst``.
 
 
 .. index:: -gnatVc  (gcc)
@@ -5695,21 +5663,6 @@ Subprogram Inlining Control
 Auxiliary Output Control
 ------------------------
 
-.. index:: -gnatt  (gcc)
-.. index:: Writing internal trees
-.. index:: Internal trees, writing to file
-
-:switch:`-gnatt`
-  Causes GNAT to write the internal tree for a unit to a file (with the
-  extension :file:`.adt`.
-  This not normally required, but is used by separate analysis tools.
-  Typically
-  these tools do the necessary compilations automatically, so you should
-  not have to specify this switch in normal operation.
-  Note that the combination of switches :switch:`-gnatct`
-  generates a tree in the form required by ASIS applications.
-
-
 .. index:: -gnatu  (gcc)
 
 :switch:`-gnatu`
@@ -6541,8 +6494,8 @@ be presented in subsequent sections.
   limitations:
 
   * Starting the program's execution in the debugger will cause it to
-    stop at the start of the ``main`` function instead of the main subprogram. 
-    This can be worked around by manually inserting a breakpoint on that 
+    stop at the start of the ``main`` function instead of the main subprogram.
+    This can be worked around by manually inserting a breakpoint on that
     subprogram and resuming the program's execution until reaching that breakpoint.
   * Programs using GNAT.Compiler_Version will not link.
 
@@ -6742,6 +6695,14 @@ be presented in subsequent sections.
 
 :switch:`-x`
   Exclude source files (check object consistency only).
+
+
+  .. index:: -xdr  (gnatbind)
+
+:switch:`-xdr`
+  Use the target-independent XDR protocol for stream oriented attributes
+  instead of the default implementation which is based on direct binary
+  representations and is therefore target-and endianness-dependent.
 
 
   .. index:: -Xnnn  (gnatbind)

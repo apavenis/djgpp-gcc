@@ -219,6 +219,14 @@ enum profile_reproducibility {
     PROFILE_REPRODUCIBILITY_MULTITHREADED
 };
 
+/* Type of -fstack-protector-*.  */
+enum stack_protector {
+  SPCT_FLAG_DEFAULT = 1,
+  SPCT_FLAG_ALL = 2,
+  SPCT_FLAG_STRONG = 3,
+  SPCT_FLAG_EXPLICIT = 4
+};
+
 /* Types of unwind/exception handling info that can be generated.  */
 
 enum unwind_info_type
@@ -357,6 +365,23 @@ struct kv_pair
 {
   const char *const name;	/* the name of the value */
   const ValueType value;	/* the value of the name */
+};
+
+/* Iterator pair used for a collection iteration with range-based loops.  */
+
+template<typename T>
+struct iterator_range
+{
+public:
+  iterator_range (const T &begin, const T &end)
+    : m_begin (begin), m_end (end) {}
+
+  T begin () const { return m_begin; }
+  T end () const { return m_end; }
+
+private:
+  T m_begin;
+  T m_end;
 };
 
 #else

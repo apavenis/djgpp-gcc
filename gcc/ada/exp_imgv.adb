@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2001-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -27,6 +27,7 @@ with Atree;    use Atree;
 with Casing;   use Casing;
 with Checks;   use Checks;
 with Einfo;    use Einfo;
+with Exp_Put_Image;
 with Exp_Util; use Exp_Util;
 with Lib;      use Lib;
 with Namet;    use Namet;
@@ -58,7 +59,7 @@ package body Exp_Imgv is
       Pref      : Entity_Id;
       Attr_Name : Name_Id;
       Str_Typ   : Entity_Id);
-   --  AI12-00124: Rewrite attribute 'Image when it is applied to an object
+   --  AI12-0124: Rewrite attribute 'Image when it is applied to an object
    --  reference as an attribute applied to a type. N denotes the node to be
    --  rewritten, Pref denotes the prefix of the 'Image attribute, and Name
    --  and Str_Typ specify which specific string type and 'Image attribute to
@@ -263,7 +264,7 @@ package body Exp_Imgv is
    --      tv = Long_Long_Integer?(Expr) [convert with no scaling]
    --      pm = typ'Scale (typ = subtype of expression)
 
-   --  For enumeration types other than those declared packages Standard
+   --  For enumeration types other than those declared in package Standard
    --  or System, Snn, Pnn, are expanded as above, but the call looks like:
 
    --    Image_Enumeration_NN (rt'Pos (X), Snn, Pnn, typS, typI'Address)
@@ -474,22 +475,34 @@ package body Exp_Imgv is
       if Is_Object_Image (Pref) then
          Rewrite_Object_Image (N, Pref, Name_Image, Standard_String);
          return;
+      end if;
+
+      Ptyp := Entity (Pref);
+
+      --  Ada 2020 allows 'Image on private types, so fetch the underlying
+      --  type to obtain the structure of the type. We use the base type,
+      --  not the root type, to handle properly derived types, but we use
+      --  the root type for enumeration types, because the literal map is
+      --  attached to the root. Should be inherited ???
+
+      if Is_Enumeration_Type (Ptyp) then
+         Rtyp := Underlying_Type (Root_Type (Ptyp));
+      else
+         Rtyp := Underlying_Type (Base_Type (Ptyp));
+      end if;
 
       --  Enable speed-optimized expansion of user-defined enumeration types
       --  if we are compiling with optimizations enabled and enumeration type
       --  literals are generated. Otherwise the call will be expanded into a
       --  call to the runtime library.
 
-      elsif Optimization_Level > 0
+      if Optimization_Level > 0
         and then not Global_Discard_Names
-        and then Is_User_Defined_Enumeration_Type (Root_Type (Entity (Pref)))
+        and then Is_User_Defined_Enumeration_Type (Rtyp)
       then
          Expand_User_Defined_Enumeration_Image;
          return;
       end if;
-
-      Ptyp := Entity (Pref);
-      Rtyp := Root_Type (Ptyp);
 
       --  Build declarations of Snn and Pnn to be inserted
 
@@ -523,7 +536,15 @@ package body Exp_Imgv is
 
       Enum_Case := False;
 
-      if Rtyp = Standard_Boolean then
+      --  If this is a case where Image should be transformed using Put_Image,
+      --  then do so. See Exp_Put_Image for details.
+
+      if Exp_Put_Image.Image_Should_Call_Put_Image (N) then
+         Rewrite (N, Exp_Put_Image.Build_Image_Call (N));
+         Analyze_And_Resolve (N, Standard_String, Suppress => All_Checks);
+         return;
+
+      elsif Rtyp = Standard_Boolean then
          Imid := RE_Image_Boolean;
          Tent := Rtyp;
 
@@ -549,21 +570,27 @@ package body Exp_Imgv is
          Tent := Rtyp;
 
       elsif Is_Signed_Integer_Type (Rtyp) then
-         if Esize (Rtyp) <= Esize (Standard_Integer) then
+         if Esize (Rtyp) <= Standard_Integer_Size then
             Imid := RE_Image_Integer;
             Tent := Standard_Integer;
-         else
+         elsif Esize (Rtyp) <= Standard_Long_Long_Integer_Size then
             Imid := RE_Image_Long_Long_Integer;
             Tent := Standard_Long_Long_Integer;
+         else
+            Imid := RE_Image_Long_Long_Long_Integer;
+            Tent := Standard_Long_Long_Long_Integer;
          end if;
 
       elsif Is_Modular_Integer_Type (Rtyp) then
          if Modulus (Rtyp) <= Modulus (RTE (RE_Unsigned)) then
             Imid := RE_Image_Unsigned;
             Tent := RTE (RE_Unsigned);
-         else
+         elsif Modulus (Rtyp) <= Modulus (RTE (RE_Long_Long_Unsigned)) then
             Imid := RE_Image_Long_Long_Unsigned;
             Tent := RTE (RE_Long_Long_Unsigned);
+         else
+            Imid := RE_Image_Long_Long_Long_Unsigned;
+            Tent := RTE (RE_Long_Long_Long_Unsigned);
          end if;
 
       elsif Is_Fixed_Point_Type (Rtyp) and then Has_Decimal_Small (Rtyp) then
@@ -586,19 +613,24 @@ package body Exp_Imgv is
       --  Only other possibility is user-defined enumeration type
 
       else
+         pragma Assert (Is_Enumeration_Type (Rtyp));
+
          if Discard_Names (First_Subtype (Ptyp))
-           or else No (Lit_Strings (Root_Type (Ptyp)))
+           or else No (Lit_Strings (Rtyp))
          then
             --  When pragma Discard_Names applies to the first subtype, build
-            --  (Pref'Pos (Expr))'Img.
+            --  (Long_Long_Integer (Pref'Pos (Expr)))'Img. The conversion is
+            --  there to avoid applying 'Img directly in Universal_Integer,
+            --  which can be a very large type. See also the handling of 'Val.
 
             Rewrite (N,
               Make_Attribute_Reference (Loc,
                 Prefix =>
-                   Make_Attribute_Reference (Loc,
-                     Prefix         => Pref,
-                     Attribute_Name => Name_Pos,
-                     Expressions    => New_List (Expr)),
+                  Convert_To (Standard_Long_Long_Integer,
+                    Make_Attribute_Reference (Loc,
+                    Prefix         => Pref,
+                    Attribute_Name => Name_Pos,
+                    Expressions    => New_List (Expr))),
                 Attribute_Name =>
                   Name_Img));
             Analyze_And_Resolve (N, Standard_String);
@@ -633,14 +665,49 @@ package body Exp_Imgv is
       --  Build first argument for call
 
       if Enum_Case then
-         Arg_List := New_List (
-           Make_Attribute_Reference (Loc,
-             Attribute_Name => Name_Pos,
-             Prefix         => New_Occurrence_Of (Ptyp, Loc),
-             Expressions    => New_List (Expr)));
+         declare
+            T : Entity_Id;
+         begin
+            --  In Ada 2020 we need the underlying type here, because 'Image is
+            --  allowed on private types. We have already checked the version
+            --  when resolving the attribute.
+
+            if Is_Private_Type (Ptyp) then
+               T := Rtyp;
+            else
+               T := Ptyp;
+            end if;
+
+            Arg_List := New_List (
+              Make_Attribute_Reference (Loc,
+                Attribute_Name => Name_Pos,
+                Prefix         => New_Occurrence_Of (T, Loc),
+                Expressions    => New_List (Expr)));
+         end;
+
+      --  AI12-0020: Ada 2020 allows 'Image for all types, including private
+      --  types. If the full type is not a fixed-point type, then it is enough
+      --  to set the Conversion_OK flag. However, that would not work for
+      --  fixed-point types, because that flag changes the run-time semantics
+      --  of fixed-point type conversions; therefore, we must first convert to
+      --  Rtyp, and then to Tent.
 
       else
-         Arg_List := New_List (Convert_To (Tent, Expr));
+         declare
+            Conv : Node_Id;
+         begin
+            if Is_Private_Type (Etype (Expr)) then
+               if Is_Fixed_Point_Type (Rtyp) then
+                  Conv := Convert_To (Tent, OK_Convert_To (Rtyp, Expr));
+               else
+                  Conv := OK_Convert_To (Tent, Expr);
+               end if;
+            else
+               Conv := Convert_To (Tent, Expr);
+            end if;
+
+            Arg_List := New_List (Conv);
+         end;
       end if;
 
       --  Append Snn, Pnn arguments
@@ -746,7 +813,7 @@ package body Exp_Imgv is
 
    --    btyp (Value_xx (X))
 
-   --  where btyp is he base type of the prefix
+   --  where btyp is the base type of the prefix
 
    --    For types whose root type is Character
    --      xx = Character
@@ -837,20 +904,22 @@ package body Exp_Imgv is
            Make_Integer_Literal (Loc,
              Intval => Int (Wide_Character_Encoding_Method)));
 
-      elsif     Rtyp = Base_Type (Standard_Short_Short_Integer)
-        or else Rtyp = Base_Type (Standard_Short_Integer)
-        or else Rtyp = Base_Type (Standard_Integer)
-      then
-         Vid := RE_Value_Integer;
-
       elsif Is_Signed_Integer_Type (Rtyp) then
-         Vid := RE_Value_Long_Long_Integer;
+         if Esize (Rtyp) <= Standard_Integer_Size then
+            Vid := RE_Value_Integer;
+         elsif Esize (Rtyp) <= Standard_Long_Long_Integer_Size then
+            Vid := RE_Value_Long_Long_Integer;
+         else
+            Vid := RE_Value_Long_Long_Long_Integer;
+         end if;
 
       elsif Is_Modular_Integer_Type (Rtyp) then
          if Modulus (Rtyp) <= Modulus (RTE (RE_Unsigned)) then
             Vid := RE_Value_Unsigned;
-         else
+         elsif Modulus (Rtyp) <= Modulus (RTE (RE_Long_Long_Unsigned)) then
             Vid := RE_Value_Long_Long_Unsigned;
+         else
+            Vid := RE_Value_Long_Long_Long_Unsigned;
          end if;
 
       elsif Is_Decimal_Fixed_Point_Type (Rtyp) then
@@ -1357,14 +1426,30 @@ package body Exp_Imgv is
       --  Signed integer types
 
       elsif Is_Signed_Integer_Type (Rtyp) then
-         XX := RE_Width_Long_Long_Integer;
-         YY := Standard_Long_Long_Integer;
+         if Esize (Rtyp) <= Standard_Integer_Size then
+            XX := RE_Width_Integer;
+            YY := Standard_Integer;
+         elsif Esize (Rtyp) <= Standard_Long_Long_Integer_Size then
+            XX := RE_Width_Long_Long_Integer;
+            YY := Standard_Long_Long_Integer;
+         else
+            XX := RE_Width_Long_Long_Long_Integer;
+            YY := Standard_Long_Long_Long_Integer;
+         end if;
 
       --  Modular integer types
 
       elsif Is_Modular_Integer_Type (Rtyp) then
-         XX := RE_Width_Long_Long_Unsigned;
-         YY := RTE (RE_Long_Long_Unsigned);
+         if Modulus (Rtyp) <= Modulus (RTE (RE_Unsigned)) then
+            XX := RE_Width_Unsigned;
+            YY := RTE (RE_Unsigned);
+         elsif Modulus (Rtyp) <= Modulus (RTE (RE_Long_Long_Unsigned)) then
+            XX := RE_Width_Long_Long_Unsigned;
+            YY := RTE (RE_Long_Long_Unsigned);
+         else
+            XX := RE_Width_Long_Long_Long_Unsigned;
+            YY := RTE (RE_Long_Long_Long_Unsigned);
+         end if;
 
       --  Real types
 

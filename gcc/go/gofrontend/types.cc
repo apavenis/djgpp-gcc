@@ -5182,7 +5182,11 @@ Function_type::do_export(Export* exp) const
 	    first = false;
 	  else
 	    exp->write_c_string(", ");
-	  exp->write_name(p->name());
+	  // The hash for a function type ignores parameter names, so
+	  // we don't want to write them out here.  If we did write
+	  // them out, we could get spurious changes in export data
+	  // when recompiling a package.
+	  exp->write_name("");
 	  exp->write_c_string(" ");
 	  if (!is_varargs || p + 1 != this->parameters_->end())
 	    exp->write_type(p->type());
@@ -5213,7 +5217,7 @@ Function_type::do_export(Export* exp) const
 		first = false;
 	      else
 		exp->write_c_string(", ");
-	      exp->write_name(p->name());
+	      exp->write_name("");
 	      exp->write_c_string(" ");
 	      exp->write_type(p->type());
 	    }
@@ -5350,8 +5354,12 @@ Function_type::copy_with_receiver_as_param(bool want_pointer_receiver) const
 	   ++p)
 	new_params->push_back(*p);
     }
-  return Type::make_function_type(NULL, new_params, this->results_,
-				  this->location_);
+  Function_type* ret = Type::make_function_type(NULL, new_params,
+						this->results_,
+						this->location_);
+  if (this->is_varargs_)
+    ret->set_is_varargs();
+  return ret;
 }
 
 // Make a copy of a function type ignoring any receiver and adding a
@@ -9208,6 +9216,7 @@ Interface_type::implements_interface(const Type* t, std::string* reason) const
   if (this->all_methods_ == NULL)
     return true;
 
+  t = t->unalias();
   bool is_pointer = false;
   const Named_type* nt = t->named_type();
   const Struct_type* st = t->struct_type();
@@ -9220,6 +9229,7 @@ Interface_type::implements_interface(const Type* t, std::string* reason) const
 	{
 	  // If T is a pointer to a named type, then we need to look at
 	  // the type to which it points.
+	  pt = pt->unalias();
 	  is_pointer = true;
 	  nt = pt->named_type();
 	  st = pt->struct_type();
@@ -10408,19 +10418,24 @@ Named_type::interface_method_table(Interface_type* interface, bool is_pointer)
     return Expression::make_error(this->location_);
   if (this->is_alias_)
     {
-      if (this->type_->named_type() != NULL)
+      Type* t = this->type_;
+      if (!is_pointer && t->points_to() != NULL)
+	{
+	  t = t->points_to();
+	  is_pointer = true;
+	}
+      if (t->named_type() != NULL)
 	{
 	  if (this->seen_alias_)
 	    return Expression::make_error(this->location_);
 	  this->seen_alias_ = true;
-	  Named_type* nt = this->type_->named_type();
+	  Named_type* nt = t->named_type();
 	  Expression* ret = nt->interface_method_table(interface, is_pointer);
 	  this->seen_alias_ = false;
 	  return ret;
 	}
-      if (this->type_->struct_type() != NULL)
-	return this->type_->struct_type()->interface_method_table(interface,
-								  is_pointer);
+      if (t->struct_type() != NULL)
+	return t->struct_type()->interface_method_table(interface, is_pointer);
       go_unreachable();
     }
   return Type::interface_method_table(this, interface, is_pointer,
@@ -11106,15 +11121,11 @@ Named_type::do_type_descriptor(Gogo* gogo, Named_type* name)
 {
   if (this->is_error_)
     return Expression::make_error(this->location_);
-  if (name == NULL && this->is_alias_)
-    {
-      if (this->seen_alias_)
-	return Expression::make_error(this->location_);
-      this->seen_alias_ = true;
-      Expression* ret = this->type_->type_descriptor(gogo, NULL);
-      this->seen_alias_ = false;
-      return ret;
-    }
+
+  // We shouldn't see unnamed type aliases here.  They should have
+  // been removed by the call to unalias in Type::type_descriptor_pointer.
+  // We can see named type aliases via Type::named_type_descriptor.
+  go_assert(name != NULL || !this->is_alias_);
 
   // If NAME is not NULL, then we don't really want the type
   // descriptor for this type; we want the descriptor for the

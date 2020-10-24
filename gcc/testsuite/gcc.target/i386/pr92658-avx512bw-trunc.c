@@ -1,6 +1,6 @@
 /* PR target/92658 */
 /* { dg-do compile } */
-/* { dg-options "-O2 -ftree-vectorize -mavx512bw -mavx512vl" } */
+/* { dg-options "-O2 -ftree-vectorize -mavx512bw -mavx512vl -mprefer-vector-width=512" } */
 
 typedef unsigned char v8qi __attribute__((vector_size (8)));
 typedef unsigned char v16qi __attribute__((vector_size (16)));
@@ -87,5 +87,4 @@ truncwb_128 (v16qi * dst, v8hi * __restrict src)
   dst[0] = *(v16qi *) tem;
 }
 
-/* { dg-final { scan-assembler-times "vpmovwb" 2 } } */
-/* { dg-final { scan-assembler-times "vpmovwb" 3 { xfail *-*-* } } } */
+/* { dg-final { scan-assembler-times "vpmovwb" 3 } } */

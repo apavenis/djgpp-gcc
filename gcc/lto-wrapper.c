@@ -199,11 +199,14 @@ static void
 merge_and_complain (struct cl_decoded_option **decoded_options,
 		    unsigned int *decoded_options_count,
 		    struct cl_decoded_option *fdecoded_options,
-		    unsigned int fdecoded_options_count)
+		    unsigned int fdecoded_options_count,
+		    struct cl_decoded_option *decoded_cl_options,
+		    unsigned int decoded_cl_options_count)
 {
   unsigned int i, j;
   struct cl_decoded_option *pic_option = NULL;
   struct cl_decoded_option *pie_option = NULL;
+  struct cl_decoded_option *cf_protection_option = NULL;
 
   /* ???  Merge options from files.  Most cases can be
      handled by either unioning or intersecting
@@ -218,6 +221,17 @@ merge_and_complain (struct cl_decoded_option **decoded_options,
      In absence of that it's unclear what a good default is.
      It's also difficult to get positional handling correct.  */
 
+  /* Look for a -fcf-protection option in the link-time options
+     which overrides any -fcf-protection from the lto sections.  */
+  for (i = 0; i < decoded_cl_options_count; ++i)
+    {
+      struct cl_decoded_option *foption = &decoded_cl_options[i];
+      if (foption->opt_index == OPT_fcf_protection_)
+	{
+	  cf_protection_option = foption;
+	}
+    }
+  
   /* The following does what the old LTO option code did,
      union all target and a selected set of common options.  */
   for (i = 0; i < fdecoded_options_count; ++i)
@@ -292,6 +306,48 @@ merge_and_complain (struct cl_decoded_option **decoded_options,
 	    fatal_error (input_location,
 			 "option %s with different values",
 			 foption->orig_option_with_args_text);
+	  break;
+
+	case OPT_fcf_protection_:
+	  /* Default to link-time option, else append or check identical.  */
+	  if (!cf_protection_option
+	      || cf_protection_option->value == CF_CHECK)
+	    {
+	      for (j = 0; j < *decoded_options_count; ++j)
+		if ((*decoded_options)[j].opt_index == foption->opt_index)
+		  break;
+	      if (j == *decoded_options_count)
+		append_option (decoded_options, decoded_options_count, foption);
+	      else if ((*decoded_options)[j].value != foption->value)
+		{
+		  if (cf_protection_option
+		      && cf_protection_option->value == CF_CHECK)
+		    fatal_error (input_location,
+				 "option -fcf-protection with mismatching values"
+				 " (%s, %s)",
+				 (*decoded_options)[j].arg, foption->arg);
+		  else
+		    {
+		      /* Merge and update the -fcf-protection option.  */
+		      (*decoded_options)[j].value &= (foption->value
+						      & CF_FULL);
+		      switch ((*decoded_options)[j].value)
+			{
+			case CF_NONE:
+			  (*decoded_options)[j].arg = "none";
+			  break;
+			case CF_BRANCH:
+			  (*decoded_options)[j].arg = "branch";
+			  break;
+			case CF_RETURN:
+			  (*decoded_options)[j].arg = "return";
+			  break;
+			default:
+			  gcc_unreachable ();
+			}
+		    }
+		}
+	    }
 	  break;
 
 	case OPT_O:
@@ -508,24 +564,24 @@ merge_and_complain (struct cl_decoded_option **decoded_options,
 	  break;
 	else if (i < *decoded_options_count && j == fdecoded_options_count)
 	  {
-	    warning (0, "Extra option to -Xassembler: %s,"
-		     " dropping all -Xassembler and -Wa options.",
+	    warning (0, "Extra option to %<-Xassembler%>: %s,"
+		     " dropping all %<-Xassembler%> and %<-Wa%> options.",
 		     (*decoded_options)[i].arg);
 	    xassembler_options_error = true;
 	    break;
 	  }
 	else if (i == *decoded_options_count && j < fdecoded_options_count)
 	  {
-	    warning (0, "Extra option to -Xassembler: %s,"
-		     " dropping all -Xassembler and -Wa options.",
+	    warning (0, "Extra option to %<-Xassembler%>: %s,"
+		     " dropping all %<-Xassembler%> and %<-Wa%> options.",
 		     fdecoded_options[j].arg);
 	    xassembler_options_error = true;
 	    break;
 	  }
 	else if (strcmp ((*decoded_options)[i].arg, fdecoded_options[j].arg))
 	  {
-	    warning (0, "Options to Xassembler do not match: %s, %s,"
-		     " dropping all -Xassembler and -Wa options.",
+	    warning (0, "Options to %<-Xassembler%> do not match: %s, %s,"
+		     " dropping all %<-Xassembler%> and %<-Wa%> options.",
 		     (*decoded_options)[i].arg, fdecoded_options[j].arg);
 	    xassembler_options_error = true;
 	    break;
@@ -638,6 +694,7 @@ append_compiler_options (obstack *argv_obstack, struct cl_decoded_option *opts,
 	case OPT_fopenacc:
 	case OPT_fopenacc_dim_:
 	case OPT_foffload_abi_:
+	case OPT_fcf_protection_:
 	case OPT_g:
 	case OPT_O:
 	case OPT_Ofast:
@@ -830,6 +887,7 @@ compile_offload_image (const char *target, const char *compiler_path,
 		       unsigned int linker_opt_count)
 {
   char *filename = NULL;
+  char *dumpbase;
   char **argv;
   char *suffix
     = XALLOCAVEC (char, sizeof ("/accel//mkoffload") + strlen (target));
@@ -853,8 +911,13 @@ compile_offload_image (const char *target, const char *compiler_path,
 		 "could not find %s in %s (consider using %<-B%>)",
 		 suffix + 1, compiler_path);
 
+  dumpbase = concat (dumppfx, "x", target, NULL);
+
   /* Generate temporary output file name.  */
-  filename = make_temp_file (".target.o");
+  if (save_temps)
+    filename = concat (dumpbase, ".o", NULL);
+  else
+    filename = make_temp_file (".target.o");
 
   struct obstack argv_obstack;
   obstack_init (&argv_obstack);
@@ -875,6 +938,9 @@ compile_offload_image (const char *target, const char *compiler_path,
 			   compiler_opt_count);
   append_diag_options (&argv_obstack, linker_opts, linker_opt_count);
 
+  obstack_ptr_grow (&argv_obstack, "-dumpbase");
+  obstack_ptr_grow (&argv_obstack, dumpbase);
+
   /* Append options specified by -foffload last.  In case of conflicting
      options we expect offload compiler to choose the latest.  */
   append_offload_options (&argv_obstack, target, compiler_opts,
@@ -884,7 +950,7 @@ compile_offload_image (const char *target, const char *compiler_path,
 
   obstack_ptr_grow (&argv_obstack, NULL);
   argv = XOBFINISH (&argv_obstack, char **);
-  fork_execute (argv[0], argv, true);
+  fork_execute (argv[0], argv, true, "offload_args");
   obstack_free (&argv_obstack, NULL);
 
   free_array_of_ptrs ((void **) paths, n_paths);
@@ -910,7 +976,6 @@ compile_images_for_offload_targets (unsigned in_argc, char *in_argv[],
     return;
   unsigned num_targets = parse_env_var (target_names, &names, NULL);
 
-  int next_name_entry = 0;
   const char *compiler_path = getenv ("COMPILER_PATH");
   if (!compiler_path)
     goto out;
@@ -920,19 +985,13 @@ compile_images_for_offload_targets (unsigned in_argc, char *in_argv[],
   offload_names = XCNEWVEC (char *, num_targets + 1);
   for (unsigned i = 0; i < num_targets; i++)
     {
-      /* HSA does not use LTO-like streaming and a different compiler, skip
-	 it. */
-      if (strcmp (names[i], "hsa") == 0)
-	continue;
-
-      offload_names[next_name_entry]
+      offload_names[i]
 	= compile_offload_image (names[i], compiler_path, in_argc, in_argv,
 				 compiler_opts, compiler_opt_count,
 				 linker_opts, linker_opt_count);
-      if (!offload_names[next_name_entry])
+      if (!offload_names[i])
 	fatal_error (input_location,
 		     "problem with building target image for %s", names[i]);
-      next_name_entry++;
     }
 
  out:
@@ -967,7 +1026,7 @@ copy_file (const char *dest, const char *src)
    the copy to the linker.  */
 
 static void
-find_crtoffloadtable (void)
+find_crtoffloadtable (int save_temps, const char *dumppfx)
 {
   char **paths = NULL;
   const char *library_path = getenv ("LIBRARY_PATH");
@@ -980,7 +1039,11 @@ find_crtoffloadtable (void)
     if (access_check (paths[i], R_OK) == 0)
       {
 	/* The linker will delete the filename we give it, so make a copy.  */
-	char *crtoffloadtable = make_temp_file (".crtoffloadtable.o");
+	char *crtoffloadtable;
+	if (!save_temps)
+	  crtoffloadtable = make_temp_file (".crtoffloadtable.o");
+	else
+	  crtoffloadtable = concat (dumppfx, "crtoffloadtable.o", NULL);
 	copy_file (crtoffloadtable, paths[i]);
 	printf ("%s\n", crtoffloadtable);
 	XDELETEVEC (crtoffloadtable);
@@ -995,12 +1058,14 @@ find_crtoffloadtable (void)
 
 /* A subroutine of run_gcc.  Examine the open file FD for lto sections with
    name prefix PREFIX, at FILE_OFFSET, and store any options we find in OPTS
-   and OPT_COUNT.  Return true if we found a matchingn section, false
+   and OPT_COUNT.  Return true if we found a matching section, false
    otherwise.  COLLECT_GCC holds the value of the environment variable with
    the same name.  */
 
 static bool
 find_and_merge_options (int fd, off_t file_offset, const char *prefix,
+			struct cl_decoded_option *decoded_cl_options,
+			unsigned int decoded_cl_options_count,
 			struct cl_decoded_option **opts,
 			unsigned int *opt_count, const char *collect_gcc)
 {
@@ -1047,7 +1112,9 @@ find_and_merge_options (int fd, off_t file_offset, const char *prefix,
       else
 	merge_and_complain (&fdecoded_options,
 			    &fdecoded_options_count,
-			    f2decoded_options, f2decoded_options_count);
+			    f2decoded_options, f2decoded_options_count,
+			    decoded_cl_options,
+			    decoded_cl_options_count);
 
       fopts += strlen (fopts) + 1;
     }
@@ -1267,6 +1334,26 @@ jobserver_active_p (void)
     return JS_PREFIX "cannot access %<" JS_NEEDLE "%> file descriptors";
 }
 
+/* Test that a make command is present and working, return true if so.  */
+
+static bool
+make_exists (void)
+{
+  const char *make = "make";
+  char **make_argv = buildargv (getenv ("MAKE"));
+  if (make_argv)
+    make = make_argv[0];
+  const char *make_args[] = {make, "--version", NULL};
+
+  int exit_status = 0;
+  int err = 0;
+  const char *errmsg
+    = pex_one (PEX_SEARCH, make_args[0], CONST_CAST (char **, make_args),
+	       "make", NULL, NULL, &exit_status, &err);
+  freeargv (make_argv);
+  return errmsg == NULL && exit_status == 0 && err == 0;
+}
+
 /* Execute gcc. ARGC is the number of arguments. ARGV contains the arguments. */
 
 static void
@@ -1298,7 +1385,7 @@ run_gcc (unsigned argc, char *argv[])
   bool linker_output_rel = false;
   bool skip_debug = false;
   unsigned n_debugobj;
-  const char *dumppfx = NULL, *incoming_dumppfx = NULL;
+  const char *incoming_dumppfx = dumppfx = NULL;
   static char current_dir[] = { '.', DIR_SEPARATOR, '\0' };
 
   /* Get the driver and options.  */
@@ -1382,6 +1469,7 @@ run_gcc (unsigned argc, char *argv[])
 	}
 
       if (find_and_merge_options (fd, file_offset, LTO_SECTION_NAME_PREFIX,
+				  decoded_options, decoded_options_count,
 				  &fdecoded_options, &fdecoded_options_count,
 				  collect_gcc))
 	{
@@ -1502,6 +1590,10 @@ run_gcc (unsigned argc, char *argv[])
 	}
     }
 
+  /* We need make working for a parallel execution.  */
+  if (parallel && !make_exists ())
+    parallel = 0;
+
   if (!dumppfx)
     {
       if (!linker_output
@@ -1614,6 +1706,7 @@ cont1:
 	    fatal_error (input_location, "cannot open %s: %m", filename);
 	  if (!find_and_merge_options (fd, file_offset,
 				       OFFLOAD_SECTION_NAME_PREFIX,
+				       decoded_options, decoded_options_count,
 				       &offload_fdecoded_options,
 				       &offload_fdecoded_options_count,
 				       collect_gcc))
@@ -1633,7 +1726,7 @@ cont1:
 
       if (offload_names)
 	{
-	  find_crtoffloadtable ();
+	  find_crtoffloadtable (save_temps, dumppfx);
 	  for (i = 0; offload_names[i]; i++)
 	    printf ("%s\n", offload_names[i]);
 	  free_array_of_ptrs ((void **) offload_names, i);
@@ -1708,7 +1801,8 @@ cont1:
 
   new_argv = XOBFINISH (&argv_obstack, const char **);
   argv_ptr = &new_argv[new_head_argc];
-  fork_execute (new_argv[0], CONST_CAST (char **, new_argv), true);
+  fork_execute (new_argv[0], CONST_CAST (char **, new_argv), true,
+		"ltrans_args");
 
   /* Copy the early generated debug info from the objects to temporary
      files and append those to the partial link commandline.  */
@@ -1852,8 +1946,12 @@ cont:
 	    }
 	  else
 	    {
+	      char argsuffix[sizeof (DUMPBASE_SUFFIX) + 1];
+	      if (save_temps)
+		snprintf (argsuffix, sizeof (DUMPBASE_SUFFIX),
+			  "ltrans%u.ltrans_args", i);
 	      fork_execute (new_argv[0], CONST_CAST (char **, new_argv),
-			    true);
+			    true, save_temps ? argsuffix : NULL);
 	      maybe_unlink (input_name);
 	    }
 
@@ -1904,7 +2002,7 @@ cont:
 	  new_argv = XOBFINISH (&argv_obstack, const char **);
 
 	  pex = collect_execute (new_argv[0], CONST_CAST (char **, new_argv),
-				 NULL, NULL, PEX_SEARCH, false);
+				 NULL, NULL, PEX_SEARCH, false, NULL);
 	  do_wait (new_argv[0], pex);
 	  freeargv (make_argv);
 	  maybe_unlink (makefile);

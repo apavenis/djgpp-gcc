@@ -173,12 +173,13 @@ pp_cxx_unqualified_id (cxx_pretty_printer *pp, tree t)
     case UNBOUND_CLASS_TEMPLATE:
       pp_cxx_unqualified_id (pp, TYPE_NAME (t));
       if (tree ti = TYPE_TEMPLATE_INFO_MAYBE_ALIAS (t))
-	{
-	  pp_cxx_begin_template_argument_list (pp);
-	  tree args = INNERMOST_TEMPLATE_ARGS (TI_ARGS (ti));
-	  pp_cxx_template_argument_list (pp, args);
-	  pp_cxx_end_template_argument_list (pp);
-	}
+	if (PRIMARY_TEMPLATE_P (TI_TEMPLATE (ti)))
+	  {
+	    pp_cxx_begin_template_argument_list (pp);
+	    tree args = INNERMOST_TEMPLATE_ARGS (TI_ARGS (ti));
+	    pp_cxx_template_argument_list (pp, args);
+	    pp_cxx_end_template_argument_list (pp);
+	  }
       break;
 
     case BIT_NOT_EXPR:
@@ -1419,6 +1420,16 @@ pp_cxx_type_specifier_seq (cxx_pretty_printer *pp, tree t)
 	}
       /* fall through */
 
+    case OFFSET_TYPE:
+      if (TYPE_PTRDATAMEM_P (t))
+	{
+	  pp_cxx_type_specifier_seq (pp, TREE_TYPE (t));
+	  pp_cxx_whitespace (pp);
+	  pp_cxx_ptr_operator (pp, t);
+	  break;
+	}
+      /* fall through */
+
     default:
       if (!(TREE_CODE (t) == FUNCTION_DECL && DECL_CONSTRUCTOR_P (t)))
 	pp_c_specifier_qualifier_list (pp, t);
@@ -1752,7 +1763,20 @@ pp_cxx_function_definition (cxx_pretty_printer *pp, tree t)
 void
 cxx_pretty_printer::abstract_declarator (tree t)
 {
-  if (TYPE_PTRMEM_P (t))
+  /* pp_cxx_ptr_operator prints '(' for a pointer-to-member function,
+     or a pointer-to-data-member of array type:
+
+       void (X::*)()
+       int (X::*)[5]
+
+     but not for a pointer-to-data-member of non-array type:
+
+       int X::*
+
+     so be mindful of that.  */
+  if (TYPE_PTRMEMFUNC_P (t)
+      || (TYPE_PTRDATAMEM_P (t)
+	  && TREE_CODE (TREE_TYPE (t)) == ARRAY_TYPE))
     pp_cxx_right_paren (this);
   else if (INDIRECT_TYPE_P (t))
     {
@@ -1782,6 +1806,11 @@ cxx_pretty_printer::direct_abstract_declarator (tree t)
     case RECORD_TYPE:
       if (TYPE_PTRMEMFUNC_P (t))
 	direct_abstract_declarator (TYPE_PTRMEMFUNC_FN_TYPE (t));
+      break;
+
+    case OFFSET_TYPE:
+      if (TYPE_PTRDATAMEM_P (t))
+	direct_abstract_declarator (TREE_TYPE (t));
       break;
 
     case METHOD_TYPE:
@@ -1836,7 +1865,10 @@ cxx_pretty_printer::type_id (tree t)
     case UNDERLYING_TYPE:
     case DECLTYPE_TYPE:
     case TEMPLATE_ID_EXPR:
+    case OFFSET_TYPE:
       pp_cxx_type_specifier_seq (this, t);
+      if (TYPE_PTRMEM_P (t))
+	abstract_declarator (t);
       break;
 
     case TYPE_PACK_EXPANSION:
@@ -1909,6 +1941,8 @@ pp_cxx_template_argument_list (cxx_pretty_printer *pp, tree t)
 	  if (TYPE_P (arg) || (TREE_CODE (arg) == TEMPLATE_DECL
 			       && TYPE_P (DECL_TEMPLATE_RESULT (arg))))
 	    pp->type_id (arg);
+	  else if (template_parm_object_p (arg))
+	    pp->expression (DECL_INITIAL (arg));
 	  else
 	    pp->expression (arg);
 	}
@@ -2018,73 +2052,6 @@ cxx_pretty_printer::statement (tree t)
 	}
       break;
 
-    case SWITCH_STMT:
-      pp_cxx_ws_string (this, "switch");
-      pp_space (this);
-      pp_cxx_left_paren (this);
-      expression (SWITCH_STMT_COND (t));
-      pp_cxx_right_paren (this);
-      pp_indentation (this) += 3;
-      pp_needs_newline (this) = true;
-      statement (SWITCH_STMT_BODY (t));
-      pp_newline_and_indent (this, -3);
-      break;
-
-      /* iteration-statement:
-	    while ( expression ) statement
-	    do statement while ( expression ) ;
-	    for ( expression(opt) ; expression(opt) ; expression(opt) ) statement
-	    for ( declaration expression(opt) ; expression(opt) ) statement  */
-    case WHILE_STMT:
-      pp_cxx_ws_string (this, "while");
-      pp_space (this);
-      pp_cxx_left_paren (this);
-      expression (WHILE_COND (t));
-      pp_cxx_right_paren (this);
-      pp_newline_and_indent (this, 3);
-      statement (WHILE_BODY (t));
-      pp_indentation (this) -= 3;
-      pp_needs_newline (this) = true;
-      break;
-
-    case DO_STMT:
-      pp_cxx_ws_string (this, "do");
-      pp_newline_and_indent (this, 3);
-      statement (DO_BODY (t));
-      pp_newline_and_indent (this, -3);
-      pp_cxx_ws_string (this, "while");
-      pp_space (this);
-      pp_cxx_left_paren (this);
-      expression (DO_COND (t));
-      pp_cxx_right_paren (this);
-      pp_cxx_semicolon (this);
-      pp_needs_newline (this) = true;
-      break;
-
-    case FOR_STMT:
-      pp_cxx_ws_string (this, "for");
-      pp_space (this);
-      pp_cxx_left_paren (this);
-      if (FOR_INIT_STMT (t))
-	statement (FOR_INIT_STMT (t));
-      else
-	pp_cxx_semicolon (this);
-      pp_needs_newline (this) = false;
-      pp_cxx_whitespace (this);
-      if (FOR_COND (t))
-	expression (FOR_COND (t));
-      pp_cxx_semicolon (this);
-      pp_needs_newline (this) = false;
-      pp_cxx_whitespace (this);
-      if (FOR_EXPR (t))
-	expression (FOR_EXPR (t));
-      pp_cxx_right_paren (this);
-      pp_newline_and_indent (this, 3);
-      statement (FOR_BODY (t));
-      pp_indentation (this) -= 3;
-      pp_needs_newline (this) = true;
-      break;
-
     case RANGE_FOR_STMT:
       pp_cxx_ws_string (this, "for");
       pp_space (this);
@@ -2105,17 +2072,6 @@ cxx_pretty_printer::statement (tree t)
       pp_newline_and_indent (this, 3);
       statement (FOR_BODY (t));
       pp_indentation (this) -= 3;
-      pp_needs_newline (this) = true;
-      break;
-
-      /* jump-statement:
-	    goto identifier;
-	    continue ;
-	    return expression(opt) ;  */
-    case BREAK_STMT:
-    case CONTINUE_STMT:
-      pp_string (this, TREE_CODE (t) == BREAK_STMT ? "break" : "continue");
-      pp_cxx_semicolon (this);
       pp_needs_newline (this) = true;
       break;
 

@@ -232,7 +232,7 @@ static tree build_position_list (tree, bool, tree, tree, unsigned int, tree);
 static vec<subst_pair> build_subst_list (Entity_Id, Entity_Id, bool);
 static vec<variant_desc> build_variant_list (tree, Node_Id, vec<subst_pair>,
 					     vec<variant_desc>);
-static tree maybe_saturate_size (tree);
+static tree maybe_saturate_size (tree, unsigned int align);
 static tree validate_size (Uint, tree, Entity_Id, enum tree_code, bool, bool,
 			   const char *, const char *);
 static void set_rm_size (Uint, tree, Entity_Id);
@@ -524,7 +524,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	  else if (IN (kind, Access_Kind))
 	    max_esize = POINTER_SIZE * 2;
 	  else
-	    max_esize = LONG_LONG_TYPE_SIZE;
+	    max_esize = Enable_128bit_Types ? 128 : LONG_LONG_TYPE_SIZE;
 
 	  if (esize > max_esize)
 	   esize = max_esize;
@@ -714,7 +714,6 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	bool mutable_p = false;
 	bool used_by_ref = false;
 	tree gnu_ext_name = NULL_TREE;
-	tree gnu_renamed_obj = NULL_TREE;
 	tree gnu_ada_size = NULL_TREE;
 
 	/* We need to translate the renamed object even though we are only
@@ -897,13 +896,13 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	  gnu_size = bitsize_unit_node;
 
 	/* If this is an object with no specified size and alignment, and
-	   if either it is atomic or we are not optimizing alignment for
+	   if either it is full access or we are not optimizing alignment for
 	   space and it is composite and not an exception, an Out parameter
 	   or a reference to another object, and the size of its type is a
 	   constant, set the alignment to the smallest one which is not
 	   smaller than the size, with an appropriate cap.  */
 	if (!gnu_size && align == 0
-	    && (Is_Atomic_Or_VFA (gnat_entity)
+	    && (Is_Full_Access (gnat_entity)
 		|| (!Optimize_Alignment_Space (gnat_entity)
 		    && kind != E_Exception
 		    && kind != E_Out_Parameter
@@ -1015,7 +1014,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	  }
 
 	/* Now check if the type of the object allows atomic access.  */
-	if (Is_Atomic_Or_VFA (gnat_entity))
+	if (Is_Full_Access (gnat_entity))
 	  check_ok_for_atomic_type (gnu_type, gnat_entity, false);
 
 	/* If this is a renaming, avoid as much as possible to create a new
@@ -1041,13 +1040,13 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	    else if (type_is_padding_self_referential (TREE_TYPE (gnu_expr)))
 	      gnu_type = TREE_TYPE (gnu_expr);
 
-	    /* Case 1: if this is a constant renaming stemming from a function
-	       call, treat it as a normal object whose initial value is what
-	       is being renamed.  RM 3.3 says that the result of evaluating a
-	       function call is a constant object.  Therefore, it can be the
-	       inner object of a constant renaming and the renaming must be
-	       fully instantiated, i.e. it cannot be a reference to (part of)
-	       an existing object.  And treat other rvalues the same way.  */
+	    /* If this is a constant renaming stemming from a function call,
+	       treat it as a normal object whose initial value is what is being
+	       renamed.  RM 3.3 says that the result of evaluating a function
+	       call is a constant object.  Therefore, it can be the inner
+	       object of a constant renaming and the renaming must be fully
+	       instantiated, i.e. it cannot be a reference to (part of) an
+	       existing object.  And treat other rvalues the same way.  */
 	    tree inner = gnu_expr;
 	    while (handled_component_p (inner) || CONVERT_EXPR_P (inner))
 	      inner = TREE_OPERAND (inner, 0);
@@ -1089,92 +1088,75 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		    && DECL_RETURN_VALUE_P (inner)))
 	      ;
 
-	    /* Case 2: if the renaming entity need not be materialized, use
-	       the elaborated renamed expression for the renaming.  But this
-	       means that the caller is responsible for evaluating the address
-	       of the renaming in the correct place for the definition case to
-	       instantiate the SAVE_EXPRs.  But we cannot use this mechanism if
-	       the renamed object is an N_Expression_With_Actions because this
-	       would fail the assertion below.  */
-	    else if (!Materialize_Entity (gnat_entity)
-		     && Nkind (gnat_renamed_obj) != N_Expression_With_Actions)
+	    /* Otherwise, this is an lvalue being renamed, so it needs to be
+	       elaborated as a reference and substituted for the entity.  But
+	       this means that we must evaluate the address of the renaming
+	       in the definition case to instantiate the SAVE_EXPRs.  */
+	    else
 	      {
-		tree init = NULL_TREE;
+		tree gnu_init = NULL_TREE;
 
-		gnu_decl
+		if (type_annotate_only && TREE_CODE (gnu_expr) == ERROR_MARK)
+		  break;
+
+		gnu_expr
 		  = elaborate_reference (gnu_expr, gnat_entity, definition,
-					 &init);
+					 &gnu_init);
 
-		/* We cannot evaluate the first arm of a COMPOUND_EXPR in the
-		   correct place for this case.  */
-		gcc_assert (!init);
-
-		/* No DECL_EXPR will be created so the expression needs to be
+		/* No DECL_EXPR might be created so the expression needs to be
 		   marked manually because it will likely be shared.  */
 		if (global_bindings_p ())
-		  MARK_VISITED (gnu_decl);
+		  MARK_VISITED (gnu_expr);
 
 		/* This assertion will fail if the renamed object isn't aligned
 		   enough as to make it possible to honor the alignment set on
 		   the renaming.  */
 		if (align)
 		  {
-		    unsigned int ralign = DECL_P (gnu_decl)
-					  ? DECL_ALIGN (gnu_decl)
-					  : TYPE_ALIGN (TREE_TYPE (gnu_decl));
+		    const unsigned int ralign
+		      = DECL_P (gnu_expr)
+			? DECL_ALIGN (gnu_expr)
+			: TYPE_ALIGN (TREE_TYPE (gnu_expr));
 		    gcc_assert (ralign >= align);
 		  }
 
 		/* The expression might not be a DECL so save it manually.  */
+		gnu_decl = gnu_expr;
 		save_gnu_tree (gnat_entity, gnu_decl, true);
 		saved = true;
 		annotate_object (gnat_entity, gnu_type, NULL_TREE, false);
-		break;
-	      }
 
-	    /* Case 3: otherwise, make a constant pointer to the object we
-	       are renaming and attach the object to the pointer after it is
-	       elaborated.  The object will be referenced directly instead
-	       of indirectly via the pointer to avoid aliasing problems with
-	       non-addressable entities.  The pointer is called a "renaming"
-	       pointer in this case.  Note that we also need to preserve the
-	       volatility of the renamed object through the indirection.  */
-	    else
-	      {
-		tree init = NULL_TREE;
+		/* If this is only a reference to the entity, we are done.  */
+		if (!definition)
+		  break;
 
-		if (TREE_THIS_VOLATILE (gnu_expr) && !TYPE_VOLATILE (gnu_type))
-		  gnu_type
-		    = change_qualified_type (gnu_type, TYPE_QUAL_VOLATILE);
-		gnu_type = build_reference_type (gnu_type);
-		used_by_ref = true;
-		const_flag = true;
-		volatile_flag = false;
-		inner_const_flag = TREE_READONLY (gnu_expr);
-		gnu_size = NULL_TREE;
+		/* Otherwise, emit the initialization statement, if any.  */
+		if (gnu_init)
+		  add_stmt (gnu_init);
 
-		gnu_renamed_obj
-		  = elaborate_reference (gnu_expr, gnat_entity, definition,
-					 &init);
-
-		/* The expression needs to be marked manually because it will
-		   likely be shared, even for a definition since the ADDR_EXPR
-		   built below can cause the first few nodes to be folded.  */
-		if (global_bindings_p ())
-		  MARK_VISITED (gnu_renamed_obj);
-
-		if (type_annotate_only
-		    && TREE_CODE (gnu_renamed_obj) == ERROR_MARK)
-		  gnu_expr = NULL_TREE;
-		else
+		/* If it needs to be materialized for debugging purposes, build
+		   the entity as indirect reference to the renamed object.  */
+		if (Materialize_Entity (gnat_entity))
 		  {
-		    gnu_expr
-		      = build_unary_op (ADDR_EXPR, gnu_type, gnu_renamed_obj);
-		    if (init)
-		      gnu_expr
-			= build_compound_expr (TREE_TYPE (gnu_expr), init,
-					       gnu_expr);
+		    gnu_type = build_reference_type (gnu_type);
+		    const_flag = true;
+		    volatile_flag = false;
+
+		    gnu_expr = build_unary_op (ADDR_EXPR, gnu_type, gnu_expr);
+
+		    create_var_decl (gnu_entity_name, gnu_ext_name,
+				     TREE_TYPE (gnu_expr), gnu_expr,
+				     const_flag, Is_Public (gnat_entity),
+				     imported_p, static_flag, volatile_flag,
+				     artificial_p, debug_info_p, attr_list,
+				     gnat_entity, false);
 		  }
+
+		/* Otherwise, instantiate the SAVE_EXPRs if needed.  */
+		else if (TREE_SIDE_EFFECTS (gnu_expr))
+		  add_stmt (build_unary_op (ADDR_EXPR, NULL_TREE, gnu_expr));
+
+		break;
 	      }
 	  }
 
@@ -1263,6 +1245,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		if (TREE_CODE (gnu_address) == POINTER_PLUS_EXPR
 		    && TREE_OPERAND (gnu_address, 1) == off)
 		  gnu_address = TREE_OPERAND (gnu_address, 0);
+
 		/* This is the pattern built for an overaligned object.  */
 		else if (TREE_CODE (gnu_address) == POINTER_PLUS_EXPR
 			 && TREE_CODE (TREE_OPERAND (gnu_address, 1))
@@ -1273,6 +1256,18 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		    = build2 (POINTER_PLUS_EXPR, gnu_type,
 			      TREE_OPERAND (gnu_address, 0),
 			      TREE_OPERAND (TREE_OPERAND (gnu_address, 1), 0));
+
+		/* We make an exception for an absolute address but we warn
+		   that there is a descriptor at the start of the object.  */
+		else if (TREE_CODE (gnu_address) == INTEGER_CST)
+		  {
+		    post_error_ne ("??aliased object& with unconstrained "
+				   "array nominal subtype", gnat_clause,
+				   gnat_entity);
+		    post_error ("\\starts with a descriptor whose size is "
+				"given by ''Descriptor_Size", gnat_clause);
+		  }
+
 		else
 		  {
 		    post_error_ne ("aliased object& with unconstrained array "
@@ -1538,7 +1533,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 			     imported_p || !definition, static_flag,
 			     volatile_flag, artificial_p,
 			     debug_info_p && definition, attr_list,
-			     gnat_entity, !gnu_renamed_obj);
+			     gnat_entity, true);
 	DECL_BY_REF_P (gnu_decl) = used_by_ref;
 	DECL_POINTS_TO_READONLY_P (gnu_decl) = used_by_ref && inner_const_flag;
 	DECL_CAN_NEVER_BE_NULL_P (gnu_decl) = Can_Never_Be_Null (gnat_entity);
@@ -1565,10 +1560,6 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	/* If this is a loop parameter, set the corresponding flag.  */
 	else if (kind == E_Loop_Parameter)
 	  DECL_LOOP_PARM_P (gnu_decl) = 1;
-
-	/* If this is a renaming pointer, attach the renamed object to it.  */
-	if (gnu_renamed_obj)
-	  SET_DECL_RENAMED_OBJECT (gnu_decl, gnu_renamed_obj);
 
 	/* If this is a constant and we are defining it or it generates a real
 	   symbol at the object level and we are referencing it, we may want
@@ -2502,8 +2493,8 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	      tree gnu_base_orig_max = TYPE_MAX_VALUE (gnu_base_index_type);
 	      tree gnu_min, gnu_max, gnu_high;
 
-	      /* We try to define subtypes for discriminants used as bounds
-		 that are more restrictive than those declared by using the
+	      /* We try to create subtypes for discriminants used as bounds
+		 that are more restrictive than those declared, by using the
 		 bounds of the index type of the base array type.  This will
 		 make it possible to calculate the maximum size of the record
 		 type more conservatively.  This may have already been done by
@@ -2511,8 +2502,8 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		 there will be a conversion that needs to be removed first.  */
 	      if (CONTAINS_PLACEHOLDER_P (gnu_orig_min)
 		  && TYPE_RM_SIZE (gnu_base_index_type)
-		  && !tree_int_cst_lt (TYPE_RM_SIZE (gnu_index_type),
-				       TYPE_RM_SIZE (gnu_base_index_type)))
+		  && tree_int_cst_lt (TYPE_RM_SIZE (gnu_base_index_type),
+				      TYPE_RM_SIZE (gnu_index_type)))
 		{
 		  gnu_orig_min = remove_conversions (gnu_orig_min, false);
 		  TREE_TYPE (gnu_orig_min)
@@ -2523,8 +2514,8 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 
 	      if (CONTAINS_PLACEHOLDER_P (gnu_orig_max)
 		  && TYPE_RM_SIZE (gnu_base_index_type)
-		  && !tree_int_cst_lt (TYPE_RM_SIZE (gnu_index_type),
-				       TYPE_RM_SIZE (gnu_base_index_type)))
+		  && tree_int_cst_lt (TYPE_RM_SIZE (gnu_base_index_type),
+				      TYPE_RM_SIZE (gnu_index_type)))
 		{
 		  gnu_orig_max = remove_conversions (gnu_orig_max, false);
 		  TREE_TYPE (gnu_orig_max)
@@ -2885,7 +2876,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		{
 		  const int quals
 		    = TYPE_QUAL_VOLATILE
-		      | (Is_Atomic_Or_VFA (gnat_entity) ? TYPE_QUAL_ATOMIC : 0);
+		      | (Is_Full_Access (gnat_entity) ? TYPE_QUAL_ATOMIC : 0);
 		  gnu_type = change_qualified_type (gnu_type, quals);
 		}
 	      /* Make it artificial only if the base type was artificial too.
@@ -3507,18 +3498,6 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 
 	      gnu_type = make_node (RECORD_TYPE);
 	      TYPE_NAME (gnu_type) = gnu_entity_name;
-	      if (gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL)
-		{
-		  /* Use the ultimate base record type as the debug type.
-		     Subtypes and derived types bring no useful
-		     information.  */
-		  Entity_Id gnat_debug_type = gnat_entity;
-		  while (Etype (gnat_debug_type) != gnat_debug_type)
-		    gnat_debug_type = Etype (gnat_debug_type);
-		  tree gnu_debug_type
-		    = TYPE_MAIN_VARIANT (gnat_to_gnu_type (gnat_debug_type));
-		  SET_TYPE_DEBUG_TYPE (gnu_type, gnu_debug_type);
-		}
 	      TYPE_PACKED (gnu_type) = TYPE_PACKED (gnu_base_type);
 	      TYPE_REVERSE_STORAGE_ORDER (gnu_type)
 		= Reverse_Storage_Order (gnat_entity);
@@ -3580,6 +3559,13 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 					 true, debug_info_p,
 					 NULL, gnat_entity);
 		}
+
+	      /* Or else, if the subtype is artificial and encodings are not
+		 used, use the base record type as the debug type.  */
+	      else if (debug_info_p
+		       && artificial_p
+		       && gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL)
+		SET_TYPE_DEBUG_TYPE (gnu_type, gnu_unpad_base_type);
 	    }
 
 	  /* Otherwise, go down all the components in the new type and make
@@ -4376,12 +4362,12 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 			       gnat_entity);
 	    }
 	}
-      else if (Is_Atomic_Or_VFA (gnat_entity) && !gnu_size
+      else if (Is_Full_Access (gnat_entity) && !gnu_size
 	       && tree_fits_uhwi_p (TYPE_SIZE (gnu_type))
 	       && integer_pow2p (TYPE_SIZE (gnu_type)))
 	align = MIN (BIGGEST_ALIGNMENT,
 		     tree_to_uhwi (TYPE_SIZE (gnu_type)));
-      else if (Is_Atomic_Or_VFA (gnat_entity) && gnu_size
+      else if (Is_Full_Access (gnat_entity) && gnu_size
 	       && tree_fits_uhwi_p (gnu_size)
 	       && integer_pow2p (gnu_size))
 	align = MIN (BIGGEST_ALIGNMENT, tree_to_uhwi (gnu_size));
@@ -4439,7 +4425,12 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	  /* If the size is self-referential, annotate the maximum value
 	     after saturating it, if need be, to avoid a No_Uint value.  */
 	  if (CONTAINS_PLACEHOLDER_P (gnu_size))
-	    gnu_size = maybe_saturate_size (max_size (gnu_size, true));
+	    {
+	      const unsigned int align
+		= UI_To_Int (Alignment (gnat_entity)) * BITS_PER_UNIT;
+	      gnu_size
+		= maybe_saturate_size (max_size (gnu_size, true), align);
+	    }
 
 	  /* If we are just annotating types and the type is tagged, the tag
 	     and the parent components are not generated by the front-end so
@@ -4475,7 +4466,8 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		  gnu_size = size_binop (PLUS_EXPR, gnu_size, offset);
 		}
 
-	      gnu_size = maybe_saturate_size (round_up (gnu_size, align));
+	      gnu_size
+		= maybe_saturate_size (round_up (gnu_size, align), align);
 	      Set_Esize (gnat_entity, annotate_value (gnu_size));
 
 	      /* Tagged types are Strict_Alignment so RM_Size = Esize.  */
@@ -4611,7 +4603,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	    }
 
       /* Now check if the type allows atomic access.  */
-      if (Is_Atomic_Or_VFA (gnat_entity))
+      if (Is_Full_Access (gnat_entity))
 	check_ok_for_atomic_type (gnu_type, gnat_entity, false);
 
       /* If this is not an unconstrained array type, set some flags.  */
@@ -4729,7 +4721,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	{
 	  const int quals
 	    = TYPE_QUAL_VOLATILE
-	      | (Is_Atomic_Or_VFA (gnat_entity) ? TYPE_QUAL_ATOMIC : 0);
+	      | (Is_Full_Access (gnat_entity) ? TYPE_QUAL_ATOMIC : 0);
 	  gnu_type = change_qualified_type (gnu_type, quals);
 	}
 
@@ -5258,7 +5250,7 @@ gnat_to_gnu_component_type (Entity_Id gnat_array, bool definition,
     }
 
   /* Now check if the type of the component allows atomic access.  */
-  if (Has_Atomic_Components (gnat_array) || Is_Atomic_Or_VFA (gnat_type))
+  if (Has_Atomic_Components (gnat_array) || Is_Full_Access (gnat_type))
     check_ok_for_atomic_type (gnu_type, gnat_array, true);
 
   /* If the component type is a padded type made for a non-bit-packed array
@@ -5401,8 +5393,8 @@ gnat_to_gnu_param (Entity_Id gnat_param, tree gnu_param_type, bool first,
       tree unpadded_type = TREE_TYPE (TYPE_FIELDS (gnu_param_type));
 
       if (foreign
-	  || (!must_pass_by_ref (unpadded_type)
-	      && mech != By_Reference
+	  || (mech != By_Reference
+	      && !must_pass_by_ref (unpadded_type)
 	      && (mech == By_Copy || !default_pass_by_ref (unpadded_type))
 	      && TYPE_ALIGN (unpadded_type) >= TYPE_ALIGN (gnu_param_type)))
 	gnu_param_type = unpadded_type;
@@ -5424,11 +5416,6 @@ gnat_to_gnu_param (Entity_Id gnat_param, tree gnu_param_type, bool first,
 	gnu_param_type = TREE_TYPE (gnu_param_type);
 
       gnu_param_type = TREE_TYPE (gnu_param_type);
-
-      if (ro_param)
-	gnu_param_type
-	  = change_qualified_type (gnu_param_type, TYPE_QUAL_CONST);
-
       gnu_param_type = build_pointer_type (gnu_param_type);
       by_component_ptr = true;
     }
@@ -5760,6 +5747,7 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
 {
   const Entity_Kind kind = Ekind (gnat_subprog);
   const bool method_p = is_cplusplus_method (gnat_subprog);
+  const bool variadic = IN (Convention (gnat_subprog), Convention_C_Variadic);
   Entity_Id gnat_return_type = Etype (gnat_subprog);
   Entity_Id gnat_param;
   tree gnu_type = present_gnu_tree (gnat_subprog)
@@ -5792,7 +5780,7 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
   bool return_by_invisi_ref_p = false;
   bool return_unconstrained_p = false;
   bool incomplete_profile_p = false;
-  unsigned int num;
+  int num;
 
   /* Look into the return type and get its associated GCC tree if it is not
      void, and then compute various flags for the subprogram type.  But make
@@ -5961,6 +5949,11 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
       tree gnu_param_name = get_entity_name (gnat_param);
       tree gnu_param, gnu_param_type;
       bool cico = false;
+
+      /* For a variadic C function, do not build unnamed parameters.  */
+      if (variadic
+	  && num == (Convention (gnat_subprog) - Convention_C_Variadic_0))
+	break;
 
       /* Fetch an existing parameter with complete type and reuse it.  But we
 	 didn't save the CICO property so we can only do it for In parameters
@@ -6195,7 +6188,8 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
 
   /* The lists have been built in reverse.  */
   gnu_param_type_list = nreverse (gnu_param_type_list);
-  gnu_param_type_list = chainon (gnu_param_type_list, void_list_node);
+  if (!variadic)
+    gnu_param_type_list = chainon (gnu_param_type_list, void_list_node);
   gnu_param_list = nreverse (gnu_param_list);
   gnu_cico_list = nreverse (gnu_cico_list);
 
@@ -6777,13 +6771,13 @@ elaborate_expression (Node_Id gnat_expr, Entity_Id gnat_entity, const char *s,
   /* If we don't need a value and this is static or a discriminant,
      we don't need to do anything.  */
   if (!need_value
-      && (Is_OK_Static_Expression (gnat_expr)
+      && (Compile_Time_Known_Value (gnat_expr)
 	  || (Nkind (gnat_expr) == N_Identifier
 	      && Ekind (Entity (gnat_expr)) == E_Discriminant)))
     return NULL_TREE;
 
   /* If it's a static expression, we don't need a variable for debugging.  */
-  if (need_debug && Is_OK_Static_Expression (gnat_expr))
+  if (need_debug && Compile_Time_Known_Value (gnat_expr))
     need_debug = false;
 
   /* Otherwise, convert this tree to its GCC equivalent and elaborate it.  */
@@ -6848,6 +6842,18 @@ elaborate_expression_1 (tree gnu_expr, Entity_Id gnat_entity, const char *s,
 			 && Nkind (Associated_Node_For_Itype (gnat_entity))
 			    == N_Loop_Parameter_Specification));
 
+  /* If the GNAT encodings are not used, we don't need a variable for debug
+     info purposes if the expression is a constant or another variable, but
+     we need to be careful because we do not generate debug info for external
+     variables so DECL_IGNORED_P is not stable across units.  */
+  if (need_debug
+      && gnat_encodings == DWARF_GNAT_ENCODINGS_MINIMAL
+      && (TREE_CONSTANT (gnu_expr)
+	  || (!expr_public_p
+	      && DECL_P (gnu_expr)
+	      && !DECL_IGNORED_P (gnu_expr))))
+    need_debug = false;
+
   /* Now create it, possibly only for debugging purposes.  */
   if (use_variable || need_debug)
     {
@@ -6868,10 +6874,7 @@ elaborate_expression_1 (tree gnu_expr, Entity_Id gnat_entity, const char *s,
 	 variable only if the variable is used by the generated code.
 	 Returning the variable ensures the caller will use it in generated
 	 code.  Note that there is no need for a location if the debug info
-	 contains an integer constant.
-	 TODO: when the encoding-based debug scheme is dropped, move this
-	 condition to the top-level IF block: we will not need to create a
-	 variable anymore in such cases, then.  */
+	 contains an integer constant.  */
       if (use_variable || (need_debug && !TREE_CONSTANT (gnu_expr)))
 	return gnu_decl;
     }
@@ -7102,9 +7105,9 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
   const Entity_Id gnat_field_type = Etype (gnat_field);
   tree gnu_field_type = gnat_to_gnu_type (gnat_field_type);
   tree gnu_field_id = get_entity_name (gnat_field);
-  const bool is_atomic
-    = (Is_Atomic_Or_VFA (gnat_field) || Is_Atomic_Or_VFA (gnat_field_type));
   const bool is_aliased = Is_Aliased (gnat_field);
+  const bool is_full_access
+    = (Is_Full_Access (gnat_field) || Is_Full_Access (gnat_field_type));
   const bool is_independent
     = (Is_Independent (gnat_field) || Is_Independent (gnat_field_type));
   const bool is_volatile
@@ -7119,7 +7122,7 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
      only constraint is the implementation advice whereby only the bits of
      the components should be accessed if they both start and end on byte
      boundaries, but that should be guaranteed by the GCC memory model.
-     Note that we have some redundancies (is_atomic => is_independent,
+     Note that we have some redundancies (is_full_access => is_independent,
      is_aliased => is_independent and is_by_ref => is_strict_alignment)
      so the following formula is sufficient.  */
   const bool needs_strict_alignment = (is_independent || is_strict_alignment);
@@ -7128,10 +7131,16 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
   bool is_bitfield;
 
   /* The qualifier to be used in messages.  */
-  if (is_atomic)
-    field_s = "atomic&";
-  else if (is_aliased)
+  if (is_aliased)
     field_s = "aliased&";
+  else if (is_full_access)
+    {
+      if (Is_Volatile_Full_Access (gnat_field)
+	  || Is_Volatile_Full_Access (gnat_field_type))
+	field_s = "volatile full access&";
+      else
+	field_s = "atomic&";
+    }
   else if (is_independent)
     field_s = "independent&";
   else if (is_by_ref)
@@ -7142,7 +7151,7 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
     field_s = "&";
 
   /* The message to be used for incompatible size.  */
-  if (is_atomic || is_aliased)
+  if (is_aliased || is_full_access)
     size_s = "size for %s must be ^";
   else if (field_s)
     size_s = "size for %s too small{, minimum allowed is ^}";
@@ -7234,7 +7243,7 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
     }
 
   /* Now check if the type of the field allows atomic access.  */
-  if (Is_Atomic_Or_VFA (gnat_field))
+  if (Is_Full_Access (gnat_field))
     {
       const unsigned int align
 	= promote_object_alignment (gnu_field_type, gnat_field);
@@ -7250,12 +7259,12 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
     {
       Entity_Id gnat_parent = Parent_Subtype (gnat_record_type);
 
-      /* Ensure the position does not overlap with the parent subtype, if there
-	 is one.  This test is omitted if the parent of the tagged type has a
-	 full rep clause since, in this case, component clauses are allowed to
-	 overlay the space allocated for the parent type and the front-end has
-	 checked that there are no overlapping components.  */
-      if (Present (gnat_parent) && !Is_Fully_Repped_Tagged_Type (gnat_parent))
+      /* Ensure the position doesn't overlap with the parent subtype if there
+	 is one.  It would be impossible to build CONSTRUCTORs and accessing
+	 the parent could clobber the component in the extension if directly
+	 done.  We accept it with -gnatd.K for the sake of compatibility.  */
+      if (Present (gnat_parent)
+	  && !(Debug_Flag_Dot_KK && Is_Fully_Repped_Tagged_Type (gnat_parent)))
 	{
 	  tree gnu_parent = gnat_to_gnu_type (gnat_parent);
 
@@ -7330,7 +7339,7 @@ gnat_to_gnu_field (Entity_Id gnat_field, tree gnu_record_type, int packed,
 	      /* If the size is lower than that of the type, or greater for
 		 atomic and aliased, then error out and reset the size.  */
 	      else if ((cmp = tree_int_cst_compare (gnu_size, type_size)) < 0
-		       || (cmp > 0 && (is_atomic || is_aliased)))
+		       || (cmp > 0 && (is_aliased || is_full_access)))
 		{
 		  char s[128];
 		  snprintf (s, sizeof (s), size_s, field_s);
@@ -8865,11 +8874,15 @@ build_subst_list (Entity_Id gnat_subtype, Entity_Id gnat_type, bool definition)
     if (!Is_Access_Type (Etype (Node (gnat_constr))))
       {
 	tree gnu_field = gnat_to_gnu_field_decl (gnat_discrim);
-	tree replacement = convert (TREE_TYPE (gnu_field),
-				    elaborate_expression
-				    (Node (gnat_constr), gnat_subtype,
-				     get_entity_char (gnat_discrim),
-				     definition, true, false));
+	tree replacement
+	  = elaborate_expression (Node (gnat_constr), gnat_subtype,
+				  get_entity_char (gnat_discrim),
+				  definition, true, false);
+	/* If this is a definition, we need to make sure that the SAVE_EXPRs
+	   are instantiated on every possibly path in size computations.  */
+	if (definition && TREE_CODE (replacement) == SAVE_EXPR)
+	  add_stmt (replacement);
+	replacement = convert (TREE_TYPE (gnu_field), replacement);
 	subst_pair s = { gnu_field, replacement };
 	gnu_list.safe_push (s);
       }
@@ -8945,15 +8958,21 @@ build_variant_list (tree gnu_qual_union_type, Node_Id gnat_variant_part,
 }
 
 /* If SIZE has overflowed, return the maximum valid size, which is the upper
-   bound of the signed sizetype in bits; otherwise return SIZE unmodified.  */
+   bound of the signed sizetype in bits, rounded down to ALIGN.  Otherwise
+   return SIZE unmodified.  */
 
 static tree
-maybe_saturate_size (tree size)
+maybe_saturate_size (tree size, unsigned int align)
 {
   if (TREE_CODE (size) == INTEGER_CST && TREE_OVERFLOW (size))
-    size = size_binop (MULT_EXPR,
-		       fold_convert (bitsizetype, TYPE_MAX_VALUE (ssizetype)),
-		       build_int_cst (bitsizetype, BITS_PER_UNIT));
+    {
+      size
+	= size_binop (MULT_EXPR,
+		      fold_convert (bitsizetype, TYPE_MAX_VALUE (ssizetype)),
+		      build_int_cst (bitsizetype, BITS_PER_UNIT));
+      size = round_down (size, align);
+    }
+
   return size;
 }
 
@@ -9095,10 +9114,12 @@ set_rm_size (Uint uint_size, tree gnu_type, Entity_Id gnat_entity)
   if (uint_size == No_Uint)
     return;
 
-  /* Only issue an error if a Value_Size clause was explicitly given.
-     Otherwise, we'd be duplicating an error on the Size clause.  */
+  /* Only issue an error if a Value_Size clause was explicitly given for the
+     entity; otherwise, we'd be duplicating an error on the Size clause.  */
   gnat_attr_node
     = Get_Attribute_Definition_Clause (gnat_entity, Attr_Value_Size);
+  if (Present (gnat_attr_node) && Entity (gnat_attr_node) != gnat_entity)
+    gnat_attr_node = Empty;
 
   /* Get the size as an INTEGER_CST.  Issue an error if a size was specified
      but cannot be represented in bitsizetype.  */
@@ -9263,8 +9284,8 @@ promote_object_alignment (tree gnu_type, Entity_Id gnat_entity)
      the NRV optimization for it.  No point in jumping through all the hoops
      needed in order to support BIGGEST_ALIGNMENT if we don't really have to.
      So we cap to the smallest alignment that corresponds to a known efficient
-     memory access pattern, except for Atomic and Volatile_Full_Access.  */
-  if (Is_Atomic_Or_VFA (gnat_entity))
+     memory access pattern, except for a full access entity.  */
+  if (Is_Full_Access (gnat_entity))
     {
       size_cap = UINT_MAX;
       align_cap = BIGGEST_ALIGNMENT;

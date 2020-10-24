@@ -3429,6 +3429,7 @@ extern rtx single_set_2 (const rtx_insn *, const_rtx);
 extern bool contains_symbol_ref_p (const_rtx);
 extern bool contains_symbolic_reference_p (const_rtx);
 extern bool contains_constant_pool_address_p (const_rtx);
+extern void add_auto_inc_notes (rtx_insn *, rtx);
 
 /* Handle the cheap and common cases inline for performance.  */
 
@@ -4323,6 +4324,7 @@ extern rtx gen_hard_reg_clobber (machine_mode, unsigned int);
 extern rtx get_reg_known_value (unsigned int);
 extern bool get_reg_known_equiv_p (unsigned int);
 extern rtx get_reg_base_value (unsigned int);
+extern rtx extract_mem_from_operand (rtx);
 
 #ifdef STACK_REGS
 extern int stack_regs_mentioned (const_rtx insn);

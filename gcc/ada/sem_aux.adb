@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -18,13 +18,6 @@
 -- Public License  distributed with GNAT; see file COPYING3.  If not, go to --
 -- http://www.gnu.org/licenses for a complete copy of the license.          --
 --                                                                          --
--- As a special exception,  if other files  instantiate  generics from this --
--- unit, or you link  this unit with other files  to produce an executable, --
--- this  unit  does not  by itself cause  the resulting  executable  to  be --
--- covered  by the  GNU  General  Public  License.  This exception does not --
--- however invalidate  any other reasons why  the executable file  might be --
--- covered by the  GNU Public License.                                      --
---                                                                          --
 -- GNAT was originally developed  by the GNAT team at  New York University. --
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
@@ -32,6 +25,7 @@
 
 with Atree;  use Atree;
 with Einfo;  use Einfo;
+with Nlists; use Nlists;
 with Snames; use Snames;
 with Stand;  use Stand;
 with Uintp;  use Uintp;
@@ -162,6 +156,8 @@ package body Sem_Aux is
          return Standard_Long_Unsigned;
       elsif Siz = Esize (Standard_Long_Long_Integer) then
          return Standard_Long_Long_Unsigned;
+      elsif Siz = Esize (Standard_Long_Long_Long_Integer) then
+         return Standard_Long_Long_Long_Unsigned;
       else
          raise Program_Error;
       end if;
@@ -234,7 +230,7 @@ package body Sem_Aux is
       --  either because the tag must be ahead of them.
 
       if Chars (Ent) = Name_uTag then
-         Ent := Next_Entity (Ent);
+         Next_Entity (Ent);
       end if;
 
       --  Skip all hidden stored discriminants if any
@@ -243,7 +239,7 @@ package body Sem_Aux is
          exit when Ekind (Ent) = E_Discriminant
            and then not Is_Completely_Hidden (Ent);
 
-         Ent := Next_Entity (Ent);
+         Next_Entity (Ent);
       end loop;
 
       --  Call may be on a private type with unknown discriminants, in which
@@ -297,7 +293,7 @@ package body Sem_Aux is
                return True;
             end if;
 
-            Ent := Next_Entity (Ent);
+            Next_Entity (Ent);
          end loop;
 
          return False;
@@ -313,14 +309,14 @@ package body Sem_Aux is
       Ent := First_Entity (Typ);
 
       if Chars (Ent) = Name_uTag then
-         Ent := Next_Entity (Ent);
+         Next_Entity (Ent);
       end if;
 
       if Has_Completely_Hidden_Discriminant (Ent) then
          while Present (Ent) loop
             exit when Ekind (Ent) = E_Discriminant
               and then Is_Completely_Hidden (Ent);
-            Ent := Next_Entity (Ent);
+            Next_Entity (Ent);
          end loop;
       end if;
 
@@ -344,8 +340,8 @@ package body Sem_Aux is
       --  predefined integer types. If the type is formal, it is also a first
       --  subtype, and its base type has no freeze node. On the other hand, a
       --  subtype of a generic formal is not its own first subtype. Its base
-      --  type, if anonymous, is attached to the formal type decl. from which
-      --  the first subtype is obtained.
+      --  type, if anonymous, is attached to the formal type declaration from
+      --  which the first subtype is obtained.
 
       if No (F) then
          if B = Base_Type (Standard_Integer) then
@@ -362,6 +358,9 @@ package body Sem_Aux is
 
          elsif B = Base_Type (Standard_Long_Long_Integer) then
             return Standard_Long_Long_Integer;
+
+         elsif B = Base_Type (Standard_Long_Long_Long_Integer) then
+            return Standard_Long_Long_Long_Integer;
 
          elsif Is_Generic_Type (Typ) then
             if Present (Parent (B)) then
@@ -423,7 +422,7 @@ package body Sem_Aux is
             return Comp;
          end if;
 
-         Comp := Next_Entity (Comp);
+         Next_Entity (Comp);
       end loop;
 
       --  No tag component found
@@ -484,19 +483,6 @@ package body Sem_Aux is
 
       return Id;
    end Get_Called_Entity;
-
-   -------------------
-   -- Get_Low_Bound --
-   -------------------
-
-   function Get_Low_Bound (E : Entity_Id) return Node_Id is
-   begin
-      if Ekind (E) = E_String_Literal_Subtype then
-         return String_Literal_Low_Bound (E);
-      else
-         return Type_Low_Bound (E);
-      end if;
-   end Get_Low_Bound;
 
    ------------------
    -- Get_Rep_Item --
@@ -718,29 +704,6 @@ package body Sem_Aux is
       return Present (Get_Rep_Item (E, Nam1, Nam2, Check_Parents));
    end Has_Rep_Item;
 
-   function Has_Rep_Item (E : Entity_Id; N : Node_Id) return Boolean is
-      Item : Node_Id;
-
-   begin
-      pragma Assert
-        (Nkind_In (N, N_Aspect_Specification,
-                      N_Attribute_Definition_Clause,
-                      N_Enumeration_Representation_Clause,
-                      N_Pragma,
-                      N_Record_Representation_Clause));
-
-      Item := First_Rep_Item (E);
-      while Present (Item) loop
-         if Item = N then
-            return True;
-         end if;
-
-         Item := Next_Rep_Item (Item);
-      end loop;
-
-      return False;
-   end Has_Rep_Item;
-
    --------------------
    -- Has_Rep_Pragma --
    --------------------
@@ -889,13 +852,9 @@ package body Sem_Aux is
 
    function Is_Body (N : Node_Id) return Boolean is
    begin
-      return
-        Nkind (N) in N_Body_Stub
-          or else Nkind_In (N, N_Entry_Body,
-                               N_Package_Body,
-                               N_Protected_Body,
-                               N_Subprogram_Body,
-                               N_Task_Body);
+      return Nkind (N) in
+        N_Body_Stub       | N_Entry_Body | N_Package_Body | N_Protected_Body |
+        N_Subprogram_Body | N_Task_Body;
    end Is_Body;
 
    ---------------------
@@ -984,7 +943,7 @@ package body Sem_Aux is
                      return True;
                   end if;
 
-                  C := Next_Component (C);
+                  Next_Component (C);
                end loop;
             end;
 
@@ -1084,8 +1043,7 @@ package body Sem_Aux is
          Kind := Nkind (Original_Node (Parent (E)));
 
          return
-           Nkind_In (Kind, N_Formal_Object_Declaration,
-                           N_Formal_Type_Declaration)
+           Kind in N_Formal_Object_Declaration | N_Formal_Type_Declaration
              or else Is_Formal_Subprogram (E)
              or else
                (Ekind (E) = E_Package
@@ -1216,7 +1174,7 @@ package body Sem_Aux is
                      return True;
                   end if;
 
-                  C := Next_Component (C);
+                  Next_Component (C);
                end loop;
             end;
 
@@ -1315,7 +1273,7 @@ package body Sem_Aux is
                      return True;
                   end if;
 
-                  C := Next_Component (C);
+                  Next_Component (C);
                end loop;
             end;
 
@@ -1342,6 +1300,15 @@ package body Sem_Aux is
                     and then Nkind (Parent (Unit_Declaration_Node (E))) =
                                N_Protected_Definition);
    end Is_Protected_Operation;
+
+   -------------------------------
+   -- Is_Record_Or_Limited_Type --
+   -------------------------------
+
+   function Is_Record_Or_Limited_Type (Typ : Entity_Id) return Boolean is
+   begin
+      return Is_Record_Type (Typ) or else Is_Limited_Type (Typ);
+   end Is_Record_Or_Limited_Type;
 
    ----------------------
    -- Nearest_Ancestor --
@@ -1378,6 +1345,18 @@ package body Sem_Aux is
                return Entity (Subtype_Mark (SI));
             end if;
          end;
+
+      --  If this is a concurrent declaration with a nonempty interface list,
+      --  get the first progenitor. Account for case of a record type created
+      --  for a concurrent type (which is the only case that seems to occur
+      --  in practice).
+
+      elsif Nkind (D) = N_Full_Type_Declaration
+        and then (Is_Concurrent_Type (Defining_Identifier (D))
+                   or else Is_Concurrent_Record_Type (Defining_Identifier (D)))
+        and then Is_Non_Empty_List (Interface_List (Type_Definition (D)))
+      then
+         return Entity (First (Interface_List (Type_Definition (D))));
 
       --  If derived type and private type, get the full view to find who we
       --  are derived from.
@@ -1427,7 +1406,7 @@ package body Sem_Aux is
             return Comp;
          end if;
 
-         Comp := Next_Entity (Comp);
+         Next_Entity (Comp);
       end loop;
 
       --  No tag component found
@@ -1456,7 +1435,7 @@ package body Sem_Aux is
 
       while Present (Comp) loop
          N := N + 1;
-         Comp := Next_Component_Or_Discriminant (Comp);
+         Next_Component_Or_Discriminant (Comp);
       end loop;
 
       return N;
@@ -1473,7 +1452,7 @@ package body Sem_Aux is
    begin
       while Present (Discr) loop
          N := N + 1;
-         Discr := Next_Discriminant (Discr);
+         Next_Discriminant (Discr);
       end loop;
 
       return N;
@@ -1649,24 +1628,6 @@ package body Sem_Aux is
 
       return N;
    end Subprogram_Specification;
-
-   ---------------
-   -- Tree_Read --
-   ---------------
-
-   procedure Tree_Read is
-   begin
-      Obsolescent_Warnings.Tree_Read;
-   end Tree_Read;
-
-   ----------------
-   -- Tree_Write --
-   ----------------
-
-   procedure Tree_Write is
-   begin
-      Obsolescent_Warnings.Tree_Write;
-   end Tree_Write;
 
    --------------------
    -- Ultimate_Alias --

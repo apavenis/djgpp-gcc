@@ -87,13 +87,10 @@
   (and (match_code "reg")
        (match_test "REGNO (op) == FLAGS_REG")))
 
-;; Match a DI, SI or HImode register for a zero_extract.
-(define_special_predicate "ext_register_operand"
-  (and (match_operand 0 "register_operand")
-       (ior (and (match_test "TARGET_64BIT")
-		 (match_test "GET_MODE (op) == DImode"))
-	    (match_test "GET_MODE (op) == SImode")
-	    (match_test "GET_MODE (op) == HImode"))))
+;; True if the operand is a MASK register.
+(define_predicate "mask_reg_operand"
+  (and (match_code "reg")
+       (match_test "MASK_REGNO_P (REGNO (op))")))
 
 ;; Match a DI, SI, HI or QImode nonimmediate_operand.
 (define_special_predicate "int_nonimmediate_operand"
@@ -138,10 +135,35 @@
 (define_predicate "symbol_operand"
   (match_code "symbol_ref"))
 
+;; Return true if VALUE is an ENDBR opcode in immediate field.
+(define_predicate "ix86_endbr_immediate_operand"
+  (match_code "const_int")
+{
+  if (flag_cf_protection & CF_BRANCH)
+     {
+       unsigned HOST_WIDE_INT imm = UINTVAL (op);
+       unsigned HOST_WIDE_INT val = TARGET_64BIT ? 0xfa1e0ff3 : 0xfb1e0ff3;
+
+       if (imm == val)
+	 return 1;
+
+       /* NB: Encoding is byte based.  */
+       if (TARGET_64BIT)
+	 for (; imm >= val; imm >>= 8)
+	   if (imm == val)
+	     return 1;
+      }
+
+  return 0;
+})
+
 ;; Return true if VALUE can be stored in a sign extended immediate field.
 (define_predicate "x86_64_immediate_operand"
   (match_code "const_int,symbol_ref,label_ref,const")
 {
+  if (ix86_endbr_immediate_operand (op, VOIDmode))
+    return false;
+
   if (!TARGET_64BIT)
     return immediate_operand (op, mode);
 
@@ -268,6 +290,9 @@
 (define_predicate "x86_64_zext_immediate_operand"
   (match_code "const_int,symbol_ref,label_ref,const")
 {
+  if (ix86_endbr_immediate_operand (op, VOIDmode))
+    return false;
+
   switch (GET_CODE (op))
     {
     case CONST_INT:
@@ -382,6 +407,9 @@
 (define_predicate "x86_64_dwzext_immediate_operand"
   (match_code "const_int,const_wide_int")
 {
+  if (ix86_endbr_immediate_operand (op, VOIDmode))
+    return false;
+
   switch (GET_CODE (op))
     {
     case CONST_INT:
@@ -1052,6 +1080,19 @@
 (define_predicate "vector_operand"
   (ior (match_operand 0 "register_operand")
        (match_operand 0 "vector_memory_operand")))
+
+(define_predicate "bcst_mem_operand"
+  (and (match_code "vec_duplicate")
+       (and (match_test "TARGET_AVX512F")
+	    (ior (match_test "TARGET_AVX512VL")
+		 (match_test "GET_MODE_SIZE (GET_MODE (op)) == 64")))
+       (match_test "VALID_BCST_MODE_P (GET_MODE_INNER (GET_MODE (op)))")
+       (match_test "memory_operand (XEXP (op, 0), GET_MODE (XEXP (op, 0)))")))
+
+; Return true when OP is bcst_mem_operand or vector_memory_operand.
+(define_predicate "bcst_vector_operand"
+  (ior (match_operand 0 "vector_operand")
+       (match_operand 0 "bcst_mem_operand")))
 
 ;; Return true when OP is either nonimmediate operand, or any
 ;; CONST_VECTOR.

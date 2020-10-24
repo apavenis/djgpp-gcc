@@ -366,7 +366,9 @@ uptr AsanThread::GetStackVariableShadowStart(uptr addr) {
     bottom = stack_bottom();
   } else if (has_fake_stack()) {
     bottom = fake_stack()->AddrIsInFakeStack(addr);
-    CHECK(bottom);
+    if (bottom == 0) {
+      return 0;
+    }
   } else {
     return 0;
   }
@@ -479,6 +481,8 @@ bool GetThreadRangesLocked(tid_t os_id, uptr *stack_begin, uptr *stack_end,
   *dtls = t->dtls();
   return true;
 }
+
+void GetAllThreadAllocatorCachesLocked(InternalMmapVector<uptr> *caches) {}
 
 void ForEachExtraStackRange(tid_t os_id, RangeIteratorCallback callback,
                             void *arg) {

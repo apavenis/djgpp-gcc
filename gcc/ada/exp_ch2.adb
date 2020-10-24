@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -122,8 +122,6 @@ package body Exp_Ch2 is
       Val : Node_Id;
       Op  : Node_Kind;
 
-   --  Start of processing for Expand_Current_Value
-
    begin
       if True
 
@@ -162,11 +160,9 @@ package body Exp_Ch2 is
 
          and then not (Nkind (Parent (N)) = N_Attribute_Reference
                         and then
-                          (Nam_In (Attribute_Name (Parent (N)),
-                                   Name_Asm_Input,
-                                   Name_Asm_Output)
+                          (Attribute_Name (Parent (N)) in Name_Asm_Input
+                                                        | Name_Asm_Output
                             or else Prefix (Parent (N)) = N))
-
       then
          --  Case of Current_Value is a compile time known value
 
@@ -408,7 +404,7 @@ package body Exp_Ch2 is
       --  Set Atomic_Sync_Required if necessary for atomic variable. Note that
       --  this processing does NOT apply to Volatile_Full_Access variables.
 
-      if Nkind_In (N, N_Identifier, N_Expanded_Name)
+      if Nkind (N) in N_Identifier | N_Expanded_Name
         and then Ekind (E) = E_Variable
         and then (Is_Atomic (E) or else Is_Atomic (Etype (E)))
       then
@@ -514,8 +510,8 @@ package body Exp_Ch2 is
          --  ??? passing a formal as actual for a mode IN formal is
          --  considered as an assignment?
 
-         if Nkind_In (Parent (N), N_Procedure_Call_Statement,
-                                  N_Entry_Call_Statement)
+         if Nkind (Parent (N)) in
+              N_Procedure_Call_Statement | N_Entry_Call_Statement
            or else (Nkind (Parent (N)) = N_Assignment_Statement
                       and then N = Name (Parent (N)))
          then
@@ -531,9 +527,8 @@ package body Exp_Ch2 is
          --  which case there is an implicit dereference, and the formal itself
          --  is not being assigned to).
 
-         elsif Nkind_In (Parent (N), N_Selected_Component,
-                                     N_Indexed_Component,
-                                     N_Slice)
+         elsif Nkind (Parent (N)) in
+                 N_Selected_Component | N_Indexed_Component | N_Slice
            and then N = Prefix (Parent (N))
            and then not Is_Access_Type (Etype (N))
            and then In_Assignment_Context (Parent (N))
@@ -721,99 +716,5 @@ package body Exp_Ch2 is
       Reset_Analyzed_Flags (N);
       Analyze_And_Resolve (N, T);
    end Expand_Renaming;
-
-   ------------------
-   -- Param_Entity --
-   ------------------
-
-   --  This would be trivial, simply a test for an identifier that was a
-   --  reference to a formal, if it were not for the fact that a previous call
-   --  to Expand_Entry_Parameter will have modified the reference to the
-   --  identifier. A formal of a protected entity is rewritten as
-
-   --    typ!(recobj).rec.all'Constrained
-
-   --  where rec is a selector whose Entry_Formal link points to the formal
-
-   --  If the type of the entry parameter has a representation clause, then an
-   --  extra temp is involved (see below).
-
-   --  For a formal of a task entity, the formal is rewritten as a local
-   --  renaming.
-
-   --  In addition, a formal that is marked volatile because it is aliased
-   --  through an address clause is rewritten as dereference as well.
-
-   function Param_Entity (N : Node_Id) return Entity_Id is
-      Renamed_Obj : Node_Id;
-
-   begin
-      --  Simple reference case
-
-      if Nkind_In (N, N_Identifier, N_Expanded_Name) then
-         if Is_Formal (Entity (N)) then
-            return Entity (N);
-
-         --  Handle renamings of formal parameters and formals of tasks that
-         --  are rewritten as renamings.
-
-         elsif Nkind (Parent (Entity (N))) = N_Object_Renaming_Declaration then
-            Renamed_Obj := Get_Referenced_Object (Renamed_Object (Entity (N)));
-
-            if Is_Entity_Name (Renamed_Obj)
-              and then Is_Formal (Entity (Renamed_Obj))
-            then
-               return Entity (Renamed_Obj);
-
-            elsif
-              Nkind (Parent (Parent (Entity (N)))) = N_Accept_Statement
-            then
-               return Entity (N);
-            end if;
-         end if;
-
-      else
-         if Nkind (N) = N_Explicit_Dereference then
-            declare
-               P    : Node_Id := Prefix (N);
-               S    : Node_Id;
-               E    : Entity_Id;
-               Decl : Node_Id;
-
-            begin
-               --  If the type of an entry parameter has a representation
-               --  clause, then the prefix is not a selected component, but
-               --  instead a reference to a temp pointing at the selected
-               --  component. In this case, set P to be the initial value of
-               --  that temp.
-
-               if Nkind (P) = N_Identifier then
-                  E := Entity (P);
-
-                  if Ekind (E) = E_Constant then
-                     Decl := Parent (E);
-
-                     if Nkind (Decl) = N_Object_Declaration then
-                        P := Expression (Decl);
-                     end if;
-                  end if;
-               end if;
-
-               if Nkind (P) = N_Selected_Component then
-                  S := Selector_Name (P);
-
-                  if Present (Entry_Formal (Entity (S))) then
-                     return Entry_Formal (Entity (S));
-                  end if;
-
-               elsif Nkind (Original_Node (N)) = N_Identifier then
-                  return Param_Entity (Original_Node (N));
-               end if;
-            end;
-         end if;
-      end if;
-
-      return (Empty);
-   end Param_Entity;
 
 end Exp_Ch2;

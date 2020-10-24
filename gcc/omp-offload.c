@@ -125,6 +125,10 @@ add_decls_addresses_to_decl_constructor (vec<tree, va_gc> *v_decls,
 #endif
 	  && lookup_attribute ("omp declare target link", DECL_ATTRIBUTES (it));
 
+      /* See also omp_finish_file and output_offload_tables in lto-cgraph.c.  */
+      if (!in_lto_p && !symtab_node::get (it))
+	continue;
+
       tree size = NULL_TREE;
       if (is_var)
 	size = fold_convert (const_ptr_type_node, DECL_SIZE_UNIT (it));
@@ -192,21 +196,54 @@ omp_declare_target_var_p (tree decl)
 static tree
 omp_discover_declare_target_tgt_fn_r (tree *tp, int *walk_subtrees, void *data)
 {
-  if (TREE_CODE (*tp) == FUNCTION_DECL
-      && !omp_declare_target_fn_p (*tp)
-      && !lookup_attribute ("omp declare target host", DECL_ATTRIBUTES (*tp)))
+  if (TREE_CODE (*tp) == FUNCTION_DECL)
     {
+      tree decl = *tp;
       tree id = get_identifier ("omp declare target");
-      if (!DECL_EXTERNAL (*tp) && DECL_SAVED_TREE (*tp))
-	((vec<tree> *) data)->safe_push (*tp);
-      DECL_ATTRIBUTES (*tp) = tree_cons (id, NULL_TREE, DECL_ATTRIBUTES (*tp));
       symtab_node *node = symtab_node::get (*tp);
       if (node != NULL)
 	{
+	  while (node->alias_target
+		 && TREE_CODE (node->alias_target) == FUNCTION_DECL)
+	    {
+	      if (!omp_declare_target_fn_p (node->decl)
+		  && !lookup_attribute ("omp declare target host",
+					DECL_ATTRIBUTES (node->decl)))
+		{
+		  node->offloadable = 1;
+		  DECL_ATTRIBUTES (node->decl)
+		    = tree_cons (id, NULL_TREE, DECL_ATTRIBUTES (node->decl));
+		}
+	      node = symtab_node::get (node->alias_target);
+	    }
+	  symtab_node *new_node = node->ultimate_alias_target ();
+	  decl = new_node->decl;
+	  while (node != new_node)
+	    {
+	      if (!omp_declare_target_fn_p (node->decl)
+		  && !lookup_attribute ("omp declare target host",
+					DECL_ATTRIBUTES (node->decl)))
+		{
+		  node->offloadable = 1;
+		  DECL_ATTRIBUTES (node->decl)
+		    = tree_cons (id, NULL_TREE, DECL_ATTRIBUTES (node->decl));
+		}
+	      gcc_assert (node->alias && node->analyzed);
+	      node = node->get_alias_target ();
+	    }
 	  node->offloadable = 1;
 	  if (ENABLE_OFFLOADING)
 	    g->have_offload = true;
 	}
+      if (omp_declare_target_fn_p (decl)
+	  || lookup_attribute ("omp declare target host",
+				    DECL_ATTRIBUTES (decl)))
+	return NULL_TREE;
+
+      if (!DECL_EXTERNAL (decl) && DECL_SAVED_TREE (decl))
+	((vec<tree> *) data)->safe_push (decl);
+      DECL_ATTRIBUTES (decl) = tree_cons (id, NULL_TREE,
+					  DECL_ATTRIBUTES (decl));
     }
   else if (TYPE_P (*tp))
     *walk_subtrees = 0;
@@ -291,11 +328,19 @@ omp_discover_implicit_declare_target (void)
   FOR_EACH_DEFINED_FUNCTION (node)
     if (DECL_SAVED_TREE (node->decl))
       {
+	struct cgraph_node *cgn;
         if (omp_declare_target_fn_p (node->decl))
 	  worklist.safe_push (node->decl);
 	else if (DECL_STRUCT_FUNCTION (node->decl)
 		 && DECL_STRUCT_FUNCTION (node->decl)->has_omp_target)
 	  worklist.safe_push (node->decl);
+	for (cgn = first_nested_function (node);
+	     cgn; cgn = next_nested_function (cgn))
+	  if (omp_declare_target_fn_p (cgn->decl))
+	    worklist.safe_push (cgn->decl);
+	  else if (DECL_STRUCT_FUNCTION (cgn->decl)
+		   && DECL_STRUCT_FUNCTION (cgn->decl)->has_omp_target)
+	    worklist.safe_push (cgn->decl);
       }
   FOR_EACH_STATIC_INITIALIZER (vnode)
     if (omp_declare_target_var_p (vnode->decl))
@@ -341,7 +386,7 @@ omp_finish_file (void)
       add_decls_addresses_to_decl_constructor (offload_vars, v_v);
 
       tree vars_decl_type = build_array_type_nelts (pointer_sized_int_node,
-						    num_vars * 2);
+						    vec_safe_length (v_v));
       tree funcs_decl_type = build_array_type_nelts (pointer_sized_int_node,
 						     num_funcs);
       SET_TYPE_ALIGN (vars_decl_type, TYPE_ALIGN (pointer_sized_int_node));
@@ -376,11 +421,17 @@ omp_finish_file (void)
       for (unsigned i = 0; i < num_funcs; i++)
 	{
 	  tree it = (*offload_funcs)[i];
+	  /* See also add_decls_addresses_to_decl_constructor
+	     and output_offload_tables in lto-cgraph.c.  */
+	  if (!in_lto_p && !symtab_node::get (it))
+	    continue;
 	  targetm.record_offload_symbol (it);
 	}
       for (unsigned i = 0; i < num_vars; i++)
 	{
 	  tree it = (*offload_vars)[i];
+	  if (!in_lto_p && !symtab_node::get (it))
+	    continue;
 #ifdef ACCEL_COMPILER
 	  if (DECL_HAS_VALUE_EXPR_P (it)
 	      && lookup_attribute ("omp declare target link",

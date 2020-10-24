@@ -40,10 +40,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-vector-builder.h"
 #include "vec-perm-indices.h"
 #include "insn-config.h"
+#include "tree-ssa-dce.h"
 #include "recog.h"		/* FIXME: for insn_data */
 
 
-static void expand_vector_operations_1 (gimple_stmt_iterator *);
+static void expand_vector_operations_1 (gimple_stmt_iterator *, bitmap);
 
 /* Return the number of elements in a vector type TYPE that we have
    already decided needs to be expanded piecewise.  We don't support
@@ -135,19 +136,7 @@ tree_vec_extract (gimple_stmt_iterator *gsi, tree type,
 	t = gimple_assign_rhs1 (def_stmt);
     }
   if (bitpos)
-    {
-      if (TREE_CODE (type) == BOOLEAN_TYPE)
-	{
-	  tree itype
-	    = build_nonstandard_integer_type (tree_to_uhwi (bitsize), 0);
-	  tree field = gimplify_build3 (gsi, BIT_FIELD_REF, itype, t,
-					bitsize, bitpos);
-	  return gimplify_build2 (gsi, NE_EXPR, type, field,
-				  build_zero_cst (itype));
-	}
-      else
-	return gimplify_build3 (gsi, BIT_FIELD_REF, type, t, bitsize, bitpos);
-    }
+    return gimplify_build3 (gsi, BIT_FIELD_REF, type, t, bitsize, bitpos);
   else
     return gimplify_build1 (gsi, VIEW_CONVERT_EXPR, type, t);
 }
@@ -370,17 +359,55 @@ expand_vector_addition (gimple_stmt_iterator *gsi,
 				    a, b, code);
 }
 
+static bool
+expand_vector_condition (gimple_stmt_iterator *gsi, bitmap dce_ssa_names);
+
 /* Try to expand vector comparison expression OP0 CODE OP1 by
    querying optab if the following expression:
 	VEC_COND_EXPR< OP0 CODE OP1, {-1,...}, {0,...}>
    can be expanded.  */
 static tree
 expand_vector_comparison (gimple_stmt_iterator *gsi, tree type, tree op0,
-                          tree op1, enum tree_code code)
+			  tree op1, enum tree_code code,
+			  bitmap dce_ssa_names)
 {
+  tree lhs = gimple_assign_lhs (gsi_stmt (*gsi));
+  use_operand_p use_p;
+  imm_use_iterator iterator;
+  bool vec_cond_expr_only = true;
+
+  /* As seen in PR95830, we should not expand comparisons that are only
+     feeding a VEC_COND_EXPR statement.  */
+  auto_vec<gimple *> uses;
+  FOR_EACH_IMM_USE_FAST (use_p, iterator, lhs)
+    uses.safe_push (USE_STMT (use_p));
+
+  for (unsigned i = 0; i < uses.length (); i ++)
+    {
+      gassign *use = dyn_cast<gassign *> (uses[i]);
+      if (use != NULL
+	  && gimple_assign_rhs_code (use) == VEC_COND_EXPR
+	  && gimple_assign_rhs1 (use) == lhs)
+	{
+	  gimple_stmt_iterator it = gsi_for_stmt (use);
+	  if (!expand_vector_condition (&it, dce_ssa_names))
+	    {
+	      vec_cond_expr_only = false;
+	      break;
+	    }
+	}
+      else
+	{
+	  vec_cond_expr_only = false;
+	  break;
+	}
+    }
+
+  if (!uses.is_empty () && vec_cond_expr_only)
+    return NULL_TREE;
+
   tree t;
-  if (!expand_vec_cmp_expr_p (TREE_TYPE (op0), type, code)
-      && !expand_vec_cond_expr_p (type, TREE_TYPE (op0), code))
+  if (!expand_vec_cmp_expr_p (TREE_TYPE (op0), type, code))
     {
       if (VECTOR_BOOLEAN_TYPE_P (type)
 	  && SCALAR_INT_MODE_P (TYPE_MODE (type))
@@ -694,12 +721,14 @@ expand_vector_divmod (gimple_stmt_iterator *gsi, tree type, tree op0,
 	  if (addend == NULL_TREE
 	      && expand_vec_cond_expr_p (type, type, LT_EXPR))
 	    {
-	      tree zero, cst, cond, mask_type;
-	      gimple *stmt;
+	      tree zero, cst, mask_type, mask;
+	      gimple *stmt, *cond;
 
 	      mask_type = truth_type_for (type);
 	      zero = build_zero_cst (type);
-	      cond = build2 (LT_EXPR, mask_type, op0, zero);
+	      mask = make_ssa_name (mask_type);
+	      cond = gimple_build_assign (mask, LT_EXPR, op0, zero);
+	      gsi_insert_before (gsi, cond, GSI_SAME_STMT);
 	      tree_vector_builder vec (type, nunits, 1);
 	      for (i = 0; i < nunits; i++)
 		vec.quick_push (build_int_cst (TREE_TYPE (type),
@@ -707,8 +736,8 @@ expand_vector_divmod (gimple_stmt_iterator *gsi, tree type, tree op0,
 						<< shifts[i]) - 1));
 	      cst = vec.build ();
 	      addend = make_ssa_name (type);
-	      stmt = gimple_build_assign (addend, VEC_COND_EXPR, cond,
-					  cst, zero);
+	      stmt
+		= gimple_build_assign (addend, VEC_COND_EXPR, mask, cst, zero);
 	      gsi_insert_before (gsi, stmt, GSI_SAME_STMT);
 	    }
 	}
@@ -929,8 +958,9 @@ expand_vector_divmod (gimple_stmt_iterator *gsi, tree type, tree op0,
 
 /* Expand a vector condition to scalars, by using many conditions
    on the vector's elements.  */
-static void
-expand_vector_condition (gimple_stmt_iterator *gsi)
+
+static bool
+expand_vector_condition (gimple_stmt_iterator *gsi, bitmap dce_ssa_names)
 {
   gassign *stmt = as_a <gassign *> (gsi_stmt (*gsi));
   tree type = gimple_expr_type (stmt);
@@ -950,21 +980,30 @@ expand_vector_condition (gimple_stmt_iterator *gsi)
   tree index = bitsize_int (0);
   tree comp_width = width;
   tree comp_index = index;
-  int i;
   location_t loc = gimple_location (gsi_stmt (*gsi));
+  tree_code code = TREE_CODE (a);
+  gassign *assign = NULL;
 
-  if (!is_gimple_val (a))
+  if (code == SSA_NAME)
     {
-      gcc_assert (COMPARISON_CLASS_P (a));
-      a_is_comparison = true;
-      a1 = TREE_OPERAND (a, 0);
-      a2 = TREE_OPERAND (a, 1);
-      comp_inner_type = TREE_TYPE (TREE_TYPE (a1));
-      comp_width = vector_element_bits_tree (TREE_TYPE (a1));
+      assign = dyn_cast<gassign *> (SSA_NAME_DEF_STMT (a));
+      if (assign != NULL
+	  && TREE_CODE_CLASS (gimple_assign_rhs_code (assign)) == tcc_comparison)
+	{
+	  a_is_comparison = true;
+	  a1 = gimple_assign_rhs1 (assign);
+	  a2 = gimple_assign_rhs2 (assign);
+	  code = gimple_assign_rhs_code (assign);
+	  comp_inner_type = TREE_TYPE (TREE_TYPE (a1));
+	  comp_width = vector_element_bits_tree (TREE_TYPE (a1));
+	}
     }
 
-  if (expand_vec_cond_expr_p (type, TREE_TYPE (a1), TREE_CODE (a)))
-    return;
+  if (expand_vec_cond_expr_p (type, TREE_TYPE (a1), code))
+    {
+      gcc_assert (TREE_CODE (a) == SSA_NAME || TREE_CODE (a) == VECTOR_CST);
+      return true;
+    }
 
   /* Handle vector boolean types with bitmasks.  If there is a comparison
      and we can expand the comparison into the vector boolean bitmask,
@@ -987,14 +1026,14 @@ expand_vector_condition (gimple_stmt_iterator *gsi)
 	  : expand_vec_cmp_expr_p (TREE_TYPE (a1), type, TREE_CODE (a))))
     {
       if (a_is_comparison)
-	a = gimplify_build2 (gsi, TREE_CODE (a), type, a1, a2);
+	a = gimplify_build2 (gsi, code, type, a1, a2);
       a1 = gimplify_build2 (gsi, BIT_AND_EXPR, type, a, b);
       a2 = gimplify_build1 (gsi, BIT_NOT_EXPR, type, a);
       a2 = gimplify_build2 (gsi, BIT_AND_EXPR, type, a2, c);
       a = gimplify_build2 (gsi, BIT_IOR_EXPR, type, a1, a2);
       gimple_assign_set_rhs_from_tree (gsi, a);
       update_stmt (gsi_stmt (*gsi));
-      return;
+      return true;
     }
 
   /* TODO: try and find a smaller vector type.  */
@@ -1018,7 +1057,7 @@ expand_vector_condition (gimple_stmt_iterator *gsi)
 
   int nunits = nunits_for_known_piecewise_op (type);
   vec_alloc (v, nunits);
-  for (i = 0; i < nunits; i++)
+  for (int i = 0; i < nunits; i++)
     {
       tree aa, result;
       tree bb = tree_vec_extract (gsi, inner_type, b, width, index);
@@ -1029,7 +1068,7 @@ expand_vector_condition (gimple_stmt_iterator *gsi)
 				       comp_width, comp_index);
 	  tree aa2 = tree_vec_extract (gsi, comp_inner_type, a2,
 				       comp_width, comp_index);
-	  aa = fold_build2 (TREE_CODE (a), cond_type, aa1, aa2);
+	  aa = fold_build2 (code, cond_type, aa1, aa2);
 	}
       else if (a_is_scalar_bitmask)
 	{
@@ -1054,11 +1093,18 @@ expand_vector_condition (gimple_stmt_iterator *gsi)
   constr = build_constructor (type, v);
   gimple_assign_set_rhs_from_tree (gsi, constr);
   update_stmt (gsi_stmt (*gsi));
+
+  if (a_is_comparison)
+    bitmap_set_bit (dce_ssa_names,
+		    SSA_NAME_VERSION (gimple_assign_lhs (assign)));
+
+  return false;
 }
 
 static tree
 expand_vector_operation (gimple_stmt_iterator *gsi, tree type, tree compute_type,
-			 gassign *assign, enum tree_code code)
+			 gassign *assign, enum tree_code code,
+			 bitmap dce_ssa_names)
 {
   machine_mode compute_mode = TYPE_MODE (compute_type);
 
@@ -1112,7 +1158,8 @@ expand_vector_operation (gimple_stmt_iterator *gsi, tree type, tree compute_type
 	  tree rhs1 = gimple_assign_rhs1 (assign);
 	  tree rhs2 = gimple_assign_rhs2 (assign);
 
-	  return expand_vector_comparison (gsi, type, rhs1, rhs2, code);
+	  return expand_vector_comparison (gsi, type, rhs1, rhs2, code,
+					   dce_ssa_names);
 	}
 
       case TRUNC_DIV_EXPR:
@@ -1716,6 +1763,12 @@ expand_vector_conversion (gimple_stmt_iterator *gsi)
   gimple *stmt = gsi_stmt (*gsi);
   gimple *g;
   tree lhs = gimple_call_lhs (stmt);
+  if (lhs == NULL_TREE)
+    {
+      g = gimple_build_nop ();
+      gsi_replace (gsi, g, false);
+      return;
+    }
   tree arg = gimple_call_arg (stmt, 0);
   tree ret_type = TREE_TYPE (lhs);
   tree arg_type = TREE_TYPE (arg);
@@ -1946,7 +1999,8 @@ expand_vector_conversion (gimple_stmt_iterator *gsi)
 /* Process one statement.  If we identify a vector operation, expand it.  */
 
 static void
-expand_vector_operations_1 (gimple_stmt_iterator *gsi)
+expand_vector_operations_1 (gimple_stmt_iterator *gsi,
+			    bitmap dce_ssa_names)
 {
   tree lhs, rhs1, rhs2 = NULL, type, compute_type = NULL_TREE;
   enum tree_code code;
@@ -1975,7 +2029,7 @@ expand_vector_operations_1 (gimple_stmt_iterator *gsi)
 
   if (code == VEC_COND_EXPR)
     {
-      expand_vector_condition (gsi);
+      expand_vector_condition (gsi, dce_ssa_names);
       return;
     }
 
@@ -2196,7 +2250,8 @@ expand_vector_operations_1 (gimple_stmt_iterator *gsi)
   if (compute_type == type)
     return;
 
-  new_rhs = expand_vector_operation (gsi, type, compute_type, stmt, code);
+  new_rhs = expand_vector_operation (gsi, type, compute_type, stmt, code,
+				     dce_ssa_names);
 
   /* Leave expression untouched for later expansion.  */
   if (new_rhs == NULL_TREE)
@@ -2223,11 +2278,13 @@ expand_vector_operations (void)
   basic_block bb;
   bool cfg_changed = false;
 
+  auto_bitmap dce_ssa_names;
+
   FOR_EACH_BB_FN (bb, cfun)
     {
       for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
 	{
-	  expand_vector_operations_1 (&gsi);
+	  expand_vector_operations_1 (&gsi, dce_ssa_names);
 	  /* ???  If we do not cleanup EH then we will ICE in
 	     verification.  But in reality we have created wrong-code
 	     as we did not properly transition EH info and edges to
@@ -2237,6 +2294,8 @@ expand_vector_operations (void)
 	    cfg_changed = true;
 	}
     }
+
+  simple_dce_from_worklist (dce_ssa_names);
 
   return cfg_changed ? TODO_cleanup_cfg : 0;
 }

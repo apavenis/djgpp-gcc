@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -580,7 +580,7 @@ package body Ada.Text_IO.Fixed_IO is
                YY := 10**(Integer'Min (Max_Digits, AA - (J - 1) * Max_Digits));
             end if;
 
-            Scaled_Divide (XX, YY, Z, Q (J), R => XX, Round => False);
+            Scaled_Divide64 (XX, YY, Z, Q (J), R => XX, Round => False);
          end loop;
 
          if -E > A then

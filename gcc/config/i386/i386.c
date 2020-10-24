@@ -1484,7 +1484,7 @@ ix86_reg_parm_stack_space (const_tree fndecl)
 bool
 ix86_libc_has_function (enum function_class fn_class)
 {
-  return targetm.libc_has_function (fn_class);
+  return targetm.libc_has_function (fn_class, NULL_TREE);
 }
 
 /* Returns value SYSV_ABI, MS_ABI dependent on fntype,
@@ -1561,6 +1561,9 @@ ix86_asm_output_function_label (FILE *asm_out_file, const char *fname,
 				tree decl)
 {
   bool is_ms_hook = ix86_function_ms_hook_prologue (decl);
+
+  if (cfun)
+    cfun->machine->function_label_emitted = true;
 
   if (is_ms_hook)
     {
@@ -5264,6 +5267,8 @@ ix86_frame_pointer_required (void)
 	  || ix86_current_function_calls_tls_descriptor))
     return true;
 
+  /* Several versions of mcount for the x86 assumes that there is a
+     frame, so we cannot allow profiling without a frame pointer.  */
   if (crtl->profile && !flag_fentry)
     return true;
 
@@ -6164,10 +6169,7 @@ ix86_compute_frame_layout (void)
     }
 
   frame->save_regs_using_mov
-    = (TARGET_PROLOGUE_USING_MOVE && m->use_fast_prologue_epilogue
-       /* If static stack checking is enabled and done with probes,
-	  the registers need to be saved before allocating the frame.  */
-       && flag_stack_check != STATIC_BUILTIN_STACK_CHECK);
+    = TARGET_PROLOGUE_USING_MOVE && m->use_fast_prologue_epilogue;
 
   /* Skip return address and error code in exception handler.  */
   offset = INCOMING_FRAME_SP_OFFSET;
@@ -6324,6 +6326,9 @@ ix86_compute_frame_layout (void)
 
   if ((!to_allocate && frame->nregs <= 1)
       || (TARGET_64BIT && to_allocate >= HOST_WIDE_INT_C (0x80000000))
+       /* If static stack checking is enabled and done with probes,
+	  the registers need to be saved before allocating the frame.  */
+      || flag_stack_check == STATIC_BUILTIN_STACK_CHECK
       /* If stack clash probing needs a loop, then it needs a
 	 scratch register.  But the returned register is only guaranteed
 	 to be safe to use after register saves are complete.  So if
@@ -6963,10 +6968,12 @@ ix86_update_stack_boundary (void)
 static rtx
 ix86_get_drap_rtx (void)
 {
-  /* We must use DRAP if there are outgoing arguments on stack and
+  /* We must use DRAP if there are outgoing arguments on stack or
+     the stack pointer register is clobbered by asm statment and
      ACCUMULATE_OUTGOING_ARGS is false.  */
   if (ix86_force_drap
-      || (cfun->machine->outgoing_args_on_stack
+      || ((cfun->machine->outgoing_args_on_stack
+	   || crtl->sp_is_clobbered_by_asm)
 	  && !ACCUMULATE_OUTGOING_ARGS))
     crtl->need_drap = true;
 
@@ -7117,17 +7124,20 @@ release_scratch_register_on_entry (struct scratch_reg *sr, HOST_WIDE_INT offset,
 
 /* Emit code to adjust the stack pointer by SIZE bytes while probing it.
 
-   This differs from the next routine in that it tries hard to prevent
-   attacks that jump the stack guard.  Thus it is never allowed to allocate
-   more than PROBE_INTERVAL bytes of stack space without a suitable
-   probe.
+   If INT_REGISTERS_SAVED is true, then integer registers have already been
+   pushed on the stack.
 
-   INT_REGISTERS_SAVED is true if integer registers have already been
-   pushed on the stack.  */
+   If PROTECTION AREA is true, then probe PROBE_INTERVAL plus a small dope
+   beyond SIZE bytes.
+
+   This assumes no knowledge of the current probing state, i.e. it is never
+   allowed to allocate more than PROBE_INTERVAL bytes of stack space without
+   a suitable probe.  */
 
 static void
-ix86_adjust_stack_and_probe_stack_clash (HOST_WIDE_INT size,
-					 const bool int_registers_saved)
+ix86_adjust_stack_and_probe (HOST_WIDE_INT size,
+			     const bool int_registers_saved,
+			     const bool protection_area)
 {
   struct machine_function *m = cfun->machine;
 
@@ -7189,10 +7199,17 @@ ix86_adjust_stack_and_probe_stack_clash (HOST_WIDE_INT size,
       emit_insn (gen_blockage ());
     }
 
+  const HOST_WIDE_INT probe_interval = get_probe_interval ();
+  const int dope = 4 * UNITS_PER_WORD;
+
+  /* If there is protection area, take it into account in the size.  */
+  if (protection_area)
+    size += probe_interval + dope;
+
   /* If we allocate less than the size of the guard statically,
      then no probing is necessary, but we do need to allocate
      the stack.  */
-  if (size < (1 << param_stack_clash_protection_guard_size))
+  else if (size < (1 << param_stack_clash_protection_guard_size))
     {
       pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
 			         GEN_INT (-size), -1,
@@ -7204,7 +7221,6 @@ ix86_adjust_stack_and_probe_stack_clash (HOST_WIDE_INT size,
   /* We're allocating a large enough stack frame that we need to
      emit probes.  Either emit them inline or in a loop depending
      on the size.  */
-  HOST_WIDE_INT probe_interval = get_probe_interval ();
   if (size <= 4 * probe_interval)
     {
       HOST_WIDE_INT i;
@@ -7223,12 +7239,19 @@ ix86_adjust_stack_and_probe_stack_clash (HOST_WIDE_INT size,
 	}
 
       /* We need to allocate space for the residual, but we do not need
-	 to probe the residual.  */
+	 to probe the residual...  */
       HOST_WIDE_INT residual = (i - probe_interval - size);
       if (residual)
-	pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
-				   GEN_INT (residual), -1,
-				   m->fs.cfa_reg == stack_pointer_rtx);
+	{
+	  pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
+				     GEN_INT (residual), -1,
+				     m->fs.cfa_reg == stack_pointer_rtx);
+
+	  /* ...except if there is a protection area to maintain.  */
+	  if (protection_area)
+	    emit_stack_probe (stack_pointer_rtx);
+	}
+
       dump_stack_clash_frame_info (PROBE_INLINE, residual != 0);
     }
   else
@@ -7291,9 +7314,15 @@ ix86_adjust_stack_and_probe_stack_clash (HOST_WIDE_INT size,
 	 is equal to ROUNDED_SIZE.  */
 
       if (size != rounded_size)
-	pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
-				   GEN_INT (rounded_size - size), -1,
-				   m->fs.cfa_reg == stack_pointer_rtx);
+	{
+	  pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
+				     GEN_INT (rounded_size - size), -1,
+				     m->fs.cfa_reg == stack_pointer_rtx);
+
+	  if (protection_area)
+	    emit_stack_probe (stack_pointer_rtx);
+	}
+
       dump_stack_clash_frame_info (PROBE_LOOP, size != rounded_size);
 
       /* This does not deallocate the space reserved for the scratch
@@ -7301,176 +7330,11 @@ ix86_adjust_stack_and_probe_stack_clash (HOST_WIDE_INT size,
       release_scratch_register_on_entry (&sr, size, false);
     }
 
-  /* Make sure nothing is scheduled before we are done.  */
-  emit_insn (gen_blockage ());
-}
-
-/* Emit code to adjust the stack pointer by SIZE bytes while probing it.
-
-   INT_REGISTERS_SAVED is true if integer registers have already been
-   pushed on the stack.  */
-
-static void
-ix86_adjust_stack_and_probe (HOST_WIDE_INT size,
-			     const bool int_registers_saved)
-{
-  /* We skip the probe for the first interval + a small dope of 4 words and
-     probe that many bytes past the specified size to maintain a protection
-     area at the botton of the stack.  */
-  const int dope = 4 * UNITS_PER_WORD;
-  rtx size_rtx = GEN_INT (size), last;
-
-  /* See if we have a constant small number of probes to generate.  If so,
-     that's the easy case.  The run-time loop is made up of 9 insns in the
-     generic case while the compile-time loop is made up of 3+2*(n-1) insns
-     for n # of intervals.  */
-  if (size <= 4 * get_probe_interval ())
-    {
-      HOST_WIDE_INT i, adjust;
-      bool first_probe = true;
-
-      /* Adjust SP and probe at PROBE_INTERVAL + N * PROBE_INTERVAL for
-	 values of N from 1 until it exceeds SIZE.  If only one probe is
-	 needed, this will not generate any code.  Then adjust and probe
-	 to PROBE_INTERVAL + SIZE.  */
-      for (i = get_probe_interval (); i < size; i += get_probe_interval ())
-	{
-	  if (first_probe)
-	    {
-	      adjust = 2 * get_probe_interval () + dope;
-	      first_probe = false;
-	    }
-	  else
-	    adjust = get_probe_interval ();
-
-	  emit_insn (gen_rtx_SET (stack_pointer_rtx,
-				  plus_constant (Pmode, stack_pointer_rtx,
-						 -adjust)));
-	  emit_stack_probe (stack_pointer_rtx);
-	}
-
-      if (first_probe)
-	adjust = size + get_probe_interval () + dope;
-      else
-        adjust = size + get_probe_interval () - i;
-
-      emit_insn (gen_rtx_SET (stack_pointer_rtx,
-			      plus_constant (Pmode, stack_pointer_rtx,
-					     -adjust)));
-      emit_stack_probe (stack_pointer_rtx);
-
-      /* Adjust back to account for the additional first interval.  */
-      last = emit_insn (gen_rtx_SET (stack_pointer_rtx,
-				     plus_constant (Pmode, stack_pointer_rtx,
-						    (get_probe_interval ()
-						     + dope))));
-    }
-
-  /* Otherwise, do the same as above, but in a loop.  Note that we must be
-     extra careful with variables wrapping around because we might be at
-     the very top (or the very bottom) of the address space and we have
-     to be able to handle this case properly; in particular, we use an
-     equality test for the loop condition.  */
-  else
-    {
-      /* We expect the GP registers to be saved when probes are used
-	 as the probing sequences might need a scratch register and
-	 the routine to allocate one assumes the integer registers
-	 have already been saved.  */
-      gcc_assert (int_registers_saved);
-
-      HOST_WIDE_INT rounded_size;
-      struct scratch_reg sr;
-
-      get_scratch_register_on_entry (&sr);
-
-      /* If we needed to save a register, then account for any space
-	 that was pushed (we are not going to pop the register when
-	 we do the restore).  */
-      if (sr.saved)
-	size -= UNITS_PER_WORD;
-
-      /* Step 1: round SIZE to the previous multiple of the interval.  */
-
-      rounded_size = ROUND_DOWN (size, get_probe_interval ());
-
-
-      /* Step 2: compute initial and final value of the loop counter.  */
-
-      /* SP = SP_0 + PROBE_INTERVAL.  */
-      emit_insn (gen_rtx_SET (stack_pointer_rtx,
-			      plus_constant (Pmode, stack_pointer_rtx,
-					     - (get_probe_interval () + dope))));
-
-      /* LAST_ADDR = SP_0 + PROBE_INTERVAL + ROUNDED_SIZE.  */
-      if (rounded_size <= (HOST_WIDE_INT_1 << 31))
-	emit_insn (gen_rtx_SET (sr.reg,
-				plus_constant (Pmode, stack_pointer_rtx,
-					       -rounded_size)));
-      else
-	{
-	  emit_move_insn (sr.reg, GEN_INT (-rounded_size));
-	  emit_insn (gen_rtx_SET (sr.reg,
-				  gen_rtx_PLUS (Pmode, sr.reg,
-						stack_pointer_rtx)));
-	}
-
-
-      /* Step 3: the loop
-
-	 do
-	   {
-	     SP = SP + PROBE_INTERVAL
-	     probe at SP
-	   }
-	 while (SP != LAST_ADDR)
-
-	 adjusts SP and probes to PROBE_INTERVAL + N * PROBE_INTERVAL for
-	 values of N from 1 until it is equal to ROUNDED_SIZE.  */
-
-      emit_insn (gen_adjust_stack_and_probe (Pmode, sr.reg, sr.reg, size_rtx));
-
-
-      /* Step 4: adjust SP and probe at PROBE_INTERVAL + SIZE if we cannot
-	 assert at compile-time that SIZE is equal to ROUNDED_SIZE.  */
-
-      if (size != rounded_size)
-	{
-	  emit_insn (gen_rtx_SET (stack_pointer_rtx,
-			          plus_constant (Pmode, stack_pointer_rtx,
-						 rounded_size - size)));
-	  emit_stack_probe (stack_pointer_rtx);
-	}
-
-      /* Adjust back to account for the additional first interval.  */
-      last = emit_insn (gen_rtx_SET (stack_pointer_rtx,
-				     plus_constant (Pmode, stack_pointer_rtx,
-						    (get_probe_interval ()
-						     + dope))));
-
-      /* This does not deallocate the space reserved for the scratch
-	 register.  That will be deallocated in the epilogue.  */
-      release_scratch_register_on_entry (&sr, size, false);
-    }
-
-  /* Even if the stack pointer isn't the CFA register, we need to correctly
-     describe the adjustments made to it, in particular differentiate the
-     frame-related ones from the frame-unrelated ones.  */
-  if (size > 0)
-    {
-      rtx expr = gen_rtx_SEQUENCE (VOIDmode, rtvec_alloc (2));
-      XVECEXP (expr, 0, 0)
-	= gen_rtx_SET (stack_pointer_rtx,
-		       plus_constant (Pmode, stack_pointer_rtx, -size));
-      XVECEXP (expr, 0, 1)
-	= gen_rtx_SET (stack_pointer_rtx,
-		       plus_constant (Pmode, stack_pointer_rtx,
-				      get_probe_interval () + dope + size));
-      add_reg_note (last, REG_FRAME_RELATED_EXPR, expr);
-      RTX_FRAME_RELATED_P (last) = 1;
-
-      cfun->machine->fs.sp_offset += size;
-    }
+  /* Adjust back to account for the protection area.  */
+  if (protection_area)
+    pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
+			       GEN_INT (probe_interval + dope), -1,
+			       m->fs.cfa_reg == stack_pointer_rtx);
 
   /* Make sure nothing is scheduled before we are done.  */
   emit_insn (gen_blockage ());
@@ -7522,18 +7386,20 @@ static void
 ix86_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size,
 			     const bool int_registers_saved)
 {
+  const HOST_WIDE_INT probe_interval = get_probe_interval ();
+
   /* See if we have a constant small number of probes to generate.  If so,
      that's the easy case.  The run-time loop is made up of 6 insns in the
      generic case while the compile-time loop is made up of n insns for n #
      of intervals.  */
-  if (size <= 6 * get_probe_interval ())
+  if (size <= 6 * probe_interval)
     {
       HOST_WIDE_INT i;
 
       /* Probe at FIRST + N * PROBE_INTERVAL for values of N from 1 until
 	 it exceeds SIZE.  If only one probe is needed, this will not
 	 generate any code.  Then probe at FIRST + SIZE.  */
-      for (i = get_probe_interval (); i < size; i += get_probe_interval ())
+      for (i = probe_interval; i < size; i += probe_interval)
 	emit_stack_probe (plus_constant (Pmode, stack_pointer_rtx,
 					 -(first + i)));
 
@@ -7562,7 +7428,7 @@ ix86_emit_probe_stack_range (HOST_WIDE_INT first, HOST_WIDE_INT size,
 
       /* Step 1: round SIZE to the previous multiple of the interval.  */
 
-      rounded_size = ROUND_DOWN (size, get_probe_interval ());
+      rounded_size = ROUND_DOWN (size, probe_interval);
 
 
       /* Step 2: compute initial and final value of the loop counter.  */
@@ -8319,27 +8185,33 @@ ix86_expand_prologue (void)
       sse_registers_saved = true;
     }
 
+  /* If stack clash protection is requested, then probe the stack.  */
+  if (allocate >= 0 && flag_stack_clash_protection)
+    {
+      ix86_adjust_stack_and_probe (allocate, int_registers_saved, false);
+      allocate = 0;
+    }
+
   /* The stack has already been decremented by the instruction calling us
      so probe if the size is non-negative to preserve the protection area.  */
-  if (allocate >= 0
-      && (flag_stack_check == STATIC_BUILTIN_STACK_CHECK
-	  || flag_stack_clash_protection))
+  else if (allocate >= 0 && flag_stack_check == STATIC_BUILTIN_STACK_CHECK)
     {
-      if (flag_stack_clash_protection)
+      const HOST_WIDE_INT probe_interval = get_probe_interval ();
+
+      if (STACK_CHECK_MOVING_SP)
 	{
-	  ix86_adjust_stack_and_probe_stack_clash (allocate,
-						   int_registers_saved);
-	  allocate = 0;
-	}
-      else if (STACK_CHECK_MOVING_SP)
-	{
-	  if (!(crtl->is_leaf && !cfun->calls_alloca
-		&& allocate <= get_probe_interval ()))
+	  if (crtl->is_leaf
+	      && !cfun->calls_alloca
+	      && allocate <= probe_interval)
+	    ;
+
+	  else
 	    {
-	      ix86_adjust_stack_and_probe (allocate, int_registers_saved);
+	      ix86_adjust_stack_and_probe (allocate, int_registers_saved, true);
 	      allocate = 0;
 	    }
 	}
+
       else
 	{
 	  HOST_WIDE_INT size = allocate;
@@ -8351,7 +8223,7 @@ ix86_expand_prologue (void)
 	    {
 	      if (crtl->is_leaf && !cfun->calls_alloca)
 		{
-		  if (size > get_probe_interval ())
+		  if (size > probe_interval)
 		    ix86_emit_probe_stack_range (0, size, int_registers_saved);
 		}
 	      else
@@ -8363,7 +8235,7 @@ ix86_expand_prologue (void)
 	    {
 	      if (crtl->is_leaf && !cfun->calls_alloca)
 		{
-		  if (size > get_probe_interval ()
+		  if (size > probe_interval
 		      && size > get_stack_check_protect ())
 		    ix86_emit_probe_stack_range (get_stack_check_protect (),
 						 (size
@@ -9367,6 +9239,38 @@ ix86_output_function_epilogue (FILE *file ATTRIBUTE_UNUSED)
     }
 }
 
+/* Implement TARGET_ASM_PRINT_PATCHABLE_FUNCTION_ENTRY.  */
+
+void
+ix86_print_patchable_function_entry (FILE *file,
+				     unsigned HOST_WIDE_INT patch_area_size,
+				     bool record_p)
+{
+  if (cfun->machine->function_label_emitted)
+    {
+      /* NB: When ix86_print_patchable_function_entry is called after
+	 function table has been emitted, we have inserted or queued
+	 a pseudo UNSPECV_PATCHABLE_AREA instruction at the proper
+	 place.  There is nothing to do here.  */
+      return;
+    }
+
+  default_print_patchable_function_entry (file, patch_area_size,
+					  record_p);
+}
+
+/* Output patchable area.  NB: default_print_patchable_function_entry
+   isn't available in i386.md.  */
+
+void
+ix86_output_patchable_area (unsigned int patch_area_size,
+			    bool record_p)
+{
+  default_print_patchable_function_entry (asm_out_file,
+					  patch_area_size,
+					  record_p);
+}
+
 /* Return a scratch register to use in the split stack prologue.  The
    split stack prologue is used for -fsplit-stack.  It is the first
    instructions in the function, even before the regular prologue.
@@ -10154,6 +10058,9 @@ ix86_legitimate_constant_p (machine_mode mode, rtx x)
       break;
 
     CASE_CONST_SCALAR_INT:
+      if (ix86_endbr_immediate_operand (x, VOIDmode))
+	return false;
+
       switch (mode)
 	{
 	case E_TImode:
@@ -10547,6 +10454,9 @@ ix86_legitimate_address_p (machine_mode, rtx addr, bool strict)
   /* Validate displacement.  */
   if (disp)
     {
+      if (ix86_endbr_immediate_operand (disp, VOIDmode))
+	return false;
+
       if (GET_CODE (disp) == CONST
 	  && GET_CODE (XEXP (disp, 0)) == UNSPEC
 	  && XINT (XEXP (disp, 0), 1) != UNSPEC_MACHOPIC_OFFSET)
@@ -12507,7 +12417,6 @@ print_reg (rtx x, int code, FILE *file)
    M -- print addr32 prefix for TARGET_X32 with VSIB address.
    ! -- print NOTRACK prefix for jxx/call/ret instructions if required.
    N -- print maskz if it's constant 0 operand.
-   I -- print comparision predicate operand for sse cmp condition.
  */
 
 void
@@ -12734,40 +12643,6 @@ ix86_print_operand (FILE *file, rtx x, int code)
 	    {
 	      ix86_print_operand (file, x, 0);
 	      fputs (", ", file);
-	    }
-	  return;
-
-	case 'I':
-	  if (ASSEMBLER_DIALECT == ASM_ATT)
-	    putc ('$', file);
-	  switch (GET_CODE (x))
-	    {
-	    case EQ:
-	      putc ('0', file);
-	      break;
-	    case NE:
-	      putc ('4', file);
-	      break;
-	    case GE:
-	    case GEU:
-	      putc ('5', file);
-	      break;
-	    case GT:
-	    case GTU:
-	      putc ('6', file);
-	      break;
-	    case LE:
-	    case LEU:
-	      putc ('2', file);
-	      break;
-	    case LT:
-	    case LTU:
-	      putc ('1', file);
-	      break;
-	    default:
-	      output_operand_lossage ("operand is not a condition code, "
-				      "invalid operand code 'I'");
-	      return;
 	    }
 	  return;
 
@@ -13221,6 +13096,43 @@ ix86_print_operand (FILE *file, rtx x, int code)
 
       real_to_decimal (dstr, CONST_DOUBLE_REAL_VALUE (x), sizeof (dstr), 0, 1);
       fputs (dstr, file);
+    }
+
+  /* Print bcst_mem_operand.  */
+  else if (GET_CODE (x) == VEC_DUPLICATE)
+    {
+      machine_mode vmode = GET_MODE (x);
+      /* Must be bcst_memory_operand.  */
+      gcc_assert (bcst_mem_operand (x, vmode));
+
+      rtx mem = XEXP (x,0);
+      ix86_print_operand (file, mem, 0);
+
+      switch (vmode)
+	{
+	case E_V2DImode:
+	case E_V2DFmode:
+	  fputs ("{1to2}", file);
+	  break;
+	case E_V4SImode:
+	case E_V4SFmode:
+	case E_V4DImode:
+	case E_V4DFmode:
+	  fputs ("{1to4}", file);
+	  break;
+	case E_V8SImode:
+	case E_V8SFmode:
+	case E_V8DFmode:
+	case E_V8DImode:
+	  fputs ("{1to8}", file);
+	  break;
+	case E_V16SFmode:
+	case E_V16SImode:
+	  fputs ("{1to16}", file);
+	  break;
+	default:
+	  gcc_unreachable ();
+	}
     }
 
   else
@@ -13811,7 +13723,9 @@ ix86_dirflag_mode_needed (rtx_insn *insn)
 static bool
 ix86_check_avx_upper_register (const_rtx exp)
 {
-  return SSE_REG_P (exp) && GET_MODE_BITSIZE (GET_MODE (exp)) > 128;
+  return (SSE_REG_P (exp)
+	  && !EXT_REX_SSE_REG_P (exp)
+	  && GET_MODE_BITSIZE (GET_MODE (exp)) > 128);
 }
 
 /* Return needed mode for entity in optimize_mode_switching pass.  */
@@ -15254,10 +15168,31 @@ ix86_cc_mode (enum rtx_code code, rtx op0, rtx op1)
       /* Codes needing carry flag.  */
     case GEU:			/* CF=0 */
     case LTU:			/* CF=1 */
+      rtx geu;
       /* Detect overflow checks.  They need just the carry flag.  */
       if (GET_CODE (op0) == PLUS
 	  && (rtx_equal_p (op1, XEXP (op0, 0))
 	      || rtx_equal_p (op1, XEXP (op0, 1))))
+	return CCCmode;
+      /* Similarly for *setcc_qi_addqi3_cconly_overflow_1_* patterns.
+	 Match LTU of op0
+	 (neg:QI (geu:QI (reg:CC_CCC FLAGS_REG) (const_int 0)))
+	 and op1
+	 (ltu:QI (reg:CC_CCC FLAGS_REG) (const_int 0))
+	 where CC_CCC is either CC or CCC.  */
+      else if (code == LTU
+	       && GET_CODE (op0) == NEG
+	       && GET_CODE (geu = XEXP (op0, 0)) == GEU
+	       && REG_P (XEXP (geu, 0))
+	       && (GET_MODE (XEXP (geu, 0)) == CCCmode
+		   || GET_MODE (XEXP (geu, 0)) == CCmode)
+	       && REGNO (XEXP (geu, 0)) == FLAGS_REG
+	       && XEXP (geu, 1) == const0_rtx
+	       && GET_CODE (op1) == LTU
+	       && REG_P (XEXP (op1, 0))
+	       && GET_MODE (XEXP (op1, 0)) == GET_MODE (XEXP (geu, 0))
+	       && REGNO (XEXP (op1, 0)) == FLAGS_REG
+	       && XEXP (op1, 1) == const0_rtx)
 	return CCCmode;
       else
 	return CCmode;
@@ -16612,7 +16547,11 @@ iamcu_alignment (tree type, int align)
 
   /* Intel MCU psABI specifies scalar types > 4 bytes aligned to 4
      bytes.  */
-  mode = TYPE_MODE (strip_array_types (type));
+  type = strip_array_types (type);
+  if (TYPE_ATOMIC (type))
+    return align;
+
+  mode = TYPE_MODE (type);
   switch (GET_MODE_CLASS (mode))
     {
     case MODE_INT:
@@ -16729,6 +16668,16 @@ ix86_data_alignment (tree type, unsigned int align, bool opt)
   return align;
 }
 
+/* Implememnt TARGET_LOWER_LOCAL_DECL_ALIGNMENT.  */
+static void
+ix86_lower_local_decl_alignment (tree decl)
+{
+  unsigned int new_align = ix86_local_alignment (decl, VOIDmode,
+						 DECL_ALIGN (decl), true);
+  if (new_align < DECL_ALIGN (decl))
+    SET_DECL_ALIGN (decl, new_align);
+}
+
 /* Compute the alignment for a local variable or a stack slot.  EXP is
    the data type or decl itself, MODE is the widest mode available and
    ALIGN is the alignment that the object would ordinarily have.  The
@@ -16737,7 +16686,7 @@ ix86_data_alignment (tree type, unsigned int align, bool opt)
 
 unsigned int
 ix86_local_alignment (tree exp, machine_mode mode,
-		      unsigned int align)
+		      unsigned int align, bool may_lower)
 {
   tree type, decl;
 
@@ -16754,11 +16703,13 @@ ix86_local_alignment (tree exp, machine_mode mode,
 
   /* Don't do dynamic stack realignment for long long objects with
      -mpreferred-stack-boundary=2.  */
-  if (!TARGET_64BIT
+  if (may_lower
+      && !TARGET_64BIT
       && align == 64
       && ix86_preferred_stack_boundary < 64
       && (mode == DImode || (type && TYPE_MODE (type) == DImode))
-      && (!type || !TYPE_USER_ALIGN (type))
+      && (!type || (!TYPE_USER_ALIGN (type)
+		    && !TYPE_ATOMIC (strip_array_types (type))))
       && (!decl || !DECL_USER_ALIGN (decl)))
     align = 32;
 
@@ -16871,7 +16822,8 @@ ix86_minimum_alignment (tree exp, machine_mode mode,
   /* Don't do dynamic stack realignment for long long objects with
      -mpreferred-stack-boundary=2.  */
   if ((mode == DImode || (type && TYPE_MODE (type) == DImode))
-      && (!type || !TYPE_USER_ALIGN (type))
+      && (!type || (!TYPE_USER_ALIGN (type)
+		    && !TYPE_ATOMIC (strip_array_types (type))))
       && (!decl || !DECL_USER_ALIGN (decl)))
     {
       gcc_checking_assert (!TARGET_STV);
@@ -18492,13 +18444,15 @@ ix86_preferred_reload_class (rtx x, reg_class_t regclass)
     return INTEGER_CLASS_P (regclass) ? regclass : NO_REGS;
 
   /* QImode constants are easy to load, but non-constant QImode data
-     must go into Q_REGS.  */
+     must go into Q_REGS or ALL_MASK_REGS.  */
   if (GET_MODE (x) == QImode && !CONSTANT_P (x))
     {
       if (Q_CLASS_P (regclass))
 	return regclass;
       else if (reg_class_subset_p (Q_REGS, regclass))
 	return Q_REGS;
+      else if (MASK_CLASS_P (regclass))
+	return regclass;
       else
 	return NO_REGS;
     }
@@ -18854,6 +18808,29 @@ inline_memory_move_cost (machine_mode mode, enum reg_class regclass, int in)
       return in ? ix86_cost->hard_register.sse_load [index]
 		: ix86_cost->hard_register.sse_store [index];
     }
+  if (MASK_CLASS_P (regclass))
+    {
+      int index;
+      switch (GET_MODE_SIZE (mode))
+	{
+	case 1:
+	  index = 0;
+	  break;
+	case 2:
+	  index = 1;
+	  break;
+	/* DImode loads and stores assumed to cost the same as SImode.  */
+	default:
+	  index = 2;
+	  break;
+	}
+
+      if (in == 2)
+	return MAX (ix86_cost->hard_register.mask_load[index],
+		    ix86_cost->hard_register.mask_store[index]);
+      return in ? ix86_cost->hard_register.mask_load[2]
+		: ix86_cost->hard_register.mask_store[2];
+    }
   if (MMX_CLASS_P (regclass))
     {
       int index;
@@ -18979,6 +18956,17 @@ ix86_register_move_cost (machine_mode mode, reg_class_t class1_i,
 	    ? ix86_cost->hard_register.sse_to_integer
 	    : ix86_cost->hard_register.integer_to_sse);
 
+  /* Moves between mask register and GPR.  */
+  if (MASK_CLASS_P (class1) != MASK_CLASS_P (class2))
+    {
+      return (MASK_CLASS_P (class1)
+	      ? ix86_cost->hard_register.mask_to_integer
+	      : ix86_cost->hard_register.integer_to_mask);
+    }
+  /* Moving between mask registers.  */
+  if (MASK_CLASS_P (class1) && MASK_CLASS_P (class2))
+    return ix86_cost->hard_register.mask_move;
+
   if (MAYBE_FLOAT_CLASS_P (class1))
     return ix86_cost->hard_register.fp_move;
   if (MAYBE_SSE_CLASS_P (class1))
@@ -19051,7 +19039,7 @@ ix86_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
       if ((mode == P2QImode || mode == P2HImode))
 	return MASK_PAIR_REGNO_P(regno);
 
-      return (VALID_MASK_REG_MODE (mode)
+      return ((TARGET_AVX512F && VALID_MASK_REG_MODE (mode))
 	      || (TARGET_AVX512BW
 		  && VALID_MASK_AVX512BW_MODE (mode)));
     }
@@ -19819,33 +19807,56 @@ ix86_rtx_costs (rtx x, machine_mode mode, int outer_code_i, int opno,
       return false;
 
     case COMPARE:
-      if (GET_CODE (XEXP (x, 0)) == ZERO_EXTRACT
-	  && XEXP (XEXP (x, 0), 1) == const1_rtx
-	  && CONST_INT_P (XEXP (XEXP (x, 0), 2))
-	  && XEXP (x, 1) == const0_rtx)
+      rtx op0, op1;
+      op0 = XEXP (x, 0);
+      op1 = XEXP (x, 1);
+      if (GET_CODE (op0) == ZERO_EXTRACT
+	  && XEXP (op0, 1) == const1_rtx
+	  && CONST_INT_P (XEXP (op0, 2))
+	  && op1 == const0_rtx)
 	{
 	  /* This kind of construct is implemented using test[bwl].
 	     Treat it as if we had an AND.  */
-	  mode = GET_MODE (XEXP (XEXP (x, 0), 0));
+	  mode = GET_MODE (XEXP (op0, 0));
 	  *total = (cost->add
-		    + rtx_cost (XEXP (XEXP (x, 0), 0), mode, outer_code,
+		    + rtx_cost (XEXP (op0, 0), mode, outer_code,
 				opno, speed)
 		    + rtx_cost (const1_rtx, mode, outer_code, opno, speed));
 	  return true;
 	}
 
-      if (GET_CODE (XEXP (x, 0)) == PLUS
-	  && rtx_equal_p (XEXP (XEXP (x, 0), 0), XEXP (x, 1)))
+      if (GET_CODE (op0) == PLUS && rtx_equal_p (XEXP (op0, 0), op1))
 	{
 	  /* This is an overflow detection, count it as a normal compare.  */
-	  *total = rtx_cost (XEXP (x, 0), GET_MODE (XEXP (x, 0)),
-			     COMPARE, 0, speed);
+	  *total = rtx_cost (op0, GET_MODE (op0), COMPARE, 0, speed);
+	  return true;
+	}
+
+      rtx geu;
+      /* Match x
+	 (compare:CCC (neg:QI (geu:QI (reg:CC_CCC FLAGS_REG) (const_int 0)))
+		      (ltu:QI (reg:CC_CCC FLAGS_REG) (const_int 0)))  */
+      if (mode == CCCmode
+	  && GET_CODE (op0) == NEG
+	  && GET_CODE (geu = XEXP (op0, 0)) == GEU
+	  && REG_P (XEXP (geu, 0))
+	  && (GET_MODE (XEXP (geu, 0)) == CCCmode
+	      || GET_MODE (XEXP (geu, 0)) == CCmode)
+	  && REGNO (XEXP (geu, 0)) == FLAGS_REG
+	  && XEXP (geu, 1) == const0_rtx
+	  && GET_CODE (op1) == LTU
+	  && REG_P (XEXP (op1, 0))
+	  && GET_MODE (XEXP (op1, 0)) == GET_MODE (XEXP (geu, 0))
+	  && REGNO (XEXP (op1, 0)) == FLAGS_REG
+	  && XEXP (op1, 1) == const0_rtx)
+	{
+	  /* This is *setcc_qi_addqi3_cconly_overflow_1_* patterns, a nop.  */
+	  *total = 0;
 	  return true;
 	}
 
       /* The embedded comparison operand is completely free.  */
-      if (!general_operand (XEXP (x, 0), GET_MODE (XEXP (x, 0)))
-	  && XEXP (x, 1) == const0_rtx)
+      if (!general_operand (op0, GET_MODE (op0)) && op1 == const0_rtx)
 	*total = 0;
 
       return false;
@@ -20371,11 +20382,30 @@ x86_field_alignment (tree type, int computed)
     return computed;
   if (TARGET_IAMCU)
     return iamcu_alignment (type, computed);
-  mode = TYPE_MODE (strip_array_types (type));
+  type = strip_array_types (type);
+  mode = TYPE_MODE (type);
   if (mode == DFmode || mode == DCmode
       || GET_MODE_CLASS (mode) == MODE_INT
       || GET_MODE_CLASS (mode) == MODE_COMPLEX_INT)
-    return MIN (32, computed);
+    {
+      if (TYPE_ATOMIC (type) && computed > 32)
+	{
+	  static bool warned;
+
+	  if (!warned && warn_psabi)
+	    {
+	      const char *url
+		= CHANGES_ROOT_URL "gcc-11/changes.html#ia32_atomic";
+
+	      warned = true;
+	      inform (input_location, "the alignment of %<_Atomic %T%> "
+				      "fields changed in %{GCC 11.1%}",
+		      TYPE_MAIN_VARIANT (type), url);
+	    }
+	}
+      else
+      return MIN (32, computed);
+    }
   return computed;
 }
 
@@ -20418,8 +20448,16 @@ current_fentry_section (const char **name)
 void
 x86_function_profiler (FILE *file, int labelno ATTRIBUTE_UNUSED)
 {
-  if (cfun->machine->endbr_queued_at_entrance)
-    fprintf (file, "\t%s\n", TARGET_64BIT ? "endbr64" : "endbr32");
+  if (cfun->machine->insn_queued_at_entrance)
+    {
+      if (cfun->machine->insn_queued_at_entrance == TYPE_ENDBR)
+	fprintf (file, "\t%s\n", TARGET_64BIT ? "endbr64" : "endbr32");
+      unsigned int patch_area_size
+	= crtl->patch_area_size - crtl->patch_area_entry;
+      if (patch_area_size)
+	ix86_output_patchable_area (patch_area_size,
+				    crtl->patch_area_entry == 0);
+    }
 
   const char *mcount_name = MCOUNT_NAME;
 
@@ -23019,6 +23057,10 @@ ix86_run_selftests (void)
 #undef TARGET_ASM_FUNCTION_EPILOGUE
 #define TARGET_ASM_FUNCTION_EPILOGUE ix86_output_function_epilogue
 
+#undef TARGET_ASM_PRINT_PATCHABLE_FUNCTION_ENTRY
+#define TARGET_ASM_PRINT_PATCHABLE_FUNCTION_ENTRY \
+  ix86_print_patchable_function_entry
+
 #undef TARGET_ENCODE_SECTION_INFO
 #ifndef SUBTARGET_ENCODE_SECTION_INFO
 #define TARGET_ENCODE_SECTION_INFO ix86_encode_section_info
@@ -23469,6 +23511,9 @@ ix86_run_selftests (void)
 
 #undef TARGET_CAN_CHANGE_MODE_CLASS
 #define TARGET_CAN_CHANGE_MODE_CLASS ix86_can_change_mode_class
+
+#undef TARGET_LOWER_LOCAL_DECL_ALIGNMENT
+#define TARGET_LOWER_LOCAL_DECL_ALIGNMENT ix86_lower_local_decl_alignment
 
 #undef TARGET_STATIC_RTX_ALIGNMENT
 #define TARGET_STATIC_RTX_ALIGNMENT ix86_static_rtx_alignment

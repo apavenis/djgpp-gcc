@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -179,7 +179,7 @@ package body ALI.Util is
 
    function Hash (F : File_Name_Type) return Header_Num is
    begin
-      return Header_Num (Int (F) rem Header_Num'Range_Length);
+      return Header_Num (Int (F) mod Header_Num'Range_Length);
    end Hash;
 
    ---------------------------

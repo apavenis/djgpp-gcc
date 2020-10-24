@@ -128,11 +128,17 @@ bug_components = set([
 ignored_prefixes = [
     'gcc/d/dmd/',
     'gcc/go/gofrontend/',
+    'gcc/testsuite/gdc.test/',
     'gcc/testsuite/go.test/test/',
     'libgo/',
     'libphobos/libdruntime/',
     'libphobos/src/',
     'libsanitizer/',
+    ]
+
+wildcard_prefixes = [
+    'gcc/testsuite/',
+    'libstdc++-v3/doc/html/'
     ]
 
 misc_files = [
@@ -144,21 +150,22 @@ misc_files = [
 author_line_regex = \
         re.compile(r'^(?P<datetime>\d{4}-\d{2}-\d{2})\ {2}(?P<name>.*  <.*>)')
 additional_author_regex = re.compile(r'^\t(?P<spaces>\ *)?(?P<name>.*  <.*>)')
-changelog_regex = re.compile(r'^(?:[fF]or +)?([a-z0-9+-/]*)/ChangeLog:?')
+changelog_regex = re.compile(r'^(?:[fF]or +)?([a-z0-9+-/]*)ChangeLog:?')
 pr_regex = re.compile(r'\tPR (?P<component>[a-z+-]+\/)?([0-9]+)$')
 dr_regex = re.compile(r'\tDR ([0-9]+)$')
 star_prefix_regex = re.compile(r'\t\*(?P<spaces>\ *)(?P<content>.*)')
+end_of_location_regex = re.compile(r'[\[<(:]')
 
 LINE_LIMIT = 100
 TAB_WIDTH = 8
 CO_AUTHORED_BY_PREFIX = 'co-authored-by: '
 CHERRY_PICK_PREFIX = '(cherry picked from commit '
-REVIEWED_BY_PREFIX = 'reviewed-by: '
-REVIEWED_ON_PREFIX = 'reviewed-on: '
-SIGNED_OFF_BY_PREFIX = 'signed-off-by: '
+REVERT_PREFIX = 'This reverts commit '
 
-REVIEW_PREFIXES = (REVIEWED_BY_PREFIX, REVIEWED_ON_PREFIX,
-                   SIGNED_OFF_BY_PREFIX)
+REVIEW_PREFIXES = ('reviewed-by: ', 'reviewed-on: ', 'signed-off-by: ',
+                   'acked-by: ', 'tested-by: ', 'reported-by: ',
+                   'suggested-by: ')
+DATE_FORMAT = '%Y-%m-%d'
 
 
 class Error:
@@ -176,16 +183,15 @@ class Error:
 class ChangeLogEntry:
     def __init__(self, folder, authors, prs):
         self.folder = folder
-        # Python2 has not 'copy' function
+        # The 'list.copy()' function is not available before Python 3.3
         self.author_lines = list(authors)
         self.initial_prs = list(prs)
         self.prs = list(prs)
         self.lines = []
+        self.files = []
+        self.file_patterns = []
 
-    @property
-    def files(self):
-        files = []
-
+    def parse_file_names(self):
         # Whether the content currently processed is between a star prefix the
         # end of the file list: a colon or an open paren.
         in_location = False
@@ -199,23 +205,24 @@ class ChangeLogEntry:
                 line = m.group('content')
 
             if in_location:
-                # Strip everything that is not a filename in "line": entities
-                # "(NAME)", entry text (the colon, if present, and anything
-                # that follows it).
-                if '(' in line:
-                    line = line[:line.index('(')]
-                    in_location = False
-                if ':' in line:
-                    line = line[:line.index(':')]
+                # Strip everything that is not a filename in "line":
+                # entities "(NAME)", cases "<PATTERN>", conditions
+                # "[COND]", entry text (the colon, if present, and
+                # anything that follows it).
+                m = end_of_location_regex.search(line)
+                if m:
+                    line = line[:m.start()]
                     in_location = False
 
-                # At this point, all that 's left is a list of filenames
+                # At this point, all that's left is a list of filenames
                 # separated by commas and whitespaces.
                 for file in line.split(','):
                     file = file.strip()
                     if file:
-                        files.append(file)
-        return files
+                        if file.endswith('*'):
+                            self.file_patterns.append(file[:-1])
+                        else:
+                            self.files.append(file)
 
     @property
     def datetime(self):
@@ -239,28 +246,44 @@ class ChangeLogEntry:
         return False
 
 
-class GitCommit:
-    def __init__(self, hexsha, date, author, body, modified_files,
-                 strict=True):
+class GitInfo:
+    def __init__(self, hexsha, date, author, lines, modified_files):
         self.hexsha = hexsha
-        self.lines = body
+        self.date = date
+        self.author = author
+        self.lines = lines
         self.modified_files = modified_files
+
+
+class GitCommit:
+    def __init__(self, info, strict=True, commit_to_info_hook=None):
+        self.original_info = info
+        self.info = info
         self.message = None
         self.changes = None
         self.changelog_entries = []
         self.errors = []
-        self.date = date
-        self.author = author
         self.top_level_authors = []
         self.co_authors = []
         self.top_level_prs = []
+        self.cherry_pick_commit = None
+        self.revert_commit = None
+        self.commit_to_info_hook = commit_to_info_hook
 
-        project_files = [f for f in self.modified_files
+        # Identify first if the commit is a Revert commit
+        for line in self.info.lines:
+            if line.startswith(REVERT_PREFIX):
+                self.revert_commit = line[len(REVERT_PREFIX):].rstrip('.')
+                break
+        if self.revert_commit:
+            self.info = self.commit_to_info_hook(self.revert_commit)
+
+        project_files = [f for f in self.info.modified_files
                          if self.is_changelog_filename(f[0])
                          or f[0] in misc_files]
-        ignored_files = [f for f in self.modified_files
+        ignored_files = [f for f in self.info.modified_files
                          if self.in_ignored_location(f[0])]
-        if len(project_files) == len(self.modified_files):
+        if len(project_files) == len(self.info.modified_files):
             # All modified files are only MISC files
             return
         elif project_files and strict:
@@ -270,12 +293,14 @@ class GitCommit:
             return
 
         all_are_ignored = (len(project_files) + len(ignored_files)
-                           == len(self.modified_files))
+                           == len(self.info.modified_files))
         self.parse_lines(all_are_ignored)
         if self.changes:
             self.parse_changelog()
+            self.parse_file_names()
             self.check_for_empty_description()
             self.deduce_changelog_locations()
+            self.check_file_patterns()
             if not self.errors:
                 self.check_mentioned_files()
                 self.check_for_correct_changelog()
@@ -286,7 +311,7 @@ class GitCommit:
 
     @property
     def new_files(self):
-        return [x[0] for x in self.modified_files if x[1] == 'A']
+        return [x[0] for x in self.info.modified_files if x[1] == 'A']
 
     @classmethod
     def is_changelog_filename(cls, path):
@@ -315,13 +340,13 @@ class GitCommit:
             t = parts[0]
             if t == 'A' or t == 'D' or t == 'M':
                 modified_files.append((parts[1], t))
-            elif t == 'R':
+            elif t.startswith('R'):
                 modified_files.append((parts[1], 'D'))
                 modified_files.append((parts[2], 'A'))
         return modified_files
 
     def parse_lines(self, all_are_ignored):
-        body = self.lines
+        body = self.info.lines
 
         for i, b in enumerate(body):
             if not b:
@@ -346,11 +371,12 @@ class GitCommit:
             if line != line.rstrip():
                 self.errors.append(Error('trailing whitespace', line))
             if len(line.replace('\t', ' ' * TAB_WIDTH)) > LINE_LIMIT:
-                self.errors.append(Error('line limit exceeds %d characters'
+                self.errors.append(Error('line exceeds %d character limit'
                                          % LINE_LIMIT, line))
             m = changelog_regex.match(line)
             if m:
-                last_entry = ChangeLogEntry(m.group(1), self.top_level_authors,
+                last_entry = ChangeLogEntry(m.group(1).rstrip('/'),
+                                            self.top_level_authors,
                                             self.top_level_prs)
                 self.changelog_entries.append(last_entry)
             elif self.find_changelog_location(line):
@@ -367,8 +393,8 @@ class GitCommit:
                 elif additional_author_regex.match(line):
                     m = additional_author_regex.match(line)
                     if len(m.group('spaces')) != 4:
-                        msg = 'additional author must prepend with tab ' \
-                              'and 4 spaces'
+                        msg = 'additional author must be indented with '\
+                              'one tab and four spaces'
                         self.errors.append(Error(msg, line))
                     else:
                         author_tuple = (m.group('name'), None)
@@ -394,6 +420,8 @@ class GitCommit:
                 elif lowered_line.startswith(REVIEW_PREFIXES):
                     continue
                 elif line.startswith(CHERRY_PICK_PREFIX):
+                    commit = line[len(CHERRY_PICK_PREFIX):].rstrip(')')
+                    self.cherry_pick_commit = commit
                     continue
 
                 # ChangeLog name will be deduced later
@@ -428,18 +456,29 @@ class GitCommit:
                     m = star_prefix_regex.match(line)
                     if m:
                         if len(m.group('spaces')) != 1:
-                            err = Error('one space should follow asterisk',
-                                        line)
-                            self.errors.append(err)
+                            msg = 'one space should follow asterisk'
+                            self.errors.append(Error(msg, line))
                         else:
                             last_entry.lines.append(line)
                     else:
                         if last_entry.is_empty:
                             msg = 'first line should start with a tab, ' \
-                                  'asterisk and space'
+                                  'an asterisk and a space'
                             self.errors.append(Error(msg, line))
                         else:
                             last_entry.lines.append(line)
+
+    def parse_file_names(self):
+        for entry in self.changelog_entries:
+            entry.parse_file_names()
+
+    def check_file_patterns(self):
+        for entry in self.changelog_entries:
+            for pattern in entry.file_patterns:
+                name = os.path.join(entry.folder, pattern)
+                if name not in wildcard_prefixes:
+                    msg = 'unsupported wildcard prefix'
+                    self.errors.append(Error(msg, name))
 
     def check_for_empty_description(self):
         for entry in self.changelog_entries:
@@ -451,7 +490,7 @@ class GitCommit:
                     self.errors.append(Error(msg, line))
 
     def get_file_changelog_location(self, changelog_file):
-        for file in self.modified_files:
+        for file in self.info.modified_files:
             if file[0] == changelog_file:
                 # root ChangeLog file
                 return ''
@@ -501,20 +540,25 @@ class GitCommit:
         assert folder_count == len(self.changelog_entries)
 
         mentioned_files = set()
+        mentioned_patterns = []
+        used_patterns = set()
         for entry in self.changelog_entries:
             if not entry.files:
-                msg = 'ChangeLog must contain a file entry'
+                msg = 'no files mentioned for ChangeLog in directory'
                 self.errors.append(Error(msg, entry.folder))
             assert not entry.folder.endswith('/')
             for file in entry.files:
                 if not self.is_changelog_filename(file):
                     mentioned_files.add(os.path.join(entry.folder, file))
+            for pattern in entry.file_patterns:
+                mentioned_patterns.append(os.path.join(entry.folder, pattern))
 
-        cand = [x[0] for x in self.modified_files
+        cand = [x[0] for x in self.info.modified_files
                 if not self.is_changelog_filename(x[0])]
         changed_files = set(cand)
         for file in sorted(mentioned_files - changed_files):
-            self.errors.append(Error('file not changed in a patch', file))
+            msg = 'unchanged file mentioned in a ChangeLog'
+            self.errors.append(Error(msg, file))
         for file in sorted(changed_files - mentioned_files):
             if not self.in_ignored_location(file):
                 if file in self.new_files:
@@ -542,9 +586,21 @@ class GitCommit:
                     assert file.startswith(entry.folder)
                     file = file[len(entry.folder):].lstrip('/')
                     entry.lines.append('\t* %s: New file.' % file)
+                    entry.files.append(file)
                 else:
-                    msg = 'changed file not mentioned in a ChangeLog'
-                    self.errors.append(Error(msg, file))
+                    used_pattern = [p for p in mentioned_patterns
+                                    if file.startswith(p)]
+                    used_pattern = used_pattern[0] if used_pattern else None
+                    if used_pattern:
+                        used_patterns.add(used_pattern)
+                    else:
+                        msg = 'changed file not mentioned in a ChangeLog'
+                        self.errors.append(Error(msg, file))
+
+        for pattern in mentioned_patterns:
+            if pattern not in used_patterns:
+                error = 'pattern doesn''t match any changed files'
+                self.errors.append(Error(error, pattern))
 
     def check_for_correct_changelog(self):
         for entry in self.changelog_entries:
@@ -556,24 +612,54 @@ class GitCommit:
                     err = Error(msg % (entry.folder, changelog_location), file)
                     self.errors.append(err)
 
+    @classmethod
+    def format_authors_in_changelog(cls, authors, timestamp, prefix=''):
+        output = ''
+        for i, author in enumerate(authors):
+            if i == 0:
+                output += '%s%s  %s\n' % (prefix, timestamp, author)
+            else:
+                output += '%s\t    %s\n' % (prefix, author)
+        output += '\n'
+        return output
+
     def to_changelog_entries(self, use_commit_ts=False):
+        current_timestamp = self.info.date.strftime(DATE_FORMAT)
         for entry in self.changelog_entries:
             output = ''
             timestamp = entry.datetime
-            if not timestamp or use_commit_ts:
-                timestamp = self.date.strftime('%Y-%m-%d')
-            authors = entry.authors if entry.authors else [self.author]
+            if self.revert_commit:
+                timestamp = current_timestamp
+                orig_date = self.original_info.date
+                current_timestamp = orig_date.strftime(DATE_FORMAT)
+            elif self.cherry_pick_commit:
+                info = self.commit_to_info_hook(self.cherry_pick_commit)
+                # it can happen that it is a cherry-pick for a different
+                # repository
+                if info:
+                    timestamp = info.date.strftime(DATE_FORMAT)
+                else:
+                    timestamp = current_timestamp
+            elif not timestamp or use_commit_ts:
+                timestamp = current_timestamp
+            authors = entry.authors if entry.authors else [self.info.author]
             # add Co-Authored-By authors to all ChangeLog entries
             for author in self.co_authors:
                 if author not in authors:
                     authors.append(author)
 
-            for i, author in enumerate(authors):
-                if i == 0:
-                    output += '%s  %s\n' % (timestamp, author)
+            if self.cherry_pick_commit or self.revert_commit:
+                original_author = self.original_info.author
+                output += self.format_authors_in_changelog([original_author],
+                                                           current_timestamp)
+                if self.revert_commit:
+                    output += '\tRevert:\n'
                 else:
-                    output += '\t    %s\n' % author
-            output += '\n'
+                    output += '\tBackported from master:\n'
+                output += self.format_authors_in_changelog(authors,
+                                                           timestamp, '\t')
+            else:
+                output += self.format_authors_in_changelog(authors, timestamp)
             for pr in entry.prs:
                 output += '\t%s\n' % pr
             for line in entry.lines:

@@ -247,8 +247,7 @@ static tree arm_build_builtin_va_list (void);
 static void arm_expand_builtin_va_start (tree, rtx);
 static tree arm_gimplify_va_arg_expr (tree, tree, gimple_seq *, gimple_seq *);
 static void arm_option_override (void);
-static void arm_option_save (struct cl_target_option *, struct gcc_options *);
-static void arm_option_restore (struct gcc_options *,
+static void arm_option_restore (struct gcc_options *, struct gcc_options *,
 				struct cl_target_option *);
 static void arm_override_options_after_change (void);
 static void arm_option_print (FILE *, int, struct cl_target_option *);
@@ -382,6 +381,7 @@ static const struct attribute_spec arm_attribute_table[] =
     arm_handle_cmse_nonsecure_entry, NULL },
   { "cmse_nonsecure_call", 0, 0, true, false, false, true,
     arm_handle_cmse_nonsecure_call, NULL },
+  { "Advanced SIMD type", 1, 1, false, true, false, true, NULL, NULL },
   { NULL, 0, 0, false, false, false, false, NULL, NULL }
 };
 
@@ -440,9 +440,6 @@ static const struct attribute_spec arm_attribute_table[] =
 
 #undef TARGET_OVERRIDE_OPTIONS_AFTER_CHANGE
 #define TARGET_OVERRIDE_OPTIONS_AFTER_CHANGE arm_override_options_after_change
-
-#undef TARGET_OPTION_SAVE
-#define TARGET_OPTION_SAVE arm_option_save
 
 #undef TARGET_OPTION_RESTORE
 #define TARGET_OPTION_RESTORE arm_option_restore
@@ -832,6 +829,9 @@ static const struct attribute_spec arm_attribute_table[] =
 
 #undef TARGET_CONSTANT_ALIGNMENT
 #define TARGET_CONSTANT_ALIGNMENT arm_constant_alignment
+
+#undef TARGET_INVALID_WITHIN_DOLOOP
+#define TARGET_INVALID_WITHIN_DOLOOP arm_invalid_within_doloop
 
 #undef TARGET_MD_ASM_ADJUST
 #define TARGET_MD_ASM_ADJUST arm_md_asm_adjust
@@ -3020,10 +3020,11 @@ static GTY(()) bool thumb_flipper;
 static GTY(()) tree init_optimize;
 
 static void
-arm_override_options_after_change_1 (struct gcc_options *opts)
+arm_override_options_after_change_1 (struct gcc_options *opts,
+				     struct gcc_options *opts_set)
 {
   /* -falign-functions without argument: supply one.  */
-  if (opts->x_flag_align_functions && !opts->x_str_align_functions)
+  if (opts->x_flag_align_functions && !opts_set->x_str_align_functions)
     opts->x_str_align_functions = TARGET_THUMB_P (opts->x_target_flags)
       && opts->x_optimize_size ? "2" : "4";
 }
@@ -3033,31 +3034,15 @@ arm_override_options_after_change_1 (struct gcc_options *opts)
 static void
 arm_override_options_after_change (void)
 {
-  arm_configure_build_target (&arm_active_target,
-			      TREE_TARGET_OPTION (target_option_default_node),
-			      &global_options_set, false);
-
-  arm_override_options_after_change_1 (&global_options);
-}
-
-/* Implement TARGET_OPTION_SAVE.  */
-static void
-arm_option_save (struct cl_target_option *ptr, struct gcc_options *opts)
-{
-  ptr->x_arm_arch_string = opts->x_arm_arch_string;
-  ptr->x_arm_cpu_string = opts->x_arm_cpu_string;
-  ptr->x_arm_tune_string = opts->x_arm_tune_string;
+  arm_override_options_after_change_1 (&global_options, &global_options_set);
 }
 
 /* Implement TARGET_OPTION_RESTORE.  */
 static void
-arm_option_restore (struct gcc_options *opts, struct cl_target_option *ptr)
+arm_option_restore (struct gcc_options */* opts */,
+		    struct gcc_options *opts_set, struct cl_target_option *ptr)
 {
-  opts->x_arm_arch_string = ptr->x_arm_arch_string;
-  opts->x_arm_cpu_string = ptr->x_arm_cpu_string;
-  opts->x_arm_tune_string = ptr->x_arm_tune_string;
-  arm_configure_build_target (&arm_active_target, ptr, &global_options_set,
-			      false);
+  arm_configure_build_target (&arm_active_target, ptr, opts_set, false);
 }
 
 /* Reset options between modes that the user has specified.  */
@@ -3065,7 +3050,7 @@ static void
 arm_option_override_internal (struct gcc_options *opts,
 			      struct gcc_options *opts_set)
 {
-  arm_override_options_after_change_1 (opts);
+  arm_override_options_after_change_1 (opts, opts_set);
 
   if (TARGET_INTERWORK && !bitmap_bit_p (arm_active_target.isa, isa_bit_thumb))
     {
@@ -3406,6 +3391,20 @@ arm_configure_build_target (struct arm_build_target *target,
       bitmap_ior (target->isa, target->isa, fpu_bits);
     }
 
+  /* There may be implied bits which we still need to enable. These are
+     non-named features which are needed to complete other sets of features,
+     but cannot be enabled from arm-cpus.in due to being shared between
+     multiple fgroups. Each entry in all_implied_fbits is of the form
+     ante -> cons, meaning that if the feature "ante" is enabled, we should
+     implicitly enable "cons".  */
+  const struct fbit_implication *impl = all_implied_fbits;
+  while (impl->ante)
+    {
+      if (bitmap_bit_p (target->isa, impl->ante))
+	bitmap_set_bit (target->isa, impl->cons);
+      impl++;
+    }
+
   if (!arm_selected_tune)
     arm_selected_tune = arm_selected_cpu;
   else /* Validate the features passed to -mtune.  */
@@ -3430,8 +3429,9 @@ arm_option_override (void)
 {
   static const enum isa_feature fpu_bitlist_internal[]
     = { ISA_ALL_FPU_INTERNAL, isa_nobit };
+  /* isa_bit_mve_float is also part of FP bit list for arch v8.1-m.main.  */
   static const enum isa_feature fp_bitlist[]
-    = { ISA_ALL_FP, isa_nobit };
+    = { ISA_ALL_FP, isa_bit_mve_float, isa_nobit };
   static const enum isa_feature quirk_bitlist[] = { ISA_ALL_QUIRKS, isa_nobit};
   cl_target_option opts;
 
@@ -3456,7 +3456,7 @@ arm_option_override (void)
       arm_fpu_index = (enum fpu_type) fpu_index;
     }
 
-  cl_target_option_save (&opts, &global_options);
+  cl_target_option_save (&opts, &global_options, &global_options_set);
   arm_configure_build_target (&arm_active_target, &opts, &global_options_set,
 			      true);
 
@@ -3681,7 +3681,8 @@ arm_option_override (void)
     flag_schedule_fusion = 0;
 
   /* Need to remember initial options before they are overriden.  */
-  init_optimize = build_optimization_node (&global_options);
+  init_optimize = build_optimization_node (&global_options,
+					   &global_options_set);
 
   arm_options_perform_arch_sanity_checks ();
   arm_option_override_internal (&global_options, &global_options_set);
@@ -3690,7 +3691,7 @@ arm_option_override (void)
 
   /* Create the default target_options structure.  */
   target_option_default_node = target_option_current_node
-    = build_target_option_node (&global_options);
+    = build_target_option_node (&global_options, &global_options_set);
 
   /* Register global variables with the garbage collector.  */
   arm_add_gc_roots ();
@@ -3834,7 +3835,7 @@ arm_options_perform_arch_sanity_checks (void)
 
   /* We don't clear D16-D31 VFP registers for cmse_nonsecure_call functions
      and ARMv8-M Baseline and Mainline do not allow such configuration.  */
-  if (use_cmse && LAST_VFP_REGNUM > LAST_LO_VFP_REGNUM)
+  if (use_cmse && TARGET_HARD_FLOAT && LAST_VFP_REGNUM > LAST_LO_VFP_REGNUM)
     error ("ARMv8-M Security Extensions incompatible with selected FPU");
 
 
@@ -7257,6 +7258,11 @@ arm_handle_isr_attribute (tree *node, tree name, tree args, int flags,
 		   name);
 	  *no_add_attrs = true;
 	}
+      else if (TARGET_VFP_BASE)
+	{
+	  warning (OPT_Wattributes, "FP registers might be clobbered despite %qE attribute: compile with %<-mgeneral-regs-only%>",
+		   name);
+	}
       /* FIXME: the argument if any is checked for type attributes;
 	 should it be checked for decl ones?  */
     }
@@ -7530,6 +7536,15 @@ static int
 arm_comp_type_attributes (const_tree type1, const_tree type2)
 {
   int l1, l2, s1, s2;
+
+  tree attrs1 = lookup_attribute ("Advanced SIMD type",
+				  TYPE_ATTRIBUTES (type1));
+  tree attrs2 = lookup_attribute ("Advanced SIMD type",
+				  TYPE_ATTRIBUTES (type2));
+  if (bool (attrs1) != bool (attrs2))
+    return 0;
+  if (attrs1 && !attribute_value_equal (attrs1, attrs2))
+    return 0;
 
   /* Check for mismatch of non-default calling convention.  */
   if (TREE_CODE (type1) != FUNCTION_TYPE)
@@ -13217,13 +13232,14 @@ neon_element_bits (machine_mode mode)
 /* Predicates for `match_operand' and `match_operator'.  */
 
 /* Return TRUE if OP is a valid coprocessor memory address pattern.
-   WB is true if full writeback address modes are allowed and is false
+   WB level is 2 if full writeback address modes are allowed, 1
    if limited writeback address modes (POST_INC and PRE_DEC) are
-   allowed.  */
+   allowed and 0 if no writeback at all is supported.  */
 
 int
-arm_coproc_mem_operand (rtx op, bool wb)
+arm_coproc_mem_operand_wb (rtx op, int wb_level)
 {
+  gcc_assert (wb_level == 0 || wb_level == 1 || wb_level == 2);
   rtx ind;
 
   /* Reject eliminable registers.  */
@@ -13256,16 +13272,18 @@ arm_coproc_mem_operand (rtx op, bool wb)
 
   /* Autoincremment addressing modes.  POST_INC and PRE_DEC are
      acceptable in any case (subject to verification by
-     arm_address_register_rtx_p).  We need WB to be true to accept
+     arm_address_register_rtx_p).  We need full writeback to accept
+     PRE_INC and POST_DEC, and at least restricted writeback for
      PRE_INC and POST_DEC.  */
-  if (GET_CODE (ind) == POST_INC
-      || GET_CODE (ind) == PRE_DEC
-      || (wb
-	  && (GET_CODE (ind) == PRE_INC
-	      || GET_CODE (ind) == POST_DEC)))
+  if (wb_level > 0
+      && (GET_CODE (ind) == POST_INC
+	  || GET_CODE (ind) == PRE_DEC
+	  || (wb_level > 1
+	      && (GET_CODE (ind) == PRE_INC
+		  || GET_CODE (ind) == POST_DEC))))
     return arm_address_register_rtx_p (XEXP (ind, 0), 0);
 
-  if (wb
+  if (wb_level > 1
       && (GET_CODE (ind) == POST_MODIFY || GET_CODE (ind) == PRE_MODIFY)
       && arm_address_register_rtx_p (XEXP (ind, 0), 0)
       && GET_CODE (XEXP (ind, 1)) == PLUS
@@ -13274,17 +13292,40 @@ arm_coproc_mem_operand (rtx op, bool wb)
 
   /* Match:
      (plus (reg)
-	   (const)).  */
+	   (const))
+
+     The encoded immediate for 16-bit modes is multiplied by 2,
+     while the encoded immediate for 32-bit and 64-bit modes is
+     multiplied by 4.  */
+  int factor = MIN (GET_MODE_SIZE (GET_MODE (op)), 4);
   if (GET_CODE (ind) == PLUS
       && REG_P (XEXP (ind, 0))
       && REG_MODE_OK_FOR_BASE_P (XEXP (ind, 0), VOIDmode)
       && CONST_INT_P (XEXP (ind, 1))
-      && INTVAL (XEXP (ind, 1)) > -1024
-      && INTVAL (XEXP (ind, 1)) <  1024
-      && (INTVAL (XEXP (ind, 1)) & 3) == 0)
+      && IN_RANGE (INTVAL (XEXP (ind, 1)), -255 * factor, 255 * factor)
+      && (INTVAL (XEXP (ind, 1)) & (factor - 1)) == 0)
     return TRUE;
 
   return FALSE;
+}
+
+/* Return TRUE if OP is a valid coprocessor memory address pattern.
+   WB is true if full writeback address modes are allowed and is false
+   if limited writeback address modes (POST_INC and PRE_DEC) are
+   allowed.  */
+
+int arm_coproc_mem_operand (rtx op, bool wb)
+{
+  return arm_coproc_mem_operand_wb (op, wb ? 2 : 1);
+}
+
+/* Return TRUE if OP is a valid coprocessor memory address pattern in a
+   context in which no writeback address modes are allowed.  */
+
+int
+arm_coproc_mem_operand_no_writeback (rtx op)
+{
+  return arm_coproc_mem_operand_wb (op, 0);
 }
 
 /* This function returns TRUE on matching mode and op.
@@ -23550,7 +23591,7 @@ arm_print_condition (FILE *stream)
 /* Globally reserved letters: acln
    Puncutation letters currently used: @_|?().!#
    Lower case letters currently used: bcdefhimpqtvwxyz
-   Upper case letters currently used: ABCDFGHJKLMNOPQRSTU
+   Upper case letters currently used: ABCDEFGHIJKLMNOPQRSTU
    Letters previously used, but now deprecated/obsolete: sVWXYZ.
 
    Note that the global reservation for 'c' is only for CONSTANT_ADDRESS_P.
@@ -24116,11 +24157,12 @@ arm_print_operand (FILE *stream, rtx x, int code)
       }
       return;
 
-    /* To print the memory operand with "Ux" constraint.  Based on the rtx_code
-       the memory operands output looks like following.
+    /* To print the memory operand with "Ux" or "Uj" constraint.  Based on the
+       rtx_code the memory operands output looks like following.
        1. [Rn], #+/-<imm>
        2. [Rn, #+/-<imm>]!
-       3. [Rn].  */
+       3. [Rn, #+/-<imm>]
+       4. [Rn].  */
     case 'E':
       {
 	rtx addr;
@@ -24154,6 +24196,16 @@ arm_print_operand (FILE *stream, rtx x, int code)
 		else
 		  asm_fprintf (stream, ", #%wd]!",INTVAL (postinc_reg));
 	      }
+	  }
+	else if (code == PLUS)
+	  {
+	    rtx base = XEXP (addr, 0);
+	    rtx index = XEXP (addr, 1);
+
+	    gcc_assert (REG_P (base) && CONST_INT_P (index));
+
+	    HOST_WIDE_INT offset = INTVAL (index);
+	    asm_fprintf (stream, "[%r, #%wd]", REGNO (base), offset);
 	  }
 	else
 	  {
@@ -26960,7 +27012,7 @@ cmse_nonsecure_entry_clear_before_return (void)
 	continue;
       if (IN_RANGE (regno, IP_REGNUM, PC_REGNUM))
 	continue;
-      if (call_used_or_fixed_reg_p (regno)
+      if (!callee_saved_reg_p (regno)
 	  && (!IN_RANGE (regno, FIRST_VFP_REGNUM, LAST_VFP_REGNUM)
 	      || TARGET_HARD_FLOAT))
 	bitmap_set_bit (to_clear_bitmap, regno);
@@ -28913,6 +28965,30 @@ arm_preferred_simd_mode (scalar_mode mode)
       default:;
       }
 
+  if (TARGET_HAVE_MVE)
+    switch (mode)
+      {
+      case E_QImode:
+	return V16QImode;
+      case E_HImode:
+	return V8HImode;
+      case E_SImode:
+	return V4SImode;
+
+      default:;
+      }
+
+  if (TARGET_HAVE_MVE_FLOAT)
+    switch (mode)
+      {
+      case E_HFmode:
+	return V8HFmode;
+      case E_SFmode:
+	return V4SFmode;
+
+      default:;
+      }
+
   return word_mode;
 }
 
@@ -29833,12 +29909,23 @@ arm_frame_pointer_required (void)
   return false;
 }
 
-/* Only thumb1 can't support conditional execution, so return true if
-   the target is not thumb1.  */
+/* Implement the TARGET_HAVE_CONDITIONAL_EXECUTION hook.
+   All modes except THUMB1 have conditional execution.
+   If we have conditional arithmetic, return false before reload to
+   enable some ifcvt transformations. */
 static bool
 arm_have_conditional_execution (void)
 {
-  return !TARGET_THUMB1;
+  bool has_cond_exec, enable_ifcvt_trans;
+
+  /* Only THUMB1 cannot support conditional execution. */
+  has_cond_exec = !TARGET_THUMB1;
+
+  /* Enable ifcvt transformations if we have conditional arithmetic, but only
+     before reload. */
+  enable_ifcvt_trans = TARGET_COND_ARITH && !reload_completed;
+
+  return has_cond_exec && !enable_ifcvt_trans;
 }
 
 /* The AAPCS sets the maximum alignment of a vector to 64 bits.  */
@@ -30584,6 +30671,127 @@ arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
   if (is_armv8_sync
       || !(use_acquire || use_release))
     arm_post_atomic_barrier (model);
+}
+
+/* Expand code to compare vectors OP0 and OP1 using condition CODE.
+   If CAN_INVERT, store either the result or its inverse in TARGET
+   and return true if TARGET contains the inverse.  If !CAN_INVERT,
+   always store the result in TARGET, never its inverse.
+
+   Note that the handling of floating-point comparisons is not
+   IEEE compliant.  */
+
+bool
+arm_expand_vector_compare (rtx target, rtx_code code, rtx op0, rtx op1,
+			   bool can_invert)
+{
+  machine_mode cmp_result_mode = GET_MODE (target);
+  machine_mode cmp_mode = GET_MODE (op0);
+
+  bool inverted;
+  switch (code)
+    {
+    /* For these we need to compute the inverse of the requested
+       comparison.  */
+    case UNORDERED:
+    case UNLT:
+    case UNLE:
+    case UNGT:
+    case UNGE:
+    case UNEQ:
+    case NE:
+      code = reverse_condition_maybe_unordered (code);
+      if (!can_invert)
+	{
+	  /* Recursively emit the inverted comparison into a temporary
+	     and then store its inverse in TARGET.  This avoids reusing
+	     TARGET (which for integer NE could be one of the inputs).  */
+	  rtx tmp = gen_reg_rtx (cmp_result_mode);
+	  if (arm_expand_vector_compare (tmp, code, op0, op1, true))
+	    gcc_unreachable ();
+	  emit_insn (gen_rtx_SET (target, gen_rtx_NOT (cmp_result_mode, tmp)));
+	  return false;
+	}
+      inverted = true;
+      break;
+
+    default:
+      inverted = false;
+      break;
+    }
+
+  switch (code)
+    {
+    /* These are natively supported for zero comparisons, but otherwise
+       require the operands to be swapped.  */
+    case LE:
+    case LT:
+      if (op1 != CONST0_RTX (cmp_mode))
+	{
+	  code = swap_condition (code);
+	  std::swap (op0, op1);
+	}
+      /* Fall through.  */
+
+    /* These are natively supported for both register and zero operands.  */
+    case EQ:
+    case GE:
+    case GT:
+      emit_insn (gen_neon_vc (code, cmp_mode, target, op0, op1));
+      return inverted;
+
+    /* These are natively supported for register operands only.
+       Comparisons with zero aren't useful and should be folded
+       or canonicalized by target-independent code.  */
+    case GEU:
+    case GTU:
+      emit_insn (gen_neon_vc (code, cmp_mode, target,
+			      op0, force_reg (cmp_mode, op1)));
+      return inverted;
+
+    /* These require the operands to be swapped and likewise do not
+       support comparisons with zero.  */
+    case LEU:
+    case LTU:
+      emit_insn (gen_neon_vc (swap_condition (code), cmp_mode,
+			      target, force_reg (cmp_mode, op1), op0));
+      return inverted;
+
+    /* These need a combination of two comparisons.  */
+    case LTGT:
+    case ORDERED:
+      {
+	/* Operands are LTGT iff (a > b || a > b).
+	   Operands are ORDERED iff (a > b || a <= b).  */
+	rtx gt_res = gen_reg_rtx (cmp_result_mode);
+	rtx alt_res = gen_reg_rtx (cmp_result_mode);
+	rtx_code alt_code = (code == LTGT ? LT : LE);
+	if (arm_expand_vector_compare (gt_res, GT, op0, op1, true)
+	    || arm_expand_vector_compare (alt_res, alt_code, op0, op1, true))
+	  gcc_unreachable ();
+	emit_insn (gen_rtx_SET (target, gen_rtx_IOR (cmp_result_mode,
+						     gt_res, alt_res)));
+	return inverted;
+      }
+
+    default:
+      gcc_unreachable ();
+    }
+}
+
+/* Expand a vcond or vcondu pattern with operands OPERANDS.
+   CMP_RESULT_MODE is the mode of the comparison result.  */
+
+void
+arm_expand_vcond (rtx *operands, machine_mode cmp_result_mode)
+{
+  rtx mask = gen_reg_rtx (cmp_result_mode);
+  bool inverted = arm_expand_vector_compare (mask, GET_CODE (operands[3]),
+					     operands[4], operands[5], true);
+  if (inverted)
+    std::swap (operands[1], operands[2]);
+  emit_insn (gen_neon_vbsl (GET_MODE (operands[0]), operands[0],
+			    mask, operands[1], operands[2]));
 }
 
 #define MAX_VECT_LEN 16
@@ -32284,9 +32492,12 @@ arm_set_current_function (tree fndecl)
   arm_previous_fndecl = fndecl;
 
   /* First set the target options.  */
-  cl_target_option_restore (&global_options, TREE_TARGET_OPTION (new_tree));
+  cl_target_option_restore (&global_options, &global_options_set,
+			    TREE_TARGET_OPTION (new_tree));
 
   save_restore_target_globals (new_tree);
+
+  arm_override_options_after_change_1 (&global_options, &global_options_set);
 }
 
 /* Implement TARGET_OPTION_PRINT.  */
@@ -32484,7 +32695,7 @@ arm_valid_target_attribute_tree (tree args, struct gcc_options *opts,
   if (!arm_valid_target_attribute_rec (args, opts))
     return NULL_TREE;
 
-  cl_target_option_save (&cl_opts, opts);
+  cl_target_option_save (&cl_opts, opts, opts_set);
   arm_configure_build_target (&arm_active_target, &cl_opts, opts_set, false);
   arm_option_check_internal (opts);
   /* Do any overrides, such as global options arch=xxx.
@@ -32493,11 +32704,11 @@ arm_valid_target_attribute_tree (tree args, struct gcc_options *opts,
   arm_options_perform_arch_sanity_checks ();
   arm_option_override_internal (opts, opts_set);
 
-  return build_target_option_node (opts);
+  return build_target_option_node (opts, opts_set);
 }
 
 static void 
-add_attribute  (const char * mode, tree *attributes)
+add_attribute (const char * mode, tree *attributes)
 {
   size_t len = strlen (mode);
   tree value = build_string (len, mode);
@@ -32549,7 +32760,7 @@ arm_valid_target_attribute_p (tree fndecl, tree ARG_UNUSED (name),
 			      tree args, int ARG_UNUSED (flags))
 {
   bool ret = true;
-  struct gcc_options func_options;
+  struct gcc_options func_options, func_options_set;
   tree cur_tree, new_optimize;
   gcc_assert ((fndecl != NULL_TREE) && (args != NULL_TREE));
 
@@ -32565,22 +32776,23 @@ arm_valid_target_attribute_p (tree fndecl, tree ARG_UNUSED (name),
   memset (&func_options, 0, sizeof (func_options));
   init_options_struct (&func_options, NULL);
   lang_hooks.init_options_struct (&func_options);
+  memset (&func_options_set, 0, sizeof (func_options_set));
 
   /* Initialize func_options to the defaults.  */
-  cl_optimization_restore (&func_options,
+  cl_optimization_restore (&func_options, &func_options_set,
 			   TREE_OPTIMIZATION (func_optimize));
 
-  cl_target_option_restore (&func_options,
+  cl_target_option_restore (&func_options, &func_options_set,
 			    TREE_TARGET_OPTION (target_option_default_node));
 
   /* Set func_options flags with new target mode.  */
   cur_tree = arm_valid_target_attribute_tree (args, &func_options,
-					      &global_options_set);
+					      &func_options_set);
 
   if (cur_tree == NULL_TREE)
     ret = false;
 
-  new_optimize = build_optimization_node (&func_options);
+  new_optimize = build_optimization_node (&func_options, &func_options_set);
 
   DECL_FUNCTION_SPECIFIC_TARGET (fndecl) = cur_tree;
 
@@ -33064,9 +33276,7 @@ arm_expand_divmod_libfunc (rtx libfunc, machine_mode mode,
     = smallest_int_mode_for_size (2 * GET_MODE_BITSIZE (mode));
 
   rtx libval = emit_library_call_value (libfunc, NULL_RTX, LCT_CONST,
-					libval_mode,
-					op0, GET_MODE (op0),
-					op1, GET_MODE (op1));
+					libval_mode, op0, mode, op1, mode);
 
   rtx quotient = simplify_gen_subreg (mode, libval, libval_mode, 0);
   rtx remainder = simplify_gen_subreg (mode, libval, libval_mode,
@@ -33301,6 +33511,40 @@ arm_ge_bits_access (void)
     return lookup_attribute ("acle gebits",
 			     DECL_ATTRIBUTES (cfun->decl));
   return true;
+}
+
+/* NULL if insn INSN is valid within a low-overhead loop.
+   Otherwise return why doloop cannot be applied.  */
+
+static const char *
+arm_invalid_within_doloop (const rtx_insn *insn)
+{
+  if (!TARGET_HAVE_LOB)
+    return default_invalid_within_doloop (insn);
+
+  if (CALL_P (insn))
+    return "Function call in the loop.";
+
+  if (reg_mentioned_p (gen_rtx_REG (SImode, LR_REGNUM), insn))
+    return "LR is used inside loop.";
+
+  return NULL;
+}
+
+bool
+arm_target_insn_ok_for_lob (rtx insn)
+{
+  basic_block bb = BLOCK_FOR_INSN (insn);
+  /* Make sure the basic block of the target insn is a simple latch
+     having as single predecessor and successor the body of the loop
+     itself.  Only simple loops with a single basic block as body are
+     supported for 'low over head loop' making sure that LE target is
+     above LE itself in the generated code.  */
+
+  return single_succ_p (bb)
+    && single_pred_p (bb)
+    && single_succ_edge (bb)->dest == single_pred_edge (bb)->src
+    && contains_no_active_insn_p (bb);
 }
 
 #if CHECKING_P
