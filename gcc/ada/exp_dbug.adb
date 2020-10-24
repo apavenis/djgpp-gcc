@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1996-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1996-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -247,7 +247,7 @@ package body Exp_Dbug is
 
       --  Here we check if the static bounds match the natural size, which is
       --  the size passed through with the debugging information. This is the
-      --  Esize rounded up to 8, 16, 32 or 64 as appropriate.
+      --  Esize rounded up to 8, 16, 32, 64 or 128 as appropriate.
 
       else
          declare
@@ -261,8 +261,10 @@ package body Exp_Dbug is
                Siz := Uint_16;
             elsif Esize (E) <= 32 then
                Siz := Uint_32;
-            else
+            elsif Esize (E) <= 64 then
                Siz := Uint_64;
+            else
+               Siz := Uint_128;
             end if;
 
             if Is_Modular_Integer_Type (E) or else Is_Enumeration_Type (E) then
@@ -424,7 +426,7 @@ package body Exp_Dbug is
                   --  anyway, so the renaming entity will be available in
                   --  debuggers.
 
-                  exit when not Ekind_In (Sel_Id, E_Component, E_Discriminant);
+                  exit when Ekind (Sel_Id) not in E_Component | E_Discriminant;
 
                   First_Bit := Normalized_First_Bit (Sel_Id);
                   Enable :=
@@ -839,11 +841,11 @@ package body Exp_Dbug is
 
       --  Case of interface name being used
 
-      if Ekind_In (E, E_Constant,
-                      E_Exception,
-                      E_Function,
-                      E_Procedure,
-                      E_Variable)
+      if Ekind (E) in E_Constant
+                    | E_Exception
+                    | E_Function
+                    | E_Procedure
+                    | E_Variable
         and then Present (Interface_Name (E))
         and then No (Address_Clause (E))
         and then not Has_Suffix
@@ -874,7 +876,7 @@ package body Exp_Dbug is
          if Is_Generic_Instance (E)
            and then Is_Subprogram (E)
            and then not Is_Compilation_Unit (Scope (E))
-           and then Ekind_In (Scope (E), E_Package, E_Package_Body)
+           and then Ekind (Scope (E)) in E_Package | E_Package_Body
            and then Present (Related_Instance (Scope (E)))
          then
             E := Related_Instance (Scope (E));

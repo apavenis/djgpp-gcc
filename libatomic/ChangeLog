@@ -1,3 +1,46 @@
+2020-10-11  Clement Chigot  <clement.chigot@atos.net>
+
+	* config/t-aix: Delete and recreate libatomic before creating
+	FAT library.
+
+2020-09-27  Clement Chigot  <clement.chigot@atos.net>
+
+	* config/t-aix: Use $(AR) without -X32_64.
+
+2020-09-11  Tom de Vries  <tdevries@suse.de>
+
+	PR target/96898
+	* configure.tgt: Add nvptx.
+	* libatomic_i.h (MASK_8, INVERT_MASK_8): New macro definition.
+	* config/nvptx/host-config.h: New file.
+	* config/nvptx/lock.c: New file.
+
+2020-09-07  Tom de Vries  <tdevries@suse.de>
+
+	* testsuite/libatomic.c/atomic-generic.c: Include string.h.
+
+2020-07-14  David Edelsohn  <dje.gcc@gmail.com>
+
+	* config/t-aix: Set BITS from compiler cpp macro.
+
+2020-06-22  David Edelsohn  <dje.gcc@gmail.com>
+
+	* Makefile.am: Use -include.
+	* Makefile.in: Regenerate.
+
+2020-06-21  David Edelsohn  <dje.gcc@gmail.com>
+
+	* Makefile.am (tmake_file): Build and install AIX-style FAT libraries.
+	* Makefile.in: Regenerate.
+	* configure.ac (tmake_file): Substitute.
+	* configure: Regenerate.
+	* configure.tgt (powerpc-ibm-aix*): Define tmake_file.
+	* config/t-aix: New file.
+
+2020-06-01  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* config/x86/fenv.c (struct fenv): Add __attribute__ ((gcc_struct)).
+
 2020-05-29  H.J. Lu  <hjl.tools@gmail.com>
 
 	PR bootstrap/95413

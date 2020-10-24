@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -36,6 +36,7 @@ with Ada.Iterator_Interfaces;
 with Ada.Containers.Helpers;
 private with Ada.Finalization;
 private with Ada.Streams;
+private with Ada.Strings.Text_Output;
 
 --  The language-defined generic package Containers.Vectors provides private
 --  types Vector and Cursor, and a set of operations for each type. A vector
@@ -70,7 +71,9 @@ generic
    --  number of calls of this generic formal function by the functions defined
    --  to use it are unspecified.
 
-package Ada.Containers.Vectors is
+package Ada.Containers.Vectors with
+  SPARK_Mode => Off
+is
    pragma Annotate (CodePeer, Skip_Analysis);
    pragma Preelaborate;
    pragma Remote_Types;
@@ -90,7 +93,12 @@ package Ada.Containers.Vectors is
       Constant_Indexing => Constant_Reference,
       Variable_Indexing => Reference,
       Default_Iterator  => Iterate,
-      Iterator_Element  => Element_Type;
+      Iterator_Element  => Element_Type,
+      Aggregate         => (Empty          => Empty,
+                            Add_Unnamed    => Append_One,
+                            New_Indexed    => New_Vector,
+                            Assign_Indexed => Replace_Element);
+
    pragma Preelaborable_Initialization (Vector);
    --  Vector type, to be instantiated by users of this package. If an object
    --  of type Vector is not otherwise initialized, it is initialized to
@@ -113,6 +121,8 @@ package Ada.Containers.Vectors is
 
    Empty_Vector : constant Vector;
    --  Empty_Vector represents the empty vector object. It has a length of 0.
+
+   function Empty (Capacity : Count_Type := 10) return Vector;
 
    overriding function "=" (Left, Right : Vector) return Boolean;
    --  If Left and Right denote the same vector object, then the function
@@ -320,6 +330,10 @@ package Ada.Containers.Vectors is
    --  Source is removed from Source and inserted into Target in the original
    --  order. The length of Source is 0 after a successful call to Move.
 
+   function New_Vector (First, Last : Index_Type) return Vector
+     with Pre => First = Index_Type'First;
+   --  Ada_2020 aggregate operation.
+
    procedure Insert
      (Container : in out Vector;
       Before    : Extended_Index;
@@ -434,6 +448,10 @@ package Ada.Containers.Vectors is
       Count     : Count_Type := 1);
    --  Equivalent to Insert (Container, Last_Index (Container) + 1, New_Item,
    --  Count).
+
+   procedure Append_One (Container : in out Vector;
+                         New_Item  :        Element_Type);
+   --  Ada_2020 aggregate operation.
 
    procedure Insert_Space
      (Container : in out Vector;
@@ -694,7 +712,10 @@ private
       Elements : Elements_Access := null;
       Last     : Extended_Index := No_Index;
       TC       : aliased Tamper_Counts;
-   end record;
+   end record with Put_Image => Put_Image;
+
+   procedure Put_Image
+     (S : in out Ada.Strings.Text_Output.Sink'Class; V : Vector);
 
    overriding procedure Adjust (Container : in out Vector);
    overriding procedure Finalize (Container : in out Vector);

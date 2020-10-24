@@ -827,21 +827,6 @@ accessible_p (tree type, tree decl, bool consider_local_p)
   if (current_function_decl && DECL_THUNK_P (current_function_decl))
     return 1;
 
-  /* In a template declaration, we cannot be sure whether the
-     particular specialization that is instantiated will be a friend
-     or not.  Therefore, all access checks are deferred until
-     instantiation.  However, PROCESSING_TEMPLATE_DECL is set in the
-     parameter list for a template (because we may see dependent types
-     in default arguments for template parameters), and access
-     checking should be performed in the outermost parameter list.  */
-  if (processing_template_decl
-      /* FIXME CWG has been talking about doing access checking in the context
-	 of the constraint-expression, rather than the constrained declaration,
-	 in which case we would want to remove this test.  */
-      && !processing_constraint_expression_p ()
-      && (!processing_template_parmlist || processing_template_decl > 1))
-    return 1;
-
   tree otype = NULL_TREE;
   if (!TYPE_P (type))
     {
@@ -1973,20 +1958,13 @@ check_final_overrider (tree overrider, tree basefn)
     /* OK */;
   else
     {
+      auto_diagnostic_group d;
       if (fail == 1)
-	{
-	  auto_diagnostic_group d;
-	  error ("invalid covariant return type for %q+#D", overrider);
-	  inform (DECL_SOURCE_LOCATION (basefn),
-		  "overridden function is %q#D", basefn);
-	}
+	error ("invalid covariant return type for %q+#D", overrider);
       else
-	{
-	  auto_diagnostic_group d;
-	  error ("conflicting return type specified for %q+#D", overrider);
-	  inform (DECL_SOURCE_LOCATION (basefn),
-		  "overridden function is %q#D", basefn);
-	}
+	error ("conflicting return type specified for %q+#D", overrider);
+      inform (DECL_SOURCE_LOCATION (basefn),
+	      "overridden function is %q#D", basefn);
       DECL_INVALID_OVERRIDER_P (overrider) = 1;
       return 0;
     }
@@ -2004,6 +1982,25 @@ check_final_overrider (tree overrider, tree basefn)
       error ("conflicting type attributes specified for %q+#D", overrider);
       inform (DECL_SOURCE_LOCATION (basefn),
 	      "overridden function is %q#D", basefn);
+      DECL_INVALID_OVERRIDER_P (overrider) = 1;
+      return 0;
+    }
+
+  /* A consteval virtual function shall not override a virtual function that is
+     not consteval. A consteval virtual function shall not be overridden by a
+     virtual function that is not consteval.  */
+  if (DECL_IMMEDIATE_FUNCTION_P (overrider)
+      != DECL_IMMEDIATE_FUNCTION_P (basefn))
+    {
+      auto_diagnostic_group d;
+      if (DECL_IMMEDIATE_FUNCTION_P (overrider))
+	error ("%<consteval%> function %q+D overriding non-%<consteval%> "
+	       "function", overrider);
+      else
+	error ("non-%<consteval%> function %q+D overriding %<consteval%> "
+	       "function", overrider);
+      inform (DECL_SOURCE_LOCATION (basefn),
+	      "overridden function is %qD", basefn);
       DECL_INVALID_OVERRIDER_P (overrider) = 1;
       return 0;
     }

@@ -181,12 +181,6 @@
 #endif
 
 
-/* Define this to enable support for generating HSAIL. */
-#ifndef USED_FOR_TARGET
-#undef ENABLE_HSA
-#endif
-
-
 /* Define if gcc should always pass --build-id to linker. */
 #ifndef USED_FOR_TARGET
 #undef ENABLE_LD_BUILDID
@@ -397,6 +391,12 @@
 /* Define if your assembler supports the --gdwarf2 option. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_GDWARF2_DEBUG_FLAG
+#endif
+
+
+/* Define if your assembler supports the --gdwarf-5 option. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_GDWARF_5_DEBUG_FLAG
 #endif
 
 
@@ -706,9 +706,23 @@
 #endif
 
 
+/* Define if your assembler supports vl/vst/vlm/vstm with an optional
+   alignment hint argument on z13. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_VECTOR_LOADSTORE_ALIGNMENT_HINTS_ON_Z13
+#endif
+
+
 /* Define if your assembler supports VSX instructions. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_AS_VSX
+#endif
+
+
+/* Define if your assembler supports --gdwarf-4 even with compiler generated
+   .debug_line */
+#ifndef USED_FOR_TARGET
+#undef HAVE_AS_WORKING_DWARF_4_FLAG
 #endif
 
 
@@ -986,6 +1000,13 @@
    0. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_DECL_MALLINFO
+#endif
+
+
+/* Define to 1 if we found a declaration for 'mallinfo2', otherwise define to
+   0. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_DECL_MALLINFO2
 #endif
 
 
@@ -1661,6 +1682,12 @@
 /* Define to 1 if you have the `mallinfo' function. */
 #ifndef USED_FOR_TARGET
 #undef HAVE_MALLINFO
+#endif
+
+
+/* Define to 1 if you have the `mallinfo2' function. */
+#ifndef USED_FOR_TARGET
+#undef HAVE_MALLINFO2
 #endif
 
 

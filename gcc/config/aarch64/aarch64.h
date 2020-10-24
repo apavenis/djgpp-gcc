@@ -161,6 +161,8 @@ extern unsigned aarch64_architecture_version;
 #define AARCH64_FL_LSE	      (1 << 4)  /* Has Large System Extensions.  */
 #define AARCH64_FL_RDMA       (1 << 5)  /* Has Round Double Multiply Add.  */
 #define AARCH64_FL_V8_1       (1 << 6)  /* Has ARMv8.1-A extensions.  */
+/* Armv8-R.  */
+#define AARCH64_FL_V8_R       (1 << 7)  /* Armv8-R AArch64.  */
 /* ARMv8.2-A architecture extensions.  */
 #define AARCH64_FL_V8_2       (1 << 8)  /* Has ARMv8.2-A features.  */
 #define AARCH64_FL_F16	      (1 << 9)  /* Has ARMv8.2-A FP16 extensions.  */
@@ -246,6 +248,8 @@ extern unsigned aarch64_architecture_version;
 #define AARCH64_FL_FOR_ARCH8_6			\
   (AARCH64_FL_FOR_ARCH8_5 | AARCH64_FL_V8_6 | AARCH64_FL_FPSIMD \
    | AARCH64_FL_I8MM | AARCH64_FL_BF16)
+#define AARCH64_FL_FOR_ARCH8_R     \
+  (AARCH64_FL_FOR_ARCH8_4 | AARCH64_FL_V8_R)
 
 /* Macros to test ISA flags.  */
 
@@ -281,6 +285,8 @@ extern unsigned aarch64_architecture_version;
 #define AARCH64_ISA_F32MM	   (aarch64_isa_flags & AARCH64_FL_F32MM)
 #define AARCH64_ISA_F64MM	   (aarch64_isa_flags & AARCH64_FL_F64MM)
 #define AARCH64_ISA_BF16	   (aarch64_isa_flags & AARCH64_FL_BF16)
+#define AARCH64_ISA_SB		   (aarch64_isa_flags & AARCH64_FL_SB)
+#define AARCH64_ISA_V8_R	   (aarch64_isa_flags & AARCH64_FL_V8_R)
 
 /* Crypto is an optional extension to AdvSIMD.  */
 #define TARGET_CRYPTO (TARGET_SIMD && AARCH64_ISA_CRYPTO)
@@ -377,6 +383,9 @@ extern unsigned aarch64_architecture_version;
 #undef TARGET_FIX_ERR_A53_835769_DEFAULT
 #define TARGET_FIX_ERR_A53_835769_DEFAULT 1
 #endif
+
+/* SB instruction is enabled through +sb.  */
+#define TARGET_SB (AARCH64_ISA_SB)
 
 /* Apply the workaround for Cortex-A53 erratum 835769.  */
 #define TARGET_FIX_ERR_A53_835769	\
@@ -639,6 +648,16 @@ extern unsigned aarch64_architecture_version;
 #define GP_REGNUM_P(REGNO)						\
   (((unsigned) (REGNO - R0_REGNUM)) <= (R30_REGNUM - R0_REGNUM))
 
+/* Registers known to be preserved over a BL instruction.  This consists of the
+   GENERAL_REGS without x16, x17, and x30.  The x30 register is changed by the
+   BL instruction itself, while the x16 and x17 registers may be used by
+   veneers which can be inserted by the linker.  */
+#define STUB_REGNUM_P(REGNO) \
+  (GP_REGNUM_P (REGNO) \
+   && (REGNO) != R16_REGNUM \
+   && (REGNO) != R17_REGNUM \
+   && (REGNO) != R30_REGNUM) \
+
 #define FP_REGNUM_P(REGNO)			\
   (((unsigned) (REGNO - V0_REGNUM)) <= (V31_REGNUM - V0_REGNUM))
 
@@ -663,6 +682,7 @@ enum reg_class
 {
   NO_REGS,
   TAILCALL_ADDR_REGS,
+  STUB_REGS,
   GENERAL_REGS,
   STACK_REG,
   POINTER_REGS,
@@ -685,6 +705,7 @@ enum reg_class
 {						\
   "NO_REGS",					\
   "TAILCALL_ADDR_REGS",				\
+  "STUB_REGS",					\
   "GENERAL_REGS",				\
   "STACK_REG",					\
   "POINTER_REGS",				\
@@ -704,6 +725,7 @@ enum reg_class
 {									\
   { 0x00000000, 0x00000000, 0x00000000 },	/* NO_REGS */		\
   { 0x00030000, 0x00000000, 0x00000000 },	/* TAILCALL_ADDR_REGS */\
+  { 0x3ffcffff, 0x00000000, 0x00000000 },	/* STUB_REGS */		\
   { 0x7fffffff, 0x00000000, 0x00000003 },	/* GENERAL_REGS */	\
   { 0x80000000, 0x00000000, 0x00000000 },	/* STACK_REG */		\
   { 0xffffffff, 0x00000000, 0x00000003 },	/* POINTER_REGS */	\
@@ -875,6 +897,8 @@ typedef struct GTY (()) machine_function
   struct aarch64_frame frame;
   /* One entry for each hard register.  */
   bool reg_is_wrapped_separately[LAST_SAVED_REGNUM];
+  /* One entry for each general purpose register.  */
+  rtx call_via[SP_REGNUM];
   bool label_is_assembled;
 } machine_function;
 #endif
@@ -1075,8 +1099,10 @@ typedef struct
 
 #define RETURN_ADDR_RTX aarch64_return_addr
 
-/* BTI c + 3 insns + 2 pointer-sized entries.  */
-#define TRAMPOLINE_SIZE	(TARGET_ILP32 ? 24 : 32)
+/* BTI c + 3 insns
+   + sls barrier of DSB + ISB.
+   + 2 pointer-sized entries.  */
+#define TRAMPOLINE_SIZE	(24 + (TARGET_ILP32 ? 8 : 16))
 
 /* Trampolines contain dwords, so must be dword aligned.  */
 #define TRAMPOLINE_ALIGNMENT 64
@@ -1112,7 +1138,7 @@ typedef struct
 #define PROFILE_HOOK(LABEL)						\
   {									\
     rtx fun, lr;							\
-    lr = get_hard_reg_initial_val (Pmode, LR_REGNUM);			\
+    lr = aarch64_return_addr_rtx ();					\
     fun = gen_rtx_SYMBOL_REF (Pmode, MCOUNT_NAME);			\
     emit_library_call (fun, LCT_NORMAL, VOIDmode, lr, Pmode);		\
   }

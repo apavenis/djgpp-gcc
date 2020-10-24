@@ -37,7 +37,21 @@ This pragma must appear at the start of the statement sequence of a
 handled sequence of statements (right after the ``begin``).  It has
 the effect of deferring aborts for the sequence of statements (but not
 for the declarations or handlers, if any, associated with this statement
-sequence).
+sequence). This can also be useful for adding a polling point in Ada code,
+where asynchronous abort of tasks is checked when leaving the statement
+sequence, and is lighter than, for example, using ``delay 0.0;``, since with
+zero-cost exception handling, propagating exceptions (implicitly used to
+implement task abort) cannot be done reliably in an asynchronous way.
+
+An example of usage would be:
+
+.. code-block:: ada
+
+  --  Add a polling point to check for task aborts
+
+  begin
+     pragma Abort_Defer;
+  end;
 
 .. _Pragma-Abstract_State:
 
@@ -88,158 +102,6 @@ Syntax:
 
 For the semantics of this pragma, see the entry for aspect ``Abstract_State`` in
 the SPARK 2014 Reference Manual, section 7.1.4.
-
-Pragma Acc_Parallel
-===================
-Syntax:
-
-.. code-block:: ada
-
-  pragma Acc_Parallel [( ACC_PARALLEL_CLAUSE [, ACC_PARALLEL_CLAUSE... ])];
-
-  ACC_PARALLEL_CLAUSE ::=
-      Acc_If        => boolean_EXPRESSION
-    | Acc_Private   => IDENTIFIERS
-    | Async         => integer_EXPRESSION
-    | Copy          => IDENTIFIERS
-    | Copy_In       => IDENTIFIERS
-    | Copy_Out      => IDENTIFIERS
-    | Create        => IDENTIFIERS
-    | Default       => None
-    | Device_Ptr    => IDENTIFIERS
-    | First_Private => IDENTIFIERS
-    | Num_Gangs     => integer_EXPRESSION
-    | Num_Workers   => integer_EXPRESSION
-    | Present       => IDENTIFIERS
-    | Reduction     => (REDUCTION_RECORD)
-    | Vector_Length => integer_EXPRESSION
-    | Wait          => INTEGERS
-
-  REDUCTION_RECORD ::=
-      "+"   => IDENTIFIERS
-    | "*"   => IDENTIFIERS
-    | "min" => IDENTIFIERS
-    | "max" => IDENTIFIERS
-    | "or"  => IDENTIFIERS
-    | "and" => IDENTIFIERS
-
-  IDENTIFIERS ::=
-    | IDENTIFIER
-    | (IDENTIFIER, IDENTIFIERS)
-
-  INTEGERS ::=
-    | integer_EXPRESSION
-    | (integer_EXPRESSION, INTEGERS)
-
-Requires the :switch:`-fopenacc` flag.
-
-Equivalent to the ``parallel`` directive of the OpenAcc standard. This pragma
-should be placed in loops. It offloads the content of the loop to an
-accelerator device.
-
-For more information about the effect of the clauses, see the OpenAcc
-specification.
-
-Pragma Acc_Loop
-===============
-Syntax:
-
-.. code-block:: ada
-
-  pragma Acc_Loop [( ACC_LOOP_CLAUSE [, ACC_LOOP_CLAUSE... ])];
-
-  ACC_LOOP_CLAUSE ::=
-      Auto
-    | Collapse        => INTEGER_LITERAL
-    | Gang            [=> GANG_ARG]
-    | Independent
-    | Private         => IDENTIFIERS
-    | Reduction       => (REDUCTION_RECORD)
-    | Seq
-    | Tile            => SIZE_EXPRESSION
-    | Vector          [=> integer_EXPRESSION]
-    | Worker          [=> integer_EXPRESSION]
-
-  GANG_ARG ::=
-      integer_EXPRESSION
-    | Static => SIZE_EXPRESSION
-
-  SIZE_EXPRESSION ::=
-      *
-    | integer_EXPRESSION
-
-Requires the :switch:`-fopenacc` flag.
-
-Equivalent to the ``loop`` directive of the OpenAcc standard. This pragma
-should be placed in for loops after the "Acc_Parallel" pragma. It tells the
-compiler how to parallelize the loop.
-
-For more information about the effect of the clauses, see the OpenAcc
-specification.
-
-Pragma Acc_Kernels
-==================
-Syntax:
-
-.. code-block:: ada
-
-  pragma Acc_Kernels [( ACC_KERNELS_CLAUSE [, ACC_KERNELS_CLAUSE...])];
-
-  ACC_KERNELS_CLAUSE ::=
-      Acc_If        => boolean_EXPRESSION
-    | Async         => integer_EXPRESSION
-    | Copy          => IDENTIFIERS
-    | Copy_In       => IDENTIFIERS
-    | Copy_Out      => IDENTIFIERS
-    | Create        => IDENTIFIERS
-    | Default       => None
-    | Device_Ptr    => IDENTIFIERS
-    | Num_Gangs     => integer_EXPRESSION
-    | Num_Workers   => integer_EXPRESSION
-    | Present       => IDENTIFIERS
-    | Vector_Length => integer_EXPRESSION
-    | Wait          => INTEGERS
-
-  IDENTIFIERS ::=
-    | IDENTIFIER
-    | (IDENTIFIER, IDENTIFIERS)
-
-  INTEGERS ::=
-    | integer_EXPRESSION
-    | (integer_EXPRESSION, INTEGERS)
-
-Requires the :switch:`-fopenacc` flag.
-
-Equivalent to the kernels directive of the OpenAcc standard. This pragma should
-be placed in loops.
-
-For more information about the effect of the clauses, see the OpenAcc
-specification.
-
-Pragma Acc_Data
-===============
-Syntax:
-
-.. code-block:: ada
-
-  pragma Acc_Data ([ ACC_DATA_CLAUSE [, ACC_DATA_CLAUSE...]]);
-
-  ACC_DATA_CLAUSE ::=
-      Copy          => IDENTIFIERS
-    | Copy_In       => IDENTIFIERS
-    | Copy_Out      => IDENTIFIERS
-    | Create        => IDENTIFIERS
-    | Device_Ptr    => IDENTIFIERS
-    | Present       => IDENTIFIERS
-
-Requires the :switch:`-fopenacc` flag.
-
-Equivalent to the ``data`` directive of the OpenAcc standard. This pragma
-should be placed in loops.
-
-For more information about the effect of the clauses, see the OpenAcc
-specification.
-
 
 Pragma Ada_83
 =============
@@ -1078,6 +940,8 @@ support is available, then the code generator will issue a message
 indicating that the necessary attribute for implementation of this
 pragma is not available.
 
+.. _Compile_Time_Error:
+
 Pragma Compile_Time_Error
 =========================
 
@@ -1130,6 +994,11 @@ One typical use is within a generic where compile time known characteristics
 of formal parameters are tested, and warnings given appropriately. Another use
 with a first parameter of True is to warn a client about use of a package,
 for example that it is not fully implemented.
+
+In previous versions of the compiler, combining *-gnatwe* with
+Compile_Time_Warning resulted in a fatal error. Now the compiler always emits
+a warning. You can use :ref:`Compile_Time_Error` to force the generation of
+an error.
 
 Pragma Compiler_Unit
 ====================
@@ -2338,15 +2207,31 @@ extension mode (the use of Off as a parameter cancels the effect
 of the *-gnatX* command switch).
 
 In extension mode, the latest version of the Ada language is
-implemented (currently Ada 2012), and in addition a small number
+implemented (currently Ada 202x), and in addition a small number
 of GNAT specific extensions are recognized as follows:
 
+* Constrained attribute for generic objects
 
-
-*Constrained attribute for generic objects*
   The ``Constrained`` attribute is permitted for objects of
   generic types. The result indicates if the corresponding actual
   is constrained.
+
+* ``Static`` aspect on intrinsic functions
+
+  The Ada 202x ``Static`` aspect can be specified on Intrinsic imported
+  functions and the compiler will evaluate some of these intrinsic statically,
+  in particular the ``Shift_Left`` and ``Shift_Right`` intrinsics.
+
+* ``'Reduce`` attribute
+
+  This attribute part of the Ada 202x language definition is provided for
+  now under -gnatX to confirm and potentially refine its usage and syntax.
+
+* ``[]`` aggregates
+
+  This new aggregate syntax for arrays and containers is provided under -gnatX
+  to experiment and confirm this new language syntax.
+
 
 .. _Pragma-Extensions_Visible:
 
@@ -4653,48 +4538,6 @@ type is potentially persistent.
 
 If this pragma is used on a target where this feature is not supported,
 then the pragma will be ignored. See also ``pragma Linker_Section``.
-
-Pragma Polling
-==============
-
-Syntax:
-
-
-.. code-block:: ada
-
-  pragma Polling (ON | OFF);
-
-
-This pragma controls the generation of polling code.  This is normally off.
-If ``pragma Polling (ON)`` is used then periodic calls are generated to
-the routine ``Ada.Exceptions.Poll``.  This routine is a separate unit in the
-runtime library, and can be found in file :file:`a-excpol.adb`.
-
-Pragma ``Polling`` can appear as a configuration pragma (for example it
-can be placed in the :file:`gnat.adc` file) to enable polling globally, or it
-can be used in the statement or declaration sequence to control polling
-more locally.
-
-A call to the polling routine is generated at the start of every loop and
-at the start of every subprogram call.  This guarantees that the ``Poll``
-routine is called frequently, and places an upper bound (determined by
-the complexity of the code) on the period between two ``Poll`` calls.
-
-The primary purpose of the polling interface is to enable asynchronous
-aborts on targets that cannot otherwise support it (for example Windows
-NT), but it may be used for any other purpose requiring periodic polling.
-The standard version is null, and can be replaced by a user program.  This
-will require re-compilation of the ``Ada.Exceptions`` package that can
-be found in files :file:`a-except.ads` and :file:`a-except.adb`.
-
-A standard alternative unit (in file :file:`4wexcpol.adb` in the standard GNAT
-distribution) is used to enable the asynchronous abort capability on
-targets that do not normally support the capability.  The version of
-``Poll`` in this file makes a call to the appropriate runtime routine
-to test for an abort condition.
-
-Note that polling can also be enabled by use of the *-gnatP* switch.
-See the section on switches for gcc in the :title:`GNAT User's Guide`.
 
 Pragma Post
 ===========
@@ -7442,12 +7285,6 @@ there is no guarantee that all the bits will be accessed if the reference
 is not to the whole object; the compiler is allowed (and generally will)
 access only part of the object in this case.
 
-It is not permissible to specify ``Atomic`` and ``Volatile_Full_Access`` for
-the same type or object.
-
-It is not permissible to specify ``Volatile_Full_Access`` for a composite
-(record or array) type or object that has an ``Aliased`` subcomponent.
-
 .. _Pragma-Volatile_Function:
 
 Pragma Volatile_Function
@@ -7573,7 +7410,7 @@ Syntax:
   DETAILS ::= static_string_EXPRESSION
   DETAILS ::= On | Off, static_string_EXPRESSION
 
-  TOOL_NAME ::= GNAT | GNATProve
+  TOOL_NAME ::= GNAT | GNATprove
 
   REASON ::= Reason => STRING_LITERAL {& STRING_LITERAL}
 

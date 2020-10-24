@@ -249,6 +249,10 @@ extern int can_compare_p (enum rtx_code, machine_mode,
    VALUE_MODE.  */
 extern bool can_vcond_compare_p (enum rtx_code, machine_mode, machine_mode);
 
+/* Return whether the backend can emit vector set instructions for inserting
+   element into vector at variable index position.  */
+extern bool can_vec_set_var_idx_p (machine_mode);
+
 extern rtx prepare_operand (enum insn_code, rtx, int, machine_mode,
 			    machine_mode, int);
 /* Emit a pair of rtl insns to compare two rtx's and to jump
@@ -321,9 +325,6 @@ extern rtx expand_vec_perm_const (machine_mode, rtx, rtx,
 /* Generate code for vector comparison.  */
 extern rtx expand_vec_cmp_expr (tree, tree, rtx);
 
-/* Generate code for VEC_COND_EXPR.  */
-extern rtx expand_vec_cond_expr (tree, tree, tree, tree, rtx);
-
 /* Generate code for VEC_SERIES_EXPR.  */
 extern rtx expand_vec_series_expr (machine_mode, rtx, rtx, rtx);
 
@@ -364,5 +365,9 @@ extern void expand_jump_insn (enum insn_code icode, unsigned int nops,
 			      class expand_operand *ops);
 
 extern enum rtx_code get_rtx_code (enum tree_code tcode, bool unsignedp);
+extern rtx vector_compare_rtx (machine_mode cmp_mode, enum tree_code tcode,
+			       tree t_op0, tree t_op1, bool unsignedp,
+			       enum insn_code icode, unsigned int opno);
+
 
 #endif /* GCC_OPTABS_H */

@@ -160,6 +160,9 @@ class ScopedInErrorReport {
       BlockingMutexLock l(&error_message_buf_mutex);
       internal_memcpy(buffer_copy.data(),
                       error_message_buffer, kErrorMessageBufferSize);
+      // Clear error_message_buffer so that if we find other errors
+      // we don't re-log this error.
+      error_message_buffer_pos = 0;
     }
 
     LogFullErrorReport(buffer_copy.data());
@@ -408,7 +411,7 @@ static bool IsInvalidPointerPair(uptr a1, uptr a2) {
   return false;
 }
 
-static INLINE void CheckForInvalidPointerPair(void *p1, void *p2) {
+static inline void CheckForInvalidPointerPair(void *p1, void *p2) {
   switch (flags()->detect_invalid_pointer_pairs) {
     case 0:
       return;

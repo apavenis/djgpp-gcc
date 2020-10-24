@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -172,10 +172,14 @@ package body System.Fat_Gen is
 
       elsif X > T'Safe_Last then
          Frac := Invrad;
+         pragma Annotate (CodePeer, Intentional, "dead code",
+                          "Check float range.");
          Expo := T'Machine_Emax + 1;
 
       elsif X < T'Safe_First then
          Frac := -Invrad;
+         pragma Annotate (CodePeer, Intentional, "dead code",
+                          "Check float range.");
          Expo := T'Machine_Emax + 2;    -- how many extra negative values?
 
       else
@@ -217,8 +221,14 @@ package body System.Fat_Gen is
 
                while Ax < R_Neg_Power (Expbits'Last) loop
                   Ax := Ax * R_Power (Expbits'Last);
+                  pragma Annotate (CodePeer, Intentional, "dead code",
+                                   "Check float range.");
                   Ex := Ex - Log_Power (Expbits'Last);
                end loop;
+               pragma Annotate
+                 (CodePeer, Intentional,
+                  "test always false",
+                  "expected for some instantiations");
 
                --  Rad ** -64 <= Ax < 1
 
@@ -420,7 +430,11 @@ package body System.Fat_Gen is
       --  For infinities, return unchanged
 
       elsif X < T'First or else X > T'Last then
+         pragma Annotate (CodePeer, Intentional, "condition predetermined",
+                          "Check for invalid float");
          return X;
+         pragma Annotate (CodePeer, Intentional, "dead code",
+                          "Check float range.");
 
       --  Subtract from the given number a number equivalent to the value
       --  of its least significant bit. Given that the most significant bit
@@ -669,7 +683,11 @@ package body System.Fat_Gen is
       --  For infinities, return unchanged
 
       elsif X < T'First or else X > T'Last then
+         pragma Annotate (CodePeer, Intentional, "condition predetermined",
+                          "Check for invalid float");
          return X;
+         pragma Annotate (CodePeer, Intentional, "dead code",
+                          "Check float range.");
 
       --  Add to the given number a number equivalent to the value
       --  of its least significant bit. Given that the most significant bit

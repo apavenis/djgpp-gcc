@@ -1,3 +1,200 @@
+2020-09-21  Tobias Burnus  <tobias@codesourcery.com>
+
+	* mklog.py: Parse first 10 lines for PR/DR number
+	not only the first line.
+
+2020-09-17  Dimitrij Mojoski  <dmjpp@hotmail.com>
+
+	* clang-format: Autodetect C++ standard in use rather than
+	forcing C++03.
+
+2020-08-26  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* config-list.mk (LIST): Add OPT-enable-obsolete to tilegx-linux-gnu,
+	tilegxbe-linux-gnu, and tilepro-linux-gnu.
+
+2020-07-29  Martin Liska  <mliska@suse.cz>
+
+	* git-backport.py: fix how are ChangeLog paths combined.
+
+2020-07-23  Patrick Palka  <ppalka@redhat.com>
+
+	* vimrc (SetStyle): Also inspect &filetype to determine whether
+	a file is C-like.
+
+2020-07-23  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: When reverting a backport,
+	we should print only Revert header.
+
+2020-07-17  Jonathan Wakely  <jwakely@redhat.com>
+
+	* gcc-changelog/git_update_version.py: Fix typo.
+
+2020-07-10  Mike Nolta  <mike@nolta.net>
+
+	* download_prerequisites: Don't pass wget options to curl.
+
+2020-07-07  Alexandre Oliva  <oliva@adacore.com>
+	    Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: Support CASE and COND.
+	* gcc-changelog/test_patches.txt: Add test.
+	* gcc-changelog/test_email.py: Add test.
+
+2020-06-30  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_repository.py: Support older releases of
+	GitPython when renamed_file was named renamed.
+
+2020-06-30  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_check_commit.py: Print revision
+	of original_info.
+	* gcc-changelog/git_commit.py: Support Revert commits.
+
+2020-06-30  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_check_commit.py: Use GitInfo
+	* gcc-changelog/git_commit.py: Add GitInfo class.
+	* gcc-changelog/git_email.py: Use GitInfo class.
+	* gcc-changelog/git_repository.py: Likewise.
+
+2020-06-24  Ilya Leoshkevich  <iii@linux.ibm.com>
+
+	* download_prerequisites: Support AIX and OpenBSD unames.
+	Pipe `{gzip,bzip2} -d` to `tar -xf -`.
+
+2020-06-18  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_update_version.py: First checkout and then
+	run git pull ---rebase.
+
+2020-06-18  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_update_version.py: Support merge commits
+	and walk only on the branch that is being merged and generate
+	missing ChangeLog entries.
+
+2020-06-18  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: Fix Backported from timestamp when
+	use_commit_ts=True is used.
+
+2020-06-17  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: Print 'Backported from master'
+	heading to backported commits.
+	* gcc-changelog/test_email.py: Test it.
+	* gcc-changelog/test_patches.txt: Add new patch.
+	* gcc-changelog/git_repository.py: Add commit_to_date hook.
+	* gcc-changelog/git_email.py: Add fuzzy implementation
+	of commit_to_date_hook.
+
+2020-06-11  Jonathan Wakely  <jwakely@redhat.com>
+
+	* prepare-commit-msg: Use the gcc-config.mklog-hook-type Git
+	config key instead of the GCC_FORCE_MKLOG environment variable.
+	Optionally disable generating a new ChangeLog template for
+	amended commits when the existing log is still OK.
+
+2020-06-11  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_update_version.py: Add --curent argument.
+
+2020-06-11  Martin Liska  <mliska@suse.cz>
+
+	* prepare-commit-msg: Replace ENV variable with a git config
+	value.
+
+2020-06-11  Jonathan Wakely  <jwakely@redhat.com>
+
+	* prepare-commit-msg: Use 'tee' to save the diff to a file
+	instead of running 'git diff' twice.
+
+2020-06-10  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: Fix renamed files in
+	parse_git_name_status.
+	* gcc-changelog/test_email.py: Add test for it.
+
+2020-06-10  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: Add more supported prefixes.
+	* gcc-changelog/test_email.py: Fix one flake8 error.
+	* gcc-changelog/test_patches.txt: Add tested for newly
+	supported prefixes.
+
+2020-06-10  Jonathan Wakely  <jwakely@redhat.com>
+
+	* gcc-changelog/git_commit.py (GitCommit.parse_changelog):
+	Improve error strings.
+	* gcc-changelog/test_email.py: Update expected errors.
+
+2020-06-09  Jonathan Wakely  <jwakely@redhat.com>
+
+	* gcc-changelog/git_email.py: Set exit status on error.
+
+2020-06-09  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: Fix ChangeLog regex in order to
+	match the top-level ChangeLog.
+	* gcc-changelog/test_email.py: Add test.
+	* gcc-changelog/test_patches.txt: Likewise.
+
+2020-06-02  Martin Liska  <mliska@suse.cz>
+
+	* gcc-changelog/git_commit.py: Support foo/bar/*: patterns in
+	wildcard_prefixes locations.
+	* gcc-changelog/test_email.py: Test it.
+	* gcc-changelog/test_patches.txt: Add 3 new patches.
+
+2020-06-02  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* gcc-changelog/git_commit.py (ignored_prefixes): Add
+	gcc/testsuite/gdc.test/.
+
+2020-06-02  Jonathan Wakely  <jwakely@redhat.com>
+
+	* gcc-changelog/test_email.py (TestGccChangelog.test_long_lines):
+	Update expected error message.
+
+2020-06-02  Jonathan Wakely  <jwakely@redhat.com>
+
+	* gcc-changelog/git_commit.py (GitCommit.parse_changelog): Fix
+	grammar.
+
+2020-06-02  Jonathan Wakely  <jwakely@redhat.com>
+
+	* prepare-commit-msg: Do nothing if the mklog.py script isn't
+	present.
+
+2020-06-02  Jonathan Wakely  <jwakely@redhat.com>
+
+	* gcc-changelog/git_commit.py (GitCommit.check_mentioned_files):
+	Improve error text.
+
+2020-05-31  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* config-list.mk (LIST): Add v850e1-elf.
+
+2020-05-31  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* config-list.mk (LIST): Add or1k-elf, or1k-linux-*, and or1k-rtems.
+
+2020-05-31  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* config-list.mk (LIST): Remove arm-wrs-vxworks.
+
+2020-05-31  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* config-list.mk (LIST): Remove cris-linux, crisv32-elf, and
+	crisv32-linux.
+
+2020-05-31  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	* config-list.mk (LIST): Add pru-elf.
+
 2020-05-29  Iain Buclaw  <ibuclaw@gdcproject.org>
 
 	* config-list.mk (LIST): Remove rs6000-ibm-aix5.3.0.

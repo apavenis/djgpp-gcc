@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -67,6 +67,9 @@ package Get_Targ is
 
    function Get_Long_Long_Size             return Pos;
    --  Size of Standard.Long_Long_Integer
+
+   function Get_Long_Long_Long_Size        return Pos;
+   --  Size of Standard.Long_Long_Long_Integer
 
    function Get_Pointer_Size               return Pos;
    --  Size of System.Address

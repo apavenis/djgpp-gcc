@@ -97,7 +97,7 @@ generic_subrtx_iterator <T>::add_single_to_queue (array_type &array,
       /* A previous iteration might also have moved from the stack to the
 	 heap, in which case the heap array will already be big enough.  */
       if (vec_safe_length (array.heap) <= i)
-	vec_safe_grow (array.heap, i + 1);
+	vec_safe_grow (array.heap, i + 1, true);
       base = array.heap->address ();
       memcpy (base, array.stack, sizeof (array.stack));
       base[LOCAL_ELEMS] = x;
@@ -1619,6 +1619,10 @@ set_noop_p (const_rtx set)
 	return 0;
       src = SUBREG_REG (src);
       dst = SUBREG_REG (dst);
+      if (GET_MODE (src) != GET_MODE (dst))
+	/* It is hard to tell whether subregs refer to the same bits, so act
+	   conservatively and return 0.  */
+	return 0;
     }
 
   /* It is a NOOP if destination overlaps with selected src vector
@@ -6590,4 +6594,30 @@ tls_referenced_p (const_rtx x)
     if (GET_CODE (*iter) == SYMBOL_REF && SYMBOL_REF_TLS_MODEL (*iter) != 0)
       return true;
   return false;
+}
+
+/* Process recursively X of INSN and add REG_INC notes if necessary.  */
+void
+add_auto_inc_notes (rtx_insn *insn, rtx x)
+{
+  enum rtx_code code = GET_CODE (x);
+  const char *fmt;
+  int i, j;
+
+  if (code == MEM && auto_inc_p (XEXP (x, 0)))
+    {
+      add_reg_note (insn, REG_INC, XEXP (XEXP (x, 0), 0));
+      return;
+    }
+
+  /* Scan all X sub-expressions.  */
+  fmt = GET_RTX_FORMAT (code);
+  for (i = GET_RTX_LENGTH (code) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e')
+	add_auto_inc_notes (insn, XEXP (x, i));
+      else if (fmt[i] == 'E')
+	for (j = XVECLEN (x, i) - 1; j >= 0; j--)
+	  add_auto_inc_notes (insn, XVECEXP (x, i, j));
+    }
 }

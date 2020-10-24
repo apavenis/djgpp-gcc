@@ -71,6 +71,11 @@ extern void test_tsxldtrk (void)		__attribute__((__target__("tsxldtrk")));
 extern void test_enqcmd (void)			__attribute__((__target__("enqcmd")));
 extern void test_avx512bf16 (void)		__attribute__((__target__("avx512bf16")));
 extern void test_avx512vp2intersect (void)	__attribute__((__target__("avx512vp2intersect")));
+extern void test_amx_tile (void)		__attribute__((__target__("amx-tile")));
+extern void test_amx_int8 (void)		__attribute__((__target__("amx-int8")));
+extern void test_amx_bf16 (void)		__attribute__((__target__("amx-bf16")));
+extern void test_uintr (void)			__attribute__((__target__("uintr")));
+extern void test_hreset (void)			__attribute__((__target__("hreset")));
 
 extern void test_no_sgx (void)			__attribute__((__target__("no-sgx")));
 extern void test_no_avx5124fmaps(void)		__attribute__((__target__("no-avx5124fmaps")));
@@ -143,6 +148,11 @@ extern void test_no_tsxldtrk (void)		__attribute__((__target__("no-tsxldtrk")));
 extern void test_no_enqcmd (void)		__attribute__((__target__("no-enqcmd")));
 extern void test_no_avx512bf16 (void)		__attribute__((__target__("no-avx512bf16")));
 extern void test_no_avx512vp2intersect (void)	__attribute__((__target__("no-avx512vp2intersect")));
+extern void test_no_amx_tile (void)		__attribute__((__target__("no-amx-tile")));
+extern void test_no_amx_int8 (void)		__attribute__((__target__("no-amx-int8")));
+extern void test_no_amx_bf16 (void)		__attribute__((__target__("no-amx-bf16")));
+extern void test_no_uintr (void)		__attribute__((__target__("no-uintr")));
+extern void test_no_hreset (void)		__attribute__((__target__("no-hreset")));
 
 extern void test_arch_nocona (void)		__attribute__((__target__("arch=nocona")));
 extern void test_arch_core2 (void)		__attribute__((__target__("arch=core2")));
@@ -163,6 +173,8 @@ extern void test_arch_icelake_server (void)	__attribute__((__target__("arch=icel
 extern void test_arch_cascadelake (void)	__attribute__((__target__("arch=cascadelake")));
 extern void test_arch_tigerlake (void)          __attribute__((__target__("arch=tigerlake")));
 extern void test_arch_cooperlake (void)         __attribute__((__target__("arch=cooperlake")));
+extern void test_arch_sapphirerapids (void)	__attribute__((__target__("arch=sapphirerapids")));
+extern void test_arch_alderlake (void)          __attribute__((__target__("arch=alderlake")));
 extern void test_arch_k8 (void)			__attribute__((__target__("arch=k8")));
 extern void test_arch_k8_sse3 (void)		__attribute__((__target__("arch=k8-sse3")));
 extern void test_arch_opteron (void)		__attribute__((__target__("arch=opteron")));

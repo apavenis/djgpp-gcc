@@ -554,7 +554,7 @@ map_arguments (tree parms, tree args)
 	TREE_PURPOSE (p) = TMPL_ARG (args, level, index);
       }
     else
-      TREE_PURPOSE (p) = TREE_VALUE (p);
+      TREE_PURPOSE (p) = template_parm_to_arg (p);
 
   return parms;
 }
@@ -840,6 +840,8 @@ get_normalized_constraints_from_decl (tree d, bool diag = false)
     if (tree *p = hash_map_safe_get (normalized_map, tmpl))
       return *p;
 
+  push_nested_class_guard pncs (DECL_CONTEXT (d));
+
   tree args = generic_targs_for (tmpl);
   tree ci = get_constraints (decl);
   tree norm = get_normalized_constraints_from_info (ci, args, tmpl, diag);
@@ -1075,6 +1077,19 @@ associate_classtype_constraints (tree type)
 	 original declaration.  */
       if (tree orig_ci = get_constraints (decl))
         {
+	  if (int extra_levels = (TMPL_PARMS_DEPTH (current_template_parms)
+				  - TMPL_ARGS_DEPTH (TYPE_TI_ARGS (type))))
+	    {
+	      /* If there is a discrepancy between the current template depth
+		 and the template depth of the original declaration, then we
+		 must be redeclaring a class template as part of a friend
+		 declaration within another class template.  Before matching
+		 constraints, we need to reduce the template parameter level
+		 within the current constraints via substitution.  */
+	      tree outer_gtargs = template_parms_to_args (current_template_parms);
+	      TREE_VEC_LENGTH (outer_gtargs) = extra_levels;
+	      ci = tsubst_constraint_info (ci, outer_gtargs, tf_none, NULL_TREE);
+	    }
           if (!equivalent_constraints (ci, orig_ci))
             {
 	      error ("%qT does not match original declaration", type);
@@ -1186,7 +1201,7 @@ set_constraints (tree t, tree ci)
 void
 remove_constraints (tree t)
 {
-  gcc_assert (DECL_P (t));
+  gcc_checking_assert (DECL_P (t));
   if (TREE_CODE (t) == TEMPLATE_DECL)
     t = DECL_TEMPLATE_RESULT (t);
 
@@ -1202,11 +1217,16 @@ maybe_substitute_reqs_for (tree reqs, const_tree decl_)
 {
   if (reqs == NULL_TREE)
     return NULL_TREE;
+
   tree decl = CONST_CAST_TREE (decl_);
   tree result = STRIP_TEMPLATE (decl);
-  if (DECL_FRIEND_P (result))
+
+  if (DECL_UNIQUE_FRIEND_P (result))
     {
-      tree tmpl = decl == result ? DECL_TI_TEMPLATE (result) : decl;
+      tree tmpl = decl;
+      if (TREE_CODE (decl) != TEMPLATE_DECL)
+	tmpl = DECL_TI_TEMPLATE (result);
+
       tree gargs = generic_targs_for (tmpl);
       processing_template_decl_sentinel s;
       if (uses_template_parms (gargs))
@@ -1412,7 +1432,9 @@ tree
 build_type_constraint (tree decl, tree args, tsubst_flags_t complain)
 {
   tree wildcard = build_nt (WILDCARD_DECL);
+  ++processing_template_decl;
   tree check = build_concept_check (decl, wildcard, args, complain);
+  --processing_template_decl;
   if (check == error_mark_node)
     return error_mark_node;
   return unpack_concept_check (check);
@@ -1477,7 +1499,7 @@ finish_shorthand_constraint (tree decl, tree constr)
 
   /* Get the argument and overload used for the requirement
      and adjust it if we're going to expand later.  */
-  tree arg = template_parm_to_arg (build_tree_list (NULL_TREE, decl));
+  tree arg = template_parm_to_arg (decl);
   if (apply_to_each_p && declared_pack_p)
     arg = PACK_EXPANSION_PATTERN (TREE_VEC_ELT (ARGUMENT_PACK_ARGS (arg), 0));
 
@@ -2160,7 +2182,19 @@ tsubst_requires_expr (tree t, tree args,
   /* A requires-expression is an unevaluated context.  */
   cp_unevaluated u;
 
-  tree parms = TREE_OPERAND (t, 0);
+  args = add_extra_args (REQUIRES_EXPR_EXTRA_ARGS (t), args);
+  if (processing_template_decl)
+    {
+      /* We're partially instantiating a generic lambda.  Substituting into
+	 this requires-expression now may cause its requirements to get
+	 checked out of order, so instead just remember the template
+	 arguments and wait until we can substitute them all at once.  */
+      t = copy_node (t);
+      REQUIRES_EXPR_EXTRA_ARGS (t) = build_extra_args (t, args, complain);
+      return t;
+    }
+
+  tree parms = REQUIRES_EXPR_PARMS (t);
   if (parms)
     {
       parms = tsubst_constraint_variables (parms, args, info);
@@ -2168,13 +2202,10 @@ tsubst_requires_expr (tree t, tree args,
 	return boolean_false_node;
     }
 
-  tree reqs = TREE_OPERAND (t, 1);
+  tree reqs = REQUIRES_EXPR_REQS (t);
   reqs = tsubst_requirement_body (reqs, args, info);
   if (reqs == error_mark_node)
     return boolean_false_node;
-
-  if (processing_template_decl)
-    return finish_requires_expr (cp_expr_location (t), parms, reqs);
 
   return boolean_true_node;
 }
@@ -2537,7 +2568,7 @@ get_mapped_args (tree map)
       /* Insert the argument into its corresponding position.  */
       vec<tree> &list = lists[level - 1];
       if (index >= (int)list.length ())
-	list.safe_grow_cleared (index + 1);
+	list.safe_grow_cleared (index + 1, true);
       list[index] = TREE_PURPOSE (p);
     }
 
@@ -2619,7 +2650,8 @@ satisfy_atom (tree t, tree args, subst_info info)
     result = cxx_constant_value (result);
   else
     {
-      result = maybe_constant_value (result);
+      result = maybe_constant_value (result, NULL_TREE,
+				     /*manifestly_const_eval=*/true);
       if (!TREE_CONSTANT (result))
 	result = error_mark_node;
     }
@@ -2799,16 +2831,22 @@ satisfy_declaration_constraints (tree t, tree args, subst_info info)
   info.in_decl = t;
 
   gcc_assert (TREE_CODE (t) == TEMPLATE_DECL);
+
+  args = add_outermost_template_args (t, args);
+
+  tree result = boolean_true_node;
   if (tree norm = normalize_template_requirements (t, info.noisy ()))
     {
+      if (!push_tinst_level (t, args))
+	return result;
       tree pattern = DECL_TEMPLATE_RESULT (t);
       push_access_scope (pattern);
-      tree result = satisfy_associated_constraints (norm, args, info);
+      result = satisfy_associated_constraints (norm, args, info);
       pop_access_scope (pattern);
-      return result;
+      pop_tinst_level ();
     }
 
-  return boolean_true_node;
+  return result;
 }
 
 static tree
@@ -2851,6 +2889,9 @@ constraint_satisfaction_value (tree t, tree args, tsubst_flags_t complain)
 bool
 constraints_satisfied_p (tree t)
 {
+  if (!flag_concepts)
+    return true;
+
   return constraint_satisfaction_value (t, tf_none) == boolean_true_node;
 }
 
@@ -2860,6 +2901,9 @@ constraints_satisfied_p (tree t)
 bool
 constraints_satisfied_p (tree t, tree args)
 {
+  if (!flag_concepts)
+    return true;
+
   return constraint_satisfaction_value (t, args, tf_none) == boolean_true_node;
 }
 
@@ -2906,7 +2950,7 @@ finish_requires_expr (location_t loc, tree parms, tree reqs)
     }
 
   /* Build the node. */
-  tree r = build_min (REQUIRES_EXPR, boolean_type_node, parms, reqs);
+  tree r = build_min (REQUIRES_EXPR, boolean_type_node, parms, reqs, NULL_TREE);
   TREE_SIDE_EFFECTS (r) = false;
   TREE_CONSTANT (r) = true;
   SET_EXPR_LOCATION (r, loc);

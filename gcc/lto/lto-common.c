@@ -1503,9 +1503,7 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
 
   if (CODE_CONTAINS_STRUCT (code, TS_TYPE_NON_COMMON))
     {
-      if (code == ENUMERAL_TYPE)
-	compare_tree_edges (TYPE_VALUES (t1), TYPE_VALUES (t2));
-      else if (code == ARRAY_TYPE)
+      if (code == ARRAY_TYPE)
 	compare_tree_edges (TYPE_DOMAIN (t1), TYPE_DOMAIN (t2));
       else if (RECORD_OR_UNION_TYPE_P (t1))
 	{
@@ -2229,7 +2227,7 @@ lto_file_finalize (struct lto_file_decl_data *file_data, lto_file *file,
 
   /* Create vector for fast access of resolution.  We do this lazily
      to save memory.  */
-  resolutions.safe_grow_cleared (file_data->max_index + 1);
+  resolutions.safe_grow_cleared (file_data->max_index + 1, true);
   for (i = 0; file_data->respairs.iterate (i, &rp); i++)
     resolutions[rp->index] = rp->res;
   file_data->respairs.release ();

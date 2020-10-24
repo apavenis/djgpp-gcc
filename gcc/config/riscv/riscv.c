@@ -209,7 +209,7 @@ struct riscv_integer_op {
 
 /* Costs of various operations on the different architectures.  */
 
-struct riscv_tune_info
+struct riscv_tune_param
 {
   unsigned short fp_add[2];
   unsigned short fp_mul[2];
@@ -222,16 +222,16 @@ struct riscv_tune_info
   bool slow_unaligned_access;
 };
 
-/* Information about one CPU we know about.  */
-struct riscv_cpu_info {
-  /* This CPU's canonical name.  */
+/* Information about one micro-arch we know about.  */
+struct riscv_tune_info {
+  /* This micro-arch canonical name.  */
   const char *name;
 
   /* Which automaton to use for tuning.  */
   enum riscv_microarchitecture_type microarchitecture;
 
-  /* Tuning parameters for this CPU.  */
-  const struct riscv_tune_info *tune_info;
+  /* Tuning parameters for this micro-arch.  */
+  const struct riscv_tune_param *tune_param;
 };
 
 /* Global variables for machine-dependent things.  */
@@ -248,7 +248,7 @@ unsigned riscv_stack_boundary;
 static int epilogue_cfa_sp_offset;
 
 /* Which tuning parameters to use.  */
-static const struct riscv_tune_info *tune_info;
+static const struct riscv_tune_param *tune_param;
 
 /* Which automaton to use for tuning.  */
 enum riscv_microarchitecture_type riscv_microarchitecture;
@@ -275,7 +275,7 @@ const enum reg_class riscv_regno_to_class[FIRST_PSEUDO_REGISTER] = {
 };
 
 /* Costs to use when optimizing for rocket.  */
-static const struct riscv_tune_info rocket_tune_info = {
+static const struct riscv_tune_param rocket_tune_info = {
   {COSTS_N_INSNS (4), COSTS_N_INSNS (5)},	/* fp_add */
   {COSTS_N_INSNS (4), COSTS_N_INSNS (5)},	/* fp_mul */
   {COSTS_N_INSNS (20), COSTS_N_INSNS (20)},	/* fp_div */
@@ -288,7 +288,7 @@ static const struct riscv_tune_info rocket_tune_info = {
 };
 
 /* Costs to use when optimizing for Sifive 7 Series.  */
-static const struct riscv_tune_info sifive_7_tune_info = {
+static const struct riscv_tune_param sifive_7_tune_info = {
   {COSTS_N_INSNS (4), COSTS_N_INSNS (5)},	/* fp_add */
   {COSTS_N_INSNS (4), COSTS_N_INSNS (5)},	/* fp_mul */
   {COSTS_N_INSNS (20), COSTS_N_INSNS (20)},	/* fp_div */
@@ -301,7 +301,7 @@ static const struct riscv_tune_info sifive_7_tune_info = {
 };
 
 /* Costs to use when optimizing for size.  */
-static const struct riscv_tune_info optimize_size_tune_info = {
+static const struct riscv_tune_param optimize_size_tune_info = {
   {COSTS_N_INSNS (1), COSTS_N_INSNS (1)},	/* fp_add */
   {COSTS_N_INSNS (1), COSTS_N_INSNS (1)},	/* fp_mul */
   {COSTS_N_INSNS (1), COSTS_N_INSNS (1)},	/* fp_div */
@@ -334,8 +334,16 @@ static const struct attribute_spec riscv_attribute_table[] =
   { NULL,	0,  0, false, false, false, false, NULL, NULL }
 };
 
+/* Order for the CLOBBERs/USEs of gpr_save.  */
+static const unsigned gpr_save_reg_order[] = {
+  INVALID_REGNUM, T0_REGNUM, T1_REGNUM, RETURN_ADDR_REGNUM,
+  S0_REGNUM, S1_REGNUM, S2_REGNUM, S3_REGNUM, S4_REGNUM,
+  S5_REGNUM, S6_REGNUM, S7_REGNUM, S8_REGNUM, S9_REGNUM,
+  S10_REGNUM, S11_REGNUM
+};
+
 /* A table describing all the processors GCC knows about.  */
-static const struct riscv_cpu_info riscv_cpu_info_table[] = {
+static const struct riscv_tune_info riscv_tune_info_table[] = {
   { "rocket", generic, &rocket_tune_info },
   { "sifive-3-series", generic, &rocket_tune_info },
   { "sifive-5-series", generic, &rocket_tune_info },
@@ -343,17 +351,22 @@ static const struct riscv_cpu_info riscv_cpu_info_table[] = {
   { "size", generic, &optimize_size_tune_info },
 };
 
-/* Return the riscv_cpu_info entry for the given name string.  */
+/* Return the riscv_tune_info entry for the given name string.  */
 
-static const struct riscv_cpu_info *
-riscv_parse_cpu (const char *cpu_string)
+static const struct riscv_tune_info *
+riscv_parse_tune (const char *tune_string)
 {
-  for (unsigned i = 0; i < ARRAY_SIZE (riscv_cpu_info_table); i++)
-    if (strcmp (riscv_cpu_info_table[i].name, cpu_string) == 0)
-      return riscv_cpu_info_table + i;
+  const riscv_cpu_info *cpu = riscv_find_cpu (tune_string);
 
-  error ("unknown cpu %qs for %<-mtune%>", cpu_string);
-  return riscv_cpu_info_table;
+  if (cpu)
+    tune_string = cpu->tune;
+
+  for (unsigned i = 0; i < ARRAY_SIZE (riscv_tune_info_table); i++)
+    if (strcmp (riscv_tune_info_table[i].name, tune_string) == 0)
+      return riscv_tune_info_table + i;
+
+  error ("unknown cpu %qs for %<-mtune%>", tune_string);
+  return riscv_tune_info_table;
 }
 
 /* Helper function for riscv_build_integer; arguments are as for
@@ -1695,7 +1708,7 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 	 instructions it needs.  */
       if ((cost = riscv_address_insns (XEXP (x, 0), mode, true)) > 0)
 	{
-	  *total = COSTS_N_INSNS (cost + tune_info->memory_cost);
+	  *total = COSTS_N_INSNS (cost + tune_param->memory_cost);
 	  return true;
 	}
       /* Otherwise use the default handling.  */
@@ -1762,7 +1775,7 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 	 mode instead.  */
       mode = GET_MODE (XEXP (x, 0));
       if (float_mode_p)
-	*total = tune_info->fp_add[mode == DFmode];
+	*total = tune_param->fp_add[mode == DFmode];
       else
 	*total = riscv_binary_cost (x, 1, 3);
       return false;
@@ -1771,19 +1784,19 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
     case ORDERED:
       /* (FEQ(A, A) & FEQ(B, B)) compared against 0.  */
       mode = GET_MODE (XEXP (x, 0));
-      *total = tune_info->fp_add[mode == DFmode] + COSTS_N_INSNS (2);
+      *total = tune_param->fp_add[mode == DFmode] + COSTS_N_INSNS (2);
       return false;
 
     case UNEQ:
       /* (FEQ(A, A) & FEQ(B, B)) compared against FEQ(A, B).  */
       mode = GET_MODE (XEXP (x, 0));
-      *total = tune_info->fp_add[mode == DFmode] + COSTS_N_INSNS (3);
+      *total = tune_param->fp_add[mode == DFmode] + COSTS_N_INSNS (3);
       return false;
 
     case LTGT:
       /* (FLT(A, A) || FGT(B, B)).  */
       mode = GET_MODE (XEXP (x, 0));
-      *total = tune_info->fp_add[mode == DFmode] + COSTS_N_INSNS (2);
+      *total = tune_param->fp_add[mode == DFmode] + COSTS_N_INSNS (2);
       return false;
 
     case UNGE:
@@ -1792,13 +1805,13 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
     case UNLT:
       /* FLT or FLE, but guarded by an FFLAGS read and write.  */
       mode = GET_MODE (XEXP (x, 0));
-      *total = tune_info->fp_add[mode == DFmode] + COSTS_N_INSNS (4);
+      *total = tune_param->fp_add[mode == DFmode] + COSTS_N_INSNS (4);
       return false;
 
     case MINUS:
     case PLUS:
       if (float_mode_p)
-	*total = tune_info->fp_add[mode == DFmode];
+	*total = tune_param->fp_add[mode == DFmode];
       else
 	*total = riscv_binary_cost (x, 1, 4);
       return false;
@@ -1808,7 +1821,7 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 	rtx op = XEXP (x, 0);
 	if (GET_CODE (op) == FMA && !HONOR_SIGNED_ZEROS (mode))
 	  {
-	    *total = (tune_info->fp_mul[mode == DFmode]
+	    *total = (tune_param->fp_mul[mode == DFmode]
 		      + set_src_cost (XEXP (op, 0), mode, speed)
 		      + set_src_cost (XEXP (op, 1), mode, speed)
 		      + set_src_cost (XEXP (op, 2), mode, speed));
@@ -1817,23 +1830,23 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
       }
 
       if (float_mode_p)
-	*total = tune_info->fp_add[mode == DFmode];
+	*total = tune_param->fp_add[mode == DFmode];
       else
 	*total = COSTS_N_INSNS (GET_MODE_SIZE (mode) > UNITS_PER_WORD ? 4 : 1);
       return false;
 
     case MULT:
       if (float_mode_p)
-	*total = tune_info->fp_mul[mode == DFmode];
+	*total = tune_param->fp_mul[mode == DFmode];
       else if (!TARGET_MUL)
 	/* Estimate the cost of a library call.  */
 	*total = COSTS_N_INSNS (speed ? 32 : 6);
       else if (GET_MODE_SIZE (mode) > UNITS_PER_WORD)
-	*total = 3 * tune_info->int_mul[0] + COSTS_N_INSNS (2);
+	*total = 3 * tune_param->int_mul[0] + COSTS_N_INSNS (2);
       else if (!speed)
 	*total = COSTS_N_INSNS (1);
       else
-	*total = tune_info->int_mul[mode == DImode];
+	*total = tune_param->int_mul[mode == DImode];
       return false;
 
     case DIV:
@@ -1841,7 +1854,7 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
     case MOD:
       if (float_mode_p)
 	{
-	  *total = tune_info->fp_div[mode == DFmode];
+	  *total = tune_param->fp_div[mode == DFmode];
 	  return false;
 	}
       /* Fall through.  */
@@ -1852,7 +1865,7 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 	/* Estimate the cost of a library call.  */
 	*total = COSTS_N_INSNS (speed ? 32 : 6);
       else if (speed)
-	*total = tune_info->int_div[mode == DImode];
+	*total = tune_param->int_div[mode == DImode];
       else
 	*total = COSTS_N_INSNS (1);
       return false;
@@ -1874,11 +1887,11 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
     case FIX:
     case FLOAT_EXTEND:
     case FLOAT_TRUNCATE:
-      *total = tune_info->fp_add[mode == DFmode];
+      *total = tune_param->fp_add[mode == DFmode];
       return false;
 
     case FMA:
-      *total = (tune_info->fp_mul[mode == DFmode]
+      *total = (tune_param->fp_mul[mode == DFmode]
 		+ set_src_cost (XEXP (x, 0), mode, speed)
 		+ set_src_cost (XEXP (x, 1), mode, speed)
 		+ set_src_cost (XEXP (x, 2), mode, speed));
@@ -3943,20 +3956,6 @@ riscv_restore_reg (rtx reg, rtx mem)
   RTX_FRAME_RELATED_P (insn) = 1;
 }
 
-/* Return the code to invoke the GPR save routine.  */
-
-const char *
-riscv_output_gpr_save (unsigned mask)
-{
-  static char s[32];
-  unsigned n = riscv_save_libcall_count (mask);
-
-  ssize_t bytes = snprintf (s, sizeof (s), "call\tt0,__riscv_save_%u", n);
-  gcc_assert ((size_t) bytes < sizeof (s));
-
-  return s;
-}
-
 /* For stack frames that can't be allocated with a single ADDI instruction,
    compute the best value to initially allocate.  It must at a minimum
    allocate enough space to spill the callee-saved registers.  If TARGET_RVC,
@@ -4069,9 +4068,9 @@ riscv_expand_prologue (void)
       rtx dwarf = NULL_RTX;
       dwarf = riscv_adjust_libcall_cfi_prologue ();
 
-      frame->mask = 0; /* Temporarily fib that we need not save GPRs.  */
       size -= frame->save_libcall_adjustment;
-      insn = emit_insn (gen_gpr_save (GEN_INT (mask)));
+      insn = emit_insn (riscv_gen_gpr_save_insn (frame));
+      frame->mask = 0; /* Temporarily fib that we need not save GPRs.  */
 
       RTX_FRAME_RELATED_P (insn) = 1;
       REG_NOTES (insn) = dwarf;
@@ -4552,7 +4551,7 @@ riscv_class_max_nregs (reg_class_t rclass, machine_mode mode)
 static int
 riscv_memory_move_cost (machine_mode mode, reg_class_t rclass, bool in)
 {
-  return (tune_info->memory_cost
+  return (tune_param->memory_cost
 	  + memory_move_secondary_cost (mode, rclass, in));
 }
 
@@ -4561,7 +4560,7 @@ riscv_memory_move_cost (machine_mode mode, reg_class_t rclass, bool in)
 static int
 riscv_issue_rate (void)
 {
-  return tune_info->issue_rate;
+  return tune_param->issue_rate;
 }
 
 /* Auxiliary function to emit RISC-V ELF attribute. */
@@ -4689,7 +4688,7 @@ riscv_init_machine_status (void)
 static void
 riscv_option_override (void)
 {
-  const struct riscv_cpu_info *cpu;
+  const struct riscv_tune_info *cpu;
 
 #ifdef SUBTARGET_OVERRIDE_OPTIONS
   SUBTARGET_OVERRIDE_OPTIONS;
@@ -4711,26 +4710,28 @@ riscv_option_override (void)
   if (TARGET_HARD_FLOAT && (target_flags_explicit & MASK_FDIV) == 0)
     target_flags |= MASK_FDIV;
 
-  /* Handle -mtune.  */
-  cpu = riscv_parse_cpu (riscv_tune_string ? riscv_tune_string :
-			 RISCV_TUNE_STRING_DEFAULT);
+  /* Handle -mtune, use -mcpu if -mtune is not given, and use default -mtune
+     if -mtune and -mcpu both not not given.  */
+  cpu = riscv_parse_tune (riscv_tune_string ? riscv_tune_string :
+			  (riscv_cpu_string ? riscv_cpu_string :
+			   RISCV_TUNE_STRING_DEFAULT));
   riscv_microarchitecture = cpu->microarchitecture;
-  tune_info = optimize_size ? &optimize_size_tune_info : cpu->tune_info;
+  tune_param = optimize_size ? &optimize_size_tune_info : cpu->tune_param;
 
   /* Use -mtune's setting for slow_unaligned_access, even when optimizing
      for size.  For architectures that trap and emulate unaligned accesses,
      the performance cost is too great, even for -Os.  Similarly, if
      -m[no-]strict-align is left unspecified, heed -mtune's advice.  */
-  riscv_slow_unaligned_access_p = (cpu->tune_info->slow_unaligned_access
+  riscv_slow_unaligned_access_p = (cpu->tune_param->slow_unaligned_access
 				   || TARGET_STRICT_ALIGN);
   if ((target_flags_explicit & MASK_STRICT_ALIGN) == 0
-      && cpu->tune_info->slow_unaligned_access)
+      && cpu->tune_param->slow_unaligned_access)
     target_flags |= MASK_STRICT_ALIGN;
 
   /* If the user hasn't specified a branch cost, use the processor's
      default.  */
   if (riscv_branch_cost == 0)
-    riscv_branch_cost = tune_info->branch_cost;
+    riscv_branch_cost = tune_param->branch_cost;
 
   /* Function to allocate machine-dependent function status.  */
   init_machine_status = &riscv_init_machine_status;
@@ -4780,6 +4781,53 @@ riscv_option_override (void)
     error ("%<-mriscv-attribute%> RISC-V ELF attribute requires GNU as 2.32"
 	   " [%<-mriscv-attribute%>]");
 #endif
+
+  if (riscv_stack_protector_guard == SSP_GLOBAL
+      && global_options_set.x_riscv_stack_protector_guard_offset_str)
+    {
+      error ("incompatible options %<-mstack-protector-guard=global%> and "
+	     "%<-mstack-protector-guard-offset=%s%>",
+	     riscv_stack_protector_guard_offset_str);
+    }
+
+  if (riscv_stack_protector_guard == SSP_TLS
+      && !(global_options_set.x_riscv_stack_protector_guard_offset_str
+	   && global_options_set.x_riscv_stack_protector_guard_reg_str))
+    {
+      error ("both %<-mstack-protector-guard-offset%> and "
+	     "%<-mstack-protector-guard-reg%> must be used "
+	     "with %<-mstack-protector-guard=sysreg%>");
+    }
+
+  if (global_options_set.x_riscv_stack_protector_guard_reg_str)
+    {
+      const char *str = riscv_stack_protector_guard_reg_str;
+      int reg = decode_reg_name (str);
+
+      if (!IN_RANGE (reg, GP_REG_FIRST + 1, GP_REG_LAST))
+	error ("%qs is not a valid base register in %qs", str,
+	       "-mstack-protector-guard-reg=");
+
+      riscv_stack_protector_guard_reg = reg;
+    }
+
+  if (global_options_set.x_riscv_stack_protector_guard_offset_str)
+    {
+      char *end;
+      const char *str = riscv_stack_protector_guard_offset_str;
+      errno = 0;
+      long offs = strtol (riscv_stack_protector_guard_offset_str, &end, 0);
+
+      if (!*str || *end || errno)
+	error ("%qs is not a valid number in %qs", str,
+	       "-mstack-protector-guard-offset=");
+
+      if (!SMALL_OPERAND (offs))
+	error ("%qs is not a valid offset in %qs", str,
+	       "-mstack-protector-guard-offset=");
+
+      riscv_stack_protector_guard_offset = offs;
+    }
 
 }
 
@@ -5175,6 +5223,80 @@ riscv_new_address_profitable_p (rtx memref, rtx_insn *insn, rtx new_addr)
   int old_cost = address_cost (XEXP (memref, 0), GET_MODE (memref), as, speed);
   int new_cost = address_cost (new_addr, GET_MODE (memref), as, speed);
   return new_cost <= old_cost;
+}
+
+/* Helper function for generating gpr_save pattern.  */
+
+rtx
+riscv_gen_gpr_save_insn (struct riscv_frame_info *frame)
+{
+  unsigned count = riscv_save_libcall_count (frame->mask);
+  /* 1 for unspec 2 for clobber t0/t1 and 1 for ra.  */
+  unsigned veclen = 1 + 2 + 1 + count;
+  rtvec vec = rtvec_alloc (veclen);
+
+  gcc_assert (veclen <= ARRAY_SIZE (gpr_save_reg_order));
+
+  RTVEC_ELT (vec, 0) =
+    gen_rtx_UNSPEC_VOLATILE (VOIDmode,
+      gen_rtvec (1, GEN_INT (count)), UNSPECV_GPR_SAVE);
+
+  for (unsigned i = 1; i < veclen; ++i)
+    {
+      unsigned regno = gpr_save_reg_order[i];
+      rtx reg = gen_rtx_REG (Pmode, regno);
+      rtx elt;
+
+      /* t0 and t1 are CLOBBERs, others are USEs.  */
+      if (i < 3)
+	elt = gen_rtx_CLOBBER (Pmode, reg);
+      else
+	elt = gen_rtx_USE (Pmode, reg);
+
+      RTVEC_ELT (vec, i) = elt;
+    }
+
+  /* Largest number of caller-save register must set in mask if we are
+     not using __riscv_save_0.  */
+  gcc_assert ((count == 0) ||
+	      BITSET_P (frame->mask, gpr_save_reg_order[veclen - 1]));
+
+  return gen_rtx_PARALLEL (VOIDmode, vec);
+}
+
+/* Return true if it's valid gpr_save pattern.  */
+
+bool
+riscv_gpr_save_operation_p (rtx op)
+{
+  unsigned len = XVECLEN (op, 0);
+
+  if (len > ARRAY_SIZE (gpr_save_reg_order))
+    return false;
+
+  for (unsigned i = 0; i < len; i++)
+    {
+      rtx elt = XVECEXP (op, 0, i);
+      if (i == 0)
+	{
+	  /* First element in parallel is unspec.  */
+	  if (GET_CODE (elt) != UNSPEC_VOLATILE
+	      || GET_CODE (XVECEXP (elt, 0, 0)) != CONST_INT
+	      || XINT (elt, 1) != UNSPECV_GPR_SAVE)
+	    return false;
+	}
+      else
+	{
+	  /* Two CLOBBER and USEs, must check the order.  */
+	  unsigned expect_code = i < 3 ? CLOBBER : USE;
+	  if (GET_CODE (elt) != expect_code
+	      || !REG_P (XEXP (elt, 1))
+	      || (REGNO (XEXP (elt, 1)) != gpr_save_reg_order[i]))
+	    return false;
+	}
+	break;
+    }
+  return true;
 }
 
 /* Initialize the GCC target structure.  */

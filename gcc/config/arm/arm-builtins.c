@@ -43,6 +43,8 @@
 #include "sbitmap.h"
 #include "stringpool.h"
 #include "arm-builtins.h"
+#include "stringpool.h"
+#include "attribs.h"
 
 #define SIMD_MAX_BUILTIN_ARGS 7
 
@@ -809,23 +811,23 @@ arm_ldrgbwbu_z_qualifiers[SIMD_MAX_BUILTIN_ARGS]
 
 static enum arm_type_qualifiers
 arm_strsbwbs_qualifiers[SIMD_MAX_BUILTIN_ARGS]
-  = { qualifier_void, qualifier_unsigned, qualifier_const, qualifier_none};
+  = { qualifier_unsigned, qualifier_unsigned, qualifier_const, qualifier_none};
 #define STRSBWBS_QUALIFIERS (arm_strsbwbs_qualifiers)
 
 static enum arm_type_qualifiers
 arm_strsbwbu_qualifiers[SIMD_MAX_BUILTIN_ARGS]
-  = { qualifier_void, qualifier_unsigned, qualifier_const, qualifier_unsigned};
+  = { qualifier_unsigned, qualifier_unsigned, qualifier_const, qualifier_unsigned};
 #define STRSBWBU_QUALIFIERS (arm_strsbwbu_qualifiers)
 
 static enum arm_type_qualifiers
 arm_strsbwbs_p_qualifiers[SIMD_MAX_BUILTIN_ARGS]
-  = { qualifier_void, qualifier_unsigned, qualifier_const,
+  = { qualifier_unsigned, qualifier_unsigned, qualifier_const,
       qualifier_none, qualifier_unsigned};
 #define STRSBWBS_P_QUALIFIERS (arm_strsbwbs_p_qualifiers)
 
 static enum arm_type_qualifiers
 arm_strsbwbu_p_qualifiers[SIMD_MAX_BUILTIN_ARGS]
-  = { qualifier_void, qualifier_unsigned, qualifier_const,
+  = { qualifier_unsigned, qualifier_unsigned, qualifier_const,
       qualifier_unsigned, qualifier_unsigned};
 #define STRSBWBU_P_QUALIFIERS (arm_strsbwbu_p_qualifiers)
 
@@ -1457,18 +1459,12 @@ arm_mangle_builtin_scalar_type (const_tree type)
 static const char *
 arm_mangle_builtin_vector_type (const_tree type)
 {
-  int i;
-  int nelts = sizeof (arm_simd_types) / sizeof (arm_simd_types[0]);
-
-  for (i = 0; i < nelts; i++)
-    if (arm_simd_types[i].mode ==  TYPE_MODE (type)
-	&& TYPE_NAME (type)
-	&& TREE_CODE (TYPE_NAME (type)) == TYPE_DECL
-	&& DECL_NAME (TYPE_NAME (type))
-	&& !strcmp
-	     (IDENTIFIER_POINTER (DECL_NAME (TYPE_NAME (type))),
-	      arm_simd_types[i].name))
-      return arm_simd_types[i].mangle;
+  tree attrs = TYPE_ATTRIBUTES (type);
+  if (tree attr = lookup_attribute ("Advanced SIMD type", attrs))
+    {
+      tree mangled_name = TREE_VALUE (TREE_VALUE (attr));
+      return IDENTIFIER_POINTER (mangled_name);
+    }
 
   return NULL;
 }
@@ -1642,9 +1638,18 @@ arm_init_simd_builtin_types (void)
       if (eltype == NULL)
 	continue;
       if (arm_simd_types[i].itype == NULL)
-	arm_simd_types[i].itype =
-	  build_distinct_type_copy
-	    (build_vector_type (eltype, GET_MODE_NUNITS (mode)));
+	{
+	  tree type = build_vector_type (eltype, GET_MODE_NUNITS (mode));
+	  type = build_distinct_type_copy (type);
+	  SET_TYPE_STRUCTURAL_EQUALITY (type);
+
+	  tree mangled_name = get_identifier (arm_simd_types[i].mangle);
+	  tree value = tree_cons (NULL_TREE, mangled_name, NULL_TREE);
+	  TYPE_ATTRIBUTES (type)
+	    = tree_cons (get_identifier ("Advanced SIMD type"), value,
+			 TYPE_ATTRIBUTES (type));
+	  arm_simd_types[i].itype = type;
+	}
 
       tdecl = add_builtin_type (arm_simd_types[i].name,
 				arm_simd_types[i].itype);

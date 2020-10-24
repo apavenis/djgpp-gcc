@@ -434,12 +434,22 @@ struct gomp_task_icv
   struct target_mem_desc *target_data;
 };
 
+enum gomp_target_offload_t
+{
+  GOMP_TARGET_OFFLOAD_DEFAULT,
+  GOMP_TARGET_OFFLOAD_MANDATORY,
+  GOMP_TARGET_OFFLOAD_DISABLED
+};
+
+#define gomp_supported_active_levels INT_MAX
+
 extern struct gomp_task_icv gomp_global_icv;
 #ifndef HAVE_SYNC_BUILTINS
 extern gomp_mutex_t gomp_managed_threads_lock;
 #endif
 extern unsigned long gomp_max_active_levels_var;
 extern bool gomp_cancel_var;
+extern enum gomp_target_offload_t gomp_target_offload_var;
 extern int gomp_max_task_priority_var;
 extern unsigned long long gomp_spin_count_var, gomp_throttled_spin_count_var;
 extern unsigned long gomp_available_cpus, gomp_managed_threads;
@@ -952,8 +962,11 @@ struct target_var_desc {
   bool copy_from;
   /* True if data always should be copied from device to host at the end.  */
   bool always_copy_from;
-  /* True if variable should be detached at end of region.  */
-  bool do_detach;
+  /* True if this is for OpenACC 'attach'.  */
+  bool is_attach;
+  /* If GOMP_MAP_TO_PSET had a NULL pointer; used for Fortran descriptors,
+     which were initially unallocated.  */
+  bool has_null_ptr_assoc;
   /* Relative offset against key host_start.  */
   uintptr_t offset;
   /* Actual length.  */
@@ -1016,11 +1029,8 @@ struct splay_tree_key_s {
   uintptr_t tgt_offset;
   /* Reference count.  */
   uintptr_t refcount;
-  /* Reference counts beyond those that represent genuine references in the
-     linked splay tree key/target memory structures, e.g. for multiple OpenACC
-     "present increment" operations (via "acc enter data") referring to the same
-     host-memory block.  */
-  uintptr_t virtual_refcount;
+  /* Dynamic reference count.  */
+  uintptr_t dynamic_refcount;
   struct splay_tree_aux *aux;
 };
 
@@ -1153,7 +1163,6 @@ struct gomp_device_descr
 enum gomp_map_vars_kind
 {
   GOMP_MAP_VARS_OPENACC,
-  GOMP_MAP_VARS_OPENACC_ENTER_DATA,
   GOMP_MAP_VARS_TARGET,
   GOMP_MAP_VARS_DATA,
   GOMP_MAP_VARS_ENTER_DATA

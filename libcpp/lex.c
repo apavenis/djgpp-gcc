@@ -540,11 +540,11 @@ init_vectorized_lexer (void)
   search_line_fast = impl;
 }
 
-#elif defined(_ARCH_PWR8) && defined(__ALTIVEC__)
+#elif (GCC_VERSION >= 4005) && defined(_ARCH_PWR8) && defined(__ALTIVEC__)
 
 /* A vection of the fast scanner using AltiVec vectorized byte compares
    and VSX unaligned loads (when VSX is available).  This is otherwise
-   the same as the pre-GCC 5 version.  */
+   the same as the AltiVec version.  */
 
 ATTRIBUTE_NO_SANITIZE_UNDEFINED
 static const uchar *
@@ -1894,7 +1894,8 @@ lex_raw_string (cpp_reader *pfile, cpp_token *token, const uchar *base)
 		 the best failure mode.  */
 	      prefix_len = 0;
 	    }
-	  continue;
+	  if (c != '\n')
+	    continue;
 	}
 
       if (phase != PHASE_NONE)
@@ -2776,7 +2777,10 @@ _cpp_lex_direct (cpp_reader *pfile)
       if (!_cpp_get_fresh_line (pfile))
 	{
 	  result->type = CPP_EOF;
-	  if (!pfile->state.in_directive)
+	  /* Not a real EOF in a directive or arg parsing -- we refuse
+  	     to advance to the next file now, and will once we're out
+  	     of those modes.  */
+	  if (!pfile->state.in_directive && !pfile->state.parsing_args)
 	    {
 	      /* Tell the compiler the line number of the EOF token.  */
 	      result->src_loc = pfile->line_table->highest_line;

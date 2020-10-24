@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -427,11 +427,6 @@ package Exp_Util is
    --  for trouble using this function and, if so, the assignment is expanded
    --  component-wise, which the back end is required to handle correctly.
 
-   function Containing_Package_With_Ext_Axioms
-     (E : Entity_Id) return Entity_Id;
-   --  Returns the package entity with an external axiomatization containing E,
-   --  if any, or Empty if none.
-
    procedure Convert_To_Actual_Subtype (Exp : Node_Id);
    --  The Etype of an expression is the nominal type of the expression,
    --  not the actual subtype. Often these are the same, but not always.
@@ -687,10 +682,6 @@ package Exp_Util is
    --  of entity E, in all upper case, with an ASCII.NUL appended at the end
    --  of the name if Append_NUL is True.
 
-   procedure Generate_Poll_Call (N : Node_Id);
-   --  If polling is active, then a call to the Poll routine is built,
-   --  and then inserted before the given node N and analyzed.
-
    procedure Get_Current_Value_Condition
      (Var : Node_Id;
       Op  : out Node_Kind;
@@ -724,17 +715,15 @@ package Exp_Util is
    --  N_Op_Eq), or to determine the result of some other test in other cases
    --  (e.g. no access check required if N_Op_Ne Null).
 
+   function Get_Index_Subtype (N : Node_Id) return Entity_Id;
+   --  Used for First, Last, and Length, when the prefix is an array type.
+   --  Obtains the corresponding index subtype.
+
    function Get_Stream_Size (E : Entity_Id) return Uint;
    --  Return the stream size value of the subtype E
 
    function Has_Access_Constraint (E : Entity_Id) return Boolean;
    --  Given object or type E, determine if a discriminant is of an access type
-
-   function Has_Annotate_Pragma_For_External_Axiomatization
-     (E : Entity_Id) return Boolean;
-   --  Returns whether E is a package entity, for which the initial list of
-   --  pragmas at the start of the package declaration contains
-   --    pragma Annotate (GNATprove, External_Axiomatization);
 
    function Homonym_Number (Subp : Entity_Id) return Pos;
    --  Here subp is the entity for a subprogram. This routine returns the
@@ -756,6 +745,10 @@ package Exp_Util is
    --  function determines if the statement appears in a context that is
    --  unconditionally executed, i.e. it is not within a loop or a conditional
    --  or a case statement etc.
+
+   function Integer_Type_For (S : Uint; Uns : Boolean) return Entity_Id;
+   --  Return a suitable standard integer type containing at least S bits and
+   --  of the signedness given by Uns.
 
    function Is_All_Null_Statements (L : List_Id) return Boolean;
    --  Return True if all the items of the list are N_Null_Statement nodes.
@@ -906,6 +899,15 @@ package Exp_Util is
    --  wide type. Set Related_Id to request an external name for the subtype
    --  rather than an internal temporary.
 
+   function Make_Variant_Comparison
+     (Loc      : Source_Ptr;
+      Mode     : Name_Id;
+      Curr_Val : Node_Id;
+      Old_Val  : Node_Id) return Node_Id;
+   --  Subsidiary to the expansion of pragmas Loop_Variant and
+   --  Subprogram_Variant. Generate a comparison between Curr_Val and Old_Val
+   --  depending on the variant mode (Increases / Decreases).
+
    procedure Map_Types (Parent_Type : Entity_Id; Derived_Type : Entity_Id);
    --  Establish the following mapping between the attributes of tagged parent
    --  type Parent_Type and tagged derived type Derived_Type.
@@ -977,6 +979,11 @@ package Exp_Util is
    --  2**K, where K is in the range 1 .. M, where the Esize of N is 2**(M+1).
    --  If so, returns the value K, otherwise returns zero. The caller checks
    --  that N is of an integer type.
+
+   function Predicate_Check_In_Scope (N : Node_Id) return Boolean;
+   --  Return True if predicate checks should be generated in the current
+   --  scope on the given node. Will return False for example when the current
+   --  scope is a predefined primitive operation.
 
    procedure Process_Statements_For_Controlled_Objects (N : Node_Id);
    --  N is a node which contains a non-handled statement list. Inspect the
@@ -1161,6 +1168,10 @@ package Exp_Util is
    --  True..True, where a raise of a Constraint_Error exception is required
    --  (RM 4.5.6(6)) and ACATS-tested.
 
+   function Small_Integer_Type_For (S : Uint; Uns : Boolean) return Entity_Id;
+   --  Return the smallest standard integer type containing at least S bits and
+   --  of the signedness given by Uns.
+
    function Target_Has_Fixed_Ops
      (Left_Typ   : Entity_Id;
       Right_Typ  : Entity_Id;
@@ -1190,13 +1201,6 @@ package Exp_Util is
 
    function Within_Case_Or_If_Expression (N : Node_Id) return Boolean;
    --  Determine whether arbitrary node N is within a case or an if expression
-
-   function Within_Internal_Subprogram return Boolean;
-   --  Indicates that some expansion is taking place within the body of a
-   --  predefined primitive operation. Some expansion activity (e.g. predicate
-   --  checks) is disabled in such. Because we want to detect invalid uses
-   --  of function calls within predicates (which lead to infinite recursion)
-   --  predicate functions themselves are not considered internal here.
 
 private
    pragma Inline (Duplicate_Subexpr);

@@ -2430,6 +2430,10 @@ Signed-off-by: Keith Packard <keithp@keithp.com>
 Reviewed-by: Keith Packard <keithp@keithp.com>
 Reviewed-on: Keith Packard <keithp@keithp.com>
 Co-Authored-by: Keith Packard <keithp@keithp.com>
+Acked-By: Keith Packard <keithp@keithp.com>
+Tested-by: Keith Packard <keithp@keithp.com>
+Reported-by: Keith Packard <keithp@keithp.com>
+Suggested-by: Keith Packard <keithp@keithp.com>
 ---
  gcc/ChangeLog            |  5 +++++
  gcc/config/riscv/riscv.c | 40 ++++++++++++++++++++++++++++++++++++++++
@@ -2973,3 +2977,221 @@ index 1cd5872c03d..6f95aedb3d3 100644
 +
 -- 
 2.26.2
+
+=== 0001-Fix-text-of-hyperlink-in-manual.patch ===
+From c7904d9e08a0ca3f733be3c2e8a3b912fa851fc5 Mon Sep 17 00:00:00 2001
+From: Jonathan Wakely <jwakely@redhat.com>
+Date: Fri, 8 Mar 2019 13:56:53 +0000
+Subject: [PATCH] Fix text of hyperlink in manual
+
+	* doc/xml/manual/using.xml: Use link element instead of xref.
+	* doc/html/*: Regenerate.
+
+---
+ libstdc++-v3/ChangeLog                         | 3 +++
+ libstdc++-v3/doc/html/manual/using_macros.html | 3 ++-
+ libstdc++-v3/doc/xml/manual/using.xml          | 4 ++--
+ 3 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/libstdc++-v3/doc/html/manual/using_macros.html b/libstdc++-v3/doc/html/manual/using_macros.html
+index 7030bd2d0fd..dad6564a97d 100644
+--- a/libstdc++-v3/doc/html/manual/using_macros.html
++++ b/libstdc++-v3/doc/html/manual/using_macros.html
+@@ -1 +1,2 @@
+ 
++
+diff --git a/libstdc++-v3/doc/xml/manual/using.xml b/libstdc++-v3/doc/xml/manual/using.xml
+index 2d44a739406..7647e9b8dad 100644
+--- a/libstdc++-v3/doc/xml/manual/using.xml
++++ b/libstdc++-v3/doc/xml/manual/using.xml
+@@ -1 +1,2 @@
+ 
++
+-- 
+2.25.4
+
+=== 0002-libstdc-Fake-test-change-1.patch ===
+From fe4ade6778d1d97214db12bf2c40d0f40e7f953a Mon Sep 17 00:00:00 2001
+From: Jonathan Wakely <jwakely@redhat.com>
+Date: Tue, 2 Jun 2020 11:52:34 +0100
+Subject: [PATCH] libstdc++: Fake change for testing git_commit.py
+
+libstdc++-v3/ChangeLog:
+
+	* doc/xml/faq.xml: Fake change.
+	* doc/html/*: Regenerated.
+---
+ libstdc++-v3/doc/xml/faq.xml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/libstdc++-v3/doc/xml/faq.xml b/libstdc++-v3/doc/xml/faq.xml
+index e419d3c22a0..bcc14dd6d90 100644
+--- a/libstdc++-v3/doc/xml/faq.xml
++++ b/libstdc++-v3/doc/xml/faq.xml
+@@ -1 +1,2 @@
+ 
++
+-- 
+2.25.4
+
+=== 0003-libstdc-Fake-test-change-2.patch ===
+From e460effb3a42c1c046b682fe266da418f2693ef3 Mon Sep 17 00:00:00 2001
+From: Jonathan Wakely <jwakely@redhat.com>
+Date: Tue, 2 Jun 2020 11:52:34 +0100
+Subject: [PATCH] libstdc++: Fake change for testing 2
+
+libstdc++-v3/ChangeLog:
+
+	* doc/xml/faq.xml: Fake change.
+---
+ libstdc++-v3/doc/html/faq.html | 2 +-
+ libstdc++-v3/doc/xml/faq.xml   | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/libstdc++-v3/doc/html/faq.html b/libstdc++-v3/doc/html/faq.html
+index 967e5f5f348..95d21b5bf9f 100644
+--- a/libstdc++-v3/doc/html/faq.html
++++ b/libstdc++-v3/doc/html/faq.html
+@@ -1 +1,2 @@
+ 
++
+--- a/libstdc++-v3/doc/xml/faq.xml
++++ b/libstdc++-v3/doc/xml/faq.xml
+@@ -1 +1,2 @@
+ 
++
+-- 
+2.25.4
+=== 0001-configure.patch ===
+From dbe341cf6a77bb28c5fdf8b32dcb0ff1c2a27348 Mon Sep 17 00:00:00 2001
+From: Martin Liska <mliska@suse.cz>
+Date: Tue, 9 Jun 2020 09:39:36 +0200
+Subject: [PATCH] c++: Fix --disable-bootstrap with older g++.
+
+Previously I had AX_CXX_COMPILE_STDCXX in the gcc directory configure, which
+added -std=c++11 to CXX if needed, but then CXX is overridden from the
+toplevel directory, so it didn't have the desired effect.  Fixed by moving
+the check to the toplevel.  Currently it is only used when building GCC
+without bootstrapping; other packages that share the toplevel directory
+can adjust the condition if they also want to require C++11 support.
+
+ChangeLog:
+
+	* configure.ac: Check AX_CXX_COMPILE_STDCXX if not bootstrapping.
+	* configure: Regenerate.
+
+gcc/ChangeLog:
+
+	* aclocal.m4: Remove ax_cxx_compile_stdcxx.m4.
+	* configure.ac: Remove AX_CXX_COMPILE_STDCXX.
+	* configure: Regenerate.
+
+---
+ configure        | 999 ++++++++++++++++++++++++++++++++++++++++++++++-
+ configure.ac     |   6 +-
+ gcc/aclocal.m4   |   1 -
+ gcc/configure    | 997 +---------------------------------------------
+ gcc/configure.ac |   2 -
+ 5 files changed, 1004 insertions(+), 1001 deletions(-)
+
+diff --git a/configure b/configure
+index b7897446c70..a0c5aca9e8d 100755
+--- a/configure
++++ b/configure
+@@ -1 +1,2 @@
+ 
++
+diff --git a/configure.ac b/configure.ac
+index 59bd92a3e53..1a53ed418e4 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/aclocal.m4 b/gcc/aclocal.m4
+index e93c1535063..1737d59d1cb 100644
+--- a/gcc/aclocal.m4
++++ b/gcc/aclocal.m4
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/configure b/gcc/configure
+index 46850710424..629c7c7e153 100755
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -1 +1,2 @@
+ 
++
+diff --git a/gcc/configure.ac b/gcc/configure.ac
+index 60d83c30771..9e7efd13ecc 100644
+--- a/gcc/configure.ac
++++ b/gcc/configure.ac
+@@ -1 +1,2 @@
+ 
++
+-- 
+2.26.2
+
+=== 0001-asan-fix-RTX-emission.patch ===
+From e1d68582022cfa2b1dc76646724b397ba2739439 Mon Sep 17 00:00:00 2001
+From: Martin Liska <mliska@suse.cz>
+Date: Thu, 11 Jun 2020 09:34:41 +0200
+Subject: [PATCH] asan: fix RTX emission for ilp32
+
+gcc/ChangeLog:
+
+	PR sanitizer/95634
+	* asan.c (asan_emit_stack_protection): Fix emission for ilp32
+	by using Pmode instead of ptr_mode.
+
+Co-Authored-By: Jakub Jelinek <jakub@redhat.com>
+(cherry picked from commit 8cff672cb9a132d3d3158c2edfc9a64b55292b80)
+---
+ gcc/asan.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gcc/asan.c b/gcc/asan.c
+index 823eb539993..4ec22162c12 100644
+--- a/gcc/asan.c
++++ b/gcc/asan.c
+@@ -1 +1,2 @@
+ 
++
+-- 
+2.27.0
+
+=== 0001-Check-for-more-missing-math-decls-on-vxworks.patch ===
+From 0edfc1fd22405ee8e946101e44cd8edc0ee12047 Mon Sep 17 00:00:00 2001
+From: Douglas B Rupp <douglas.b.rupp@gmail.com>
+Date: Sun, 31 May 2020 13:25:28 -0700
+Subject: [PATCH] Check for more missing math decls on vxworks.
+
+Use the GLIBCXX_CHECK_MATH_DECL macro to check for the full list of
+vxworks math decls.
+
+for libstdc++-v3/ChangeLog:
+
+	* crossconfig.m4 <*-vxworks>: Check for more math decls.
+	* configure [FAKEPATCH]: Rebuild.
+---
+ libstdc++-v3/configure      | 255 ++++++++++++++++++++++++++++++++++++++++++++
+ libstdc++-v3/crossconfig.m4 |   3 +-
+ 2 files changed, 257 insertions(+), 1 deletion(-)
+
+diff --git a/libstdc++-v3/configure b/libstdc++-v3/configure
+index b5beb45..4ef678e 100755
+--- a/libstdc++-v3/configure
++++ b/libstdc++-v3/configure
+@@ -1 +1,2 @@
+ 
++
+diff --git a/libstdc++-v3/crossconfig.m4 b/libstdc++-v3/crossconfig.m4
+index fe18288..313f84d 100644
+--- a/libstdc++-v3/crossconfig.m4
++++ b/libstdc++-v3/crossconfig.m4
+@@ -1 +1,2 @@
+ 
++
+-- 
+2.7.4
+

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1999-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -334,6 +334,14 @@ package body Targparm is
             Opt.Locking_Policy          := 'C';
             goto Line_Loop_Continue;
 
+         --  Test for pragma Profile (Jorvik);
+
+         elsif Looking_At_Skip ("pragma Profile (Jorvik);") then
+            Set_Profile_Restrictions (Jorvik);
+            Opt.Task_Dispatching_Policy := 'F';
+            Opt.Locking_Policy          := 'C';
+            goto Line_Loop_Continue;
+
          --  Test for pragma Profile (GNAT_Extended_Ravenscar);
 
          elsif Looking_At_Skip
@@ -645,12 +653,6 @@ package body Targparm is
          elsif Looking_At_Skip ("pragma Partition_Elaboration_Policy (") then
             Opt.Partition_Elaboration_Policy := System_Text (P);
             Opt.Partition_Elaboration_Policy_Sloc := System_Location;
-            goto Line_Loop_Continue;
-
-         --  Polling (On)
-
-         elsif Looking_At_Skip ("pragma Polling (On);") then
-            Opt.Polling_Required := True;
             goto Line_Loop_Continue;
 
          --  Queuing Policy

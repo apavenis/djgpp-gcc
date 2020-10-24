@@ -5166,7 +5166,8 @@ gfc_get_common (const char *name, int from_module)
 
 /* Match a common block name.  */
 
-match match_common_name (char *name)
+match
+gfc_match_common_name (char *name)
 {
   match m;
 
@@ -5218,7 +5219,7 @@ gfc_match_common (void)
 
   for (;;)
     {
-      m = match_common_name (name);
+      m = gfc_match_common_name (name);
       if (m == MATCH_ERROR)
 	goto cleanup;
 
@@ -5700,6 +5701,11 @@ gfc_match_equivalence (void)
 
 	  if (!gfc_add_in_equivalence (&sym->attr, sym->name, NULL))
 	    goto cleanup;
+	  if (sym->ts.type == BT_CLASS
+	      && CLASS_DATA (sym)
+	      && !gfc_add_in_equivalence (&CLASS_DATA (sym)->attr,
+					  sym->name, NULL))
+	    goto cleanup;
 
 	  if (sym->attr.in_common)
 	    {
@@ -6154,14 +6160,18 @@ copy_ts_from_selector_to_associate (gfc_expr *associate, gfc_expr *selector)
   while (ref && ref->next)
     ref = ref->next;
 
-  if (selector->ts.type == BT_CLASS && CLASS_DATA (selector)->as
+  if (selector->ts.type == BT_CLASS
+      && CLASS_DATA (selector)
+      && CLASS_DATA (selector)->as
       && CLASS_DATA (selector)->as->type == AS_ASSUMED_RANK)
     {
       assoc_sym->attr.dimension = 1;
       assoc_sym->as = gfc_copy_array_spec (CLASS_DATA (selector)->as);
       goto build_class_sym;
     }
-  else if (selector->ts.type == BT_CLASS && CLASS_DATA (selector)->as
+  else if (selector->ts.type == BT_CLASS
+	   && CLASS_DATA (selector)
+	   && CLASS_DATA (selector)->as
 	   && ref && ref->type == REF_ARRAY)
     {
       /* Ensure that the array reference type is set.  We cannot use
@@ -6218,7 +6228,8 @@ build_class_sym:
     {
       /* The correct class container has to be available.  */
       assoc_sym->ts.type = BT_CLASS;
-      assoc_sym->ts.u.derived = CLASS_DATA (selector)->ts.u.derived;
+      assoc_sym->ts.u.derived = CLASS_DATA (selector)
+	? CLASS_DATA (selector)->ts.u.derived : selector->ts.u.derived;
       assoc_sym->attr.pointer = 1;
       gfc_build_class_symbol (&assoc_sym->ts, &assoc_sym->attr, &assoc_sym->as);
     }
@@ -6491,7 +6502,7 @@ static void
 select_rank_set_tmp (gfc_typespec *ts, int *case_value)
 {
   char name[2 * GFC_MAX_SYMBOL_LEN];
-  char tname[GFC_MAX_SYMBOL_LEN];
+  char tname[GFC_MAX_SYMBOL_LEN + 7];
   gfc_symtree *tmp;
   gfc_symbol *selector = select_type_stack->selector;
   gfc_symbol *sym;
@@ -6637,7 +6648,8 @@ gfc_match_select_rank (void)
       if (expr2->symtree)
 	{
 	  sym2 = expr2->symtree->n.sym;
-	  as = sym2->ts.type == BT_CLASS ? CLASS_DATA (sym2)->as : sym2->as;
+	  as = (sym2->ts.type == BT_CLASS
+		&& CLASS_DATA (sym2)) ? CLASS_DATA (sym2)->as : sym2->as;
 	}
 
       if (expr2->expr_type != EXPR_VARIABLE
@@ -6649,7 +6661,7 @@ gfc_match_select_rank (void)
 	  goto cleanup;
 	}
 
-      if (expr2->ts.type == BT_CLASS)
+      if (expr2->ts.type == BT_CLASS && CLASS_DATA (sym2))
 	{
 	  copy_ts_from_selector_to_associate (expr1, expr2);
 
@@ -6690,7 +6702,8 @@ gfc_match_select_rank (void)
       if (expr1->symtree)
 	{
 	  sym = expr1->symtree->n.sym;
-	  as = sym->ts.type == BT_CLASS ? CLASS_DATA (sym)->as : sym->as;
+	  as = (sym->ts.type == BT_CLASS
+		&& CLASS_DATA (sym)) ? CLASS_DATA (sym)->as : sym->as;
 	}
 
       if (expr1->expr_type != EXPR_VARIABLE

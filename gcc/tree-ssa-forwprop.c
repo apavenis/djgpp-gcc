@@ -2290,7 +2290,7 @@ simplify_vector_constructor (gimple_stmt_iterator *gsi)
   tree one_constant = NULL_TREE;
   tree one_nonconstant = NULL_TREE;
   auto_vec<tree> constants;
-  constants.safe_grow_cleared (nelts);
+  constants.safe_grow_cleared (nelts, true);
   auto_vec<std::pair<unsigned, unsigned>, 64> elts;
   FOR_EACH_VEC_SAFE_ELT (CONSTRUCTOR_ELTS (op), i, elt)
     {
@@ -2401,6 +2401,10 @@ simplify_vector_constructor (gimple_stmt_iterator *gsi)
 	      && (dblvectype
 		  = build_vector_type (TREE_TYPE (TREE_TYPE (orig[0])),
 				       nelts * 2))
+	      /* Only use it for vector modes or for vector booleans
+		 represented as scalar bitmasks.  See PR95528.  */
+	      && (VECTOR_MODE_P (TYPE_MODE (dblvectype))
+		  || VECTOR_BOOLEAN_TYPE_P (dblvectype))
 	      && (optab = optab_for_tree_code (FLOAT_TYPE_P (TREE_TYPE (type))
 					       ? VEC_UNPACK_FLOAT_LO_EXPR
 					       : VEC_UNPACK_LO_EXPR,
@@ -2442,6 +2446,10 @@ simplify_vector_constructor (gimple_stmt_iterator *gsi)
 		   && (halfvectype
 		         = build_vector_type (TREE_TYPE (TREE_TYPE (orig[0])),
 					      nelts / 2))
+		   /* Only use it for vector modes or for vector booleans
+		      represented as scalar bitmasks.  See PR95528.  */
+		   && (VECTOR_MODE_P (TYPE_MODE (halfvectype))
+		       || VECTOR_BOOLEAN_TYPE_P (halfvectype))
 		   && (optab = optab_for_tree_code (VEC_PACK_TRUNC_EXPR,
 						    halfvectype,
 						    optab_default))
@@ -3122,8 +3130,7 @@ pass_forwprop::execute (function *fun)
 		    tree rhs1 = gimple_assign_rhs1 (stmt);
 		    enum tree_code code = gimple_assign_rhs_code (stmt);
 
-		    if (code == COND_EXPR
-			|| code == VEC_COND_EXPR)
+		    if (code == COND_EXPR)
 		      {
 			/* In this case the entire COND_EXPR is in rhs1. */
 			if (forward_propagate_into_cond (&gsi))

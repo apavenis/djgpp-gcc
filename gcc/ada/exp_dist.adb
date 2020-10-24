@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2019, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2020, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -5296,7 +5296,7 @@ package body Exp_Dist is
 
    function Hash (F : Name_Id) return Hash_Index is
    begin
-      return Hash_Index (Natural (F) mod Positive (Hash_Index'Last + 1));
+      return Hash_Index (Integer (F) mod Positive (Hash_Index'Last + 1));
    end Hash;
 
    --------------------------

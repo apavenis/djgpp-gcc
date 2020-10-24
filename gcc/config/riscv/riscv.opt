@@ -79,6 +79,10 @@ mtune=
 Target RejectNegative Joined Var(riscv_tune_string)
 -mtune=PROCESSOR	Optimize the output for PROCESSOR.
 
+mcpu=
+Target RejectNegative Joined Var(riscv_cpu_string)
+-mcpu=PROCESSOR	Use architecture of and optimize the output for PROCESSOR.
+
 msmall-data-limit=
 Target Joined Separate UInteger Var(g_switch_value) Init(8)
 -msmall-data-limit=N	Put global and static data smaller than <number> bytes into a special section (on some targets).
@@ -151,3 +155,31 @@ Enum(riscv_align_data) String(xlen) Value(riscv_align_data_type_xlen)
 
 EnumValue
 Enum(riscv_align_data) String(natural) Value(riscv_align_data_type_natural)
+
+mstack-protector-guard=
+Target RejectNegative Joined Enum(stack_protector_guard) Var(riscv_stack_protector_guard) Init(SSP_GLOBAL)
+Use given stack-protector guard.
+
+Enum
+Name(stack_protector_guard) Type(enum stack_protector_guard)
+Valid arguments to -mstack-protector-guard=:
+
+EnumValue
+Enum(stack_protector_guard) String(tls) Value(SSP_TLS)
+
+EnumValue
+Enum(stack_protector_guard) String(global) Value(SSP_GLOBAL)
+
+mstack-protector-guard-reg=
+Target RejectNegative Joined Var(riscv_stack_protector_guard_reg_str)
+Use the given base register for addressing the stack-protector guard.
+
+TargetVariable
+int riscv_stack_protector_guard_reg = 0
+
+mstack-protector-guard-offset=
+Target RejectNegative Joined Integer Var(riscv_stack_protector_guard_offset_str)
+Use the given offset for addressing the stack-protector guard.
+
+TargetVariable
+long riscv_stack_protector_guard_offset = 0

@@ -121,37 +121,57 @@ along with GCC; see the file COPYING3.  If not see
    division.  */
 struct occurrence {
   /* The basic block represented by this structure.  */
-  basic_block bb;
+  basic_block bb = basic_block();
 
   /* If non-NULL, the SSA_NAME holding the definition for a reciprocal
      inserted in BB.  */
-  tree recip_def;
+  tree recip_def = tree();
 
   /* If non-NULL, the SSA_NAME holding the definition for a squared
      reciprocal inserted in BB.  */
-  tree square_recip_def;
+  tree square_recip_def = tree();
 
   /* If non-NULL, the GIMPLE_ASSIGN for a reciprocal computation that
      was inserted in BB.  */
-  gimple *recip_def_stmt;
+  gimple *recip_def_stmt = nullptr;
 
   /* Pointer to a list of "struct occurrence"s for blocks dominated
      by BB.  */
-  struct occurrence *children;
+  struct occurrence *children = nullptr;
 
   /* Pointer to the next "struct occurrence"s in the list of blocks
      sharing a common dominator.  */
-  struct occurrence *next;
+  struct occurrence *next = nullptr;
 
   /* The number of divisions that are in BB before compute_merit.  The
      number of divisions that are in BB or post-dominate it after
      compute_merit.  */
-  int num_divisions;
+  int num_divisions = 0;
 
   /* True if the basic block has a division, false if it is a common
      dominator for basic blocks that do.  If it is false and trapping
      math is active, BB is not a candidate for inserting a reciprocal.  */
-  bool bb_has_division;
+  bool bb_has_division = false;
+
+  /* Construct a struct occurrence for basic block BB, and whose
+     children list is headed by CHILDREN.  */
+  occurrence (basic_block bb, struct occurrence *children)
+  : bb (bb), children (children)
+  {
+    bb->aux = this;
+  }
+
+  /* Destroy a struct occurrence and remove it from its basic block.  */
+  ~occurrence ()
+  {
+    bb->aux = nullptr;
+  }
+
+  /* Allocate memory for a struct occurrence from OCC_POOL.  */
+  static void* operator new (size_t);
+
+  /* Return memory for a struct occurrence to OCC_POOL.  */
+  static void operator delete (void*, size_t);
 };
 
 static struct
@@ -191,23 +211,17 @@ static struct occurrence *occ_head;
 /* Allocation pool for getting instances of "struct occurrence".  */
 static object_allocator<occurrence> *occ_pool;
 
-
-
-/* Allocate and return a new struct occurrence for basic block BB, and
-   whose children list is headed by CHILDREN.  */
-static struct occurrence *
-occ_new (basic_block bb, struct occurrence *children)
+void* occurrence::operator new (size_t n)
 {
-  struct occurrence *occ;
-
-  bb->aux = occ = occ_pool->allocate ();
-  memset (occ, 0, sizeof (struct occurrence));
-
-  occ->bb = bb;
-  occ->children = children;
-  return occ;
+  gcc_assert (n == sizeof(occurrence));
+  return occ_pool->allocate_raw ();
 }
 
+void occurrence::operator delete (void *occ, size_t n)
+{
+  gcc_assert (n == sizeof(occurrence));
+  occ_pool->remove_raw (occ);
+}
 
 /* Insert NEW_OCC into our subset of the dominator tree.  P_HEAD points to a
    list of "struct occurrence"s, one per basic block, having IDOM as
@@ -259,7 +273,7 @@ insert_bb (struct occurrence *new_occ, basic_block idom,
 	  /* None of the previous blocks has DOM as a dominator: if we tail
 	     recursed, we would reexamine them uselessly. Just switch BB with
 	     DOM, and go on looking for blocks dominated by DOM.  */
-          new_occ = occ_new (dom, new_occ);
+	  new_occ = new occurrence (dom, new_occ);
 	}
 
       else
@@ -288,7 +302,7 @@ register_division_in (basic_block bb, int importance)
   occ = (struct occurrence *) bb->aux;
   if (!occ)
     {
-      occ = occ_new (bb, NULL);
+      occ = new occurrence (bb, NULL);
       insert_bb (occ, ENTRY_BLOCK_PTR_FOR_FN (cfun), &occ_head);
     }
 
@@ -432,7 +446,7 @@ insert_reciprocals (gimple_stmt_iterator *def_gsi, struct occurrence *occ,
 	  if (should_insert_square_recip)
 	    gsi_insert_before (&gsi, new_square_stmt, GSI_SAME_STMT);
 	}
-      else if (def_gsi && occ->bb == def_gsi->bb)
+      else if (def_gsi && occ->bb == gsi_bb (*def_gsi))
 	{
 	  /* Case 2: insert right after the definition.  Note that this will
 	     never happen if the definition statement can throw, because in
@@ -518,8 +532,7 @@ free_bb (struct occurrence *occ)
   /* First get the two pointers hanging off OCC.  */
   next = occ->next;
   child = occ->children;
-  occ->bb->aux = NULL;
-  occ_pool->remove (occ);
+  delete occ;
 
   /* Now ensure that we don't recurse unless it is necessary.  */
   if (!child)
@@ -1126,7 +1139,7 @@ execute_cse_sincos_1 (tree name)
 {
   gimple_stmt_iterator gsi;
   imm_use_iterator use_iter;
-  tree fndecl, res, type;
+  tree fndecl, res, type = NULL_TREE;
   gimple *def_stmt, *use_stmt, *stmt;
   int seen_cos = 0, seen_sin = 0, seen_cexpi = 0;
   auto_vec<gimple *> stmts;
@@ -1134,7 +1147,6 @@ execute_cse_sincos_1 (tree name)
   int i;
   bool cfg_changed = false;
 
-  type = TREE_TYPE (name);
   FOR_EACH_IMM_USE_STMT (use_stmt, use_iter, name)
     {
       if (gimple_code (use_stmt) != GIMPLE_CALL
@@ -1156,9 +1168,21 @@ execute_cse_sincos_1 (tree name)
 	  break;
 
 	default:;
+	  continue;
 	}
-    }
 
+      tree t = mathfn_built_in_type (gimple_call_combined_fn (use_stmt));
+      if (!type)
+	{
+	  type = t;
+	  t = TREE_TYPE (name);
+	}
+      /* This checks that NAME has the right type in the first round,
+	 and, in subsequent rounds, that the built_in type is the same
+	 type, or a compatible type.  */
+      if (type != t && !types_compatible_p (type, t))
+	return false;
+    }
   if (seen_cos + seen_sin + seen_cexpi <= 1)
     return false;
 
@@ -2163,12 +2187,14 @@ pass_cse_sincos::execute (function *fun)
 		CASE_CFN_COS:
 		CASE_CFN_SIN:
 		CASE_CFN_CEXPI:
+		  arg = gimple_call_arg (stmt, 0);
 		  /* Make sure we have either sincos or cexp.  */
-		  if (!targetm.libc_has_function (function_c99_math_complex)
-		      && !targetm.libc_has_function (function_sincos))
+		  if (!targetm.libc_has_function (function_c99_math_complex,
+						  TREE_TYPE (arg))
+		      && !targetm.libc_has_function (function_sincos,
+						     TREE_TYPE (arg)))
 		    break;
 
-		  arg = gimple_call_arg (stmt, 0);
 		  if (TREE_CODE (arg) == SSA_NAME)
 		    cfg_changed |= execute_cse_sincos_1 (arg);
 		  break;
@@ -3552,8 +3578,23 @@ divmod_candidate_p (gassign *stmt)
 
   /* Disable the transform if either is a constant, since division-by-constant
      may have specialized expansion.  */
-  if (CONSTANT_CLASS_P (op1) || CONSTANT_CLASS_P (op2))
+  if (CONSTANT_CLASS_P (op1))
     return false;
+
+  if (CONSTANT_CLASS_P (op2))
+    {
+      if (integer_pow2p (op2))
+	return false;
+
+      if (TYPE_PRECISION (type) <= HOST_BITS_PER_WIDE_INT
+	  && TYPE_PRECISION (type) <= BITS_PER_WORD)
+	return false;
+
+      /* If the divisor is not power of 2 and the precision wider than
+	 HWI, expand_divmod punts on that, so in that case it is better
+	 to use divmod optab or libfunc.  Similarly if choose_multiplier
+	 might need pre/post shifts of BITS_PER_WORD or more.  */
+    }
 
   /* Exclude the case where TYPE_OVERFLOW_TRAPS (type) as that should
      expand using the [su]divv optabs.  */

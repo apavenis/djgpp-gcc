@@ -245,7 +245,9 @@ read_counts_file (void)
       else if (GCOV_TAG_IS_COUNTER (tag) && fn_ident)
 	{
 	  counts_entry **slot, *entry, elt;
-	  unsigned n_counts = GCOV_TAG_COUNTER_NUM (length);
+	  int read_length = (int)length;
+	  length = read_length > 0 ? read_length : 0;
+	  unsigned n_counts = GCOV_TAG_COUNTER_NUM (abs (read_length));
 	  unsigned ix;
 
 	  elt.ident = fn_ident;
@@ -274,8 +276,9 @@ read_counts_file (void)
 	      counts_hash = NULL;
 	      break;
 	    }
-	  for (ix = 0; ix != n_counts; ix++)
-	    entry->counts[ix] += gcov_read_counter ();
+	  if (read_length > 0)
+	    for (ix = 0; ix != n_counts; ix++)
+	      entry->counts[ix] = gcov_read_counter ();
 	}
       gcov_sync (offset, length);
       if ((is_error = gcov_is_error ()))
@@ -345,8 +348,11 @@ get_coverage_counts (unsigned counter, unsigned cfg_checksum,
 	 can do about it.  */
       return NULL;
     }
-  
-  if (entry->cfg_checksum != cfg_checksum || entry->n_counts != n_counts)
+
+  if (entry->cfg_checksum != cfg_checksum
+      || (counter != GCOV_COUNTER_V_INDIR
+	  && counter != GCOV_COUNTER_V_TOPN
+	  && entry->n_counts != n_counts))
     {
       static int warned = 0;
       bool warning_printed = false;
@@ -1200,6 +1206,8 @@ coverage_obj_finish (vec<constructor_elt, va_gc> *ctor)
 void
 coverage_init (const char *filename)
 {
+  const char *original_filename = filename;
+  int original_len = strlen (original_filename);
 #if HAVE_DOS_BASED_FILE_SYSTEM
   const char *separator = "\\";
 #else
@@ -1271,9 +1279,9 @@ coverage_init (const char *filename)
 	bbg_file_name = xstrdup (profile_note_location);
       else
 	{
-	  bbg_file_name = XNEWVEC (char, len + strlen (GCOV_NOTE_SUFFIX) + 1);
-	  memcpy (bbg_file_name, filename, len);
-	  strcpy (bbg_file_name + len, GCOV_NOTE_SUFFIX);
+	  bbg_file_name = XNEWVEC (char, original_len + strlen (GCOV_NOTE_SUFFIX) + 1);
+	  memcpy (bbg_file_name, original_filename, original_len);
+	  strcpy (bbg_file_name + original_len, GCOV_NOTE_SUFFIX);
 	}
 
       if (!gcov_open (bbg_file_name, -1))

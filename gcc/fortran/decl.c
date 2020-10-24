@@ -576,16 +576,16 @@ match_old_style_init (const char *name)
   for (nd = newdata; nd; nd = nd->next)
     {
       if (nd->value->expr->ts.type == BT_BOZ
-	  && gfc_invalid_boz ("BOZ at %L cannot appear in an old-style "
-			      "initialization", &nd->value->expr->where))
+	  && gfc_invalid_boz (G_("BOZ at %L cannot appear in an old-style "
+			      "initialization"), &nd->value->expr->where))
 	return MATCH_ERROR;
 
       if (nd->var->expr->ts.type != BT_INTEGER
 	  && nd->var->expr->ts.type != BT_REAL
 	  && nd->value->expr->ts.type == BT_BOZ)
 	{
-	  gfc_error ("BOZ literal constant near %L cannot be assigned to "
-		     "a %qs variable in an old-style initialization",
+	  gfc_error (G_("BOZ literal constant near %L cannot be assigned to "
+		     "a %qs variable in an old-style initialization"),
 		     &nd->value->expr->where,
 		     gfc_typename (&nd->value->expr->ts));
 	  return MATCH_ERROR;
@@ -728,7 +728,7 @@ gfc_match_data (void)
 	  gfc_constructor *c;
 	  c = gfc_constructor_first (new_data->value->expr->value.constructor);
 	  for (; c; c = gfc_constructor_next (c))
-	    if (c->expr->ts.type == BT_BOZ)
+	    if (c->expr && c->expr->ts.type == BT_BOZ)
 	      {
 		gfc_error ("BOZ literal constant at %L cannot appear in a "
 			   "structure constructor", &c->expr->where);
@@ -1145,6 +1145,9 @@ char_len_param_value (gfc_expr **expr, bool *deferred)
 
       gfc_free_expr (e);
     }
+
+  if (gfc_seen_div0)
+    m = MATCH_ERROR;
 
   return m;
 
@@ -1889,13 +1892,16 @@ add_init_expr_to_sym (const char *name, gfc_expr **initp, locus *var_locus)
 
   /* If this symbol is confirming an implicit parameter type,
      then an initialization expression is not allowed.  */
-  if (attr.flavor == FL_PARAMETER
-      && sym->value != NULL
-      && *initp != NULL)
+  if (attr.flavor == FL_PARAMETER && sym->value != NULL)
     {
-      gfc_error ("Initializer not allowed for PARAMETER %qs at %C",
-		 sym->name);
-      return false;
+      if (*initp != NULL)
+	{
+	  gfc_error ("Initializer not allowed for PARAMETER %qs at %C",
+		     sym->name);
+	  return false;
+	}
+      else
+	return true;
     }
 
   if (init == NULL)
@@ -4094,7 +4100,8 @@ match_byte_typespec (gfc_typespec *ts)
 match
 gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
 {
-  char name[GFC_MAX_SYMBOL_LEN + 1];
+  /* Provide sufficient space to hold "pdtsymbol".  */
+  char *name = XALLOCAVEC (char, GFC_MAX_SYMBOL_LEN + 1);
   gfc_symbol *sym, *dt_sym;
   match m;
   char c;
@@ -4127,7 +4134,7 @@ gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
       gfc_gobble_whitespace ();
       if (gfc_peek_ascii_char () == '*')
 	{
-	  if ((m = gfc_match ("*)")) != MATCH_YES)
+	  if ((m = gfc_match ("* ) ")) != MATCH_YES)
 	    return m;
 	  if (gfc_comp_struct (gfc_current_state ()))
 	    {
@@ -4284,7 +4291,13 @@ gfc_match_decl_type_spec (gfc_typespec *ts, int implicit_flag)
 	    return m;
 	  gcc_assert (!sym->attr.pdt_template && sym->attr.pdt_type);
 	  ts->u.derived = sym;
-	  strcpy (name, gfc_dt_lower_string (sym->name));
+	  const char* lower = gfc_dt_lower_string (sym->name);
+	  size_t len = strlen (lower);
+	  /* Reallocate with sufficient size.  */
+	  if (len > GFC_MAX_SYMBOL_LEN)
+	    name = XALLOCAVEC (char, len + 1);
+	  memcpy (name, lower, len);
+	  name[len] = '\0';
 	}
 
       if (sym && sym->attr.flavor == FL_STRUCT)
@@ -4822,7 +4835,7 @@ gfc_match_implicit (void)
       /* Last chance -- check <TYPE> <SELECTOR> (<RANGE>).  */
       if (ts.type == BT_CHARACTER)
 	m = gfc_match_char_spec (&ts);
-      else
+      else if (gfc_numeric_ts(&ts) || ts.type == BT_LOGICAL)
 	{
 	  m = gfc_match_kind_spec (&ts, false);
 	  if (m == MATCH_NO)
@@ -5994,7 +6007,7 @@ get_bind_c_idents (void)
       found_id = MATCH_YES;
       gfc_get_ha_symbol (name, &tmp_sym);
     }
-  else if (match_common_name (name) == MATCH_YES)
+  else if (gfc_match_common_name (name) == MATCH_YES)
     {
       found_id = MATCH_YES;
       com_block = gfc_get_common (name, 0);
@@ -6039,7 +6052,7 @@ get_bind_c_idents (void)
 	      found_id = MATCH_YES;
 	      gfc_get_ha_symbol (name, &tmp_sym);
 	    }
-	  else if (match_common_name (name) == MATCH_YES)
+	  else if (gfc_match_common_name (name) == MATCH_YES)
 	    {
 	      found_id = MATCH_YES;
 	      com_block = gfc_get_common (name, 0);
@@ -9068,7 +9081,7 @@ access_attr_decl (gfc_statement st)
 	  else
 	    {
 	      gfc_error ("Access specification of the .%s. operator at %C "
-			 "has already been specified", sym->name);
+			 "has already been specified", uop->name);
 	      goto done;
 	    }
 
@@ -9806,6 +9819,15 @@ gfc_match_submod_proc (void)
 
   if (gfc_match_eos () != MATCH_YES)
     {
+      /* Unset st->n.sym. Note: in reject_statement (), the symbol changes are
+	 undone, such that the st->n.sym->formal points to the original symbol;
+	 if now this namespace is finalized, the formal namespace is freed,
+	 but it might be still needed in the parent namespace.  */
+      gfc_symtree *st = gfc_find_symtree (gfc_current_ns->sym_root, sym->name);
+      st->n.sym = NULL;
+      gfc_free_symbol (sym->tlink);
+      sym->tlink = NULL;
+      sym->refs--;
       gfc_syntax_error (ST_MODULE_PROC);
       return MATCH_ERROR;
     }
