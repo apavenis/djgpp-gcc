@@ -160,6 +160,7 @@ extern unsigned int default_function_arg_round_boundary (machine_mode,
 							 const_tree);
 extern bool hook_bool_const_rtx_commutative_p (const_rtx, int);
 extern rtx default_function_value (const_tree, const_tree, bool);
+extern HARD_REG_SET default_zero_call_used_regs (HARD_REG_SET);
 extern rtx default_libcall_value (machine_mode, const_rtx);
 extern bool default_function_value_regno_p (const unsigned int);
 extern rtx default_internal_arg_pointer (void);
@@ -284,5 +285,14 @@ extern tree default_preferred_else_value (unsigned, tree, unsigned, tree *);
 extern bool default_have_speculation_safe_value (bool);
 extern bool speculation_safe_value_not_needed (bool);
 extern rtx default_speculation_safe_value (machine_mode, rtx, rtx, rtx);
+
+extern bool default_memtag_can_tag_addresses ();
+extern uint8_t default_memtag_tag_size ();
+extern uint8_t default_memtag_granule_size ();
+extern rtx default_memtag_insert_random_tag (rtx, rtx);
+extern rtx default_memtag_add_tag (rtx, poly_int64, uint8_t);
+extern rtx default_memtag_set_tag (rtx, rtx, rtx);
+extern rtx default_memtag_extract_tag (rtx, rtx);
+extern rtx default_memtag_untagged_pointer (rtx, rtx);
 
 #endif /* GCC_TARGHOOKS_H */

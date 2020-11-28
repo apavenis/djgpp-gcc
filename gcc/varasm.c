@@ -277,10 +277,12 @@ get_noswitch_section (unsigned int flags, noswitch_section_callback callback)
 }
 
 /* Return the named section structure associated with NAME.  Create
-   a new section with the given fields if no such structure exists.  */
+   a new section with the given fields if no such structure exists.
+   When NOT_EXISTING, then fail if the section already exists.  */
 
 section *
-get_section (const char *name, unsigned int flags, tree decl)
+get_section (const char *name, unsigned int flags, tree decl,
+	     bool not_existing)
 {
   section *sect, **slot;
 
@@ -297,6 +299,9 @@ get_section (const char *name, unsigned int flags, tree decl)
     }
   else
     {
+      if (not_existing)
+	internal_error ("Section already exists: %qs", name);
+
       sect = *slot;
       /* It is fine if one of the sections has SECTION_NOTYPE as long as
          the other has none of the contrary flags (see the logic at the end
@@ -727,12 +732,26 @@ switch_to_other_text_partition (void)
   switch_to_section (current_function_section ());
 }
 
-/* Return the read-only data section associated with function DECL.  */
+/* Return the read-only or relocated read-only data section
+   associated with function DECL.  */
 
 section *
-default_function_rodata_section (tree decl)
+default_function_rodata_section (tree decl, bool relocatable)
 {
-  if (decl != NULL_TREE && DECL_SECTION_NAME (decl))
+  const char* sname;
+  unsigned int flags;
+
+  flags = 0;
+
+  if (relocatable)
+    {
+      sname = ".data.rel.ro.local";
+      flags = (SECTION_WRITE | SECTION_RELRO);
+    }
+  else
+    sname = ".rodata";
+
+  if (decl && DECL_SECTION_NAME (decl))
     {
       const char *name = DECL_SECTION_NAME (decl);
 
@@ -745,38 +764,56 @@ default_function_rodata_section (tree decl)
 	  dot = strchr (name + 1, '.');
 	  if (!dot)
 	    dot = name;
-	  len = strlen (dot) + 8;
+	  len = strlen (dot) + strlen (sname) + 1;
 	  rname = (char *) alloca (len);
 
-	  strcpy (rname, ".rodata");
+	  strcpy (rname, sname);
 	  strcat (rname, dot);
-	  return get_section (rname, SECTION_LINKONCE, decl);
+	  return get_section (rname, (SECTION_LINKONCE | flags), decl);
 	}
-      /* For .gnu.linkonce.t.foo we want to use .gnu.linkonce.r.foo.  */
+      /* For .gnu.linkonce.t.foo we want to use .gnu.linkonce.r.foo or
+	 .gnu.linkonce.d.rel.ro.local.foo if the jump table is relocatable.  */
       else if (DECL_COMDAT_GROUP (decl)
 	       && strncmp (name, ".gnu.linkonce.t.", 16) == 0)
 	{
-	  size_t len = strlen (name) + 1;
-	  char *rname = (char *) alloca (len);
+	  size_t len;
+	  char *rname;
 
-	  memcpy (rname, name, len);
-	  rname[14] = 'r';
-	  return get_section (rname, SECTION_LINKONCE, decl);
+	  if (relocatable)
+	    {
+	      len = strlen (name) + strlen (".rel.ro.local") + 1;
+	      rname = (char *) alloca (len);
+
+	      strcpy (rname, ".gnu.linkonce.d.rel.ro.local");
+	      strcat (rname, name + 15);
+	    }
+	  else
+	    {
+	      len = strlen (name) + 1;
+	      rname = (char *) alloca (len);
+
+	      memcpy (rname, name, len);
+	      rname[14] = 'r';
+	    }
+	  return get_section (rname, (SECTION_LINKONCE | flags), decl);
 	}
       /* For .text.foo we want to use .rodata.foo.  */
       else if (flag_function_sections && flag_data_sections
 	       && strncmp (name, ".text.", 6) == 0)
 	{
 	  size_t len = strlen (name) + 1;
-	  char *rname = (char *) alloca (len + 2);
+	  char *rname = (char *) alloca (len + strlen (sname) - 5);
 
-	  memcpy (rname, ".rodata", 7);
-	  memcpy (rname + 7, name + 5, len - 5);
-	  return get_section (rname, 0, decl);
+	  memcpy (rname, sname, strlen (sname));
+	  memcpy (rname + strlen (sname), name + 5, len - 5);
+	  return get_section (rname, flags, decl);
 	}
     }
 
-  return readonly_data_section;
+  if (relocatable)
+    return get_section (sname, flags, decl);
+  else
+    return readonly_data_section;
 }
 
 /* Return the read-only data section associated with function DECL
@@ -784,7 +821,7 @@ default_function_rodata_section (tree decl)
    readonly data section.  */
 
 section *
-default_no_function_rodata_section (tree decl ATTRIBUTE_UNUSED)
+default_no_function_rodata_section (tree, bool)
 {
   return readonly_data_section;
 }
@@ -794,7 +831,8 @@ default_no_function_rodata_section (tree decl ATTRIBUTE_UNUSED)
 static const char *
 function_mergeable_rodata_prefix (void)
 {
-  section *s = targetm.asm_out.function_rodata_section (current_function_decl);
+  section *s = targetm.asm_out.function_rodata_section (current_function_decl,
+							false);
   if (SECTION_STYLE (s) == SECTION_NAMED)
     return s->named.name;
   else
@@ -1019,7 +1057,11 @@ bss_initializer_p (const_tree decl, bool named)
 	      || (DECL_INITIAL (decl) == error_mark_node
 	          && !in_lto_p)
 	      || (flag_zero_initialized_in_bss
-	          && initializer_zerop (DECL_INITIAL (decl)))));
+		  && initializer_zerop (DECL_INITIAL (decl))
+		  /* A decl with the "persistent" attribute applied and
+		     explicitly initialized to 0 should not be treated as a BSS
+		     variable.  */
+		  && !DECL_PERSISTENT_P (decl))));
 }
 
 /* Compute the alignment of variable specified by DECL.
@@ -1203,6 +1245,7 @@ get_variable_section (tree decl, bool prefer_noswitch_p)
 
   if (ADDR_SPACE_GENERIC_P (as)
       && !DECL_THREAD_LOCAL_P (decl)
+      && !DECL_NOINIT_P (decl)
       && !(prefer_noswitch_p && targetm.have_switchable_bss_sections)
       && bss_initializer_p (decl))
     {
@@ -6641,6 +6684,9 @@ default_section_type_flags (tree decl, const char *name, int reloc)
   if (strcmp (name, ".noinit") == 0)
     flags |= SECTION_WRITE | SECTION_BSS | SECTION_NOTYPE;
 
+  if (strcmp (name, ".persistent") == 0)
+    flags |= SECTION_WRITE | SECTION_NOTYPE;
+
   /* Various sections have special ELF types that the assembler will
      assign by default based on the name.  They are neither SHT_PROGBITS
      nor SHT_NOBITS, so when changing sections we don't want to print a
@@ -6984,6 +7030,11 @@ default_elf_select_section (tree decl, int reloc,
       sname = ".sdata2";
       break;
     case SECCAT_DATA:
+      if (DECL_P (decl) && DECL_PERSISTENT_P (decl))
+	{
+	  sname = ".persistent";
+	  break;
+	}
       return data_section;
     case SECCAT_DATA_REL:
       sname = ".data.rel";
@@ -7004,13 +7055,11 @@ default_elf_select_section (tree decl, int reloc,
       sname = ".tdata";
       break;
     case SECCAT_BSS:
-      if (DECL_P (decl)
-	  && lookup_attribute ("noinit", DECL_ATTRIBUTES (decl)) != NULL_TREE)
+      if (DECL_P (decl) && DECL_NOINIT_P (decl))
 	{
 	  sname = ".noinit";
 	  break;
 	}
-
       if (bss_section)
 	return bss_section;
       sname = ".bss";
@@ -7056,6 +7105,11 @@ default_unique_section (tree decl, int reloc)
       break;
     case SECCAT_DATA:
       prefix = one_only ? ".d" : ".data";
+      if (DECL_P (decl) && DECL_PERSISTENT_P (decl))
+	{
+	  prefix = one_only ? ".p" : ".persistent";
+	  break;
+	}
       break;
     case SECCAT_DATA_REL:
       prefix = one_only ? ".d.rel" : ".data.rel";
@@ -7073,6 +7127,11 @@ default_unique_section (tree decl, int reloc)
       prefix = one_only ? ".s" : ".sdata";
       break;
     case SECCAT_BSS:
+      if (DECL_P (decl) && DECL_NOINIT_P (decl))
+	{
+	  prefix = one_only ? ".n" : ".noinit";
+	  break;
+	}
       prefix = one_only ? ".b" : ".bss";
       break;
     case SECCAT_SBSS:

@@ -29,7 +29,7 @@ filesystem_dir =
 endif
 
 ## Keep this list sync'd with acinclude.m4:GLIBCXX_CONFIGURE.
-SUBDIRS = c++98 c++11 c++17 $(filesystem_dir)
+SUBDIRS = c++98 c++11 c++17 c++20 $(filesystem_dir)
 
 # Cross compiler support.
 if VTV_CYGMIN
@@ -64,6 +64,7 @@ endif
 vpath % $(top_srcdir)/src/c++98
 vpath % $(top_srcdir)/src/c++11
 vpath % $(top_srcdir)/src/c++17
+vpath % $(top_srcdir)/src/c++20
 if ENABLE_FILESYSTEM_TS
 vpath % $(top_srcdir)/src/filesystem
 endif
@@ -100,19 +101,21 @@ libstdcxx_la_LIBADD = \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
 	$(top_builddir)/src/c++98/libc++98convenience.la \
 	$(top_builddir)/src/c++11/libc++11convenience.la \
-	$(top_builddir)/src/c++17/libc++17convenience.la
+	$(top_builddir)/src/c++17/libc++17convenience.la \
+	$(top_builddir)/src/c++20/libc++20convenience.la
 
 libstdcxx_la_DEPENDENCIES = \
 	${version_dep} \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
 	$(top_builddir)/src/c++98/libc++98convenience.la \
 	$(top_builddir)/src/c++11/libc++11convenience.la \
-	$(top_builddir)/src/c++17/libc++17convenience.la
+	$(top_builddir)/src/c++17/libc++17convenience.la \
+	$(top_builddir)/src/c++20/libc++20convenience.la
 
 libstdcxx_la_LDFLAGS = \
 	-version-info $(libtool_VERSION) ${version_arg} -lm
 
-libstdcxx_la_LINK = $(CXXLINK) $(libstdc___la_LDFLAGS)
+libstdcxx_la_LINK = $(CXXLINK) $(libstdc___la_LDFLAGS) $(lt_host_flags)
 else
 libstdc___la_SOURCES = $(cxx98_sources) $(cxx11_sources)
 
@@ -121,19 +124,21 @@ libstdc___la_LIBADD = \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
 	$(top_builddir)/src/c++98/libc++98convenience.la \
 	$(top_builddir)/src/c++11/libc++11convenience.la \
-	$(top_builddir)/src/c++17/libc++17convenience.la
+	$(top_builddir)/src/c++17/libc++17convenience.la \
+	$(top_builddir)/src/c++20/libc++20convenience.la
 
 libstdc___la_DEPENDENCIES = \
 	${version_dep} \
 	$(top_builddir)/libsupc++/libsupc++convenience.la \
 	$(top_builddir)/src/c++98/libc++98convenience.la \
 	$(top_builddir)/src/c++11/libc++11convenience.la \
-	$(top_builddir)/src/c++17/libc++17convenience.la
+	$(top_builddir)/src/c++17/libc++17convenience.la \
+	$(top_builddir)/src/c++20/libc++20convenience.la
 
 libstdc___la_LDFLAGS = \
 	-version-info $(libtool_VERSION) ${version_arg} -lm
 
-libstdc___la_LINK = $(CXXLINK) $(libstdc___la_LDFLAGS)
+libstdc___la_LINK = $(CXXLINK) $(libstdc___la_LDFLAGS) $(lt_host_flags)
 endif
 
 # Use special rules for compatibility-ldbl.cc compilation, as we need to
@@ -180,7 +185,8 @@ compatibility-condvar.o: compatibility-condvar.cc
 # segregated in the sources with -D_GLIBCXX_SHARED.
 #
 # In the sub-directories of libsupc++, src/c++98, src/c++11, src/c++17,
-# only -prefer-pic objects are generated for the convenience libraries.
+# src/c++20, only -prefer-pic objects are generated for the convenience
+# libraries.
 #
 # In the main src directory, make shared and static objects just for
 # the compat libraries. Shared objects are compiled with -prefer-pic
@@ -292,8 +298,8 @@ libstdc++-symbols.ver-sun : libstdc++-symbols.ver \
 	perl $(toplevel_srcdir)/contrib/make_sunver.pl \
 	  libstdc++-symbols.ver \
 	  $(libstdc___la_OBJECTS:%.lo=.libs/%.o) \
-	 `echo $(libstdc___la_LIBADD) | \
-	    sed 's,/\([^/.]*\)\.la,/.libs/\1.a,g'` \
+	 `echo ' $(libstdc___la_LIBADD) ' | \
+	    sed -e 's,/\([^/.]*\)\.la,/.libs/\1.a,g' -e 's/ -l[^ ]* / /'` \
 	 > $@ || (rm -f $@ ; exit 1)
 endif
 if ENABLE_SYMVERS_DARWIN

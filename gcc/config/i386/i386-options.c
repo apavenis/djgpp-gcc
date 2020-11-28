@@ -214,7 +214,10 @@ static struct ix86_target_opts isa2_opts[] =
   { "-mamx-int8",	OPTION_MASK_ISA2_AMX_INT8 },
   { "-mamx-bf16",	OPTION_MASK_ISA2_AMX_BF16 },
   { "-muintr",		OPTION_MASK_ISA2_UINTR },
-  { "-mhreset",		OPTION_MASK_ISA2_HRESET }
+  { "-mhreset",		OPTION_MASK_ISA2_HRESET },
+  { "-mkl",		OPTION_MASK_ISA2_KL },
+  { "-mwidekl", 	OPTION_MASK_ISA2_WIDEKL },
+  { "-mavxvnni",	OPTION_MASK_ISA2_AVXVNNI }
 };
 static struct ix86_target_opts isa_opts[] =
 {
@@ -1035,6 +1038,8 @@ ix86_valid_target_attribute_inner_p (tree fndecl, tree args, char *p_strings[],
     IX86_ATTR_ISA ("cldemote", OPT_mcldemote),
     IX86_ATTR_ISA ("uintr", OPT_muintr),
     IX86_ATTR_ISA ("ptwrite",   OPT_mptwrite),
+    IX86_ATTR_ISA ("kl", OPT_mkl),
+    IX86_ATTR_ISA ("widekl",	OPT_mwidekl),
     IX86_ATTR_ISA ("avx512bf16",   OPT_mavx512bf16),
     IX86_ATTR_ISA ("enqcmd", OPT_menqcmd),
     IX86_ATTR_ISA ("serialize", OPT_mserialize),
@@ -1043,6 +1048,7 @@ ix86_valid_target_attribute_inner_p (tree fndecl, tree args, char *p_strings[],
     IX86_ATTR_ISA ("amx-int8", OPT_mamx_int8),
     IX86_ATTR_ISA ("amx-bf16", OPT_mamx_bf16),
     IX86_ATTR_ISA ("hreset", OPT_mhreset),
+    IX86_ATTR_ISA ("avxvnni",   OPT_mavxvnni),
 
     /* enum options */
     IX86_ATTR_ENUM ("fpmath=",	OPT_mfpmath_),
@@ -1203,7 +1209,7 @@ ix86_valid_target_attribute_inner_p (tree fndecl, tree args, char *p_strings[],
 	    {
 	      if (!opt_set_p)
 		{
-		  error_at (loc, "pragma or attribute %<target(\"%s\")%>  "
+		  error_at (loc, "pragma or attribute %<target(\"%s\")%> "
 			    "does not allow a negated form", p);
 		  return false;
 		}
@@ -1730,7 +1736,7 @@ ix86_recompute_optlev_based_flags (struct gcc_options *opts,
       if (opts->x_flag_pcc_struct_return == 2)
 	{
 	  /* Intel MCU psABI specifies that -freg-struct-return should
-	     be on.  Instead of setting DEFAULT_PCC_STRUCT_RETURN to 1,
+	     be on.  Instead of setting DEFAULT_PCC_STRUCT_RETURN to 0,
 	     we check -miamcu so that -freg-struct-return is always
 	     turned on if -miamcu is used.  */
 	  if (TARGET_IAMCU_P (opts->x_target_flags))
@@ -2071,7 +2077,7 @@ ix86_option_override_internal (bool main_args_p,
 	    && (!TARGET_64BIT_P (opts->x_ix86_isa_flags)
 		|| opts->x_ix86_abi != SYSV_ABI))
 	  {
-	    error (G_("%<%s%> architecture level is only defined"
+	    error (G_("%qs architecture level is only defined"
 		      " for the x86-64 psABI"), opts->x_ix86_arch_string);
 	    return false;
 	  }
@@ -2300,6 +2306,10 @@ ix86_option_override_internal (bool main_args_p,
 	    && !(opts->x_ix86_isa_flags2_explicit
 		 & OPTION_MASK_ISA2_AMX_BF16))
 	  opts->x_ix86_isa_flags2 |= OPTION_MASK_ISA2_AMX_BF16;
+	if (((processor_alias_table[i].flags & PTA_AVXVNNI) != 0)
+	    && !(opts->x_ix86_isa_flags2_explicit
+		 & OPTION_MASK_ISA2_AVXVNNI))
+	  opts->x_ix86_isa_flags2 |= OPTION_MASK_ISA2_AVXVNNI;
         if (((processor_alias_table[i].flags & PTA_MOVDIRI) != 0)
             && !(opts->x_ix86_isa_flags_explicit & OPTION_MASK_ISA_MOVDIRI))
           opts->x_ix86_isa_flags |= OPTION_MASK_ISA_MOVDIRI;
@@ -2339,6 +2349,12 @@ ix86_option_override_internal (bool main_args_p,
 	if (((processor_alias_table[i].flags & PTA_TSXLDTRK) != 0)
 	    && !(opts->x_ix86_isa_flags2_explicit & OPTION_MASK_ISA2_TSXLDTRK))
 	  opts->x_ix86_isa_flags2 |= OPTION_MASK_ISA2_TSXLDTRK;
+	if (((processor_alias_table[i].flags & PTA_KL) != 0)
+	    && !(opts->x_ix86_isa_flags2_explicit & OPTION_MASK_ISA2_KL))
+	  opts->x_ix86_isa_flags2 |= OPTION_MASK_ISA2_KL;
+	if (((processor_alias_table[i].flags & PTA_WIDEKL) != 0)
+	    && !(opts->x_ix86_isa_flags2_explicit & OPTION_MASK_ISA2_WIDEKL))
+	  opts->x_ix86_isa_flags2 |= OPTION_MASK_ISA2_WIDEKL;
 
 	if ((processor_alias_table[i].flags
 	   & (PTA_PREFETCH_SSE | PTA_SSE)) != 0)
