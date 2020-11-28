@@ -96,7 +96,6 @@ static void emit_single_push_insn (machine_mode, rtx, tree);
 static void do_tablejump (rtx, machine_mode, rtx, rtx, rtx,
 			  profile_probability);
 static rtx const_vector_from_tree (tree);
-static rtx const_scalar_mask_from_tree (scalar_int_mode, tree);
 static tree tree_expr_size (const_tree);
 static HOST_WIDE_INT int_expr_size (tree);
 static void convert_mode_scalar (rtx, rtx, int);
@@ -6172,6 +6171,7 @@ count_type_elements (const_tree type, bool for_ctor_p)
       return 0;
 
     case VOID_TYPE:
+    case OPAQUE_TYPE:
     case METHOD_TYPE:
     case FUNCTION_TYPE:
     case LANG_TYPE:
@@ -9035,6 +9035,8 @@ expand_expr_real_2 (sepops ops, rtx target, machine_mode tmode,
 					  target, unsignedp);
       return target;
 
+    case WIDEN_PLUS_EXPR:
+    case WIDEN_MINUS_EXPR:
     case WIDEN_MULT_EXPR:
       /* If first operand is constant, swap them.
 	 Thus the following special case checks need only
@@ -9755,6 +9757,10 @@ expand_expr_real_2 (sepops ops, rtx target, machine_mode tmode,
 	return temp;
       }
 
+    case VEC_WIDEN_PLUS_HI_EXPR:
+    case VEC_WIDEN_PLUS_LO_EXPR:
+    case VEC_WIDEN_MINUS_HI_EXPR:
+    case VEC_WIDEN_MINUS_LO_EXPR:
     case VEC_WIDEN_MULT_HI_EXPR:
     case VEC_WIDEN_MULT_LO_EXPR:
     case VEC_WIDEN_MULT_EVEN_EXPR:
@@ -10356,16 +10362,10 @@ expand_expr_real_1 (tree exp, rtx target, machine_mode tmode,
 	scalar_int_mode int_mode;
 	if (is_int_mode (mode, &int_mode))
 	  {
-	    if (VECTOR_BOOLEAN_TYPE_P (TREE_TYPE (exp)))
-	      return const_scalar_mask_from_tree (int_mode, exp);
-	    else
-	      {
-		tree type_for_mode
-		  = lang_hooks.types.type_for_mode (int_mode, 1);
-		if (type_for_mode)
-		  tmp = fold_unary_loc (loc, VIEW_CONVERT_EXPR,
-					type_for_mode, exp);
-	      }
+	    tree type_for_mode = lang_hooks.types.type_for_mode (int_mode, 1);
+	    if (type_for_mode)
+	      tmp = fold_unary_loc (loc, VIEW_CONVERT_EXPR,
+				    type_for_mode, exp);
 	  }
 	if (!tmp)
 	  {
@@ -12737,30 +12737,6 @@ const_vector_mask_from_tree (tree exp)
 	gcc_unreachable ();
     }
   return builder.build ();
-}
-
-/* EXP is a VECTOR_CST in which each element is either all-zeros or all-ones.
-   Return a constant scalar rtx of mode MODE in which bit X is set if element
-   X of EXP is nonzero.  */
-static rtx
-const_scalar_mask_from_tree (scalar_int_mode mode, tree exp)
-{
-  wide_int res = wi::zero (GET_MODE_PRECISION (mode));
-  tree elt;
-
-  /* The result has a fixed number of bits so the input must too.  */
-  unsigned int nunits = VECTOR_CST_NELTS (exp).to_constant ();
-  for (unsigned int i = 0; i < nunits; ++i)
-    {
-      elt = VECTOR_CST_ELT (exp, i);
-      gcc_assert (TREE_CODE (elt) == INTEGER_CST);
-      if (integer_all_onesp (elt))
-	res = wi::set_bit (res, i);
-      else
-	gcc_assert (integer_zerop (elt));
-    }
-
-  return immed_wide_int_const (res, mode);
 }
 
 /* Return a CONST_VECTOR rtx for a VECTOR_CST tree.  */

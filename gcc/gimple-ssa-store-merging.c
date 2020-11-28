@@ -851,12 +851,16 @@ find_bswap_or_nop_finalize (struct symbolic_number *n, uint64_t *cmpxchg,
 gimple *
 find_bswap_or_nop (gimple *stmt, struct symbolic_number *n, bool *bswap)
 {
+  tree type_size = TYPE_SIZE_UNIT (gimple_expr_type (stmt));
+  if (!tree_fits_uhwi_p (type_size))
+    return NULL;
+
   /* The last parameter determines the depth search limit.  It usually
      correlates directly to the number n of bytes to be touched.  We
      increase that number by 2 * (log2(n) + 1) here in order to also
      cover signed -> unsigned conversions of the src operand as can be seen
      in libgcc, and for initial shift/and operation of the src operand.  */
-  int limit = TREE_INT_CST_LOW (TYPE_SIZE_UNIT (gimple_expr_type (stmt)));
+  int limit = tree_to_uhwi (type_size);
   limit += 2 * (1 + (int) ceil_log2 ((unsigned HOST_WIDE_INT) limit));
   gimple *ins_stmt = find_bswap_or_nop_1 (stmt, n, limit);
 
@@ -1446,6 +1450,7 @@ public:
   bool bit_insertion;
   bool string_concatenation;
   bool only_constants;
+  bool consecutive;
   unsigned int first_nonmergeable_order;
   int lp_nr;
 
@@ -1818,6 +1823,7 @@ merged_store_group::merged_store_group (store_immediate_info *info)
   bit_insertion = info->rhs_code == BIT_INSERT_EXPR;
   string_concatenation = info->rhs_code == STRING_CST;
   only_constants = info->rhs_code == INTEGER_CST;
+  consecutive = true;
   first_nonmergeable_order = ~0U;
   lp_nr = info->lp_nr;
   unsigned HOST_WIDE_INT align_bitpos = 0;
@@ -1953,6 +1959,9 @@ merged_store_group::do_merge (store_immediate_info *info)
       first_stmt = stmt;
     }
 
+  if (info->bitpos != start + width)
+    consecutive = false;
+
   /* We need to use extraction if there is any bit-field.  */
   if (info->rhs_code == BIT_INSERT_EXPR)
     {
@@ -1960,12 +1969,16 @@ merged_store_group::do_merge (store_immediate_info *info)
       gcc_assert (!string_concatenation);
     }
 
-  /* We need to use concatenation if there is any string.  */
+  /* We want to use concatenation if there is any string.  */
   if (info->rhs_code == STRING_CST)
     {
       string_concatenation = true;
       gcc_assert (!bit_insertion);
     }
+
+  /* But we cannot use it if we don't have consecutive stores.  */
+  if (!consecutive)
+    string_concatenation = false;
 
   if (info->rhs_code != INTEGER_CST)
     only_constants = false;
@@ -1978,12 +1991,13 @@ merged_store_group::do_merge (store_immediate_info *info)
 void
 merged_store_group::merge_into (store_immediate_info *info)
 {
+  do_merge (info);
+
   /* Make sure we're inserting in the position we think we're inserting.  */
   gcc_assert (info->bitpos >= start + width
 	      && info->bitregion_start <= bitregion_end);
 
   width = info->bitpos + info->bitsize - start;
-  do_merge (info);
 }
 
 /* Merge a store described by INFO into this merged store.
@@ -1993,11 +2007,11 @@ merged_store_group::merge_into (store_immediate_info *info)
 void
 merged_store_group::merge_overlapping (store_immediate_info *info)
 {
+  do_merge (info);
+
   /* If the store extends the size of the group, extend the width.  */
   if (info->bitpos + info->bitsize > start + width)
     width = info->bitpos + info->bitsize - start;
-
-  do_merge (info);
 }
 
 /* Go through all the recorded stores in this group in program order and

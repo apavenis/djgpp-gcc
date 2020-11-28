@@ -110,6 +110,10 @@ struct die_struct;
 /* Nonzero if the argument is not used by the function.  */
 #define EAF_UNUSED		(1 << 3)
 
+/* Nonzero if the argument itself does not escape but memory
+   referenced by it can escape.  */
+#define EAF_NODIRECTESCAPE	(1 << 4)
+
 /* Call return flags.  */
 /* Mask for the argument number that is returned.  Lower two bits of
    the return flags, encodes argument slots zero to three.  */
@@ -275,6 +279,9 @@ enum omp_clause_code {
 
   /* OpenMP clause: aligned (variable-list[:alignment]).  */
   OMP_CLAUSE_ALIGNED,
+
+  /* OpenMP clause: allocate ([allocator:]variable-list).  */
+  OMP_CLAUSE_ALLOCATE,
 
   /* OpenMP clause: depend ({in,out,inout}:variable-list).  */
   OMP_CLAUSE_DEPEND,
@@ -856,7 +863,10 @@ enum attribute_flags {
      are not in fact compatible with the function type.  */
   ATTR_FLAG_BUILT_IN = 16,
   /* A given attribute has been parsed as a C++-11 attribute.  */
-  ATTR_FLAG_CXX11 = 32
+  ATTR_FLAG_CXX11 = 32,
+  /* The attribute handler is being invoked with an internal argument
+     that may not otherwise be valid when specified in source code.  */
+  ATTR_FLAG_INTERNAL = 64
 };
 
 /* Types used to represent sizes.  */

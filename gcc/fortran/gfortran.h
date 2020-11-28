@@ -770,6 +770,7 @@ typedef enum
   EXT_ATTR_CDECL,
   EXT_ATTR_FASTCALL,
   EXT_ATTR_NO_ARG_CHECK,
+  EXT_ATTR_DEPRECATED,
   EXT_ATTR_LAST, EXT_ATTR_NUM = EXT_ATTR_LAST
 }
 ext_attr_id_t;
@@ -1277,6 +1278,10 @@ enum
   OMP_LIST_TO,
   OMP_LIST_FROM,
   OMP_LIST_REDUCTION,
+  OMP_LIST_REDUCTION_INSCAN,
+  OMP_LIST_REDUCTION_TASK,
+  OMP_LIST_IN_REDUCTION,
+  OMP_LIST_TASK_REDUCTION,
   OMP_LIST_DEVICE_RESIDENT,
   OMP_LIST_LINK,
   OMP_LIST_USE_DEVICE,
@@ -1343,6 +1348,16 @@ enum gfc_omp_if_kind
   OMP_IF_LAST
 };
 
+enum gfc_omp_atomic_op
+{
+  GFC_OMP_ATOMIC_UNSET = 0,
+  GFC_OMP_ATOMIC_UPDATE = 1,
+  GFC_OMP_ATOMIC_READ = 2,
+  GFC_OMP_ATOMIC_WRITE = 3,
+  GFC_OMP_ATOMIC_MASK = 3,
+  GFC_OMP_ATOMIC_SWAP = 16
+};
+
 enum gfc_omp_requires_kind
 {
   /* Keep in sync with gfc_namespace, esp. with omp_req_mem_order.  */
@@ -1363,10 +1378,12 @@ enum gfc_omp_requires_kind
 
 enum gfc_omp_memorder
 {
+  OMP_MEMORDER_UNSET,
+  OMP_MEMORDER_SEQ_CST,
   OMP_MEMORDER_ACQ_REL,
   OMP_MEMORDER_RELEASE,
   OMP_MEMORDER_ACQUIRE,
-  OMP_MEMORDER_LAST
+  OMP_MEMORDER_RELAXED
 };
 
 typedef struct gfc_omp_clauses
@@ -1383,7 +1400,8 @@ typedef struct gfc_omp_clauses
   bool nowait, ordered, untied, mergeable;
   bool inbranch, notinbranch, defaultmap, nogroup;
   bool sched_simd, sched_monotonic, sched_nonmonotonic;
-  bool simd, threads, depend_source, order_concurrent;
+  bool simd, threads, depend_source, order_concurrent, capture;
+  enum gfc_omp_atomic_op atomic_op;
   enum gfc_omp_memorder memorder;
   enum gfc_omp_cancel_kind cancel;
   enum gfc_omp_proc_bind_kind proc_bind;
@@ -1673,6 +1691,9 @@ typedef struct gfc_symbol
   /* Set if the dummy argument of a procedure could be an array despite
      being called with a scalar actual argument. */
   unsigned maybe_array:1;
+  /* Set if this should be passed by value, but is not a VALUE argument
+     according to the Fortran standard.  */
+  unsigned pass_as_value:1;
 
   int refs;
   struct gfc_namespace *ns;	/* namespace containing this symbol */
@@ -2679,18 +2700,6 @@ enum gfc_exec_op
   EXEC_OMP_TASKLOOP, EXEC_OMP_TASKLOOP_SIMD
 };
 
-enum gfc_omp_atomic_op
-{
-  GFC_OMP_ATOMIC_UPDATE = 0,
-  GFC_OMP_ATOMIC_READ = 1,
-  GFC_OMP_ATOMIC_WRITE = 2,
-  GFC_OMP_ATOMIC_CAPTURE = 3,
-  GFC_OMP_ATOMIC_MASK = 3,
-  GFC_OMP_ATOMIC_SEQ_CST = 4,
-  GFC_OMP_ATOMIC_ACQ_REL = 8,
-  GFC_OMP_ATOMIC_SWAP = 16
-};
-
 typedef struct gfc_code
 {
   gfc_exec_op op;
@@ -2745,7 +2754,6 @@ typedef struct gfc_code
     const char *omp_name;
     gfc_omp_namelist *omp_namelist;
     bool omp_bool;
-    gfc_omp_atomic_op omp_atomic;
   }
   ext;		/* Points to additional structures required by statement */
 
@@ -3248,7 +3256,7 @@ bool gfc_type_is_extension_of (gfc_symbol *, gfc_symbol *);
 bool gfc_type_compatible (gfc_typespec *, gfc_typespec *);
 
 void gfc_copy_formal_args_intr (gfc_symbol *, gfc_intrinsic_sym *,
-				gfc_actual_arglist *);
+				gfc_actual_arglist *, bool copy_type = false);
 
 void gfc_free_finalizer (gfc_finalizer *el); /* Needed in resolve.c, too  */
 
@@ -3273,6 +3281,8 @@ void gfc_intrinsic_done_1 (void);
 
 char gfc_type_letter (bt, bool logical_equals_int = false);
 gfc_symbol * gfc_get_intrinsic_sub_symbol (const char *);
+gfc_symbol *gfc_get_intrinsic_function_symbol (gfc_expr *);
+gfc_symbol *gfc_find_intrinsic_symbol (gfc_expr *);
 bool gfc_convert_type (gfc_expr *, gfc_typespec *, int);
 bool gfc_convert_type_warn (gfc_expr *, gfc_typespec *, int, int,
 			    bool array = false);

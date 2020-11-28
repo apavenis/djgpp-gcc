@@ -3404,6 +3404,11 @@ resolve_function (gfc_expr *expr)
     /* typebound procedure: Assume the worst.  */
     gfc_current_ns->proc_name->attr.array_outer_dependency = 1;
 
+  if (expr->value.function.esym
+      && expr->value.function.esym->attr.ext_attr & (1 << EXT_ATTR_DEPRECATED))
+    gfc_warning (OPT_Wdeprecated_declarations,
+		 "Using function %qs at %L is deprecated",
+		 sym->name, &expr->where);
   return t;
 }
 
@@ -3746,6 +3751,12 @@ resolve_call (gfc_code *c)
   else
     /* Typebound procedure: Assume the worst.  */
     gfc_current_ns->proc_name->attr.array_outer_dependency = 1;
+
+  if (c->resolved_sym
+      && c->resolved_sym->attr.ext_attr & (1 << EXT_ATTR_DEPRECATED))
+    gfc_warning (OPT_Wdeprecated_declarations,
+		 "Using subroutine %qs at %L is deprecated",
+		 c->resolved_sym->name, &c->loc);
 
   return t;
 }
@@ -5917,6 +5928,10 @@ resolve_procedure:
   if (t && flag_coarray == GFC_FCOARRAY_LIB && gfc_is_coindexed (e))
     add_caf_get_intrinsic (e);
 
+  if (sym->attr.ext_attr & (1 << EXT_ATTR_DEPRECATED) && sym != sym->result)
+    gfc_warning (OPT_Wdeprecated_declarations,
+		 "Using variable %qs at %L is deprecated",
+		 sym->name, &e->where);
   /* Simplify cases where access to a parameter array results in a
      single constant.  Suppress errors since those will have been
      issued before, as warnings.  */
@@ -10731,15 +10746,12 @@ gfc_resolve_blocks (gfc_code *b, gfc_namespace *ns)
 	case EXEC_OMP_ATOMIC:
 	case EXEC_OACC_ATOMIC:
 	  {
-	    gfc_omp_atomic_op aop
-	      = (gfc_omp_atomic_op) (b->ext.omp_atomic & GFC_OMP_ATOMIC_MASK);
-
 	    /* Verify this before calling gfc_resolve_code, which might
 	       change it.  */
 	    gcc_assert (b->next && b->next->op == EXEC_ASSIGN);
-	    gcc_assert (((aop != GFC_OMP_ATOMIC_CAPTURE)
+	    gcc_assert ((!b->ext.omp_clauses->capture
 			 && b->next->next == NULL)
-			|| ((aop == GFC_OMP_ATOMIC_CAPTURE)
+			|| (b->ext.omp_clauses->capture
 			    && b->next->next != NULL
 			    && b->next->next->op == EXEC_ASSIGN
 			    && b->next->next->next == NULL));
@@ -12234,6 +12246,11 @@ resolve_values (gfc_symbol *sym)
 
   if (sym->value == NULL)
     return;
+
+  if (sym->attr.ext_attr & (1 << EXT_ATTR_DEPRECATED))
+    gfc_warning (OPT_Wdeprecated_declarations,
+		 "Using parameter %qs declared at %L is deprecated",
+		 sym->name, &sym->declared_at);
 
   if (sym->value->expr_type == EXPR_STRUCTURE)
     t= resolve_structure_cons (sym->value, 1);
@@ -16310,7 +16327,7 @@ traverse_data_list (gfc_data_variable *var, locus *where)
       || end->expr_type != EXPR_CONSTANT)
     {
       gfc_error ("end of implied-do loop at %L could not be "
-		 "simplified to a constant value", &start->where);
+		 "simplified to a constant value", &end->where);
       retval = false;
       goto cleanup;
     }
@@ -16318,7 +16335,14 @@ traverse_data_list (gfc_data_variable *var, locus *where)
       || step->expr_type != EXPR_CONSTANT)
     {
       gfc_error ("step of implied-do loop at %L could not be "
-		 "simplified to a constant value", &start->where);
+		 "simplified to a constant value", &step->where);
+      retval = false;
+      goto cleanup;
+    }
+  if (mpz_cmp_si (step->value.integer, 0) == 0)
+    {
+      gfc_error ("step of implied-do loop at %L shall not be zero",
+		 &step->where);
       retval = false;
       goto cleanup;
     }
@@ -16476,6 +16500,7 @@ gfc_impure_variable (gfc_symbol *sym)
 
   proc = sym->ns->proc_name;
   if (sym->attr.dummy
+      && !sym->attr.value
       && ((proc->attr.subroutine && sym->attr.intent == INTENT_IN)
 	  || proc->attr.function))
     return 1;

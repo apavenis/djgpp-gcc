@@ -196,6 +196,17 @@ ix86_expand_move (machine_mode mode, rtx operands[])
   op0 = operands[0];
   op1 = operands[1];
 
+  /* Avoid complex sets of likely spilled hard registers before reload.  */
+  if (!ix86_hardreg_mov_ok (op0, op1))
+    {
+      tmp = gen_reg_rtx (mode);
+      operands[0] = tmp;
+      ix86_expand_move (mode, operands);
+      operands[0] = op0;
+      operands[1] = tmp;
+      op1 = tmp;
+    }
+
   switch (GET_CODE (op1))
     {
     case CONST:
@@ -7673,6 +7684,85 @@ ix86_expand_set_or_cpymem (rtx dst, rtx src, rtx count_exp, rtx val_exp,
   return true;
 }
 
+/* Expand cmpstrn or memcmp.  */
+
+bool
+ix86_expand_cmpstrn_or_cmpmem (rtx result, rtx src1, rtx src2,
+			       rtx length, rtx align, bool is_cmpstrn)
+{
+  /* Expand strncmp and memcmp only with -minline-all-stringops since
+     "repz cmpsb" can be much slower than strncmp and memcmp functions
+     implemented with vector instructions, see
+
+     https://gcc.gnu.org/bugzilla/show_bug.cgi?id=43052
+   */
+  if (!TARGET_INLINE_ALL_STRINGOPS)
+    return false;
+
+  /* Can't use this if the user has appropriated ecx, esi or edi.  */
+  if (fixed_regs[CX_REG] || fixed_regs[SI_REG] || fixed_regs[DI_REG])
+    return false;
+
+  if (is_cmpstrn)
+    {
+      /* For strncmp, length is the maximum length, which can be larger
+	 than actual string lengths.  We can expand the cmpstrn pattern
+	 to "repz cmpsb" only if one of the strings is a constant so
+	 that expand_builtin_strncmp() can write the length argument to
+	 be the minimum of the const string length and the actual length
+	 argument.  Otherwise, "repz cmpsb" may pass the 0 byte.  */
+      tree t1 = MEM_EXPR (src1);
+      tree t2 = MEM_EXPR (src2);
+      if (!((t1 && TREE_CODE (t1) == MEM_REF
+	     && TREE_CODE (TREE_OPERAND (t1, 0)) == ADDR_EXPR
+	     && (TREE_CODE (TREE_OPERAND (TREE_OPERAND (t1, 0), 0))
+		 == STRING_CST))
+	    || (t2 && TREE_CODE (t2) == MEM_REF
+		&& TREE_CODE (TREE_OPERAND (t2, 0)) == ADDR_EXPR
+		&& (TREE_CODE (TREE_OPERAND (TREE_OPERAND (t2, 0), 0))
+		    == STRING_CST))))
+	return false;
+    }
+
+  rtx addr1 = copy_addr_to_reg (XEXP (src1, 0));
+  rtx addr2 = copy_addr_to_reg (XEXP (src2, 0));
+  if (addr1 != XEXP (src1, 0))
+    src1 = replace_equiv_address_nv (src1, addr1);
+  if (addr2 != XEXP (src2, 0))
+    src2 = replace_equiv_address_nv (src2, addr2);
+
+  /* NB: Make a copy of the data length to avoid changing the original
+     data length by cmpstrnqi patterns.  */
+  length = ix86_zero_extend_to_Pmode (length);
+  rtx lengthreg = gen_reg_rtx (Pmode);
+  emit_move_insn (lengthreg, length);
+
+  /* If we are testing strict equality, we can use known alignment to
+     good advantage.  This may be possible with combine, particularly
+     once cc0 is dead.  */
+  if (CONST_INT_P (length))
+    {
+      if (length == const0_rtx)
+	{
+	  emit_move_insn (result, const0_rtx);
+	  return true;
+	}
+      emit_insn (gen_cmpstrnqi_nz_1 (addr1, addr2, lengthreg, align,
+				     src1, src2));
+    }
+  else
+    {
+      emit_insn (gen_cmp_1 (Pmode, lengthreg, lengthreg));
+      emit_insn (gen_cmpstrnqi_1 (addr1, addr2, lengthreg, align,
+				  src1, src2));
+    }
+
+  rtx out = gen_lowpart (QImode, result);
+  emit_insn (gen_cmpintqi (out));
+  emit_move_insn (result, gen_rtx_SIGN_EXTEND (SImode, out));
+
+  return true;
+}
 
 /* Expand the appropriate insns for doing strlen if not just doing
    repnz; scasb
@@ -8209,16 +8299,12 @@ ix86_expand_multi_arg_builtin (enum insn_code icode, tree exp, rtx target,
 			       enum rtx_code sub_code)
 {
   rtx pat;
-  int i;
-  int nargs;
+  unsigned int i, nargs;
   bool comparison_p = false;
   bool tf_p = false;
   bool last_arg_constant = false;
   int num_memory = 0;
-  struct {
-    rtx op;
-    machine_mode mode;
-  } args[4];
+  rtx xops[4];
 
   machine_mode tmode = insn_data[icode].operand[0].mode;
 
@@ -8312,7 +8398,7 @@ ix86_expand_multi_arg_builtin (enum insn_code icode, tree exp, rtx target,
   else if (memory_operand (target, tmode))
     num_memory++;
 
-  gcc_assert (nargs <= 4);
+  gcc_assert (nargs <= ARRAY_SIZE (xops));
 
   for (i = 0; i < nargs; i++)
     {
@@ -8392,38 +8478,36 @@ ix86_expand_multi_arg_builtin (enum insn_code icode, tree exp, rtx target,
 	    op = force_reg (mode, op);
 	}
 
-      args[i].op = op;
-      args[i].mode = mode;
+      xops[i] = op;
     }
 
   switch (nargs)
     {
     case 1:
-      pat = GEN_FCN (icode) (target, args[0].op);
+      pat = GEN_FCN (icode) (target, xops[0]);
       break;
 
     case 2:
       if (tf_p)
-	pat = GEN_FCN (icode) (target, args[0].op, args[1].op,
+	pat = GEN_FCN (icode) (target, xops[0], xops[1],
 			       GEN_INT ((int)sub_code));
       else if (! comparison_p)
-	pat = GEN_FCN (icode) (target, args[0].op, args[1].op);
+	pat = GEN_FCN (icode) (target, xops[0], xops[1]);
       else
 	{
 	  rtx cmp_op = gen_rtx_fmt_ee (sub_code, GET_MODE (target),
-				       args[0].op,
-				       args[1].op);
+				       xops[0], xops[1]);
 
-	  pat = GEN_FCN (icode) (target, cmp_op, args[0].op, args[1].op);
+	  pat = GEN_FCN (icode) (target, cmp_op, xops[0], xops[1]);
 	}
       break;
 
     case 3:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op, args[2].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1], xops[2]);
       break;
 
     case 4:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op, args[2].op, args[3].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1], xops[2], xops[3]);
       break;
 
     default:
@@ -8903,11 +8987,7 @@ ix86_expand_args_builtin (const struct builtin_description *d,
   unsigned int nargs_constant = 0;
   unsigned int mask_pos = 0;
   int num_memory = 0;
-  struct
-    {
-      rtx op;
-      machine_mode mode;
-    } args[6];
+  rtx xops[6];
   bool second_arg_count = false;
   enum insn_code icode = d->icode;
   const struct insn_data_d *insn_p = &insn_data[icode];
@@ -9667,7 +9747,7 @@ ix86_expand_args_builtin (const struct builtin_description *d,
       gcc_unreachable ();
     }
 
-  gcc_assert (nargs <= ARRAY_SIZE (args));
+  gcc_assert (nargs <= ARRAY_SIZE (xops));
 
   if (comparison != UNKNOWN)
     {
@@ -9874,34 +9954,31 @@ ix86_expand_args_builtin (const struct builtin_description *d,
 	    }
 	}
 
-      args[i].op = op;
-      args[i].mode = mode;
+      xops[i] = op;
     }
 
   switch (nargs)
     {
     case 1:
-      pat = GEN_FCN (icode) (real_target, args[0].op);
+      pat = GEN_FCN (icode) (real_target, xops[0]);
       break;
     case 2:
-      pat = GEN_FCN (icode) (real_target, args[0].op, args[1].op);
+      pat = GEN_FCN (icode) (real_target, xops[0], xops[1]);
       break;
     case 3:
-      pat = GEN_FCN (icode) (real_target, args[0].op, args[1].op,
-			     args[2].op);
+      pat = GEN_FCN (icode) (real_target, xops[0], xops[1], xops[2]);
       break;
     case 4:
-      pat = GEN_FCN (icode) (real_target, args[0].op, args[1].op,
-			     args[2].op, args[3].op);
+      pat = GEN_FCN (icode) (real_target, xops[0], xops[1],
+			     xops[2], xops[3]);
       break;
     case 5:
-      pat = GEN_FCN (icode) (real_target, args[0].op, args[1].op,
-			     args[2].op, args[3].op, args[4].op);
+      pat = GEN_FCN (icode) (real_target, xops[0], xops[1],
+			     xops[2], xops[3], xops[4]);
       break;
     case 6:
-      pat = GEN_FCN (icode) (real_target, args[0].op, args[1].op,
-			     args[2].op, args[3].op, args[4].op,
-			     args[5].op);
+      pat = GEN_FCN (icode) (real_target, xops[0], xops[1],
+			     xops[2], xops[3], xops[4], xops[5]);
       break;
     default:
       gcc_unreachable ();
@@ -10168,11 +10245,7 @@ ix86_expand_round_builtin (const struct builtin_description *d,
 {
   rtx pat;
   unsigned int i, nargs;
-  struct
-    {
-      rtx op;
-      machine_mode mode;
-    } args[6];
+  rtx xops[6];
   enum insn_code icode = d->icode;
   const struct insn_data_d *insn_p = &insn_data[icode];
   machine_mode tmode = insn_p->operand[0].mode;
@@ -10272,7 +10345,7 @@ ix86_expand_round_builtin (const struct builtin_description *d,
     default:
       gcc_unreachable ();
     }
-  gcc_assert (nargs <= ARRAY_SIZE (args));
+  gcc_assert (nargs <= ARRAY_SIZE (xops));
 
   if (optimize
       || target == 0
@@ -10344,34 +10417,31 @@ ix86_expand_round_builtin (const struct builtin_description *d,
 	    }
 	}
 
-      args[i].op = op;
-      args[i].mode = mode;
+      xops[i] = op;
     }
 
   switch (nargs)
     {
     case 1:
-      pat = GEN_FCN (icode) (target, args[0].op);
+      pat = GEN_FCN (icode) (target, xops[0]);
       break;
     case 2:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1]);
       break;
     case 3:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op,
-			     args[2].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1], xops[2]);
       break;
     case 4:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op,
-			     args[2].op, args[3].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1],
+			     xops[2], xops[3]);
       break;
     case 5:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op,
-			     args[2].op, args[3].op, args[4].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1],
+			     xops[2], xops[3], xops[4]);
       break;
     case 6:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op,
-			     args[2].op, args[3].op, args[4].op,
-			     args[5].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1],
+			     xops[2], xops[3], xops[4], xops[5]);
       break;
     default:
       gcc_unreachable ();
@@ -10398,13 +10468,8 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
   rtx pat, op;
   unsigned int i, nargs, arg_adjust, memory;
   bool aligned_mem = false;
-  struct
-    {
-      rtx op;
-      machine_mode mode;
-    } args[3];
+  rtx xops[3];
   enum insn_code icode = d->icode;
-  bool last_arg_constant = false;
   const struct insn_data_d *insn_p = &insn_data[icode];
   machine_mode tmode = insn_p->operand[0].mode;
   enum { load, store } klass;
@@ -10477,7 +10542,7 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
       nargs = 1;
       klass = store;
       /* Reserve memory operand for target.  */
-      memory = ARRAY_SIZE (args);
+      memory = ARRAY_SIZE (xops);
       switch (icode)
 	{
 	/* These builtins and instructions require the memory
@@ -10614,7 +10679,7 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
       nargs = 2;
       klass = store;
       /* Reserve memory operand for target.  */
-      memory = ARRAY_SIZE (args);
+      memory = ARRAY_SIZE (xops);
       break;
     case V4SF_FTYPE_PCV4SF_V4SF_UQI:
     case V8SF_FTYPE_PCV8SF_V8SF_UQI:
@@ -10688,7 +10753,7 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
       gcc_unreachable ();
     }
 
-  gcc_assert (nargs <= ARRAY_SIZE (args));
+  gcc_assert (nargs <= ARRAY_SIZE (xops));
 
   if (klass == store)
     {
@@ -10728,59 +10793,45 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
   for (i = 0; i < nargs; i++)
     {
       machine_mode mode = insn_p->operand[i + 1].mode;
-      bool match;
 
       arg = CALL_EXPR_ARG (exp, i + arg_adjust);
       op = expand_normal (arg);
-      match = insn_p->operand[i + 1].predicate (op, mode);
 
-      if (last_arg_constant && (i + 1) == nargs)
+      if (i == memory)
 	{
-	  if (!match)
-	    {
-	      error ("the last argument must be an 8-bit immediate");
-	      return const0_rtx;
-	    }
+	  /* This must be the memory operand.  */
+	  op = ix86_zero_extend_to_Pmode (op);
+	  op = gen_rtx_MEM (mode, op);
+	  /* op at this point has just BITS_PER_UNIT MEM_ALIGN
+	     on it.  Try to improve it using get_pointer_alignment,
+	     and if the special builtin is one that requires strict
+	     mode alignment, also from it's GET_MODE_ALIGNMENT.
+	     Failure to do so could lead to ix86_legitimate_combined_insn
+	     rejecting all changes to such insns.  */
+	  unsigned int align = get_pointer_alignment (arg);
+	  if (aligned_mem && align < GET_MODE_ALIGNMENT (mode))
+	    align = GET_MODE_ALIGNMENT (mode);
+	  if (MEM_ALIGN (op) < align)
+	    set_mem_align (op, align);
 	}
       else
 	{
-	  if (i == memory)
-	    {
-	      /* This must be the memory operand.  */
-	      op = ix86_zero_extend_to_Pmode (op);
-	      op = gen_rtx_MEM (mode, op);
-	      /* op at this point has just BITS_PER_UNIT MEM_ALIGN
-		 on it.  Try to improve it using get_pointer_alignment,
-		 and if the special builtin is one that requires strict
-		 mode alignment, also from it's GET_MODE_ALIGNMENT.
-		 Failure to do so could lead to ix86_legitimate_combined_insn
-		 rejecting all changes to such insns.  */
-	      unsigned int align = get_pointer_alignment (arg);
-	      if (aligned_mem && align < GET_MODE_ALIGNMENT (mode))
-		align = GET_MODE_ALIGNMENT (mode);
-	      if (MEM_ALIGN (op) < align)
-		set_mem_align (op, align);
-	    }
+	  /* This must be register.  */
+	  if (VECTOR_MODE_P (mode))
+	    op = safe_vector_operand (op, mode);
+
+	  op = fixup_modeless_constant (op, mode);
+
+	  if (GET_MODE (op) == mode || GET_MODE (op) == VOIDmode)
+	    op = copy_to_mode_reg (mode, op);
 	  else
 	    {
-	      /* This must be register.  */
-	      if (VECTOR_MODE_P (mode))
-		op = safe_vector_operand (op, mode);
-
-	      op = fixup_modeless_constant (op, mode);
-
-	      if (GET_MODE (op) == mode || GET_MODE (op) == VOIDmode)
-		op = copy_to_mode_reg (mode, op);
-	      else
-	        {
-	          op = copy_to_reg (op);
-	          op = lowpart_subreg (mode, op, GET_MODE (op));
-	        }
+	      op = copy_to_reg (op);
+	      op = lowpart_subreg (mode, op, GET_MODE (op));
 	    }
 	}
 
-      args[i].op = op;
-      args[i].mode = mode;
+      xops[i]= op;
     }
 
   switch (nargs)
@@ -10789,13 +10840,13 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
       pat = GEN_FCN (icode) (target);
       break;
     case 1:
-      pat = GEN_FCN (icode) (target, args[0].op);
+      pat = GEN_FCN (icode) (target, xops[0]);
       break;
     case 2:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1]);
       break;
     case 3:
-      pat = GEN_FCN (icode) (target, args[0].op, args[1].op, args[2].op);
+      pat = GEN_FCN (icode) (target, xops[0], xops[1], xops[2]);
       break;
     default:
       gcc_unreachable ();
@@ -10803,6 +10854,7 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
 
   if (! pat)
     return 0;
+
   emit_insn (pat);
   return klass == store ? 0 : target;
 }
@@ -10980,6 +11032,8 @@ ix86_expand_builtin (tree exp, rtx target, rtx subtarget,
      OPTION_MASK_ISA_SSE | OPTION_MASK_ISA_3DNOW_A
      OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32
      OPTION_MASK_ISA_FMA | OPTION_MASK_ISA_FMA4
+     (OPTION_MASK_ISA_AVX512VNNI | OPTION_MASK_ISA_AVX512VL) or
+       OPTION_MASK_ISA2_AVXVNNI
      where for each such pair it is sufficient if either of the ISAs is
      enabled, plus if it is ored with other options also those others.
      OPTION_MASK_ISA_MMX in bisa is satisfied also if TARGET_MMX_WITH_SSE.  */
@@ -10987,19 +11041,36 @@ ix86_expand_builtin (tree exp, rtx target, rtx subtarget,
        == (OPTION_MASK_ISA_SSE | OPTION_MASK_ISA_3DNOW_A))
       && (isa & (OPTION_MASK_ISA_SSE | OPTION_MASK_ISA_3DNOW_A)) != 0)
     isa |= (OPTION_MASK_ISA_SSE | OPTION_MASK_ISA_3DNOW_A);
+
   if (((bisa & (OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32))
        == (OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32))
       && (isa & (OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32)) != 0)
     isa |= (OPTION_MASK_ISA_SSE4_2 | OPTION_MASK_ISA_CRC32);
+
   if (((bisa & (OPTION_MASK_ISA_FMA | OPTION_MASK_ISA_FMA4))
        == (OPTION_MASK_ISA_FMA | OPTION_MASK_ISA_FMA4))
       && (isa & (OPTION_MASK_ISA_FMA | OPTION_MASK_ISA_FMA4)) != 0)
     isa |= (OPTION_MASK_ISA_FMA | OPTION_MASK_ISA_FMA4);
-  if ((bisa & OPTION_MASK_ISA_MMX) && !TARGET_MMX && TARGET_MMX_WITH_SSE)
+
+  if ((((bisa & (OPTION_MASK_ISA_AVX512VNNI | OPTION_MASK_ISA_AVX512VL))
+	== (OPTION_MASK_ISA_AVX512VNNI | OPTION_MASK_ISA_AVX512VL))
+       || (bisa2 & OPTION_MASK_ISA2_AVXVNNI) != 0)
+      && (((isa & (OPTION_MASK_ISA_AVX512VNNI | OPTION_MASK_ISA_AVX512VL))
+	   == (OPTION_MASK_ISA_AVX512VNNI | OPTION_MASK_ISA_AVX512VL))
+	  || (isa2 & OPTION_MASK_ISA2_AVXVNNI) != 0))
+    {
+      isa |= OPTION_MASK_ISA_AVX512VNNI | OPTION_MASK_ISA_AVX512VL;
+      isa2 |= OPTION_MASK_ISA2_AVXVNNI;
+    }
+
+  if ((bisa & OPTION_MASK_ISA_MMX) && !TARGET_MMX && TARGET_MMX_WITH_SSE
+      /* __builtin_ia32_maskmovq requires MMX registers.  */
+      && fcode != IX86_BUILTIN_MASKMOVQ)
     {
       bisa &= ~OPTION_MASK_ISA_MMX;
       bisa |= OPTION_MASK_ISA_SSE2;
     }
+
   if ((bisa & isa) != bisa || (bisa2 & isa2) != bisa2)
     {
       bool add_abi_p = bisa & OPTION_MASK_ISA_64BIT;
@@ -11246,6 +11317,226 @@ ix86_expand_builtin (tree exp, rtx target, rtx subtarget,
 
       emit_insn (gen_cldemote (op0));
       return 0;
+
+    case IX86_BUILTIN_LOADIWKEY:
+      {
+	arg0 = CALL_EXPR_ARG (exp, 0);
+	arg1 = CALL_EXPR_ARG (exp, 1);
+	arg2 = CALL_EXPR_ARG (exp, 2);
+	arg3 = CALL_EXPR_ARG (exp, 3);
+
+	op0 = expand_normal (arg0);
+	op1 = expand_normal (arg1);
+	op2 = expand_normal (arg2);
+	op3 = expand_normal (arg3);
+
+	if (!REG_P (op0))
+	  op0 = copy_to_mode_reg (V2DImode, op0);
+	if (!REG_P (op1))
+	  op1 = copy_to_mode_reg (V2DImode, op1);
+	if (!REG_P (op2))
+	  op2 = copy_to_mode_reg (V2DImode, op2);
+	if (!REG_P (op3))
+	  op3 = copy_to_mode_reg (SImode, op3);
+
+	emit_insn (gen_loadiwkey (op0, op1, op2, op3));
+
+	return 0;
+      }
+
+    case IX86_BUILTIN_AESDEC128KLU8:
+      icode = CODE_FOR_aesdec128klu8;
+      goto aesdecenc_expand;
+
+    case IX86_BUILTIN_AESDEC256KLU8:
+      icode = CODE_FOR_aesdec256klu8;
+      goto aesdecenc_expand;
+
+    case IX86_BUILTIN_AESENC128KLU8:
+      icode = CODE_FOR_aesenc128klu8;
+      goto aesdecenc_expand;
+
+    case IX86_BUILTIN_AESENC256KLU8:
+      icode = CODE_FOR_aesenc256klu8;
+
+    aesdecenc_expand:
+
+      arg0 = CALL_EXPR_ARG (exp, 0); // __m128i *odata
+      arg1 = CALL_EXPR_ARG (exp, 1); // __m128i idata
+      arg2 = CALL_EXPR_ARG (exp, 2); // const void *p
+
+      op0 = expand_normal (arg0);
+      op1 = expand_normal (arg1);
+      op2 = expand_normal (arg2);
+
+      if (!address_operand (op0, V2DImode))
+	{
+	  op0 = convert_memory_address (Pmode, op0);
+	  op0 = copy_addr_to_reg (op0);
+	}
+      op0 = gen_rtx_MEM (V2DImode, op0);
+
+      if (!REG_P (op1))
+	op1 = copy_to_mode_reg (V2DImode, op1);
+
+      if (!address_operand (op2, VOIDmode))
+	{
+	  op2 = convert_memory_address (Pmode, op2);
+	  op2 = copy_addr_to_reg (op2);
+	}
+      op2 = gen_rtx_MEM (BLKmode, op2);
+
+      emit_insn (GEN_FCN (icode) (op1, op1, op2));
+
+      if (target == 0)
+	target = gen_reg_rtx (QImode);
+
+      pat = gen_rtx_EQ (QImode, gen_rtx_REG (CCZmode, FLAGS_REG),
+			const0_rtx);
+      emit_insn (gen_rtx_SET (target, pat));
+
+      emit_insn (gen_rtx_SET (op0, op1));
+
+      return target;
+
+    case IX86_BUILTIN_AESDECWIDE128KLU8:
+      icode = CODE_FOR_aesdecwide128klu8;
+      goto wideaesdecenc_expand;
+
+    case IX86_BUILTIN_AESDECWIDE256KLU8:
+      icode = CODE_FOR_aesdecwide256klu8;
+      goto wideaesdecenc_expand;
+
+    case IX86_BUILTIN_AESENCWIDE128KLU8:
+      icode = CODE_FOR_aesencwide128klu8;
+      goto wideaesdecenc_expand;
+
+    case IX86_BUILTIN_AESENCWIDE256KLU8:
+      icode = CODE_FOR_aesencwide256klu8;
+
+    wideaesdecenc_expand:
+
+      rtx xmm_regs[8];
+      rtx op;
+
+      arg0 = CALL_EXPR_ARG (exp, 0); // __m128i * odata
+      arg1 = CALL_EXPR_ARG (exp, 1); // const __m128i * idata
+      arg2 = CALL_EXPR_ARG (exp, 2); // const void *p
+
+      op0 = expand_normal (arg0);
+      op1 = expand_normal (arg1);
+      op2 = expand_normal (arg2);
+
+      if (!address_operand (op2, VOIDmode))
+	{
+	  op2 = convert_memory_address (Pmode, op2);
+	  op2 = copy_addr_to_reg (op2);
+	}
+      op2 = gen_rtx_MEM (BLKmode, op2);
+
+      for (i = 0; i < 8; i++)
+	{
+	  xmm_regs[i] = gen_rtx_REG (V2DImode, GET_SSE_REGNO (i));
+
+	  op = gen_rtx_MEM (V2DImode,
+			    plus_constant (Pmode, op1, (i * 16)));
+
+	  emit_move_insn (xmm_regs[i], op);
+	}
+
+      emit_insn (GEN_FCN (icode) (op2));
+
+      if (target == 0)
+	target = gen_reg_rtx (QImode);
+
+      pat = gen_rtx_EQ (QImode, gen_rtx_REG (CCZmode, FLAGS_REG),
+			const0_rtx);
+      emit_insn (gen_rtx_SET (target, pat));
+
+      for (i = 0; i < 8; i++)
+	{
+	  op = gen_rtx_MEM (V2DImode,
+			    plus_constant (Pmode, op0, (i * 16)));
+	  emit_move_insn (op, xmm_regs[i]);
+	}
+
+      return target;
+
+    case IX86_BUILTIN_ENCODEKEY128U32:
+      {
+	rtx op, xmm_regs[7];
+
+	arg0 = CALL_EXPR_ARG (exp, 0); // unsigned int htype
+	arg1 = CALL_EXPR_ARG (exp, 1); // __m128i key
+	arg2 = CALL_EXPR_ARG (exp, 2); // void *h
+
+	op0 = expand_normal (arg0);
+	op1 = expand_normal (arg1);
+	op2 = expand_normal (arg2);
+
+	if (!REG_P (op0))
+	  op0 = copy_to_mode_reg (SImode, op0);
+
+	op = gen_rtx_REG (V2DImode, GET_SSE_REGNO (0));
+	emit_move_insn (op, op1);
+
+	for (i = 0; i < 3; i++)
+	  xmm_regs[i] = gen_rtx_REG (V2DImode, GET_SSE_REGNO (i));
+
+	if (target == 0)
+	  target = gen_reg_rtx (SImode);
+
+	emit_insn (gen_encodekey128u32 (target, op0));
+
+	for (i = 0; i < 3; i++)
+	  {
+	    op = gen_rtx_MEM (V2DImode,
+			      plus_constant (Pmode, op2, (i * 16)));
+	    emit_move_insn (op, xmm_regs[i]);
+	  }
+
+	return target;
+      }
+    case IX86_BUILTIN_ENCODEKEY256U32:
+      {
+	rtx op, xmm_regs[7];
+
+	arg0 = CALL_EXPR_ARG (exp, 0); // unsigned int htype
+	arg1 = CALL_EXPR_ARG (exp, 1); // __m128i keylow
+	arg2 = CALL_EXPR_ARG (exp, 2); // __m128i keyhi
+	arg3 = CALL_EXPR_ARG (exp, 3); // void *h
+
+	op0 = expand_normal (arg0);
+	op1 = expand_normal (arg1);
+	op2 = expand_normal (arg2);
+	op3 = expand_normal (arg3);
+
+	if (!REG_P (op0))
+	  op0 = copy_to_mode_reg (SImode, op0);
+
+	/* Force to use xmm0, xmm1 for keylow, keyhi*/
+	op = gen_rtx_REG (V2DImode, GET_SSE_REGNO (0));
+	emit_move_insn (op, op1);
+	op = gen_rtx_REG (V2DImode, GET_SSE_REGNO (1));
+	emit_move_insn (op, op2);
+
+	for (i = 0; i < 4; i++)
+	  xmm_regs[i] = gen_rtx_REG (V2DImode, GET_SSE_REGNO (i));
+
+	if (target == 0)
+	  target = gen_reg_rtx (SImode);
+
+	emit_insn (gen_encodekey256u32 (target, op0));
+
+	for (i = 0; i < 4; i++)
+	  {
+	    op = gen_rtx_MEM (V2DImode,
+			      plus_constant (Pmode, op3, (i * 16)));
+	    emit_move_insn (op, xmm_regs[i]);
+	  }
+
+	return target;
+      }
 
     case IX86_BUILTIN_VEC_INIT_V2SI:
     case IX86_BUILTIN_VEC_INIT_V4HI:
@@ -14233,6 +14524,112 @@ ix86_expand_vector_init (bool mmx_ok, rtx target, rtx vals)
     }
 
   ix86_expand_vector_init_general (mmx_ok, mode, target, vals);
+}
+
+/* Implemented as
+   V setg (V v, int idx, T val)
+   {
+     V idxv = (V){idx, idx, idx, idx, idx, idx, idx, idx};
+     V valv = (V){val, val, val, val, val, val, val, val};
+     V mask = ((V){0, 1, 2, 3, 4, 5, 6, 7} == idxv);
+     v = (v & ~mask) | (valv & mask);
+     return v;
+   }.  */
+void
+ix86_expand_vector_set_var (rtx target, rtx val, rtx idx)
+{
+  rtx vec[64];
+  machine_mode mode = GET_MODE (target);
+  machine_mode cmp_mode = mode;
+  int n_elts = GET_MODE_NUNITS (mode);
+  rtx valv,idxv,constv,idx_tmp;
+  bool ok = false;
+
+  /* 512-bits vector byte/word broadcast and comparison only available
+     under TARGET_AVX512BW, break 512-bits vector into two 256-bits vector
+     when without TARGET_AVX512BW.  */
+  if ((mode == V32HImode || mode == V64QImode) && !TARGET_AVX512BW)
+    {
+      gcc_assert (TARGET_AVX512F);
+      rtx vhi, vlo, idx_hi;
+      machine_mode half_mode;
+      rtx (*extract_hi)(rtx, rtx);
+      rtx (*extract_lo)(rtx, rtx);
+
+      if (mode == V32HImode)
+	{
+	  half_mode = V16HImode;
+	  extract_hi = gen_vec_extract_hi_v32hi;
+	  extract_lo = gen_vec_extract_lo_v32hi;
+	}
+      else
+	{
+	  half_mode = V32QImode;
+	  extract_hi = gen_vec_extract_hi_v64qi;
+	  extract_lo = gen_vec_extract_lo_v64qi;
+	}
+
+      vhi = gen_reg_rtx (half_mode);
+      vlo = gen_reg_rtx (half_mode);
+      idx_hi = gen_reg_rtx (GET_MODE (idx));
+      emit_insn (extract_hi (vhi, target));
+      emit_insn (extract_lo (vlo, target));
+      vec[0] = idx_hi;
+      vec[1] = idx;
+      vec[2] = GEN_INT (n_elts/2);
+      ix86_expand_binary_operator (MINUS, GET_MODE (idx), vec);
+      ix86_expand_vector_set_var (vhi, val, idx_hi);
+      ix86_expand_vector_set_var (vlo, val, idx);
+      emit_insn (gen_rtx_SET (target, gen_rtx_VEC_CONCAT (mode, vlo, vhi)));
+      return;
+    }
+
+  if (FLOAT_MODE_P (GET_MODE_INNER (mode)))
+    {
+      switch (mode)
+	{
+	case E_V2DFmode:
+	  cmp_mode = V2DImode;
+	  break;
+	case E_V4DFmode:
+	  cmp_mode = V4DImode;
+	  break;
+	case E_V8DFmode:
+	  cmp_mode = V8DImode;
+	  break;
+	case E_V4SFmode:
+	  cmp_mode = V4SImode;
+	  break;
+	case E_V8SFmode:
+	  cmp_mode = V8SImode;
+	  break;
+	case E_V16SFmode:
+	  cmp_mode = V16SImode;
+	  break;
+	default:
+	  gcc_unreachable ();
+	}
+    }
+
+  for (int i = 0; i != n_elts; i++)
+    vec[i] = GEN_INT (i);
+  constv = gen_rtx_CONST_VECTOR (cmp_mode, gen_rtvec_v (n_elts, vec));
+  valv = gen_reg_rtx (mode);
+  idxv = gen_reg_rtx (cmp_mode);
+  idx_tmp = convert_to_mode (GET_MODE_INNER (cmp_mode), idx, 1);
+
+  ok = ix86_expand_vector_init_duplicate (false, mode, valv, val);
+  gcc_assert (ok);
+  ok = ix86_expand_vector_init_duplicate (false, cmp_mode, idxv, idx_tmp);
+  gcc_assert (ok);
+  vec[0] = target;
+  vec[1] = valv;
+  vec[2] = target;
+  vec[3] = gen_rtx_EQ (mode, idxv, constv);
+  vec[4] = idxv;
+  vec[5] = constv;
+  ok = ix86_expand_int_vcond (vec);
+  gcc_assert (ok);
 }
 
 void

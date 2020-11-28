@@ -1038,6 +1038,22 @@ package body Sem_Ch8 is
             Mark_Ghost_Renaming (N, Entity (Nam));
          end if;
 
+         --  Check against AI12-0401 here before Resolve may rewrite Nam and
+         --  potentially generate spurious warnings.
+
+         if Nkind (Nam) = N_Qualified_Expression
+           and then Is_Variable (Expression (Nam))
+           and then not
+             (Subtypes_Statically_Match (T, Etype (Expression (Nam)))
+                or else
+              Subtypes_Statically_Match (Base_Type (T), Etype (Nam)))
+         then
+            Error_Msg_N
+              ("subtype of renamed qualified expression does not " &
+               "statically match", N);
+            return;
+         end if;
+
          Resolve (Nam, T);
 
          --  If the renamed object is a function call of a limited type,
@@ -5551,9 +5567,25 @@ package body Sem_Ch8 is
               and then N = Prefix (Parent (N))
               and then Is_Known_Unit (Parent (N))
             then
-               Error_Msg_Node_2 := Selector_Name (Parent (N));
-               Error_Msg_N -- CODEFIX
-                 ("\\missing `WITH &.&;`", Prefix (Parent (N)));
+               declare
+                  P : Node_Id := Parent (N);
+               begin
+                  Error_Msg_Name_1 := Chars (N);
+                  Error_Msg_Name_2 := Chars (Selector_Name (P));
+
+                  if Nkind (Parent (P)) = N_Selected_Component
+                    and then Is_Known_Unit (Parent (P))
+                  then
+                     P := Parent (P);
+                     Error_Msg_Name_3 := Chars (Selector_Name (P));
+                     Error_Msg_N -- CODEFIX
+                       ("\\missing `WITH %.%.%;`", N);
+
+                  else
+                     Error_Msg_N -- CODEFIX
+                       ("\\missing `WITH %.%;`", N);
+                  end if;
+               end;
             end if;
 
             --  Now check for possible misspellings
@@ -5643,8 +5675,7 @@ package body Sem_Ch8 is
                --  happens for trees generated from Exp_Pakd, where expressions
                --  can be deliberately "mis-typed" to the packed array type.
 
-               if Is_Array_Type (Entyp)
-                 and then Is_Packed (Entyp)
+               if Is_Packed_Array (Entyp)
                  and then Present (Etype (N))
                  and then Etype (N) = Packed_Array_Impl_Type (Entyp)
                then
@@ -7504,7 +7535,7 @@ package body Sem_Ch8 is
 
          --  Reference to type name in predicate/invariant expression
 
-         elsif (Is_Task_Type (P_Type) or else Is_Protected_Type (P_Type))
+         elsif Is_Concurrent_Type (P_Type)
            and then not In_Open_Scopes (P_Name)
            and then (not Is_Concurrent_Type (Etype (P_Name))
                       or else not In_Open_Scopes (Etype (P_Name)))
@@ -8735,9 +8766,8 @@ package body Sem_Ch8 is
 
          --  Mark primitives
 
-         elsif (Ekind (Id) in Overloadable_Kind
-                 or else Ekind (Id) in
-                           E_Generic_Function | E_Generic_Procedure)
+         elsif (Is_Overloadable (Id)
+                 or else Is_Generic_Subprogram (Id))
            and then (Is_Potentially_Use_Visible (Id)
                       or else Is_Intrinsic_Subprogram (Id)
                       or else (Ekind (Id) in E_Function | E_Procedure

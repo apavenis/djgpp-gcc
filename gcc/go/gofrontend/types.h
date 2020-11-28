@@ -49,6 +49,7 @@ class Function;
 class Translate_context;
 class Export;
 class Import;
+class Backend_name;
 class Btype;
 class Bexpression;
 class Bvariable;
@@ -667,7 +668,7 @@ class Type
 
   // Whether the type is permitted in the heap.
   bool
-  in_heap()
+  in_heap() const
   { return this->do_in_heap(); }
 
   // Return a hash code for this type for the method hash table.
@@ -1008,11 +1009,11 @@ class Type
   std::string
   reflection(Gogo*) const;
 
-  // Return a mangled name for the type.  This is a name which can be
-  // used in assembler code.  Identical types should have the same
-  // manged name.
-  std::string
-  mangled_name(Gogo*) const;
+  // Add the backend name for the type to BNAME.  This will add one or
+  // two name components.  Identical types should have the same
+  // backend name.
+  void
+  backend_name(Gogo*, Backend_name* bname) const;
 
   // If the size of the type can be determined, set *PSIZE to the size
   // in bytes and return true.  Otherwise, return false.  This queries
@@ -1066,12 +1067,11 @@ class Type
   // Write the equal function for a type.
   void
   write_equal_function(Gogo*, Named_type*, int64_t size,
-		       const std::string& equal_name,
-		       Function_type* equal_fntype);
+		       const Backend_name*, Function_type* equal_fntype);
 
   // Write the hash function for a type.
   void
-  write_hash_function(Gogo*, int64_t size, const std::string& hash_name,
+  write_hash_function(Gogo*, int64_t size, const Backend_name*,
 		      Function_type* hash_fntype);
 
   // Return the alignment required by the memequalN function.
@@ -1120,7 +1120,7 @@ class Type
   { return false; }
 
   virtual bool
-  do_in_heap()
+  do_in_heap() const
   { return true; }
 
   virtual unsigned int
@@ -1140,6 +1140,10 @@ class Type
 
   virtual void
   do_export(Export*) const;
+
+  // For children to call when they detect that they are in error.
+  void
+  set_is_error();
 
   // Return whether a method expects a pointer as the receiver.
   static bool
@@ -1426,8 +1430,6 @@ class Type
   // The GC symbol for this type.  This starts out as NULL and
   // is filled in as needed.
   Bvariable* gc_symbol_var_;
-  // Whether this type can appear in the heap.
-  bool in_heap_;
 };
 
 // Type hash table operations, treating aliases as identical to the
@@ -2662,7 +2664,7 @@ class Struct_type : public Type
   do_hash_might_panic();
 
   bool
-  do_in_heap();
+  do_in_heap() const;
 
   unsigned int
   do_hash_for_method(Gogo*, int) const;
@@ -2844,7 +2846,7 @@ class Array_type : public Type
   { return this->length_ != NULL && this->element_type_->hash_might_panic(); }
 
   bool
-  do_in_heap()
+  do_in_heap() const
   { return this->length_ == NULL || this->element_type_->in_heap(); }
 
   unsigned int
@@ -3559,10 +3561,10 @@ class Named_type : public Type
   void
   append_reflection_type_name(Gogo*, bool use_alias, std::string*) const;
 
-  // Append the mangled type name as for Type::append_mangled_name,
+  // Append the symbol type name as for Type::append_mangled_name,
   // but if USE_ALIAS use the alias name rather than the alias target.
   void
-  append_mangled_type_name(Gogo*, bool use_alias, std::string*) const;
+  append_symbol_type_name(Gogo*, bool use_alias, std::string*) const;
 
   // Import a named type.
   static void
@@ -3593,7 +3595,7 @@ class Named_type : public Type
   do_needs_key_update();
 
   bool
-  do_in_heap()
+  do_in_heap() const
   { return this->in_heap_ && this->type_->in_heap(); }
 
   unsigned int
@@ -3756,7 +3758,7 @@ class Forward_declaration_type : public Type
   { return this->real_type()->needs_key_update(); }
 
   bool
-  do_in_heap()
+  do_in_heap() const
   { return this->real_type()->in_heap(); }
 
   unsigned int

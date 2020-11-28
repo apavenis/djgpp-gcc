@@ -151,7 +151,8 @@ type Type struct {
 	Go         ast.Expr
 	EnumValues map[string]int64
 	Typedef    string
-	BadPointer bool
+	BadPointer bool // this pointer type should be represented as a uintptr (deprecated)
+	NotInHeap  bool // this type should have a go:notinheap annotation
 }
 
 // A FuncType collects information about a function type in both the C and Go worlds.
@@ -243,8 +244,7 @@ var exportHeader = flag.String("exportheader", "", "where to write export header
 var gccgo = flag.Bool("gccgo", false, "generate files for use with gccgo")
 var gccgoprefix = flag.String("gccgoprefix", "", "-fgo-prefix option used with gccgo")
 var gccgopkgpath = flag.String("gccgopkgpath", "", "-fgo-pkgpath option used with gccgo")
-var gccgoMangleCheckDone bool
-var gccgoNewmanglingInEffect bool
+var gccgoMangler func(string) string
 var importRuntimeCgo = flag.Bool("import_runtime_cgo", true, "import runtime/cgo in generated code")
 var importSyscall = flag.Bool("import_syscall", true, "import syscall in generated code")
 var goarch, goos string

@@ -420,8 +420,10 @@ package Einfo is
 --       output of certain warnings.
 
 --    Aft_Value (synthesized)
---       Applies to fixed and decimal types. Computes a universal integer that
---       holds value of the Aft attribute for the type.
+--       Applies to fixed-point types and subtypes. This yields the value of
+--       the Aft attribute for the type, i.e. the number of decimal digits
+--       needed after the decimal point to accommodate the delta of the type,
+--       unless the delta is greater than 0.1, in which case it is 1.
 
 --    Alias (Node18)
 --       Defined in overloadable entities (literals, subprograms, entries) and
@@ -4115,14 +4117,16 @@ package Einfo is
 --       only for type-related error messages.
 
 --    Related_Expression (Node24)
---       Defined in variables and types. When Set for internally generated
---       entities, it may be used to denote the source expression whose
---       elaboration created the variable declaration. If set, it is used
+--       Defined in variables, types and functions. When Set for internally
+--       generated entities, it may be used to denote the source expression
+--       whose elaboration created the variable declaration. If set, it is used
 --       for generating clearer messages from CodePeer. It is used on source
 --       entities that are variables in iterator specifications, to provide
 --       a link to the container that is the domain of iteration. This allows
 --       for better cross-reference information when the loop modifies elements
 --       of the container, and suppresses spurious warnings.
+--       Finally this node is used on functions specified via the Real_Literal
+--       aspect, to denote the 2-parameter overloading, if found.
 --
 --       Shouldn't it also be used for the same purpose in errout? It seems
 --       odd to have two mechanisms here???
@@ -4261,9 +4265,10 @@ package Einfo is
 --       explicit range).
 
 --    Scale_Value (Uint16)
---       Defined in decimal fixed-point types and subtypes. Contains the scale
---       for the type (i.e. the value of type'Scale = the number of decimal
---       digits after the decimal point).
+--       Defined in decimal fixed-point types and subtypes. This holds the
+--       value of the Scale attribute for the type, i.e. the scale of the type
+--       defined as the integer N such that the delta is equal to 10.0**(-N).
+--       Note that, if Scale_Value is positive, then it is equal to Aft_Value.
 
 --    Scope (Node3)
 --       Defined in all entities. Points to the entity for the scope (block,
@@ -4591,15 +4596,13 @@ package Einfo is
 --       Applies to scalar types. Returns the tree node (Node_Id) that contains
 --       the high bound of a scalar type. The returned value is literal for a
 --       base type, but may be an expression in the case of scalar type with
---       dynamic bounds. Note that in the case of a fixed point type, the high
---       bound is in units of small, and is an integer.
+--       dynamic bounds.
 
 --    Type_Low_Bound (synthesized)
 --       Applies to scalar types. Returns the tree node (Node_Id) that contains
 --       the low bound of a scalar type. The returned value is literal for a
 --       base type, but may be an expression in the case of scalar type with
---       dynamic bounds. Note that in the case of a fixed point type, the low
---       bound is in units of small, and is an integer.
+--       dynamic bounds.
 
 --    Underlying_Full_View (Node19)
 --       Defined in private subtypes that are the completion of other private

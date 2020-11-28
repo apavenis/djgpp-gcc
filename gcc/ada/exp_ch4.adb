@@ -1268,9 +1268,8 @@ package body Exp_Ch4 is
          --  expression with a constrained subtype in order to compute the
          --  proper size for the allocator.
 
-         if Is_Array_Type (T)
+         if Is_Packed_Array (T)
            and then not Is_Constrained (T)
-           and then Is_Packed (T)
          then
             declare
                ConstrT      : constant Entity_Id := Make_Temporary (Loc, 'A');
@@ -3506,8 +3505,17 @@ package body Exp_Ch4 is
             Alloc :=
               Make_Allocator (Loc,
                 Expression => New_Occurrence_Of (ConstrT, Loc));
+
+            --  Allocate on the secondary stack. This is currently done
+            --  only for type String, which normally doesn't have default
+            --  initialization, but we need to Set_No_Initialization in case
+            --  of Initialize_Scalars or Normalize_Scalars; otherwise, the
+            --  allocator will get transformed and will not use the secondary
+            --  stack.
+
             Set_Storage_Pool (Alloc, RTE (RE_SS_Pool));
             Set_Procedure_To_Call (Alloc, RTE (RE_SS_Allocate));
+            Set_No_Initialization (Alloc);
 
             Temp := Make_Temporary (Loc, 'R', Alloc);
             Insert_Action (Cnode,
@@ -9708,16 +9716,6 @@ package body Exp_Ch4 is
          end if;
       end if;
 
-      --  Try to narrow the operation
-
-      if Typ = Universal_Integer then
-         Narrow_Large_Operation (N);
-
-         if Nkind (N) /= N_Op_Multiply then
-            return;
-         end if;
-      end if;
-
       --  Convert x * 2 ** y to Shift_Left (x, y). Note that the fact that
       --  Is_Power_Of_2_For_Shift is set means that we know that our left
       --  operand is an integer, as required for this to work.
@@ -9792,6 +9790,16 @@ package body Exp_Ch4 is
 
          Analyze_And_Resolve (N, Typ);
          return;
+      end if;
+
+      --  Try to narrow the operation
+
+      if Typ = Universal_Integer then
+         Narrow_Large_Operation (N);
+
+         if Nkind (N) /= N_Op_Multiply then
+            return;
+         end if;
       end if;
 
       --  Do required fixup of universal fixed operation
@@ -11457,11 +11465,6 @@ package body Exp_Ch4 is
       --  Start of processing for Discrete_Range_Check
 
       begin
-         --  Clear the Do_Range_Check flag on N if needed: this can occur when
-         --  e.g. a trivial type conversion is rewritten by its expression.
-
-         Set_Do_Range_Check (N, False);
-
          --  Nothing more to do if conversion was rewritten
 
          if Nkind (N) /= N_Type_Conversion then
@@ -11469,12 +11472,6 @@ package body Exp_Ch4 is
          end if;
 
          Expr := Expression (N);
-
-         --  Nothing to do if no range check flag set
-
-         if not Do_Range_Check (Expr) then
-            return;
-         end if;
 
          --  Clear the Do_Range_Check flag on Expr
 
@@ -11748,11 +11745,6 @@ package body Exp_Ch4 is
          Tnn    : Entity_Id;
 
       begin
-         --  Clear the Do_Range_Check flag on N if needed: this can occur when
-         --  e.g. a trivial type conversion is rewritten by its expression.
-
-         Set_Do_Range_Check (N, False);
-
          --  Nothing more to do if conversion was rewritten
 
          if Nkind (N) /= N_Type_Conversion then
@@ -11871,33 +11863,20 @@ package body Exp_Ch4 is
          --  which used to fail when Fix_Val was a bound of the type and
          --  the 'Small was not a representable number.
          --  This transformation requires an integer type large enough to
-         --  accommodate a fixed-point value. This will not be the case
-         --  in systems where Duration is larger than Long_Integer.
+         --  accommodate a fixed-point value.
 
          if Is_Ordinary_Fixed_Point_Type (Target_Type)
            and then Is_Floating_Point_Type (Etype (Expr))
-           and then RM_Size (Btyp) <= RM_Size (Standard_Long_Integer)
+           and then RM_Size (Btyp) <= System_Max_Integer_Size
            and then Nkind (Lo) = N_Real_Literal
            and then Nkind (Hi) = N_Real_Literal
          then
             declare
                Expr_Id : constant Entity_Id := Make_Temporary (Loc, 'T', Conv);
-               Int_Type : Entity_Id;
+               Int_Typ : constant Entity_Id :=
+                           Small_Integer_Type_For (RM_Size (Btyp), False);
 
             begin
-               --  Find an integer type of the appropriate size to perform an
-               --  unchecked conversion to the target fixed-point type.
-
-               if RM_Size (Btyp) > RM_Size (Standard_Integer) then
-                  Int_Type := Standard_Long_Integer;
-
-               elsif RM_Size (Btyp) > RM_Size (Standard_Short_Integer) then
-                  Int_Type := Standard_Integer;
-
-               else
-                  Int_Type := Standard_Short_Integer;
-               end if;
-
                --  Generate a temporary with the integer value. Required in the
                --  CCG compiler to ensure that run-time checks reference this
                --  integer expression (instead of the resulting fixed-point
@@ -11907,23 +11886,23 @@ package body Exp_Ch4 is
                Insert_Action (N,
                  Make_Object_Declaration (Loc,
                    Defining_Identifier => Expr_Id,
-                   Object_Definition   => New_Occurrence_Of (Int_Type, Loc),
+                   Object_Definition   => New_Occurrence_Of (Int_Typ, Loc),
                    Constant_Present    => True,
                    Expression          =>
-                     Convert_To (Int_Type, Expression (Conv))));
+                     Convert_To (Int_Typ, Expression (Conv))));
 
                --  Create integer objects for range checking of result.
 
                Lo_Arg :=
                  Unchecked_Convert_To
-                   (Int_Type, New_Occurrence_Of (Expr_Id, Loc));
+                   (Int_Typ, New_Occurrence_Of (Expr_Id, Loc));
 
                Lo_Val :=
                  Make_Integer_Literal (Loc, Corresponding_Integer_Value (Lo));
 
                Hi_Arg :=
                  Unchecked_Convert_To
-                   (Int_Type, New_Occurrence_Of (Expr_Id, Loc));
+                   (Int_Typ, New_Occurrence_Of (Expr_Id, Loc));
 
                Hi_Val :=
                  Make_Integer_Literal (Loc, Corresponding_Integer_Value (Hi));
@@ -12037,20 +12016,16 @@ package body Exp_Ch4 is
       --  Nothing at all to do if conversion is to the identical type so remove
       --  the conversion completely, it is useless, except that it may carry
       --  an Assignment_OK attribute, which must be propagated to the operand
-      --  and the Do_Range_Check flag on Operand should be taken into account.
+      --  and the Do_Range_Check flag on the operand must be cleared, if any.
 
       if Operand_Type = Target_Type then
          if Assignment_OK (N) then
             Set_Assignment_OK (Operand);
          end if;
 
+         Set_Do_Range_Check (Operand, False);
+
          Rewrite (N, Relocate_Node (Operand));
-
-         if Do_Range_Check (Operand) then
-            pragma Assert (Is_Discrete_Type (Operand_Type));
-
-            Discrete_Range_Check;
-         end if;
 
          goto Done;
       end if;
@@ -12259,7 +12234,7 @@ package body Exp_Ch4 is
 
             else
                Apply_Accessibility_Check
-                 (Operand_Acc, Target_Type, Insert_Node => Operand);
+                 (Operand, Target_Type, Insert_Node => Operand);
             end if;
 
          --  If the level of the operand type is statically deeper than the
@@ -12473,16 +12448,11 @@ package body Exp_Ch4 is
 
          if Is_Fixed_Point_Type (Target_Type) then
             Expand_Convert_Fixed_To_Fixed (N);
-            Real_Range_Check;
-
          elsif Is_Integer_Type (Target_Type) then
             Expand_Convert_Fixed_To_Integer (N);
-            Discrete_Range_Check;
-
          else
             pragma Assert (Is_Floating_Point_Type (Target_Type));
             Expand_Convert_Fixed_To_Float (N);
-            Real_Range_Check;
          end if;
 
       --  Case of conversions to a fixed-point type
@@ -12497,11 +12467,9 @@ package body Exp_Ch4 is
       then
          if Is_Integer_Type (Operand_Type) then
             Expand_Convert_Integer_To_Fixed (N);
-            Real_Range_Check;
          else
             pragma Assert (Is_Floating_Point_Type (Operand_Type));
             Expand_Convert_Float_To_Fixed (N);
-            Real_Range_Check;
          end if;
 
       --  Case of array conversions
@@ -12661,8 +12629,6 @@ package body Exp_Ch4 is
       --  Here at end of processing
 
    <<Done>>
-      pragma Assert (not Do_Range_Check (N));
-
       --  Apply predicate check if required. Note that we can't just call
       --  Apply_Predicate_Check here, because the type looks right after
       --  the conversion and it would omit the check. The Comes_From_Source
@@ -14996,6 +14962,14 @@ package body Exp_Ch4 is
          return;
       end if;
 
+      --  If both operands are static, then the comparison has been already
+      --  folded in evaluation.
+
+      pragma Assert
+        (not Is_Static_Expression (Left_Opnd (N))
+           or else
+         not Is_Static_Expression (Right_Opnd (N)));
+
       --  Determine the potential outcome of the comparison assuming that the
       --  operands are valid and emit a warning when the comparison evaluates
       --  to True or False only in the presence of invalid values.
@@ -15011,7 +14985,8 @@ package body Exp_Ch4 is
          True_Result  => True_Result,
          False_Result => False_Result);
 
-      --  The outcome is a decisive False or True, rewrite the operator
+      --  The outcome is a decisive False or True, rewrite the operator into a
+      --  non-static literal.
 
       if False_Result or True_Result then
          Rewrite (N,
@@ -15019,6 +14994,7 @@ package body Exp_Ch4 is
              New_Occurrence_Of (Boolean_Literals (True_Result), Sloc (N))));
 
          Analyze_And_Resolve (N, Typ);
+         Set_Is_Static_Expression (N, False);
          Warn_On_Known_Condition (N);
       end if;
    end Rewrite_Comparison;

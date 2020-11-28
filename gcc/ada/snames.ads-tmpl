@@ -147,6 +147,7 @@ package Snames is
    Name_Integer_Literal                : constant Name_Id := N + $;
    Name_Real_Literal                   : constant Name_Id := N + $;
    Name_Relaxed_Initialization         : constant Name_Id := N + $;
+   Name_Stable_Properties              : constant Name_Id := N + $;
    Name_Static_Predicate               : constant Name_Id := N + $;
    Name_String_Literal                 : constant Name_Id := N + $;
    Name_Synchronization                : constant Name_Id := N + $;
@@ -839,6 +840,8 @@ package Snames is
    Name_No_Use_Of_Entity               : constant Name_Id := N + $;
    Name_No_Use_Of_Pragma               : constant Name_Id := N + $;
    Name_No_Unroll                      : constant Name_Id := N + $;
+   Name_No_Unrecognized_Aspects        : constant Name_Id := N + $;
+   Name_No_Unrecognized_Pragmas        : constant Name_Id := N + $;
    Name_No_Vector                      : constant Name_Id := N + $;
    Name_Nominal                        : constant Name_Id := N + $;
    Name_Non_Volatile                   : constant Name_Id := N + $;
