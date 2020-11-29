@@ -121,7 +121,7 @@ pragma Style_Checks ("M32766");
  **/
 
 # include <vxWorks.h>
-#elif !defined(__MINGW32__)
+#elif !defined(__MINGW32__) && !define(__DJGPP__)
 #include <poll.h>
 #endif
 
