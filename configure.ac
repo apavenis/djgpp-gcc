@@ -724,9 +724,6 @@ case ,${enable_languages}, in
     ;;
   *)
     case "${target}" in
-      *-*-darwin*)
-	unsupported_languages="$unsupported_languages d"
-        ;;
       bpf-*-*)
 	unsupported_languages="$unsupported_languages d"
 	;;
@@ -1468,12 +1465,12 @@ esac
 # C++11 compiler can still start the bootstrap.  Otherwise, if building GCC,
 # require C++11 (or higher).
 if test "$enable_bootstrap:$GXX" = "yes:yes"; then
-  CXX="$CXX -std=c++11"
+  AX_CXX_COMPILE_STDCXX(11, [ext])
 elif test "$have_compiler" = yes; then
-  AX_CXX_COMPILE_STDCXX(11)
+  AX_CXX_COMPILE_STDCXX(11, [ext])
 
   if test "${build}" != "${host}"; then
-    AX_CXX_COMPILE_STDCXX(11, [], [], [_FOR_BUILD])
+    AX_CXX_COMPILE_STDCXX(11, [ext], [], [_FOR_BUILD])
   fi
 fi
 
