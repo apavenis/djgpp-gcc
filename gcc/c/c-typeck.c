@@ -2080,9 +2080,6 @@ convert_lvalue_to_rvalue (location_t loc, struct c_expr exp,
     exp = default_function_array_conversion (loc, exp);
   if (!VOID_TYPE_P (TREE_TYPE (exp.value)))
     exp.value = require_complete_type (loc, exp.value);
-  if (convert_p && !error_operand_p (exp.value)
-      && (TREE_CODE (TREE_TYPE (exp.value)) != ARRAY_TYPE))
-    exp.value = convert (build_qualified_type (TREE_TYPE (exp.value), TYPE_UNQUALIFIED), exp.value);
   if (really_atomic_lvalue (exp.value))
     {
       vec<tree, va_gc> *params;
@@ -2119,6 +2116,9 @@ convert_lvalue_to_rvalue (location_t loc, struct c_expr exp,
       exp.value = build4 (TARGET_EXPR, nonatomic_type, tmp, func_call,
 			  NULL_TREE, NULL_TREE);
     }
+  if (convert_p && !error_operand_p (exp.value)
+      && (TREE_CODE (TREE_TYPE (exp.value)) != ARRAY_TYPE))
+    exp.value = convert (build_qualified_type (TREE_TYPE (exp.value), TYPE_UNQUALIFIED), exp.value);
   return exp;
 }
 
@@ -3949,10 +3949,9 @@ pointer_diff (location_t loc, tree op0, tree op1, tree *instrument_expr)
     pedwarn (loc, OPT_Wpointer_arith,
 	     "pointer to a function used in subtraction");
 
-  if (sanitize_flags_p (SANITIZE_POINTER_SUBTRACT))
+  if (current_function_decl != NULL_TREE
+      && sanitize_flags_p (SANITIZE_POINTER_SUBTRACT))
     {
-      gcc_assert (current_function_decl != NULL_TREE);
-
       op0 = save_expr (op0);
       op1 = save_expr (op1);
 
@@ -6276,16 +6275,9 @@ build_modify_expr (location_t location, tree lhs, tree lhs_origtype,
 		    "enum conversion in assignment is invalid in C++");
     }
 
-  /* If the lhs is atomic, remove that qualifier.  */
-  if (is_atomic_op)
-    {
-      lhstype = build_qualified_type (lhstype, 
-				      (TYPE_QUALS (lhstype)
-				       & ~TYPE_QUAL_ATOMIC));
-      olhstype = build_qualified_type (olhstype, 
-				       (TYPE_QUALS (lhstype)
-					& ~TYPE_QUAL_ATOMIC));
-    }
+  /* Remove qualifiers.  */
+  lhstype = build_qualified_type (lhstype, TYPE_UNQUALIFIED);
+  olhstype = build_qualified_type (olhstype, TYPE_UNQUALIFIED);
 
   /* Convert new value to destination type.  Fold it first, then
      restore any excess precision information, for the sake of
@@ -12324,6 +12316,7 @@ build_binary_op (location_t location, enum tree_code code,
 	}
 
       if ((code0 == POINTER_TYPE || code1 == POINTER_TYPE)
+	  && current_function_decl != NULL_TREE
 	  && sanitize_flags_p (SANITIZE_POINTER_COMPARE))
 	{
 	  op0 = save_expr (op0);

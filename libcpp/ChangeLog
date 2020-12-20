@@ -1,3 +1,24 @@
+2020-12-14  Nathan Sidwell  <nathan@acm.org>
+
+	* include/cpplib.h (struct cpp_macro): Add imported_p field.
+	(struct cpp_hashnode): Tweak deferred field documentation.
+	* macro.c (_cpp_new_macro): Clear new field.
+	(cpp_get_deferred_macro, get_deferred_or_lazy_macro): Assert
+	more.
+
+2020-12-10  Jason Merrill  <jason@redhat.com>
+
+	* init.c (cpp_init_builtins): Update __cplusplus for C++20.
+
+2020-12-01  JeanHeyd Meneide  <phdofthehouse@gmail.com>
+
+	* charset.c (init_iconv_desc): Initialize "to" and "from" fields.
+	* directives.c (cpp_get_narrow_charset_name): New function.
+	(cpp_get_wide_charset_name): Likewise.
+	* include/cpplib.h (cpp_get_narrow_charset_name): Prototype.
+	(cpp_get_wide_charset_name): Likewise.
+	* internal.h (cset_converter): Add "to" and "from" fields.
+
 2020-11-27  Joseph Myers  <joseph@codesourcery.com>
 
 	PR preprocessor/97602

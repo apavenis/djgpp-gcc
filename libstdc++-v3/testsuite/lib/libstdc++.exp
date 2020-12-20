@@ -1004,6 +1004,11 @@ proc check_v3_target_debug_mode { } {
     }]
 }
 
+# Define "debug-mode" as an effective-target keyword.
+proc check_effective_target_debug-mode { } {
+    return [check_v3_target_debug_mode]
+}
+
 # Return 1 if normal mode is active, 0 otherwise.
 # i.e. neither Debug Mode nor Parallel Mode is active.
 proc check_v3_target_normal_mode { } {
@@ -1124,7 +1129,7 @@ proc check_effective_target_gthreads { } {
 proc check_v3_target_gthreads_timed { } {
     return [check_v3_target_prop_cached et_gthreads_timed {
 	if [check_v3_target_gthreads] {
-	    set cond "defined _GTHREAD_USE_MUTEX_TIMEDLOCK"
+	    set cond "_GTHREAD_USE_MUTEX_TIMEDLOCK"
 	    return [v3_check_preprocessor_condition gthreads_timed $cond]
 	} else {
 	    return 0

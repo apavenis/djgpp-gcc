@@ -22,7 +22,9 @@ along with GCC; see the file COPYING3.  If not see
 /* Known bugs or deficiencies include:
 
      all methods must be provided in header files; can't use a source
-     file that contains only the method templates and "just win".  */
+     file that contains only the method templates and "just win".
+
+     Fixed by: C++20 modules.  */
 
 #include "config.h"
 #include "system.h"
@@ -958,6 +960,9 @@ maybe_new_partial_specialization (tree type)
       TREE_PRIVATE (d) = (current_access_specifier == access_private_node);
       TREE_PROTECTED (d) = (current_access_specifier == access_protected_node);
 
+      set_instantiating_module (d);
+      DECL_MODULE_EXPORT_P (d) = DECL_MODULE_EXPORT_P (tmpl);
+
       return t;
     }
 
@@ -1702,9 +1707,10 @@ register_specialization (tree spec, tree tmpl, tree args, bool is_friend,
   return spec;
 }
 
-/* Returns true iff two spec_entry nodes are equivalent.  */
-
+/* Restricts tree and type comparisons.  */
 int comparing_specializations;
+
+/* Returns true iff two spec_entry nodes are equivalent.  */
 
 bool
 spec_hasher::equal (spec_entry *e1, spec_entry *e2)
@@ -4428,7 +4434,7 @@ build_template_parm_index (int index,
    parameter.  Returns the canonical type parameter, which may be TYPE
    if no such parameter existed.  */
 
-static tree
+tree
 canonical_type_parameter (tree type)
 {
   int idx = TEMPLATE_TYPE_IDX (type);
@@ -4918,6 +4924,17 @@ build_template_decl (tree decl, tree parms, bool member_template_p)
   TREE_TYPE (tmpl) = TREE_TYPE (decl);
   DECL_SOURCE_LOCATION (tmpl) = DECL_SOURCE_LOCATION (decl);
   DECL_MEMBER_TEMPLATE_P (tmpl) = member_template_p;
+
+  if (modules_p ())
+    {
+      /* Propagate module information from the decl.  */
+      DECL_MODULE_EXPORT_P (tmpl) = DECL_MODULE_EXPORT_P (decl);
+      if (DECL_LANG_SPECIFIC (decl))
+	{
+	  DECL_MODULE_PURVIEW_P (tmpl) = DECL_MODULE_PURVIEW_P (decl);
+	  gcc_checking_assert (!DECL_MODULE_IMPORT_P (decl));
+	}
+    }
 
   return tmpl;
 }
@@ -6039,6 +6056,14 @@ push_template_decl (tree decl, bool is_friend)
 	      decl = DECL_TEMPLATE_RESULT (pushed);
 	      tmpl = NULL_TREE;
 	    }
+	}
+      else if (is_friend)
+	{
+	  /* Record this decl as belonging to the current class.  It's
+	     not chained onto anything else.  */
+	  DECL_UNINSTANTIATED_TEMPLATE_FRIEND_P (tmpl) = true;
+	  gcc_checking_assert (!DECL_CHAIN (tmpl));
+	  DECL_CHAIN (tmpl) = current_scope ();
 	}
     }
   else if (tmpl)
@@ -8256,7 +8281,7 @@ convert_template_argument (tree parm,
 
   /* When determining whether an argument pack expansion is a template,
      look at the pattern.  */
-  if (TREE_CODE (arg) == TYPE_PACK_EXPANSION)
+  if (PACK_EXPANSION_P (arg))
     arg = PACK_EXPANSION_PATTERN (arg);
 
   /* Deal with an injected-class-name used as a template template arg.  */
@@ -9763,6 +9788,15 @@ lookup_template_class_1 (tree d1, tree arglist, tree in_decl, tree context,
 	return error_mark_node;
 
       gen_tmpl = most_general_template (templ);
+      if (modules_p ())
+	{
+	  tree origin = get_originating_module_decl (gen_tmpl);
+	  load_pending_specializations (CP_DECL_CONTEXT (origin),
+					DECL_NAME (origin));
+	  if (DECL_MODULE_PENDING_SPECIALIZATIONS_P (gen_tmpl))
+	    lazy_load_specializations (gen_tmpl);
+	}
+
       parmlist = DECL_TEMPLATE_PARMS (gen_tmpl);
       parm_depth = TMPL_PARMS_DEPTH (parmlist);
       arg_depth = TMPL_ARGS_DEPTH (arglist);
@@ -9982,6 +10016,12 @@ lookup_template_class_1 (tree d1, tree arglist, tree in_decl, tree context,
 	  DECL_SOURCE_LOCATION (type_decl)
 	    = DECL_SOURCE_LOCATION (TYPE_STUB_DECL (template_type));
 	}
+
+      set_instantiating_module (type_decl);
+      /* Although GEN_TMPL is the TEMPLATE_DECL, it has the same value
+	 of export flag.  We want to propagate this because it might
+	 be a friend declaration that pushes a new hidden binding.  */
+      DECL_MODULE_EXPORT_P (type_decl) = DECL_MODULE_EXPORT_P (gen_tmpl);
 
       if (CLASS_TYPE_P (template_type))
 	{
@@ -10765,14 +10805,16 @@ uses_template_parms (tree t)
   return dependent_p;
 }
 
-/* Returns true iff current_function_decl is an incompletely instantiated
+/* Returns true iff we're processing an incompletely instantiated function
    template.  Useful instead of processing_template_decl because the latter
    is set to 0 during instantiate_non_dependent_expr.  */
 
 bool
 in_template_function (void)
 {
-  tree fn = current_function_decl;
+  /* Inspect the less volatile cfun->decl instead of current_function_decl;
+     the latter might get set for e.g. access checking during satisfaction.  */
+  tree fn = cfun ? cfun->decl : NULL_TREE;
   bool ret;
   ++processing_template_decl;
   ret = (fn && DECL_LANG_SPECIFIC (fn)
@@ -10899,6 +10941,7 @@ push_tinst_level_loc (tree tldcl, tree targs, location_t loc)
   new_level->errors = errorcount + sorrycount;
   new_level->next = NULL;
   new_level->refcount = 0;
+  new_level->path = new_level->visible = nullptr;
   set_refcount_ptr (new_level->next, current_tinst_level);
   set_refcount_ptr (current_tinst_level, new_level);
 
@@ -11049,6 +11092,7 @@ tsubst_friend_function (tree decl, tree args)
   DECL_USE_TEMPLATE (new_friend) = 0;
   if (TREE_CODE (new_friend) == TEMPLATE_DECL)
     {
+      DECL_UNINSTANTIATED_TEMPLATE_FRIEND_P (new_friend) = false;
       DECL_USE_TEMPLATE (DECL_TEMPLATE_RESULT (new_friend)) = 0;
       DECL_SAVED_TREE (DECL_TEMPLATE_RESULT (new_friend))
 	= DECL_SAVED_TREE (DECL_TEMPLATE_RESULT (decl));
@@ -13208,19 +13252,24 @@ tsubst_argument_pack (tree orig_arg, tree args, tsubst_flags_t complain,
 		      tree in_decl)
 {
   /* Substitute into each of the arguments.  */
-  tree new_arg = TYPE_P (orig_arg)
-    ? cxx_make_type (TREE_CODE (orig_arg))
-    : make_node (TREE_CODE (orig_arg));
-
   tree pack_args = tsubst_template_args (ARGUMENT_PACK_ARGS (orig_arg),
 					 args, complain, in_decl);
-  if (pack_args == error_mark_node)
-    new_arg = error_mark_node;
-  else
-    SET_ARGUMENT_PACK_ARGS (new_arg, pack_args);
+  tree new_arg = error_mark_node;
+  if (pack_args != error_mark_node)
+    {
+      if (TYPE_P (orig_arg))
+	{
+	  new_arg = cxx_make_type (TREE_CODE (orig_arg));
+	  SET_TYPE_STRUCTURAL_EQUALITY (new_arg);
+	}
+      else
+	{
+	  new_arg = make_node (TREE_CODE (orig_arg));
+	  TREE_CONSTANT (new_arg) = TREE_CONSTANT (orig_arg);
+	}
 
-  if (TREE_CODE (new_arg) == NONTYPE_ARGUMENT_PACK)
-    TREE_CONSTANT (new_arg) = TREE_CONSTANT (orig_arg);
+      SET_ARGUMENT_PACK_ARGS (new_arg, pack_args);
+    }
 
   return new_arg;
 }
@@ -13894,6 +13943,7 @@ tsubst_function_decl (tree t, tree args, tsubst_flags_t complain,
   if (!DECL_DELETED_FN (r))
     DECL_INITIAL (r) = NULL_TREE;
   DECL_CONTEXT (r) = ctx;
+  set_instantiating_module (r);
 
   /* Handle explicit(dependent-expr).  */
   if (DECL_HAS_DEPENDENT_EXPLICIT_SPEC_P (t))
@@ -14216,6 +14266,24 @@ tsubst_template_decl (tree t, tree args, tsubst_flags_t complain,
   DECL_TEMPLATE_RESULT (r) = inner;
   TREE_TYPE (r) = TREE_TYPE (inner);
   DECL_CONTEXT (r) = DECL_CONTEXT (inner);
+
+  if (modules_p ())
+    {
+      /* Propagate module information from the decl.  */
+      DECL_MODULE_EXPORT_P (r) = DECL_MODULE_EXPORT_P (inner);
+      if (DECL_LANG_SPECIFIC (inner))
+	{
+	  DECL_MODULE_PURVIEW_P (r) = DECL_MODULE_PURVIEW_P (inner);
+	  /* If this is a constrained template, the above tsubst of
+	     inner can find the unconstrained template, which may have
+	     come from an import.  This is ok, because we don't
+	     register this instantiation (see below).  */
+	  gcc_checking_assert (!DECL_MODULE_IMPORT_P (inner)
+			       || (TEMPLATE_PARMS_CONSTRAINTS
+				   (DECL_TEMPLATE_PARMS (t))));
+	  DECL_MODULE_IMPORT_P (r) = false;
+	}
+    }
 
   DECL_TEMPLATE_INSTANTIATIONS (r) = NULL_TREE;
   DECL_TEMPLATE_SPECIALIZATIONS (r) = NULL_TREE;
@@ -14771,6 +14839,8 @@ tsubst_decl (tree t, tree args, tsubst_flags_t complain)
 	SET_DECL_ASSEMBLER_NAME (r, NULL_TREE);
 	if (CODE_CONTAINS_STRUCT (TREE_CODE (t), TS_DECL_WRTL))
 	  SET_DECL_RTL (r, NULL);
+	set_instantiating_module (r);
+
 	/* The initializer must not be expanded until it is required;
 	   see [temp.inst].  */
 	DECL_INITIAL (r) = NULL_TREE;
@@ -15932,13 +16002,8 @@ tsubst (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 	       But, such constructs have already been resolved by this
 	       point, so here CTX really should have complete type, unless
 	       it's a partial instantiation.  */
-	    ctx = complete_type (ctx);
-	    if (!COMPLETE_TYPE_P (ctx))
-	      {
-		if (complain & tf_error)
-		  cxx_incomplete_type_error (NULL_TREE, ctx);
-		return error_mark_node;
-	      }
+	    if (!complete_type_or_maybe_complain (ctx, NULL_TREE, complain))
+	      return error_mark_node;
 	  }
 
 	f = make_typename_type (ctx, f, typename_type,
@@ -16725,6 +16790,13 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 	tree type = tsubst (TREE_TYPE (t), args, complain, in_decl);
 	tree op0 = tsubst_copy (TREE_OPERAND (t, 0), args, complain, in_decl);
 	return build1 (code, type, op0);
+      }
+
+    case BIT_CAST_EXPR:
+      {
+	tree type = tsubst (TREE_TYPE (t), args, complain, in_decl);
+	tree op0 = tsubst_copy (TREE_OPERAND (t, 0), args, complain, in_decl);
+	return cp_build_bit_cast (EXPR_LOCATION (t), type, op0, complain);
       }
 
     case SIZEOF_EXPR:
@@ -19829,6 +19901,8 @@ tsubst_copy_and_build (tree t,
 	   parameter packs are of length zero.  */
 	if (init == NULL_TREE && TREE_OPERAND (t, 3) == NULL_TREE)
 	  init_vec = NULL;
+	else if (init == error_mark_node)
+	  RETURN (error_mark_node);
 	else
 	  {
 	    init_vec = make_tree_vector ();
@@ -20839,6 +20913,15 @@ instantiate_template_1 (tree tmpl, tree orig_args, tsubst_flags_t complain)
 		(DECL_TI_ARGS (DECL_TEMPLATE_RESULT (tmpl)),
 		 targ_ptr));
 
+  if (modules_p ())
+    {
+      tree origin = get_originating_module_decl (gen_tmpl);
+      load_pending_specializations (CP_DECL_CONTEXT (origin),
+				    DECL_NAME (origin));
+      if (DECL_MODULE_PENDING_SPECIALIZATIONS_P (gen_tmpl))
+	lazy_load_specializations (gen_tmpl);
+    }
+
   /* It would be nice to avoid hashing here and then again in tsubst_decl,
      but it doesn't seem to be on the hot path.  */
   spec = retrieve_specialization (gen_tmpl, targ_ptr, 0);
@@ -20923,6 +21006,8 @@ instantiate_template_1 (tree tmpl, tree orig_args, tsubst_flags_t complain)
      template, not the most general template.  */
   DECL_TI_TEMPLATE (fndecl) = tmpl;
   DECL_TI_ARGS (fndecl) = targ_ptr;
+
+  set_instantiating_module (fndecl);
 
   /* Now we know the specialization, compute access previously
      deferred.  Do no access control for inheriting constructors,
@@ -28010,6 +28095,8 @@ finish_concept_definition (cp_expr id, tree init)
   DECL_CONTEXT (decl) = current_scope ();
   DECL_INITIAL (decl) = init;
 
+  set_originating_module (decl, false);
+
   /* Push the enclosing template.  */
   return push_template_decl (decl);
 }
@@ -28988,6 +29075,12 @@ do_class_deduction (tree ptype, tree tmpl, tree init,
   if (DECL_TEMPLATE_TEMPLATE_PARM_P (tmpl))
     return ptype;
 
+  /* Initializing one placeholder from another.  */
+  if (init && TREE_CODE (init) == TEMPLATE_PARM_INDEX
+      && is_auto (TREE_TYPE (init))
+      && CLASS_PLACEHOLDER_TEMPLATE (TREE_TYPE (init)) == tmpl)
+    return cp_build_qualified_type (TREE_TYPE (init), cp_type_quals (ptype));
+
   /* Look through alias templates that just rename another template.  */
   tmpl = get_underlying_template (tmpl);
   if (!ctad_template_p (tmpl))
@@ -29003,10 +29096,6 @@ do_class_deduction (tree ptype, tree tmpl, tree init,
 	pedwarn (input_location, 0, "alias template deduction only available "
 		 "with %<-std=c++20%> or %<-std=gnu++20%>");
     }
-
-  if (init && TREE_TYPE (init) == ptype)
-    /* Using the template parm as its own argument.  */
-    return ptype;
 
   tree type = TREE_TYPE (tmpl);
 
@@ -29255,7 +29344,7 @@ do_auto_deduction (tree type, tree init, tree auto_node,
       /* We don't recurse here because we can't deduce from a nested
 	 initializer_list.  */
       if (CONSTRUCTOR_ELTS (init))
-	for (constructor_elt &elt : *CONSTRUCTOR_ELTS (init))
+	for (constructor_elt &elt : CONSTRUCTOR_ELTS (init))
 	  elt.value = resolve_nondeduced_context (elt.value, complain);
     }
   else
@@ -29641,29 +29730,27 @@ walk_specializations (bool decls_p,
     fn (decls_p, *iter, data);
 }
 
-/* Lookup the specialization of TMPL, ARGS in the decl or type
-   specialization table.  Return what's there, or if SPEC is non-null,
-   add it and return NULL.  */
+/* Lookup the specialization of *ELT, in the decl or type
+   specialization table.  Return the SPEC that's already there (NULL if
+   nothing).  If INSERT is true, and there was nothing, add the new
+   spec.  */
 
 tree
-match_mergeable_specialization (bool decl_p, tree tmpl, tree args, tree spec)
+match_mergeable_specialization (bool decl_p, spec_entry *elt, bool insert)
 {
-  spec_entry elt = {tmpl, args, spec};
   hash_table<spec_hasher> *specializations
     = decl_p ? decl_specializations : type_specializations;
-  hashval_t hash = spec_hasher::hash (&elt);
+  hashval_t hash = spec_hasher::hash (elt);
   spec_entry **slot
-    = specializations->find_slot_with_hash (&elt, hash,
-					    spec ? INSERT : NO_INSERT);
-  spec_entry *entry = slot ? *slot: NULL;
-  
-  if (entry)
-    return entry->spec;
+    = specializations->find_slot_with_hash (elt, hash,
+					    insert ? INSERT : NO_INSERT);
+  if (slot && *slot)
+    return (*slot)->spec;
 
-  if (spec)
+  if (insert)
     {
-      entry = ggc_alloc<spec_entry> ();
-      *entry = elt;
+      auto entry = ggc_alloc<spec_entry> ();
+      *entry = *elt;
       *slot = entry;
     }
 

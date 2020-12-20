@@ -8063,7 +8063,17 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 	    }
 	  else if (!TARGET_PECOFF && !TARGET_MACHO)
 	    {
-	      if (TARGET_64BIT)
+	      if (TARGET_64BIT
+		  && ix86_cmodel == CM_LARGE_PIC
+		  && DEFAULT_ABI != MS_ABI)
+		{
+		  fnaddr = gen_rtx_UNSPEC (Pmode, gen_rtvec (1, addr),
+					   UNSPEC_GOT);
+		  fnaddr = gen_rtx_CONST (Pmode, fnaddr);
+		  fnaddr = force_reg (Pmode, fnaddr);
+		  fnaddr = gen_rtx_PLUS (Pmode, pic_offset_table_rtx, fnaddr);
+		}
+	      else if (TARGET_64BIT)
 		{
 		  fnaddr = gen_rtx_UNSPEC (Pmode,
 					   gen_rtvec (1, addr),
@@ -10822,7 +10832,13 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
 
 	  op = fixup_modeless_constant (op, mode);
 
-	  if (GET_MODE (op) == mode || GET_MODE (op) == VOIDmode)
+	  /* NB: 3-operands load implied it's a mask load,
+	     and that mask operand shoud be at the end.
+	     Keep all-ones mask which would be simplified by the expander.  */
+	  if (nargs == 3 && i == 2 && klass == load
+	      && constm1_operand (op, mode))
+	    ;
+	  else if (GET_MODE (op) == mode || GET_MODE (op) == VOIDmode)
 	    op = copy_to_mode_reg (mode, op);
 	  else
 	    {

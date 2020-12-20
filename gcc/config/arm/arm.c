@@ -4170,9 +4170,10 @@ arm_trampoline_init (rtx m_tramp, tree fndecl, rtx chain_value)
     }
 
   a_tramp = XEXP (m_tramp, 0);
-  emit_library_call (gen_rtx_SYMBOL_REF (Pmode, "__clear_cache"),
-		     LCT_NORMAL, VOIDmode, a_tramp, Pmode,
-		     plus_constant (Pmode, a_tramp, TRAMPOLINE_SIZE), Pmode);
+  maybe_emit_call_builtin___clear_cache (a_tramp,
+					 plus_constant (ptr_mode,
+							a_tramp,
+							TRAMPOLINE_SIZE));
 }
 
 /* Thumb trampolines should be entered in thumb mode, so set
@@ -29129,6 +29130,8 @@ arm_preferred_simd_mode (scalar_mode mode)
   if (TARGET_NEON)
     switch (mode)
       {
+      case E_HFmode:
+	return TARGET_NEON_VECTORIZE_DOUBLE ? V4HFmode : V8HFmode;
       case E_SFmode:
 	return TARGET_NEON_VECTORIZE_DOUBLE ? V2SFmode : V4SFmode;
       case E_SImode:

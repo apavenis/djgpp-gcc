@@ -28,8 +28,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "memmodel.h"
 #include "predict.h"
 #include "tm_p.h"
-#include "expmed.h"
 #include "optabs.h"
+#include "expmed.h"
 #include "emit-rtl.h"
 #include "recog.h"
 #include "diagnostic-core.h"
@@ -949,7 +949,7 @@ expand_doubleword_mult (machine_mode mode, rtx op0, rtx op1, rtx target,
 static rtx
 expand_doubleword_mod (machine_mode mode, rtx op0, rtx op1, bool unsignedp)
 {
-  if (INTVAL (op1) <= 1)
+  if (INTVAL (op1) <= 1 || (INTVAL (op1) & 1) == 0)
     return NULL_RTX;
 
   rtx_insn *last = get_last_insn ();
@@ -1081,8 +1081,9 @@ expand_doubleword_mod (machine_mode mode, rtx op0, rtx op1, bool unsignedp)
 		return NULL_RTX;
 	    }
 	}
-      rtx remainder = expand_divmod (1, TRUNC_MOD_EXPR, word_mode, sum, op1,
-				     NULL_RTX, 1);
+      rtx remainder = expand_divmod (1, TRUNC_MOD_EXPR, word_mode, sum,
+				     gen_int_mode (INTVAL (op1), word_mode),
+				     NULL_RTX, 1, OPTAB_DIRECT);
       if (remainder == NULL_RTX)
 	return NULL_RTX;
 
@@ -1099,7 +1100,8 @@ expand_doubleword_mod (machine_mode mode, rtx op0, rtx op1, bool unsignedp)
 		return NULL_RTX;
 	    }
 	  mask = expand_simple_binop (word_mode, AND, mask,
-				      GEN_INT (1 - INTVAL (op1)),
+				      gen_int_mode (1 - INTVAL (op1),
+						    word_mode),
 				      NULL_RTX, 1, OPTAB_DIRECT);
 	  if (mask == NULL_RTX)
 	    return NULL_RTX;
@@ -1117,6 +1119,99 @@ expand_doubleword_mod (machine_mode mode, rtx op0, rtx op1, bool unsignedp)
       return remainder;
     }
   return NULL_RTX;
+}
+
+/* Similarly to the above function, but compute both quotient and remainder.
+   Quotient can be computed from the remainder as:
+   rem = op0 % op1;  // Handled using expand_doubleword_mod
+   quot = (op0 - rem) * inv; // inv is multiplicative inverse of op1 modulo
+			     // 2 * BITS_PER_WORD
+
+   We can also handle cases where op1 is a multiple of power of two constant
+   and constant handled by expand_doubleword_mod.
+   op11 = 1 << __builtin_ctz (op1);
+   op12 = op1 / op11;
+   rem1 = op0 % op12;  // Handled using expand_doubleword_mod
+   quot1 = (op0 - rem1) * inv; // inv is multiplicative inverse of op12 modulo
+			       // 2 * BITS_PER_WORD
+   rem = (quot1 % op11) * op12 + rem1;
+   quot = quot1 / op11;  */
+
+rtx
+expand_doubleword_divmod (machine_mode mode, rtx op0, rtx op1, rtx *rem,
+			  bool unsignedp)
+{
+  *rem = NULL_RTX;
+
+  /* Negative dividend should have been optimized into positive,
+     similarly modulo by 1 and modulo by power of two is optimized
+     differently too.  */
+  if (INTVAL (op1) <= 1 || pow2p_hwi (INTVAL (op1)))
+    return NULL_RTX;
+
+  rtx op11 = const1_rtx;
+  rtx op12 = op1;
+  if ((INTVAL (op1) & 1) == 0)
+    {
+      int bit = ctz_hwi (INTVAL (op1));
+      op11 = GEN_INT (HOST_WIDE_INT_1 << bit);
+      op12 = GEN_INT (INTVAL (op1) >> bit);
+    }
+
+  rtx rem1 = expand_doubleword_mod (mode, op0, op12, unsignedp);
+  if (rem1 == NULL_RTX)
+    return NULL_RTX;
+
+  int prec = 2 * BITS_PER_WORD;
+  wide_int a = wide_int::from (INTVAL (op12), prec + 1, UNSIGNED);
+  wide_int b = wi::shifted_mask (prec, 1, false, prec + 1);
+  wide_int m = wide_int::from (wi::mod_inv (a, b), prec, UNSIGNED);
+  rtx inv = immed_wide_int_const (m, mode);
+
+  rtx_insn *last = get_last_insn ();
+  rtx quot1 = expand_simple_binop (mode, MINUS, op0, rem1,
+				   NULL_RTX, unsignedp, OPTAB_DIRECT);
+  if (quot1 == NULL_RTX)
+    return NULL_RTX;
+
+  quot1 = expand_simple_binop (mode, MULT, quot1, inv,
+			       NULL_RTX, unsignedp, OPTAB_DIRECT);
+  if (quot1 == NULL_RTX)
+    return NULL_RTX;
+
+  if (op11 != const1_rtx)
+    {
+      rtx rem2 = expand_divmod (1, TRUNC_MOD_EXPR, mode, quot1, op11,
+				NULL_RTX, unsignedp, OPTAB_DIRECT);
+      if (rem2 == NULL_RTX)
+	return NULL_RTX;
+
+      rem2 = expand_simple_binop (mode, MULT, rem2, op12, NULL_RTX,
+				  unsignedp, OPTAB_DIRECT);
+      if (rem2 == NULL_RTX)
+	return NULL_RTX;
+
+      rem2 = expand_simple_binop (mode, PLUS, rem2, rem1, NULL_RTX,
+				  unsignedp, OPTAB_DIRECT);
+      if (rem2 == NULL_RTX)
+	return NULL_RTX;
+
+      rtx quot2 = expand_divmod (0, TRUNC_DIV_EXPR, mode, quot1, op11,
+				 NULL_RTX, unsignedp, OPTAB_DIRECT);
+      if (quot2 == NULL_RTX)
+	return NULL_RTX;
+
+      rem1 = rem2;
+      quot1 = quot2;
+    }
+
+  /* Punt if we need any library calls.  */
+  for (; last; last = NEXT_INSN (last))
+    if (CALL_P (last))
+      return NULL_RTX;
+
+  *rem = rem1;
+  return quot1;
 }
 
 /* Wrapper around expand_binop which takes an rtx code to specify
@@ -1999,31 +2094,48 @@ expand_binop (machine_mode mode, optab binoptab, rtx op0, rtx op1,
     }
 
   /* Attempt to synthetize double word modulo by constant divisor.  */
-  if ((binoptab == umod_optab || binoptab == smod_optab)
+  if ((binoptab == umod_optab
+       || binoptab == smod_optab
+       || binoptab == udiv_optab
+       || binoptab == sdiv_optab)
       && optimize
       && CONST_INT_P (op1)
       && is_int_mode (mode, &int_mode)
       && GET_MODE_SIZE (int_mode) == 2 * UNITS_PER_WORD
-      && optab_handler (lshr_optab, int_mode) != CODE_FOR_nothing
+      && optab_handler ((binoptab == umod_optab || binoptab == udiv_optab)
+			? udivmod_optab : sdivmod_optab,
+			int_mode) == CODE_FOR_nothing
       && optab_handler (and_optab, word_mode) != CODE_FOR_nothing
       && optab_handler (add_optab, word_mode) != CODE_FOR_nothing
       && optimize_insn_for_speed_p ())
     {
-      rtx remainder = expand_doubleword_mod (int_mode, op0, op1,
-					     binoptab == umod_optab);
-      if (remainder != NULL_RTX)
+      rtx res = NULL_RTX;
+      if ((binoptab == umod_optab || binoptab == smod_optab)
+	  && (INTVAL (op1) & 1) == 0)
+	res = expand_doubleword_mod (int_mode, op0, op1,
+				     binoptab == umod_optab);
+      else
+	{
+	  rtx quot = expand_doubleword_divmod (int_mode, op0, op1, &res,
+					       binoptab == umod_optab
+					       || binoptab == udiv_optab);
+	  if (quot == NULL_RTX)
+	    res = NULL_RTX;
+	  else if (binoptab == udiv_optab || binoptab == sdiv_optab)
+	    res = quot;
+	}
+      if (res != NULL_RTX)
 	{
 	  if (optab_handler (mov_optab, int_mode) != CODE_FOR_nothing)
 	    {
-	      rtx_insn *move = emit_move_insn (target ? target : remainder,
-					       remainder);
-	      set_dst_reg_note (move,
-				REG_EQUAL,
-				gen_rtx_fmt_ee (UMOD, int_mode,
-						copy_rtx (op0), op1),
-				target ? target : remainder);
+	      rtx_insn *move = emit_move_insn (target ? target : res,
+					       res);
+	      set_dst_reg_note (move, REG_EQUAL,
+				gen_rtx_fmt_ee (optab_to_code (binoptab),
+						int_mode, copy_rtx (op0), op1),
+				target ? target : res);
 	    }
-	  return remainder;
+	  return res;
 	}
       else
 	delete_insns_since (last);
@@ -4057,23 +4169,59 @@ can_compare_p (enum rtx_code code, machine_mode mode,
   return 0;
 }
 
-/* Return whether the backend can emit a vector comparison for code CODE,
-   comparing operands of mode CMP_OP_MODE and producing a result with
-   VALUE_MODE.  */
+/* Return whether RTL code CODE corresponds to an unsigned optab.  */
+
+static bool
+unsigned_optab_p (enum rtx_code code)
+{
+  return code == LTU || code == LEU || code == GTU || code == GEU;
+}
+
+/* Return whether the backend-emitted comparison for code CODE, comparing
+   operands of mode VALUE_MODE and producing a result with MASK_MODE, matches
+   operand OPNO of pattern ICODE.  */
+
+static bool
+insn_predicate_matches_p (enum insn_code icode, unsigned int opno,
+			  enum rtx_code code, machine_mode mask_mode,
+			  machine_mode value_mode)
+{
+  rtx reg1 = alloca_raw_REG (value_mode, LAST_VIRTUAL_REGISTER + 1);
+  rtx reg2 = alloca_raw_REG (value_mode, LAST_VIRTUAL_REGISTER + 2);
+  rtx test = alloca_rtx_fmt_ee (code, mask_mode, reg1, reg2);
+  return insn_operand_matches (icode, opno, test);
+}
+
+/* Return whether the backend can emit a vector comparison (vec_cmp/vec_cmpu)
+   for code CODE, comparing operands of mode VALUE_MODE and producing a result
+   with MASK_MODE.  */
+
+bool
+can_vec_cmp_compare_p (enum rtx_code code, machine_mode value_mode,
+		       machine_mode mask_mode)
+{
+  enum insn_code icode
+      = get_vec_cmp_icode (value_mode, mask_mode, unsigned_optab_p (code));
+  if (icode == CODE_FOR_nothing)
+    return false;
+
+  return insn_predicate_matches_p (icode, 1, code, mask_mode, value_mode);
+}
+
+/* Return whether the backend can emit a vector comparison (vcond/vcondu) for
+   code CODE, comparing operands of mode CMP_OP_MODE and producing a result
+   with VALUE_MODE.  */
 
 bool
 can_vcond_compare_p (enum rtx_code code, machine_mode value_mode,
 		     machine_mode cmp_op_mode)
 {
-  enum insn_code icode;
-  bool unsigned_p = (code == LTU || code == LEU || code == GTU || code == GEU);
-  rtx reg1 = alloca_raw_REG (cmp_op_mode, LAST_VIRTUAL_REGISTER + 1);
-  rtx reg2 = alloca_raw_REG (cmp_op_mode, LAST_VIRTUAL_REGISTER + 2);
-  rtx test = alloca_rtx_fmt_ee (code, value_mode, reg1, reg2);
+  enum insn_code icode
+      = get_vcond_icode (value_mode, cmp_op_mode, unsigned_optab_p (code));
+  if (icode == CODE_FOR_nothing)
+    return false;
 
-  return (icode = get_vcond_icode (value_mode, cmp_op_mode, unsigned_p))
-	 != CODE_FOR_nothing
-	 && insn_operand_matches (icode, 3, test);
+  return insn_predicate_matches_p (icode, 3, code, value_mode, cmp_op_mode);
 }
 
 /* Return whether the backend can emit vector set instructions for inserting
@@ -5626,11 +5774,11 @@ gen_cond_trap (enum rtx_code code, rtx op1, rtx op2, rtx tcode)
   return insn;
 }
 
-/* Return rtx code for TCODE. Use UNSIGNEDP to select signed
+/* Return rtx code for TCODE or UNKNOWN.  Use UNSIGNEDP to select signed
    or unsigned operation code.  */
 
 enum rtx_code
-get_rtx_code (enum tree_code tcode, bool unsignedp)
+get_rtx_code_1 (enum tree_code tcode, bool unsignedp)
 {
   enum rtx_code code;
   switch (tcode)
@@ -5688,8 +5836,20 @@ get_rtx_code (enum tree_code tcode, bool unsignedp)
       break;
 
     default:
-      gcc_unreachable ();
+      code = UNKNOWN;
+      break;
     }
+  return code;
+}
+
+/* Return rtx code for TCODE.  Use UNSIGNEDP to select signed
+   or unsigned operation code.  */
+
+enum rtx_code
+get_rtx_code (enum tree_code tcode, bool unsignedp)
+{
+  enum rtx_code code = get_rtx_code_1 (tcode, unsignedp);
+  gcc_assert (code != UNKNOWN);
   return code;
 }
 
