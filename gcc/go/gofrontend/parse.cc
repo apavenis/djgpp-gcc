@@ -995,7 +995,7 @@ Parse::parameter_list(bool* is_varargs)
     }
   if (mix_error)
     {
-      go_error_at(location, "invalid named/anonymous mix");
+      go_error_at(location, "mixed named and unnamed function parameters");
       saw_error = true;
     }
   if (saw_error)
@@ -1442,6 +1442,7 @@ Parse::const_decl()
 void
 Parse::const_spec(int iota, Type** last_type, Expression_list** last_expr_list)
 {
+  Location loc = this->location();
   Typed_identifier_list til;
   this->identifier_list(&til);
 
@@ -1466,7 +1467,11 @@ Parse::const_spec(int iota, Type** last_type, Expression_list** last_expr_list)
       for (Expression_list::const_iterator p = (*last_expr_list)->begin();
 	   p != (*last_expr_list)->end();
 	   ++p)
-	expr_list->push_back((*p)->copy());
+	{
+	  Expression* copy = (*p)->copy();
+	  copy->set_location(loc);
+	  expr_list->push_back(copy);
+	}
     }
   else
     {
@@ -1567,7 +1572,6 @@ Parse::type_spec(void*, unsigned int pragmas)
       go_error_at(this->location(),
 		  "unexpected semicolon or newline in type declaration");
       type = Type::make_error_type();
-      this->advance_token();
     }
 
   if (type->is_error_type())
@@ -2071,6 +2075,7 @@ Parse::create_dummy_global(Type* type, Expression* init,
   if (type == NULL && init == NULL)
     type = Type::lookup_bool_type();
   Variable* var = new Variable(type, init, true, false, false, location);
+  var->set_is_global_sink();
   static int count;
   char buf[30];
   snprintf(buf, sizeof buf, "_.%d", count);
@@ -4818,7 +4823,7 @@ Parse::type_switch_body(Label* label, const Type_switch& type_switch,
 	    }
 	}
       if (!used)
-	go_error_at(type_switch.location, "%qs declared and not used",
+	go_error_at(type_switch.location, "%qs declared but not used",
 		    Gogo::message_name(var_name).c_str());
     }
   return statement;

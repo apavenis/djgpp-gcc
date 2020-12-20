@@ -1,3 +1,40 @@
+2020-12-17  Marius Hillenbrand  <mhillen@linux.ibm.com>
+
+	* MAINTAINERS (Write After Approval): Add myself.
+
+2020-12-15  Nathan Sidwell  <nathan@acm.org>
+
+	* Makefile.def
+	* Makefile.in
+	* Makefile.tpl
+	* configure
+	* configure.ac
+
+2020-12-15  Nathan Sidwell  <nathan@acm.org>
+
+	* Makefile.def: Add libcody.
+	* configure.ac: Add libcody.
+	* Makefile.in: Regenerated.
+	* configure: Regenerated.
+
+2020-12-14  Andrea Corallo  <andrea.corallo@arm.com>
+
+	* .dir-locals.el (c-mode): Set 'fill-column' to 80 columns.
+
+2020-12-05  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR target/97865
+	* libtool.m4: Update handling of Darwin platform link flags
+	for Darwin20.
+
+2020-12-02  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* .gitignore: Sync with binutils-gdb
+
+2020-12-02  Claudiu Zissulescu  <claziss@gmail.com>
+
+	* MAINTAINERS: Add myself as arc port maintainer.
+
 2020-11-29  Iain Buclaw  <ibuclaw@gdcproject.org>
 
 	PR d/87788

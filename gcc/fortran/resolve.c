@@ -11054,7 +11054,7 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
 
   /* Make sure there is a vtable and, in particular, a _copy for the
      rhs type.  */
-  if (UNLIMITED_POLY (lhs) && lhs->rank && rhs->ts.type != BT_CLASS)
+  if (lhs->ts.type == BT_CLASS && rhs->ts.type != BT_CLASS)
     gfc_find_vtab (&rhs->ts);
 
   bool caf_convert_to_send = flag_coarray == GFC_FCOARRAY_LIB
@@ -11896,6 +11896,9 @@ start:
 	  if (!t)
 	    break;
 
+	  if (code->expr1->ts.type == BT_CLASS)
+	   gfc_find_vtab (&code->expr2->ts);
+
 	  /* Remove a GFC_ISYM_CAF_GET inserted for a coindexed variable on
 	     the LHS.  */
 	  if (code->expr1->expr_type == EXPR_FUNCTION
@@ -12184,6 +12187,7 @@ start:
 	case EXEC_OMP_DO_SIMD:
 	case EXEC_OMP_MASTER:
 	case EXEC_OMP_ORDERED:
+	case EXEC_OMP_SCAN:
 	case EXEC_OMP_SECTIONS:
 	case EXEC_OMP_SIMD:
 	case EXEC_OMP_SINGLE:
@@ -15394,8 +15398,12 @@ resolve_symbol (gfc_symbol *sym)
   else if (mp_flag && sym->attr.flavor == FL_PROCEDURE && sym->attr.function)
     {
       bool saved_specification_expr = specification_expr;
+      bool saved_formal_arg_flag = formal_arg_flag;
+
       specification_expr = true;
+      formal_arg_flag = true;
       gfc_resolve_array_spec (sym->result->as, false);
+      formal_arg_flag = saved_formal_arg_flag;
       specification_expr = saved_specification_expr;
     }
 
@@ -16163,6 +16171,13 @@ check_data_variable (gfc_data_variable *var, locus *where)
 			 "initial-data-target", where);
 	      return false;
 	    }
+	}
+
+      if (ref->type == REF_COMPONENT && ref->u.c.component->attr.allocatable)
+	{
+	  gfc_error ("DATA element %qs at %L cannot have the ALLOCATABLE "
+		     "attribute", ref->u.c.component->name, &e->where);
+	  return false;
 	}
     }
 

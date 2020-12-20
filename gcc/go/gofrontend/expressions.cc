@@ -59,6 +59,67 @@ Expression::traverse_subexpressions(Traverse* traverse)
   return this->do_traverse(traverse);
 }
 
+// A traversal used to set the location of subexpressions.
+
+class Set_location : public Traverse
+{
+ public:
+  Set_location(Location loc)
+    : Traverse(traverse_expressions),
+      loc_(loc)
+  { }
+
+  int
+  expression(Expression** pexpr);
+
+ private:
+  Location loc_;
+};
+
+// Set the location of an expression.
+
+int
+Set_location::expression(Expression** pexpr)
+{
+  // Some expressions are shared or don't have an independent
+  // location, so we shouldn't change their location.  This is the set
+  // of expressions for which do_copy is just "return this" or
+  // otherwise does not pass down the location.
+  switch ((*pexpr)->classification())
+    {
+    case Expression::EXPRESSION_ERROR:
+    case Expression::EXPRESSION_VAR_REFERENCE:
+    case Expression::EXPRESSION_ENCLOSED_VAR_REFERENCE:
+    case Expression::EXPRESSION_STRING:
+    case Expression::EXPRESSION_FUNC_DESCRIPTOR:
+    case Expression::EXPRESSION_TYPE:
+    case Expression::EXPRESSION_BOOLEAN:
+    case Expression::EXPRESSION_CONST_REFERENCE:
+    case Expression::EXPRESSION_NIL:
+    case Expression::EXPRESSION_TYPE_DESCRIPTOR:
+    case Expression::EXPRESSION_GC_SYMBOL:
+    case Expression::EXPRESSION_PTRMASK_SYMBOL:
+    case Expression::EXPRESSION_TYPE_INFO:
+    case Expression::EXPRESSION_STRUCT_FIELD_OFFSET:
+      return TRAVERSE_CONTINUE;
+    default:
+      break;
+    }
+
+  (*pexpr)->location_ = this->loc_;
+  return TRAVERSE_CONTINUE;
+}
+
+// Set the location of an expression and its subexpressions.
+
+void
+Expression::set_location(Location loc)
+{
+  this->location_ = loc;
+  Set_location sl(loc);
+  this->traverse_subexpressions(&sl);
+}
+
 // Default implementation for do_traverse for child classes.
 
 int
@@ -113,7 +174,13 @@ Expression::export_name(Export_function_body* efb, const Named_object* no)
 void
 Expression::unused_value_error()
 {
-  this->report_error(_("value computed is not used"));
+  if (this->type()->is_error())
+    {
+      go_assert(saw_errors());
+      this->set_is_error();
+    }
+  else
+    this->report_error(_("value computed is not used"));
 }
 
 // Note that this expression is an error.  This is called by children
@@ -827,8 +894,7 @@ Type_expression : public Expression
   { }
 
   void
-  do_check_types(Gogo*)
-  { this->report_error(_("invalid use of type")); }
+  do_check_types(Gogo*);
 
   Expression*
   do_copy()
@@ -844,6 +910,18 @@ Type_expression : public Expression
   // The type which we are representing as an expression.
   Type* type_;
 };
+
+void
+Type_expression::do_check_types(Gogo*)
+{
+  if (this->type_->is_error())
+    {
+      go_assert(saw_errors());
+      this->set_is_error();
+    }
+  else
+    this->report_error(_("invalid use of type"));
+}
 
 void
 Type_expression::do_dump_expression(Ast_dump_context* ast_dump_context) const
@@ -6287,8 +6365,21 @@ Binary_expression::lower_array_comparison(Gogo* gogo,
   args->push_back(this->operand_address(inserter, this->left_));
   args->push_back(this->operand_address(inserter, this->right_));
 
-  Expression* ret = Expression::make_call(func, args, false, loc);
+  Call_expression* ce = Expression::make_call(func, args, false, loc);
 
+  // Record that this is a call to a generated equality function.  We
+  // need to do this because a comparison returns an abstract boolean
+  // type, but the function necessarily returns "bool".  The
+  // difference shows up in code like
+  //     type mybool bool
+  //     var b mybool = [10]string{} == [10]string{}
+  // The comparison function returns "bool", but since a comparison
+  // has an abstract boolean type we need an implicit conversion to
+  // "mybool".  The implicit conversion is inserted in
+  // Call_expression::do_flatten.
+  ce->set_is_equal_function();
+
+  Expression* ret = ce;
   if (this->op_ == OPERATOR_NOTEQ)
     ret = Expression::make_unary(OPERATOR_NOT, ret, loc);
 
@@ -6978,27 +7069,6 @@ Binary_expression::do_get_backend(Translate_context* context)
   // The only binary operation for string is +, and that should have
   // been converted to a String_concat_expression in do_lower.
   go_assert(!left_type->is_string_type());
-
-  // For complex division Go might want slightly different results than the
-  // backend implementation provides, so we have our own runtime routine.
-  if (this->op_ == OPERATOR_DIV && this->left_->type()->complex_type() != NULL)
-    {
-      Runtime::Function complex_code;
-      switch (this->left_->type()->complex_type()->bits())
-	{
-	case 64:
-          complex_code = Runtime::COMPLEX64_DIV;
-	  break;
-	case 128:
-          complex_code = Runtime::COMPLEX128_DIV;
-	  break;
-	default:
-	  go_unreachable();
-	}
-      Expression* complex_div =
-          Runtime::make_call(complex_code, loc, 2, this->left_, this->right_);
-      return complex_div->get_backend(context);
-    }
 
   Bexpression* left = this->left_->get_backend(context);
   Bexpression* right = this->right_->get_backend(context);
@@ -9397,6 +9467,8 @@ Builtin_call_expression::do_is_constant() const
 	if (arg == NULL)
 	  return false;
 	Type* arg_type = arg->type();
+	if (arg_type->is_error())
+	  return true;
 
 	if (arg_type->points_to() != NULL
 	    && arg_type->points_to()->array_type() != NULL
@@ -9468,6 +9540,8 @@ Builtin_call_expression::do_numeric_constant_value(Numeric_constant* nc) const
       if (arg == NULL)
 	return false;
       Type* arg_type = arg->type();
+      if (arg_type->is_error())
+	return false;
 
       if (this->code_ == BUILTIN_LEN && arg_type->is_string_type())
 	{
@@ -9490,17 +9564,25 @@ Builtin_call_expression::do_numeric_constant_value(Numeric_constant* nc) const
 	{
 	  if (this->seen_)
 	    return false;
-	  Expression* e = arg_type->array_type()->length();
-	  this->seen_ = true;
-	  bool r = e->numeric_constant_value(nc);
-	  this->seen_ = false;
-	  if (r)
+
+	  // We may be replacing this expression with a constant
+	  // during lowering, so verify the type to report any errors.
+	  // It's OK to verify an array type more than once.
+	  arg_type->verify();
+	  if (!arg_type->is_error())
 	    {
-	      if (!nc->set_type(Type::lookup_integer_type("int"), false,
-				this->location()))
-		r = false;
+	      Expression* e = arg_type->array_type()->length();
+	      this->seen_ = true;
+	      bool r = e->numeric_constant_value(nc);
+	      this->seen_ = false;
+	      if (r)
+		{
+		  if (!nc->set_type(Type::lookup_integer_type("int"), false,
+				    this->location()))
+		    r = false;
+		}
+	      return r;
 	    }
-	  return r;
 	}
     }
   else if (this->code_ == BUILTIN_SIZEOF
@@ -11184,6 +11266,13 @@ Call_expression::do_flatten(Gogo* gogo, Named_object*,
         return ret;
     }
 
+  // Add an implicit conversion to a boolean type, if needed.  See the
+  // comment in Binary_expression::lower_array_comparison.
+  if (this->is_equal_function_
+      && this->type_ != NULL
+      && this->type_ != Type::lookup_bool_type())
+    return Expression::make_cast(this->type_, this, this->location());
+
   return this;
 }
 
@@ -11959,7 +12048,7 @@ Call_expression::do_type()
 // parameter types to set the types of the arguments.
 
 void
-Call_expression::do_determine_type(const Type_context*)
+Call_expression::do_determine_type(const Type_context* context)
 {
   if (!this->determining_types())
     return;
@@ -12005,6 +12094,22 @@ Call_expression::do_determine_type(const Type_context*)
 	  else
 	    (*pa)->determine_type_no_context();
 	}
+    }
+
+  // If this is a call to a generated equality function, we determine
+  // the type based on the context.  See the comment in
+  // Binary_expression::lower_array_comparison.
+  if (this->is_equal_function_
+      && !context->may_be_abstract
+      && context->type != NULL
+      && context->type->is_boolean_type()
+      && context->type != Type::lookup_bool_type())
+    {
+      go_assert(this->type_ == NULL
+		|| this->type_ == Type::lookup_bool_type()
+		|| this->type_ == context->type
+		|| this->type_->is_error());
+      this->type_ = context->type;
     }
 }
 
@@ -13453,7 +13558,7 @@ Type*
 String_index_expression::do_type()
 {
   if (this->end_ == NULL)
-    return Type::lookup_integer_type("uint8");
+    return Type::lookup_integer_type("byte");
   else
     return this->string_->type();
 }
@@ -14006,7 +14111,7 @@ Field_reference_expression::do_lower(Gogo* gogo, Named_object* function,
 
   Expression* length_expr = Expression::make_integer_ul(s.length(), NULL, loc);
 
-  Type* byte_type = gogo->lookup_global("byte")->type_value();
+  Type* byte_type = Type::lookup_integer_type("byte");
   Array_type* array_type = Type::make_array_type(byte_type, length_expr);
   array_type->set_is_array_incomparable();
 

@@ -73,6 +73,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "gomp-constants.h"
 #include "omp-general.h"
 #include "tree-dfa.h"
+#include "gimple-iterator.h"
 #include "gimple-ssa.h"
 #include "tree-ssa-live.h"
 #include "tree-outof-ssa.h"
@@ -182,11 +183,10 @@ static rtx expand_builtin_memory_chk (tree, rtx, machine_mode,
 				      enum built_in_function);
 static void maybe_emit_chk_warning (tree, enum built_in_function);
 static void maybe_emit_sprintf_chk_warning (tree, enum built_in_function);
-static void maybe_emit_free_warning (tree);
 static tree fold_builtin_object_size (tree, tree);
 static bool check_read_access (tree, tree, tree = NULL_TREE, int = 1);
-static bool compute_objsize (tree, int, access_ref *, ssa_name_limit_t &,
-			     range_query *);
+static bool compute_objsize_r (tree, int, access_ref *, ssa_name_limit_t &,
+			       pointer_query *);
 
 unsigned HOST_WIDE_INT target_newline;
 unsigned HOST_WIDE_INT target_percent;
@@ -201,8 +201,8 @@ static void expand_builtin_sync_synchronize (void);
 
 access_ref::access_ref (tree bound /* = NULL_TREE */,
 			bool minaccess /* = false */)
-: ref (), eval ([](tree x){ return x; }), trail1special (true), base0 (true),
-  parmarray ()
+: ref (), eval ([](tree x){ return x; }), deref (), trail1special (true),
+  base0 (true), parmarray ()
 {
   /* Set to valid.  */
   offrng[0] = offrng[1] = 0;
@@ -250,7 +250,7 @@ access_ref::get_ref (vec<access_ref> *all_refs,
 		     access_ref *pref /* = NULL */,
 		     int ostype /* = 1 */,
 		     ssa_name_limit_t *psnlim /* = NULL */,
-		     range_query *rvals /* = NULL */) const
+		     pointer_query *qry /* = NULL */) const
 {
   gphi *phi_stmt = this->phi ();
   if (!phi_stmt)
@@ -271,6 +271,10 @@ access_ref::get_ref (vec<access_ref> *all_refs,
   /* The conservative result of the PHI reflecting the offset and size
      of the largest PHI argument, regardless of whether or not they all
      refer to the same object.  */
+  pointer_query empty_qry;
+  if (!qry)
+    qry = &empty_qry;
+
   access_ref phi_ref;
   if (pref)
     {
@@ -292,13 +296,15 @@ access_ref::get_ref (vec<access_ref> *all_refs,
     {
       access_ref phi_arg_ref;
       tree arg = gimple_phi_arg_def (phi_stmt, i);
-      if (!compute_objsize (arg, ostype, &phi_arg_ref, *psnlim, rvals)
+      if (!compute_objsize_r (arg, ostype, &phi_arg_ref, *psnlim, qry)
 	  || phi_arg_ref.sizrng[0] < 0)
 	/* A PHI with all null pointer arguments.  */
 	return NULL_TREE;
 
       /* Add PREF's offset to that of the argument.  */
       phi_arg_ref.add_offset (orng[0], orng[1]);
+      if (TREE_CODE (arg) == SSA_NAME)
+	qry->put_ref (arg, phi_arg_ref);
 
       if (all_refs)
 	all_refs->safe_push (phi_arg_ref);
@@ -558,7 +564,6 @@ ssa_name_limit_t::next ()
     return false;
 
   --ssa_def_max;
-
   return true;
 }
 
@@ -591,6 +596,142 @@ ssa_name_limit_t::~ssa_name_limit_t ()
 {
   if (visited)
     BITMAP_FREE (visited);
+}
+
+/* Default ctor.  Initialize object with pointers to the range_query
+   and cache_type instances to use or null.  */
+
+pointer_query::pointer_query (range_query *qry /* = NULL */,
+			      cache_type *cache /* = NULL */)
+: rvals (qry), var_cache (cache), hits (), misses (),
+  failures (), depth (), max_depth ()
+{
+  /* No op.  */
+}
+
+/* Return a pointer to the cached access_ref instance for the SSA_NAME
+   PTR if it's there or null otherwise.  */
+
+const access_ref *
+pointer_query::get_ref (tree ptr, int ostype /* = 1 */) const
+{
+  if (!var_cache)
+    {
+      ++misses;
+      return NULL;
+    }
+
+  unsigned version = SSA_NAME_VERSION (ptr);
+  unsigned idx = version << 1 | (ostype & 1);
+  if (var_cache->indices.length () <= idx)
+    {
+      ++misses;
+      return NULL;
+    }
+
+  unsigned cache_idx = var_cache->indices[idx];
+  if (var_cache->access_refs.length () <= cache_idx)
+    {
+      ++misses;
+      return NULL;
+    }
+
+  access_ref &cache_ref = var_cache->access_refs[cache_idx];
+  if (cache_ref.ref)
+    {
+      ++hits;
+      return &cache_ref;
+    }
+
+  ++misses;
+  return NULL;
+}
+
+/* Retrieve the access_ref instance for a variable from the cache if it's
+   there or compute it and insert it into the cache if it's nonnonull.  */
+
+bool
+pointer_query::get_ref (tree ptr, access_ref *pref, int ostype /* = 1 */)
+{
+  const unsigned version
+    = TREE_CODE (ptr) == SSA_NAME ? SSA_NAME_VERSION (ptr) : 0;
+
+  if (var_cache && version)
+    {
+      unsigned idx = version << 1 | (ostype & 1);
+      if (idx < var_cache->indices.length ())
+	{
+	  unsigned cache_idx = var_cache->indices[idx] - 1;
+	  if (cache_idx < var_cache->access_refs.length ()
+	      && var_cache->access_refs[cache_idx].ref)
+	    {
+	      ++hits;
+	      *pref = var_cache->access_refs[cache_idx];
+	      return true;
+	    }
+	}
+
+      ++misses;
+    }
+
+  if (!compute_objsize (ptr, ostype, pref, this))
+    {
+      ++failures;
+      return false;
+    }
+
+  return true;
+}
+
+/* Add a copy of the access_ref REF for the SSA_NAME to the cache if it's
+   nonnull.  */
+
+void
+pointer_query::put_ref (tree ptr, const access_ref &ref, int ostype /* = 1 */)
+{
+  /* Only add populated/valid entries.  */
+  if (!var_cache || !ref.ref || ref.sizrng[0] < 0)
+    return;
+
+  /* Add REF to the two-level cache.  */
+  unsigned version = SSA_NAME_VERSION (ptr);
+  unsigned idx = version << 1 | (ostype & 1);
+
+  /* Grow INDICES if necessary.  An index is valid if it's nonzero.
+     Its value minus one is the index into ACCESS_REFS.  Not all
+     entries are valid.  */
+  if (var_cache->indices.length () <= idx)
+    var_cache->indices.safe_grow_cleared (idx + 1);
+
+  if (!var_cache->indices[idx])
+    var_cache->indices[idx] = var_cache->access_refs.length () + 1;
+
+  /* Grow ACCESS_REF cache if necessary.  An entry is valid if its
+     REF member is nonnull.  All entries except for the last two
+     are valid.  Once nonnull, the REF value must stay unchanged.  */
+  unsigned cache_idx = var_cache->indices[idx];
+  if (var_cache->access_refs.length () <= cache_idx)
+    var_cache->access_refs.safe_grow_cleared (cache_idx + 1);
+
+  access_ref cache_ref = var_cache->access_refs[cache_idx - 1];
+  if (cache_ref.ref)
+  {
+    gcc_checking_assert (cache_ref.ref == ref.ref);
+    return;
+  }
+
+  cache_ref = ref;
+}
+
+/* Flush the cache if it's nonnull.  */
+
+void
+pointer_query::flush_cache ()
+{
+  if (!var_cache)
+    return;
+  var_cache->indices.release ();
+  var_cache->access_refs.release ();
 }
 
 /* Return true if NAME starts with __builtin_ or __sync_.  */
@@ -4597,9 +4738,7 @@ check_access (tree exp, tree dstwrite,
       && TREE_CODE (range[0]) == INTEGER_CST
       && tree_int_cst_lt (maxobjsize, range[0]))
     {
-      location_t loc = tree_nonartificial_location (exp);
-      loc = expansion_point_location_if_in_system_header (loc);
-
+      location_t loc = tree_inlined_location (exp);
       maybe_warn_for_bound (OPT_Wstringop_overflow_, loc, exp, func, range,
 			    NULL_TREE, pad);
       return false;
@@ -4625,9 +4764,7 @@ check_access (tree exp, tree dstwrite,
 	      || (pad && pad->dst.ref && TREE_NO_WARNING (pad->dst.ref)))
 	    return false;
 
-	  location_t loc = tree_nonartificial_location (exp);
-	  loc = expansion_point_location_if_in_system_header (loc);
-
+	  location_t loc = tree_inlined_location (exp);
 	  bool warned = false;
 	  if (dstwrite == slen && at_least_one)
 	    {
@@ -4680,9 +4817,7 @@ check_access (tree exp, tree dstwrite,
 	 PAD is nonnull and BNDRNG is valid.  */
       get_size_range (maxread, range, pad ? pad->src.bndrng : NULL);
 
-      location_t loc = tree_nonartificial_location (exp);
-      loc = expansion_point_location_if_in_system_header (loc);
-
+      location_t loc = tree_inlined_location (exp);
       tree size = dstsize;
       if (pad && pad->mode == access_read_only)
 	size = wide_int_to_tree (sizetype, pad->src.sizrng[1]);
@@ -4741,9 +4876,7 @@ check_access (tree exp, tree dstwrite,
 	  || (pad && pad->src.ref && TREE_NO_WARNING (pad->src.ref)))
 	return false;
 
-      location_t loc = tree_nonartificial_location (exp);
-      loc = expansion_point_location_if_in_system_header (loc);
-
+      location_t loc = tree_inlined_location (exp);
       const bool read
 	= mode == access_read_only || mode == access_read_write;
       const bool maybe = pad && pad->dst.parmarray;
@@ -5076,7 +5209,7 @@ gimple_call_return_array (gimple *stmt, offset_int offrng[2],
 
 static bool
 handle_min_max_size (gimple *stmt, int ostype, access_ref *pref,
-		     ssa_name_limit_t &snlim, range_query *rvals)
+		     ssa_name_limit_t &snlim, pointer_query *qry)
 {
   tree_code code = gimple_assign_rhs_code (stmt);
 
@@ -5088,7 +5221,7 @@ handle_min_max_size (gimple *stmt, int ostype, access_ref *pref,
      determined from the other instead, adjusted up or down as appropriate
      for the expression.  */
   access_ref aref[2] = { *pref, *pref };
-  if (!compute_objsize (ptr, ostype, &aref[0], snlim, rvals))
+  if (!compute_objsize_r (ptr, ostype, &aref[0], snlim, qry))
     {
       aref[0].base0 = false;
       aref[0].offrng[0] = aref[0].offrng[1] = 0;
@@ -5097,7 +5230,7 @@ handle_min_max_size (gimple *stmt, int ostype, access_ref *pref,
     }
 
   ptr = gimple_assign_rhs2 (stmt);
-  if (!compute_objsize (ptr, ostype, &aref[1], snlim, rvals))
+  if (!compute_objsize_r (ptr, ostype, &aref[1], snlim, qry))
     {
       aref[1].base0 = false;
       aref[1].offrng[0] = aref[1].offrng[1] = 0;
@@ -5165,14 +5298,17 @@ handle_min_max_size (gimple *stmt, int ostype, access_ref *pref,
    to influence code generation or optimization.  */
 
 static bool
-compute_objsize (tree ptr, int ostype, access_ref *pref,
-		 ssa_name_limit_t &snlim, range_query *rvals)
+compute_objsize_r (tree ptr, int ostype, access_ref *pref,
+		   ssa_name_limit_t &snlim, pointer_query *qry)
 {
   STRIP_NOPS (ptr);
 
   const bool addr = TREE_CODE (ptr) == ADDR_EXPR;
   if (addr)
-    ptr = TREE_OPERAND (ptr, 0);
+    {
+      --pref->deref;
+      ptr = TREE_OPERAND (ptr, 0);
+    }
 
   if (DECL_P (ptr))
     {
@@ -5198,11 +5334,12 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
     }
 
   const tree_code code = TREE_CODE (ptr);
+  range_query *const rvals = qry ? qry->rvals : NULL;
 
   if (code == BIT_FIELD_REF)
     {
       tree ref = TREE_OPERAND (ptr, 0);
-      if (!compute_objsize (ref, ostype, pref, snlim, rvals))
+      if (!compute_objsize_r (ref, ostype, pref, snlim, qry))
 	return false;
 
       offset_int off = wi::to_offset (pref->eval (TREE_OPERAND (ptr, 2)));
@@ -5224,7 +5361,7 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 	  /* In OSTYPE zero (for raw memory functions like memcpy), use
 	     the maximum size instead if the identity of the enclosing
 	     object cannot be determined.  */
-	  if (!compute_objsize (ref, ostype, pref, snlim, rvals))
+	  if (!compute_objsize_r (ref, ostype, pref, snlim, qry))
 	    return false;
 
 	  /* Otherwise, use the size of the enclosing object and add
@@ -5279,6 +5416,8 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 
   if (code == ARRAY_REF || code == MEM_REF)
     {
+      ++pref->deref;
+
       tree ref = TREE_OPERAND (ptr, 0);
       tree reftype = TREE_TYPE (ref);
       if (!addr && code == ARRAY_REF
@@ -5299,7 +5438,7 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 	    return false;
 	}
 
-      if (!compute_objsize (ref, ostype, pref, snlim, rvals))
+      if (!compute_objsize_r (ref, ostype, pref, snlim, qry))
 	return false;
 
       offset_int orng[2];
@@ -5365,7 +5504,7 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
   if (code == TARGET_MEM_REF)
     {
       tree ref = TREE_OPERAND (ptr, 0);
-      if (!compute_objsize (ref, ostype, pref, snlim, rvals))
+      if (!compute_objsize_r (ref, ostype, pref, snlim, qry))
 	return false;
 
       /* TODO: Handle remaining operands.  Until then, add maximum offset.  */
@@ -5399,8 +5538,12 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
   if (code == POINTER_PLUS_EXPR)
     {
       tree ref = TREE_OPERAND (ptr, 0);
-      if (!compute_objsize (ref, ostype, pref, snlim, rvals))
+      if (!compute_objsize_r (ref, ostype, pref, snlim, qry))
 	return false;
+
+      /* Clear DEREF since the offset is being applied to the target
+	 of the dereference.  */
+      pref->deref = 0;
 
       offset_int orng[2];
       tree off = pref->eval (TREE_OPERAND (ptr, 1));
@@ -5414,7 +5557,7 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
   if (code == VIEW_CONVERT_EXPR)
     {
       ptr = TREE_OPERAND (ptr, 0);
-      return compute_objsize (ptr, ostype, pref, snlim, rvals);
+      return compute_objsize_r (ptr, ostype, pref, snlim, qry);
     }
 
   if (code == SSA_NAME)
@@ -5424,6 +5567,19 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 
       /* Only process an SSA_NAME if the recursion limit has not yet
 	 been reached.  */
+      if (qry)
+	{
+	  if (++qry->depth)
+	    qry->max_depth = qry->depth;
+	  if (const access_ref *cache_ref = qry->get_ref (ptr))
+	    {
+	      /* If the pointer is in the cache set *PREF to what it refers
+		 to and return success.  */
+	      *pref = *cache_ref;
+	      return true;
+	    }
+	}
+
       gimple *stmt = SSA_NAME_DEF_STMT (ptr);
       if (is_gimple_call (stmt))
 	{
@@ -5452,7 +5608,7 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 	      offset_int offrng[2];
 	      if (tree ret = gimple_call_return_array (stmt, offrng, rvals))
 		{
-		  if (!compute_objsize (ret, ostype, pref, snlim, rvals))
+		  if (!compute_objsize_r (ret, ostype, pref, snlim, qry))
 		    return false;
 
 		  /* Cap OFFRNG[1] to at most the remaining size of
@@ -5474,6 +5630,7 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 		  pref->ref = ptr;
 		}
 	    }
+	  qry->put_ref (ptr, *pref);
 	  return true;
 	}
 
@@ -5490,12 +5647,14 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 	      pref->sizrng[0] = offset_int::from (wr[0], UNSIGNED);
 	      pref->sizrng[1] = offset_int::from (wr[1], UNSIGNED);
 	      pref->ref = ref;
+	      qry->put_ref (ptr, *pref);
 	      return true;
 	    }
 
 	  pref->set_max_size_range ();
 	  pref->base0 = false;
 	  pref->ref = ptr;
+	  qry->put_ref (ptr, *pref);
 	  return true;
 	}
 
@@ -5503,10 +5662,11 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 	{
 	  pref->ref = ptr;
 	  access_ref phi_ref = *pref;
-	  if (!pref->get_ref (NULL, &phi_ref, ostype, &snlim, rvals))
+	  if (!pref->get_ref (NULL, &phi_ref, ostype, &snlim, qry))
 	    return false;
 	  *pref = phi_ref;
 	  pref->ref = ptr;
+	  qry->put_ref (ptr, *pref);
 	  return true;
 	}
 
@@ -5525,7 +5685,12 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
       tree_code code = gimple_assign_rhs_code (stmt);
 
       if (code == MAX_EXPR || code == MIN_EXPR)
-	return handle_min_max_size (stmt, ostype, pref, snlim, rvals);
+	{
+	  if (!handle_min_max_size (stmt, ostype, pref, snlim, qry))
+	    return false;
+	  qry->put_ref (ptr, *pref);
+	  return true;
+	}
 
       tree rhs = gimple_assign_rhs1 (stmt);
 
@@ -5533,7 +5698,7 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 	  && TREE_CODE (TREE_TYPE (rhs)) == POINTER_TYPE)
 	{
 	  /* Compute the size of the object first. */
-	  if (!compute_objsize (rhs, ostype, pref, snlim, rvals))
+	  if (!compute_objsize_r (rhs, ostype, pref, snlim, qry))
 	    return false;
 
 	  offset_int orng[2];
@@ -5542,12 +5707,13 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
 	    pref->add_offset (orng[0], orng[1]);
 	  else
 	    pref->add_max_offset ();
+	  qry->put_ref (ptr, *pref);
 	  return true;
 	}
 
       if (code == ADDR_EXPR
 	  || code == SSA_NAME)
-	return compute_objsize (rhs, ostype, pref, snlim, rvals);
+	return compute_objsize_r (rhs, ostype, pref, snlim, qry);
 
       /* (This could also be an assignment from a nonlocal pointer.)  Save
 	 PTR to mention in diagnostics but otherwise treat it as a pointer
@@ -5563,6 +5729,8 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
   pref->ref = ptr;
   pref->base0 = false;
   pref->set_max_size_range ();
+  if (TREE_CODE (ptr) == SSA_NAME)
+    qry->put_ref (ptr, *pref);
   return true;
 }
 
@@ -5573,8 +5741,10 @@ tree
 compute_objsize (tree ptr, int ostype, access_ref *pref,
 		 range_query *rvals /* = NULL */)
 {
+  pointer_query qry;
+  qry.rvals = rvals;
   ssa_name_limit_t snlim;
-  if (!compute_objsize (ptr, ostype, pref, snlim, rvals))
+  if (!compute_objsize_r (ptr, ostype, pref, snlim, &qry))
     return NULL_TREE;
 
   offset_int maxsize = pref->size_remaining ();
@@ -5583,7 +5753,29 @@ compute_objsize (tree ptr, int ostype, access_ref *pref,
   return wide_int_to_tree (sizetype, maxsize);
 }
 
-/* Transitional wrapper around the above.  The function should be removed
+/* Transitional wrapper.  The function should be removed once callers
+   transition to the pointer_query API.  */
+
+tree
+compute_objsize (tree ptr, int ostype, access_ref *pref, pointer_query *ptr_qry)
+{
+  pointer_query qry;
+  if (ptr_qry)
+    ptr_qry->depth = 0;
+  else
+    ptr_qry = &qry;
+
+  ssa_name_limit_t snlim;
+  if (!compute_objsize_r (ptr, ostype, pref, snlim, ptr_qry))
+    return NULL_TREE;
+
+  offset_int maxsize = pref->size_remaining ();
+  if (pref->base0 && pref->offrng[0] < 0 && pref->offrng[1] >= 0)
+    pref->offrng[0] = 0;
+  return wide_int_to_tree (sizetype, maxsize);
+}
+
+/* Legacy wrapper around the above.  The function should be removed
    once callers transition to one of the two above.  */
 
 tree
@@ -6181,9 +6373,7 @@ check_strncat_sizes (tree exp, tree objsize)
   if (tree_fits_uhwi_p (maxread) && tree_fits_uhwi_p (objsize)
       && tree_int_cst_equal (objsize, maxread))
     {
-      location_t loc = tree_nonartificial_location (exp);
-      loc = expansion_point_location_if_in_system_header (loc);
-
+      location_t loc = tree_inlined_location (exp);
       warning_at (loc, OPT_Wstringop_overflow_,
 		  "%K%qD specified bound %E equals destination size",
 		  exp, get_callee_fndecl (exp), maxread);
@@ -6256,9 +6446,7 @@ expand_builtin_strncat (tree exp, rtx)
   if (tree_fits_uhwi_p (maxread) && tree_fits_uhwi_p (destsize)
       && tree_int_cst_equal (destsize, maxread))
     {
-      location_t loc = tree_nonartificial_location (exp);
-      loc = expansion_point_location_if_in_system_header (loc);
-
+      location_t loc = tree_inlined_location (exp);
       warning_at (loc, OPT_Wstringop_overflow_,
 		  "%K%qD specified bound %E equals destination size",
 		  exp, get_callee_fndecl (exp), maxread);
@@ -6840,9 +7028,7 @@ expand_builtin_strncmp (tree exp, ATTRIBUTE_UNUSED rtx target,
       || !check_nul_terminated_array (exp, arg2, arg3))
     return NULL_RTX;
 
-  location_t loc = tree_nonartificial_location (exp);
-  loc = expansion_point_location_if_in_system_header (loc);
-
+  location_t loc = tree_inlined_location (exp);
   tree len1 = c_strlen (arg1, 1);
   tree len2 = c_strlen (arg2, 1);
 
@@ -7579,26 +7765,64 @@ expand_builtin_copysign (tree exp, rtx target, rtx subtarget)
   return expand_copysign (op0, op1, target);
 }
 
-/* Expand a call to __builtin___clear_cache.  */
+/* Emit a call to __builtin___clear_cache.  */
 
-static rtx
-expand_builtin___clear_cache (tree exp)
+void
+default_emit_call_builtin___clear_cache (rtx begin, rtx end)
 {
-  if (!targetm.code_for_clear_cache)
+  rtx callee = gen_rtx_SYMBOL_REF (Pmode,
+				   BUILTIN_ASM_NAME_PTR
+				   (BUILT_IN_CLEAR_CACHE));
+
+  emit_library_call (callee,
+		     LCT_NORMAL, VOIDmode,
+		     convert_memory_address (ptr_mode, begin), ptr_mode,
+		     convert_memory_address (ptr_mode, end), ptr_mode);
+}
+
+/* Emit a call to __builtin___clear_cache, unless the target specifies
+   it as do-nothing.  This function can be used by trampoline
+   finalizers to duplicate the effects of expanding a call to the
+   clear_cache builtin.  */
+
+void
+maybe_emit_call_builtin___clear_cache (rtx begin, rtx end)
+{
+  if ((GET_MODE (begin) != ptr_mode && GET_MODE (begin) != Pmode)
+      || (GET_MODE (end) != ptr_mode && GET_MODE (end) != Pmode))
     {
-#ifdef CLEAR_INSN_CACHE
-      /* There is no "clear_cache" insn, and __clear_cache() in libgcc
-	 does something.  Just do the default expansion to a call to
-	 __clear_cache().  */
-      return NULL_RTX;
-#else
+      error ("both arguments to %<__builtin___clear_cache%> must be pointers");
+      return;
+    }
+
+  if (targetm.have_clear_cache ())
+    {
+      /* We have a "clear_cache" insn, and it will handle everything.  */
+      class expand_operand ops[2];
+
+      create_address_operand (&ops[0], begin);
+      create_address_operand (&ops[1], end);
+
+      if (maybe_expand_insn (targetm.code_for_clear_cache, 2, ops))
+	return;
+    }
+  else
+    {
+#ifndef CLEAR_INSN_CACHE
       /* There is no "clear_cache" insn, and __clear_cache() in libgcc
 	 does nothing.  There is no need to call it.  Do nothing.  */
-      return const0_rtx;
+      return;
 #endif /* CLEAR_INSN_CACHE */
     }
 
-  /* We have a "clear_cache" insn, and it will handle everything.  */
+  targetm.calls.emit_call_builtin___clear_cache (begin, end);
+}
+
+/* Expand a call to __builtin___clear_cache.  */
+
+static void
+expand_builtin___clear_cache (tree exp)
+{
   tree begin, end;
   rtx begin_rtx, end_rtx;
 
@@ -7608,25 +7832,16 @@ expand_builtin___clear_cache (tree exp)
   if (!validate_arglist (exp, POINTER_TYPE, POINTER_TYPE, VOID_TYPE))
     {
       error ("both arguments to %<__builtin___clear_cache%> must be pointers");
-      return const0_rtx;
+      return;
     }
 
-  if (targetm.have_clear_cache ())
-    {
-      class expand_operand ops[2];
+  begin = CALL_EXPR_ARG (exp, 0);
+  begin_rtx = expand_expr (begin, NULL_RTX, Pmode, EXPAND_NORMAL);
 
-      begin = CALL_EXPR_ARG (exp, 0);
-      begin_rtx = expand_expr (begin, NULL_RTX, Pmode, EXPAND_NORMAL);
+  end = CALL_EXPR_ARG (exp, 1);
+  end_rtx = expand_expr (end, NULL_RTX, Pmode, EXPAND_NORMAL);
 
-      end = CALL_EXPR_ARG (exp, 1);
-      end_rtx = expand_expr (end, NULL_RTX, Pmode, EXPAND_NORMAL);
-
-      create_address_operand (&ops[0], begin_rtx);
-      create_address_operand (&ops[1], end_rtx);
-      if (maybe_expand_insn (targetm.code_for_clear_cache, 2, ops))
-	return const0_rtx;
-    }
-  return const0_rtx;
+  maybe_emit_call_builtin___clear_cache (begin_rtx, end_rtx);
 }
 
 /* Given a trampoline address, make sure it satisfies TRAMPOLINE_ALIGNMENT.  */
@@ -9316,6 +9531,7 @@ expand_builtin (tree exp, rtx target, rtx subtarget, machine_mode mode,
       && fcode != BUILT_IN_EXECLE
       && fcode != BUILT_IN_EXECVP
       && fcode != BUILT_IN_EXECVE
+      && fcode != BUILT_IN_CLEAR_CACHE
       && !ALLOCA_FUNCTION_CODE_P (fcode)
       && fcode != BUILT_IN_FREE)
     return expand_call (exp, target, ignore);
@@ -9505,10 +9721,8 @@ expand_builtin (tree exp, rtx target, rtx subtarget, machine_mode mode,
       return expand_builtin_next_arg ();
 
     case BUILT_IN_CLEAR_CACHE:
-      target = expand_builtin___clear_cache (exp);
-      if (target)
-        return target;
-      break;
+      expand_builtin___clear_cache (exp);
+      return const0_rtx;
 
     case BUILT_IN_CLASSIFY_TYPE:
       return expand_builtin_classify_type (exp);
@@ -10409,11 +10623,6 @@ expand_builtin (tree exp, rtx target, rtx subtarget, machine_mode mode,
     case BUILT_IN_SPRINTF_CHK:
     case BUILT_IN_VSPRINTF_CHK:
       maybe_emit_sprintf_chk_warning (exp, fcode);
-      break;
-
-    case BUILT_IN_FREE:
-      if (warn_free_nonheap_object)
-	maybe_emit_free_warning (exp);
       break;
 
     case BUILT_IN_THREAD_POINTER:
@@ -12725,30 +12934,659 @@ maybe_emit_sprintf_chk_warning (tree exp, enum built_in_function fcode)
 		access_write_only);
 }
 
-/* Emit warning if a free is called with address of a variable.  */
+/* Return true if STMT is a call to an allocation function.  Unless
+   ALL_ALLOC is set, consider only functions that return dynmamically
+   allocated objects.  Otherwise return true even for all forms of
+   alloca (including VLA).  */
 
-static void
+static bool
+fndecl_alloc_p (tree fndecl, bool all_alloc)
+{
+  if (!fndecl)
+    return false;
+
+  /* A call to operator new isn't recognized as one to a built-in.  */
+  if (DECL_IS_OPERATOR_NEW_P (fndecl))
+    return true;
+
+  if (fndecl_built_in_p (fndecl, BUILT_IN_NORMAL))
+    {
+      switch (DECL_FUNCTION_CODE (fndecl))
+	{
+	case BUILT_IN_ALLOCA:
+	case BUILT_IN_ALLOCA_WITH_ALIGN:
+	  return all_alloc;
+	case BUILT_IN_ALIGNED_ALLOC:
+	case BUILT_IN_CALLOC:
+	case BUILT_IN_GOMP_ALLOC:
+	case BUILT_IN_MALLOC:
+	case BUILT_IN_REALLOC:
+	case BUILT_IN_STRDUP:
+	case BUILT_IN_STRNDUP:
+	  return true;
+	default:
+	  break;
+	}
+    }
+
+  /* A function is considered an allocation function if it's declared
+     with attribute malloc with an argument naming its associated
+     deallocation function.  */
+  tree attrs = DECL_ATTRIBUTES (fndecl);
+  if (!attrs)
+    return false;
+
+  for (tree allocs = attrs;
+       (allocs = lookup_attribute ("malloc", allocs));
+       allocs = TREE_CHAIN (allocs))
+    {
+      tree args = TREE_VALUE (allocs);
+      if (!args)
+	continue;
+
+      if (TREE_VALUE (args))
+	return true;
+    }
+
+  return false;
+}
+
+/* Return true if STMT is a call to an allocation function.  A wrapper
+   around fndecl_alloc_p.  */
+
+static bool
+gimple_call_alloc_p (gimple *stmt, bool all_alloc = false)
+{
+  return fndecl_alloc_p (gimple_call_fndecl (stmt), all_alloc);
+}
+
+/* Return the zero-based number corresponding to the argument being
+   deallocated if STMT is a call to a deallocation function or UINT_MAX
+   if it isn't.  */
+
+static unsigned
+call_dealloc_argno (tree exp)
+{
+  tree fndecl = get_callee_fndecl (exp);
+  if (!fndecl)
+    return UINT_MAX;
+
+  /* A call to operator delete isn't recognized as one to a built-in.  */
+  if (DECL_IS_OPERATOR_DELETE_P (fndecl))
+    return 0;
+
+  /* TODO: Handle user-defined functions with attribute malloc?  Handle
+     known non-built-ins like fopen?  */
+  if (fndecl_built_in_p (fndecl, BUILT_IN_NORMAL))
+    {
+      switch (DECL_FUNCTION_CODE (fndecl))
+	{
+	case BUILT_IN_FREE:
+	case BUILT_IN_REALLOC:
+	  return 0;
+	default:
+	  break;
+	}
+      return UINT_MAX;
+    }
+
+  tree attrs = DECL_ATTRIBUTES (fndecl);
+  if (!attrs)
+    return UINT_MAX;
+
+  for (tree atfree = attrs;
+       (atfree = lookup_attribute ("*dealloc", atfree));
+       atfree = TREE_CHAIN (atfree))
+    {
+      tree alloc = TREE_VALUE (atfree);
+      if (!alloc)
+	continue;
+
+      tree pos = TREE_CHAIN (alloc);
+      if (!pos)
+	return 0;
+
+      pos = TREE_VALUE (pos);
+      return TREE_INT_CST_LOW (pos) - 1;
+    }
+
+  return UINT_MAX;
+}
+
+/* Return true if DELETE_DECL is an operator delete that's not suitable
+   to call with a pointer returned fron NEW_DECL.  */
+
+static bool
+new_delete_mismatch_p (tree new_decl, tree delete_decl)
+{
+  tree new_name = DECL_ASSEMBLER_NAME (new_decl);
+  tree delete_name = DECL_ASSEMBLER_NAME (delete_decl);
+
+  /* valid_new_delete_pair_p() returns a conservative result.  A true
+     result is reliable but a false result doesn't necessarily mean
+     the operators don't match.  */
+  if (valid_new_delete_pair_p (new_name, delete_name))
+    return false;
+
+  const char *new_str = IDENTIFIER_POINTER (new_name);
+  const char *del_str = IDENTIFIER_POINTER (delete_name);
+
+  if (*new_str != '_')
+    return *new_str != *del_str;
+
+  ++del_str;
+  if (*++new_str != 'Z')
+    return *new_str != *del_str;
+
+  ++del_str;
+  if (*++new_str == 'n')
+    return *del_str != 'd';
+
+  if (*new_str != 'N')
+    return *del_str != 'N';
+
+  /* Handle user-defined member operators below.  */
+  ++new_str;
+  ++del_str;
+
+  do
+    {
+      /* Determine if both operators are members of the same type.
+	 If not, they don't match.  */
+      char *new_end, *del_end;
+      unsigned long nlen = strtoul (new_str, &new_end, 10);
+      unsigned long dlen = strtoul (del_str, &del_end, 10);
+      if (nlen != dlen)
+	return true;
+
+      /* Skip past the name length.   */
+      new_str = new_end;
+      del_str = del_end;
+
+      /* Skip past the names making sure each has the expected length
+	 (it would suggest some sort of a corruption if they didn't).  */
+      while (nlen--)
+	if (!*++new_end)
+	  return true;
+
+      for (nlen = dlen; nlen--; )
+	if (!*++del_end)
+	  return true;
+
+      /* The names have the expected length.  Compare them.  */
+      if (memcmp (new_str, del_str, dlen))
+	return true;
+
+      new_str = new_end;
+      del_str = del_end;
+
+      if (*new_str == 'I')
+	{
+	  /* Template instantiation.  */
+	  do
+	    {
+	      ++new_str;
+	      ++del_str;
+
+	      if (*new_str == 'n')
+		break;
+	      if (*new_str != *del_str)
+		return true;
+	    }
+	  while (*new_str);
+	}
+
+      if (*new_str == 'n')
+	{
+	  if (*del_str != 'd')
+	    return true;
+
+	  ++del_str;
+	  if (*++new_str == 'w' && *del_str != 'l')
+	    return true;
+	  if (*new_str == 'a' && *del_str != 'a')
+	    return true;
+	  ++new_str;
+	  ++del_str;
+	  break;
+	}
+    } while (true);
+
+  if (*new_str != 'E')
+    return *del_str != *new_str;
+
+  ++new_str;
+  ++del_str;
+  if (*new_str != 'j' && *new_str != 'm' && *new_str != 'y')
+    return true;
+  if (*del_str != 'P' || *++del_str != 'v')
+    return true;
+
+  /* Ignore any remaining arguments.  Since both operators are members
+     of the same class, mismatches in those should be detectable and
+     diagnosed by the front end.  */
+  return false;
+}
+
+/* ALLOC_DECL and DEALLOC_DECL are pair of allocation and deallocation
+   functions.  Return true if the latter is suitable to deallocate objects
+   allocated by calls to the former.  */
+
+static bool
+matching_alloc_calls_p (tree alloc_decl, tree dealloc_decl)
+{
+  /* Set to alloc_kind_t::builtin if ALLOC_DECL is associated with
+     a built-in deallocator.  */
+  enum class alloc_kind_t { none, builtin, user }
+  alloc_dealloc_kind = alloc_kind_t::none;
+
+  if (DECL_IS_OPERATOR_NEW_P (alloc_decl))
+    {
+      if (DECL_IS_OPERATOR_DELETE_P (dealloc_decl))
+	/* Return true iff both functions are of the same array or
+	   singleton form and false otherwise.  */
+	return !new_delete_mismatch_p (alloc_decl, dealloc_decl);
+
+      /* Return false for deallocation functions that are known not
+	 to match.  */
+      if (fndecl_built_in_p (dealloc_decl, BUILT_IN_FREE)
+	  || fndecl_built_in_p (dealloc_decl, BUILT_IN_REALLOC))
+	return false;
+      /* Otherwise proceed below to check the deallocation function's
+	 "*dealloc" attributes to look for one that mentions this operator
+	 new.  */
+    }
+  else if (fndecl_built_in_p (alloc_decl, BUILT_IN_NORMAL))
+    {
+      switch (DECL_FUNCTION_CODE (alloc_decl))
+	{
+	case BUILT_IN_ALLOCA:
+	case BUILT_IN_ALLOCA_WITH_ALIGN:
+	  return false;
+
+	case BUILT_IN_ALIGNED_ALLOC:
+	case BUILT_IN_CALLOC:
+	case BUILT_IN_GOMP_ALLOC:
+	case BUILT_IN_MALLOC:
+	case BUILT_IN_REALLOC:
+	case BUILT_IN_STRDUP:
+	case BUILT_IN_STRNDUP:
+	  if (DECL_IS_OPERATOR_DELETE_P (dealloc_decl))
+	    return false;
+
+	  if (fndecl_built_in_p (dealloc_decl, BUILT_IN_FREE)
+	      || fndecl_built_in_p (dealloc_decl, BUILT_IN_REALLOC))
+	    return true;
+
+	  alloc_dealloc_kind = alloc_kind_t::builtin;
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  /* Set if DEALLOC_DECL both allocates and deallocates.  */
+  alloc_kind_t realloc_kind = alloc_kind_t::none;
+
+  if (fndecl_built_in_p (dealloc_decl, BUILT_IN_NORMAL))
+    {
+      built_in_function dealloc_code = DECL_FUNCTION_CODE (dealloc_decl);
+      if (dealloc_code == BUILT_IN_REALLOC)
+	realloc_kind = alloc_kind_t::builtin;
+
+      for (tree amats = DECL_ATTRIBUTES (alloc_decl);
+	   (amats = lookup_attribute ("malloc", amats));
+	   amats = TREE_CHAIN (amats))
+	{
+	  tree args = TREE_VALUE (amats);
+	  if (!args)
+	    continue;
+
+	  tree fndecl = TREE_VALUE (args);
+	  if (!fndecl || !DECL_P (fndecl))
+	    continue;
+
+	  if (fndecl_built_in_p (fndecl, BUILT_IN_NORMAL)
+	      && dealloc_code == DECL_FUNCTION_CODE (fndecl))
+	    return true;
+	}
+    }
+
+  const bool alloc_builtin = fndecl_built_in_p (alloc_decl, BUILT_IN_NORMAL);
+  alloc_kind_t realloc_dealloc_kind = alloc_kind_t::none;
+
+  /* If DEALLOC_DECL has an internal "*dealloc" attribute scan the list
+     of its associated allocation functions for ALLOC_DECL.
+     If the corresponding ALLOC_DECL is found they're a matching pair,
+     otherwise they're not.
+     With DDATS set to the Deallocator's *Dealloc ATtributes...  */
+  for (tree ddats = DECL_ATTRIBUTES (dealloc_decl);
+       (ddats = lookup_attribute ("*dealloc", ddats));
+       ddats = TREE_CHAIN (ddats))
+    {
+      tree args = TREE_VALUE (ddats);
+      if (!args)
+	continue;
+
+      tree alloc = TREE_VALUE (args);
+      if (!alloc)
+	continue;
+
+      if (alloc == DECL_NAME (dealloc_decl))
+	realloc_kind = alloc_kind_t::user;
+
+      if (DECL_P (alloc))
+	{
+	  gcc_checking_assert (fndecl_built_in_p (alloc, BUILT_IN_NORMAL));
+
+	  switch (DECL_FUNCTION_CODE (alloc))
+	    {
+	    case BUILT_IN_ALIGNED_ALLOC:
+	    case BUILT_IN_CALLOC:
+	    case BUILT_IN_GOMP_ALLOC:
+	    case BUILT_IN_MALLOC:
+	    case BUILT_IN_REALLOC:
+	    case BUILT_IN_STRDUP:
+	    case BUILT_IN_STRNDUP:
+	      realloc_dealloc_kind = alloc_kind_t::builtin;
+	      break;
+	    default:
+	      break;
+	    }
+
+	  if (!alloc_builtin)
+	    continue;
+
+	  if (DECL_FUNCTION_CODE (alloc) != DECL_FUNCTION_CODE (alloc_decl))
+	    continue;
+
+	  return true;
+	}
+
+      if (alloc == DECL_NAME (alloc_decl))
+	return true;
+    }
+
+  if (realloc_kind == alloc_kind_t::none)
+    return false;
+
+  hash_set<tree> common_deallocs;
+  /* Special handling for deallocators.  Iterate over both the allocator's
+     and the reallocator's associated deallocator functions looking for
+     the first one in common.  If one is found, the de/reallocator is
+     a match for the allocator even though the latter isn't directly
+     associated with the former.  This simplifies declarations in system
+     headers.
+     With AMATS set to the Allocator's Malloc ATtributes,
+     and  RMATS set to Reallocator's Malloc ATtributes...  */
+  for (tree amats = DECL_ATTRIBUTES (alloc_decl),
+	 rmats = DECL_ATTRIBUTES (dealloc_decl);
+       (amats = lookup_attribute ("malloc", amats))
+	 || (rmats = lookup_attribute ("malloc", rmats));
+       amats = amats ? TREE_CHAIN (amats) : NULL_TREE,
+	 rmats = rmats ? TREE_CHAIN (rmats) : NULL_TREE)
+    {
+      if (tree args = amats ? TREE_VALUE (amats) : NULL_TREE)
+	if (tree adealloc = TREE_VALUE (args))
+	  {
+	    if (DECL_P (adealloc)
+		&& fndecl_built_in_p (adealloc, BUILT_IN_NORMAL))
+	      {
+		built_in_function fncode = DECL_FUNCTION_CODE (adealloc);
+		if (fncode == BUILT_IN_FREE || fncode == BUILT_IN_REALLOC)
+		  {
+		    if (realloc_kind == alloc_kind_t::builtin)
+		      return true;
+		    alloc_dealloc_kind = alloc_kind_t::builtin;
+		  }
+		continue;
+	      }
+
+	    common_deallocs.add (adealloc);
+	  }
+
+      if (tree args = rmats ? TREE_VALUE (rmats) : NULL_TREE)
+	if (tree ddealloc = TREE_VALUE (args))
+	  {
+	    if (DECL_P (ddealloc)
+		&& fndecl_built_in_p (ddealloc, BUILT_IN_NORMAL))
+	      {
+		built_in_function fncode = DECL_FUNCTION_CODE (ddealloc);
+		if (fncode == BUILT_IN_FREE || fncode == BUILT_IN_REALLOC)
+		  {
+		    if (alloc_dealloc_kind == alloc_kind_t::builtin)
+		      return true;
+		    realloc_dealloc_kind = alloc_kind_t::builtin;
+		  }
+		continue;
+	      }
+
+	    if (common_deallocs.add (ddealloc))
+	      return true;
+	  }
+    }
+
+  /* Succeed only if ALLOC_DECL and the reallocator DEALLOC_DECL share
+     a built-in deallocator.  */
+  return  (alloc_dealloc_kind == alloc_kind_t::builtin
+	   && realloc_dealloc_kind == alloc_kind_t::builtin);
+}
+
+/* Return true if DEALLOC_DECL is a function suitable to deallocate
+   objectes allocated by the ALLOC call.  */
+
+static bool
+matching_alloc_calls_p (gimple *alloc, tree dealloc_decl)
+{
+  tree alloc_decl = gimple_call_fndecl (alloc);
+  if (!alloc_decl)
+    return true;
+
+  return matching_alloc_calls_p (alloc_decl, dealloc_decl);
+}
+
+/* Diagnose a call EXP to deallocate a pointer referenced by AREF if it
+   includes a nonzero offset.  Such a pointer cannot refer to the beginning
+   of an allocated object.  A negative offset may refer to it only if
+   the target pointer is unknown.  */
+
+static bool
+warn_dealloc_offset (location_t loc, tree exp, const access_ref &aref)
+{
+  if (aref.deref || aref.offrng[0] <= 0 || aref.offrng[1] <= 0)
+    return false;
+
+  tree dealloc_decl = get_callee_fndecl (exp);
+  if (DECL_IS_OPERATOR_DELETE_P (dealloc_decl)
+      && !DECL_IS_REPLACEABLE_OPERATOR (dealloc_decl))
+    {
+      /* A call to a user-defined operator delete with a pointer plus offset
+	 may be valid if it's returned from an unknown function (i.e., one
+	 that's not operator new).  */
+      if (TREE_CODE (aref.ref) == SSA_NAME)
+	{
+	  gimple *def_stmt = SSA_NAME_DEF_STMT (aref.ref);
+	  if (is_gimple_call (def_stmt))
+	    {
+	      tree alloc_decl = gimple_call_fndecl (def_stmt);
+	      if (!DECL_IS_OPERATOR_NEW_P (alloc_decl))
+		return false;
+	    }
+	}
+    }
+
+  char offstr[80];
+  offstr[0] = '\0';
+  if (wi::fits_shwi_p (aref.offrng[0]))
+    {
+      if (aref.offrng[0] == aref.offrng[1]
+	  || !wi::fits_shwi_p (aref.offrng[1]))
+	sprintf (offstr, " %lli",
+		 (long long)aref.offrng[0].to_shwi ());
+      else
+	sprintf (offstr, " [%lli, %lli]",
+		 (long long)aref.offrng[0].to_shwi (),
+		 (long long)aref.offrng[1].to_shwi ());
+    }
+
+  if (!warning_at (loc, OPT_Wfree_nonheap_object,
+		   "%K%qD called on pointer %qE with nonzero offset%s",
+		   exp, dealloc_decl, aref.ref, offstr))
+    return false;
+
+  if (DECL_P (aref.ref))
+    inform (DECL_SOURCE_LOCATION (aref.ref), "declared here");
+  else if (TREE_CODE (aref.ref) == SSA_NAME)
+    {
+      gimple *def_stmt = SSA_NAME_DEF_STMT (aref.ref);
+      if (is_gimple_call (def_stmt))
+	{
+	  location_t def_loc = gimple_location (def_stmt);
+	  tree alloc_decl = gimple_call_fndecl (def_stmt);
+	  if (alloc_decl)
+	    inform (def_loc,
+		    "returned from %qD", alloc_decl);
+	  else if (tree alloc_fntype = gimple_call_fntype (def_stmt))
+	    inform (def_loc,
+		    "returned from %qT", alloc_fntype);
+	  else
+	    inform (def_loc,  "obtained here");
+	}
+    }
+
+  return true;
+}
+
+/* Issue a warning if a deallocation function such as free, realloc,
+   or C++ operator delete is called with an argument not returned by
+   a matching allocation function such as malloc or the corresponding
+   form of C++ operatorn new.  */
+
+void
 maybe_emit_free_warning (tree exp)
 {
-  if (call_expr_nargs (exp) != 1)
+  tree fndecl = get_callee_fndecl (exp);
+  if (!fndecl)
     return;
 
-  tree arg = CALL_EXPR_ARG (exp, 0);
-
-  STRIP_NOPS (arg);
-  if (TREE_CODE (arg) != ADDR_EXPR)
+  unsigned argno = call_dealloc_argno (exp);
+  if ((unsigned) call_expr_nargs (exp) <= argno)
     return;
 
-  arg = get_base_address (TREE_OPERAND (arg, 0));
-  if (arg == NULL || INDIRECT_REF_P (arg) || TREE_CODE (arg) == MEM_REF)
+  tree ptr = CALL_EXPR_ARG (exp, argno);
+  if (integer_zerop (ptr))
     return;
 
-  if (SSA_VAR_P (arg))
-    warning_at (tree_nonartificial_location (exp), OPT_Wfree_nonheap_object,
-		"%Kattempt to free a non-heap object %qD", exp, arg);
-  else
-    warning_at (tree_nonartificial_location (exp), OPT_Wfree_nonheap_object,
-		"%Kattempt to free a non-heap object", exp);
+  access_ref aref;
+  if (!compute_objsize (ptr, 0, &aref))
+    return;
+
+  tree ref = aref.ref;
+  if (integer_zerop (ref))
+    return;
+
+  tree dealloc_decl = get_callee_fndecl (exp);
+  location_t loc = tree_inlined_location (exp);
+
+  if (DECL_P (ref) || EXPR_P (ref))
+    {
+      /* Diagnose freeing a declared object.  */
+      if (aref.ref_declared ()
+	  && warning_at (loc, OPT_Wfree_nonheap_object,
+			 "%K%qD called on unallocated object %qD",
+			 exp, dealloc_decl, ref))
+	{
+	  loc = (DECL_P (ref)
+		 ? DECL_SOURCE_LOCATION (ref)
+		 : EXPR_LOCATION (ref));
+	  inform (loc, "declared here");
+	  return;
+	}
+
+      /* Diagnose freeing a pointer that includes a positive offset.
+	 Such a pointer cannot refer to the beginning of an allocated
+	 object.  A negative offset may refer to it.  */
+      if (aref.sizrng[0] != aref.sizrng[1]
+	  && warn_dealloc_offset (loc, exp, aref))
+	return;
+    }
+  else if (CONSTANT_CLASS_P (ref))
+    {
+      if (warning_at (loc, OPT_Wfree_nonheap_object,
+		      "%K%qD called on a pointer to an unallocated "
+		      "object %qE", exp, dealloc_decl, ref))
+	{
+	  if (TREE_CODE (ptr) == SSA_NAME)
+	    {
+	      gimple *def_stmt = SSA_NAME_DEF_STMT (ptr);
+	      if (is_gimple_assign (def_stmt))
+		{
+		  location_t loc = gimple_location (def_stmt);
+		  inform (loc, "assigned here");
+		}
+	    }
+	  return;
+	}
+    }
+  else if (TREE_CODE (ref) == SSA_NAME)
+    {
+      /* Also warn if the pointer argument refers to the result
+	 of an allocation call like alloca or VLA.  */
+      gimple *def_stmt = SSA_NAME_DEF_STMT (ref);
+      if (is_gimple_call (def_stmt))
+	{
+	  bool warned = false;
+	  if (gimple_call_alloc_p (def_stmt))
+	    {
+	      if (matching_alloc_calls_p (def_stmt, dealloc_decl))
+		{
+		  if (warn_dealloc_offset (loc, exp, aref))
+		    return;
+		}
+	      else
+		{
+		  tree alloc_decl = gimple_call_fndecl (def_stmt);
+		  int opt = (DECL_IS_OPERATOR_NEW_P (alloc_decl)
+			     || DECL_IS_OPERATOR_DELETE_P (dealloc_decl)
+			     ? OPT_Wmismatched_new_delete
+			     : OPT_Wmismatched_dealloc);
+		  warned = warning_at (loc, opt,
+				       "%K%qD called on pointer returned "
+				       "from a mismatched allocation "
+				       "function", exp, dealloc_decl);
+		}
+	    }
+	  else if (gimple_call_builtin_p (def_stmt, BUILT_IN_ALLOCA)
+	    	   || gimple_call_builtin_p (def_stmt,
+	    				     BUILT_IN_ALLOCA_WITH_ALIGN))
+	    warned = warning_at (loc, OPT_Wfree_nonheap_object,
+				 "%K%qD called on pointer to "
+				 "an unallocated object",
+				 exp, dealloc_decl);
+	  else if (warn_dealloc_offset (loc, exp, aref))
+	    return;
+
+	  if (warned)
+	    {
+	      tree fndecl = gimple_call_fndecl (def_stmt);
+	      inform (gimple_location (def_stmt),
+		      "returned from %qD", fndecl);
+	      return;
+	    }
+	}
+      else if (gimple_nop_p (def_stmt))
+	{
+	  ref = SSA_NAME_VAR (ref);
+	  /* Diagnose freeing a pointer that includes a positive offset.  */
+	  if (TREE_CODE (ref) == PARM_DECL
+	      && !aref.deref
+	      && aref.sizrng[0] != aref.sizrng[1]
+	      && aref.offrng[0] > 0 && aref.offrng[1] > 0
+	      && warn_dealloc_offset (loc, exp, aref))
+	    return;
+	}
+    }
 }
 
 /* Fold a call to __builtin_object_size with arguments PTR and OST,
@@ -13583,7 +14421,7 @@ builtin_fnspec (tree callee)
 	return ".cO ";
       /* Realloc serves both as allocation point and deallocation point.  */
       case BUILT_IN_REALLOC:
-	return ".cw ";
+	return ".Cw ";
       case BUILT_IN_GAMMA_R:
       case BUILT_IN_GAMMAF_R:
       case BUILT_IN_GAMMAL_R:

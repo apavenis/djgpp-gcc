@@ -2698,9 +2698,13 @@ again:
 	  STMT_SLP_TYPE (stmt_info) = loop_vect;
 	  if (STMT_VINFO_IN_PATTERN_P (stmt_info))
 	    {
+	      stmt_vec_info pattern_stmt_info
+		= STMT_VINFO_RELATED_STMT (stmt_info);
+	      if (STMT_VINFO_SLP_VECT_ONLY (pattern_stmt_info))
+		STMT_VINFO_IN_PATTERN_P (stmt_info) = false;
+
 	      gimple *pattern_def_seq = STMT_VINFO_PATTERN_DEF_SEQ (stmt_info);
-	      stmt_info = STMT_VINFO_RELATED_STMT (stmt_info);
-	      STMT_SLP_TYPE (stmt_info) = loop_vect;
+	      STMT_SLP_TYPE (pattern_stmt_info) = loop_vect;
 	      for (gimple_stmt_iterator pi = gsi_start (pattern_def_seq);
 		   !gsi_end_p (pi); gsi_next (&pi))
 		STMT_SLP_TYPE (loop_vinfo->lookup_stmt (gsi_stmt (pi)))
@@ -2769,43 +2773,56 @@ vect_better_loop_vinfo_p (loop_vec_info new_loop_vinfo,
 
   /* Check whether the (fractional) cost per scalar iteration is lower
      or higher: new_inside_cost / new_vf vs. old_inside_cost / old_vf.  */
-  poly_widest_int rel_new = (new_loop_vinfo->vec_inside_cost
-			     * poly_widest_int (old_vf));
-  poly_widest_int rel_old = (old_loop_vinfo->vec_inside_cost
-			     * poly_widest_int (new_vf));
-  if (maybe_lt (rel_old, rel_new))
-    {
-      /* When old_loop_vinfo uses a variable vectorization factor,
-	 we know that it has a lower cost for at least one runtime VF.
-	 However, we don't know how likely that VF is.
+  poly_int64 rel_new = new_loop_vinfo->vec_inside_cost * old_vf;
+  poly_int64 rel_old = old_loop_vinfo->vec_inside_cost * new_vf;
 
-	 One option would be to compare the costs for the estimated VFs.
-	 The problem is that that can put too much pressure on the cost
-	 model.  E.g. if the estimated VF is also the lowest possible VF,
-	 and if old_loop_vinfo is 1 unit worse than new_loop_vinfo
-	 for the estimated VF, we'd then choose new_loop_vinfo even
-	 though (a) new_loop_vinfo might not actually be better than
-	 old_loop_vinfo for that VF and (b) it would be significantly
-	 worse at larger VFs.
+  HOST_WIDE_INT est_rel_new_min
+    = estimated_poly_value (rel_new, POLY_VALUE_MIN);
+  HOST_WIDE_INT est_rel_new_max
+    = estimated_poly_value (rel_new, POLY_VALUE_MAX);
 
-	 Here we go for a hacky compromise: pick new_loop_vinfo if it is
-	 no more expensive than old_loop_vinfo even after doubling the
-	 estimated old_loop_vinfo VF.  For all but trivial loops, this
-	 ensures that we only pick new_loop_vinfo if it is significantly
-	 better than old_loop_vinfo at the estimated VF.  */
-      if (rel_new.is_constant ())
-	return false;
+  HOST_WIDE_INT est_rel_old_min
+    = estimated_poly_value (rel_old, POLY_VALUE_MIN);
+  HOST_WIDE_INT est_rel_old_max
+    = estimated_poly_value (rel_old, POLY_VALUE_MAX);
 
-      HOST_WIDE_INT new_estimated_vf = estimated_poly_value (new_vf);
-      HOST_WIDE_INT old_estimated_vf = estimated_poly_value (old_vf);
-      widest_int estimated_rel_new = (new_loop_vinfo->vec_inside_cost
-				      * widest_int (old_estimated_vf));
-      widest_int estimated_rel_old = (old_loop_vinfo->vec_inside_cost
-				      * widest_int (new_estimated_vf));
-      return estimated_rel_new * 2 <= estimated_rel_old;
-    }
-  if (known_lt (rel_new, rel_old))
+  /* Check first if we can make out an unambigous total order from the minimum
+     and maximum estimates.  */
+  if (est_rel_new_min < est_rel_old_min
+      && est_rel_new_max < est_rel_old_max)
     return true;
+  else if (est_rel_old_min < est_rel_new_min
+	   && est_rel_old_max < est_rel_new_max)
+    return false;
+  /* When old_loop_vinfo uses a variable vectorization factor,
+     we know that it has a lower cost for at least one runtime VF.
+     However, we don't know how likely that VF is.
+
+     One option would be to compare the costs for the estimated VFs.
+     The problem is that that can put too much pressure on the cost
+     model.  E.g. if the estimated VF is also the lowest possible VF,
+     and if old_loop_vinfo is 1 unit worse than new_loop_vinfo
+     for the estimated VF, we'd then choose new_loop_vinfo even
+     though (a) new_loop_vinfo might not actually be better than
+     old_loop_vinfo for that VF and (b) it would be significantly
+     worse at larger VFs.
+
+     Here we go for a hacky compromise: pick new_loop_vinfo if it is
+     no more expensive than old_loop_vinfo even after doubling the
+     estimated old_loop_vinfo VF.  For all but trivial loops, this
+     ensures that we only pick new_loop_vinfo if it is significantly
+     better than old_loop_vinfo at the estimated VF.  */
+
+  if (est_rel_old_min != est_rel_new_min
+      || est_rel_old_max != est_rel_new_max)
+    {
+      HOST_WIDE_INT est_rel_new_likely
+	= estimated_poly_value (rel_new, POLY_VALUE_LIKELY);
+      HOST_WIDE_INT est_rel_old_likely
+	= estimated_poly_value (rel_old, POLY_VALUE_LIKELY);
+
+      return est_rel_new_likely * 2 <= est_rel_old_likely;
+    }
 
   /* If there's nothing to choose between the loop bodies, see whether
      there's a difference in the prologue and epilogue costs.  */
@@ -5261,8 +5278,8 @@ vect_create_epilog_for_reduction (loop_vec_info loop_vinfo,
       int scalar_precision
 	= GET_MODE_PRECISION (SCALAR_TYPE_MODE (scalar_type));
       tree scalar_type_unsigned = make_unsigned_type (scalar_precision);
-      tree vectype_unsigned = build_vector_type
-	(scalar_type_unsigned, TYPE_VECTOR_SUBPARTS (vectype));
+      tree vectype_unsigned = get_same_sized_vectype (scalar_type_unsigned,
+						vectype);
 
       /* First we need to create a vector (ZERO_VEC) of zeros and another
 	 vector (MAX_INDEX_VEC) filled with the last matching index, which we
@@ -6925,8 +6942,8 @@ vectorizable_reduction (loop_vec_info loop_vinfo,
       int scalar_precision
 	= GET_MODE_PRECISION (SCALAR_TYPE_MODE (scalar_type));
       cr_index_scalar_type = make_unsigned_type (scalar_precision);
-      cr_index_vector_type = build_vector_type (cr_index_scalar_type,
-						nunits_out);
+      cr_index_vector_type = get_same_sized_vectype (cr_index_scalar_type,
+						vectype_out);
 
       if (direct_internal_fn_supported_p (IFN_REDUC_MAX, cr_index_vector_type,
 					  OPTIMIZE_FOR_SPEED))
@@ -9081,7 +9098,7 @@ maybe_set_vectorized_backedge_value (loop_vec_info loop_vinfo,
    When vectorizing STMT_INFO as a store, set *SEEN_STORE to its
    stmt_vec_info.  */
 
-static void
+static bool
 vect_transform_loop_stmt (loop_vec_info loop_vinfo, stmt_vec_info stmt_info,
 			  gimple_stmt_iterator *gsi, stmt_vec_info *seen_store)
 {
@@ -9097,7 +9114,7 @@ vect_transform_loop_stmt (loop_vec_info loop_vinfo, stmt_vec_info stmt_info,
 
   if (!STMT_VINFO_RELEVANT_P (stmt_info)
       && !STMT_VINFO_LIVE_P (stmt_info))
-    return;
+    return false;
 
   if (STMT_VINFO_VECTYPE (stmt_info))
     {
@@ -9114,13 +9131,15 @@ vect_transform_loop_stmt (loop_vec_info loop_vinfo, stmt_vec_info stmt_info,
   /* Pure SLP statements have already been vectorized.  We still need
      to apply loop vectorization to hybrid SLP statements.  */
   if (PURE_SLP_STMT (stmt_info))
-    return;
+    return false;
 
   if (dump_enabled_p ())
     dump_printf_loc (MSG_NOTE, vect_location, "transform statement.\n");
 
   if (vect_transform_stmt (loop_vinfo, stmt_info, gsi, NULL, NULL))
     *seen_store = stmt_info;
+
+  return true;
 }
 
 /* Helper function to pass to simplify_replace_tree to enable replacing tree's
@@ -9546,17 +9565,17 @@ vect_transform_loop (loop_vec_info loop_vinfo, gimple *loop_vectorized_call)
 			}
 		      stmt_vec_info pat_stmt_info
 			= STMT_VINFO_RELATED_STMT (stmt_info);
-		      vect_transform_loop_stmt (loop_vinfo, pat_stmt_info, &si,
-						&seen_store);
-		      maybe_set_vectorized_backedge_value (loop_vinfo,
-							   pat_stmt_info);
+		      if (vect_transform_loop_stmt (loop_vinfo, pat_stmt_info,
+						    &si, &seen_store))
+			maybe_set_vectorized_backedge_value (loop_vinfo,
+							     pat_stmt_info);
 		    }
 		  else
 		    {
-		      vect_transform_loop_stmt (loop_vinfo, stmt_info, &si,
-						&seen_store);
-		      maybe_set_vectorized_backedge_value (loop_vinfo,
-							   stmt_info);
+		      if (vect_transform_loop_stmt (loop_vinfo, stmt_info, &si,
+						    &seen_store))
+			maybe_set_vectorized_backedge_value (loop_vinfo,
+							     stmt_info);
 		    }
 		}
 	      gsi_next (&si);
