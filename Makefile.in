@@ -1378,7 +1378,6 @@ dvi-host: maybe-dvi-itcl
 dvi-host: maybe-dvi-ld
 dvi-host: maybe-dvi-libbacktrace
 dvi-host: maybe-dvi-libcpp
-dvi-host: maybe-dvi-libcody
 dvi-host: maybe-dvi-libdecnumber
 dvi-host: maybe-dvi-libgui
 dvi-host: maybe-dvi-libiberty
@@ -1469,7 +1468,6 @@ pdf-host: maybe-pdf-itcl
 pdf-host: maybe-pdf-ld
 pdf-host: maybe-pdf-libbacktrace
 pdf-host: maybe-pdf-libcpp
-pdf-host: maybe-pdf-libcody
 pdf-host: maybe-pdf-libdecnumber
 pdf-host: maybe-pdf-libgui
 pdf-host: maybe-pdf-libiberty
@@ -1560,7 +1558,6 @@ html-host: maybe-html-itcl
 html-host: maybe-html-ld
 html-host: maybe-html-libbacktrace
 html-host: maybe-html-libcpp
-html-host: maybe-html-libcody
 html-host: maybe-html-libdecnumber
 html-host: maybe-html-libgui
 html-host: maybe-html-libiberty
@@ -1651,7 +1648,6 @@ TAGS-host: maybe-TAGS-itcl
 TAGS-host: maybe-TAGS-ld
 TAGS-host: maybe-TAGS-libbacktrace
 TAGS-host: maybe-TAGS-libcpp
-TAGS-host: maybe-TAGS-libcody
 TAGS-host: maybe-TAGS-libdecnumber
 TAGS-host: maybe-TAGS-libgui
 TAGS-host: maybe-TAGS-libiberty
@@ -1742,7 +1738,6 @@ install-info-host: maybe-install-info-itcl
 install-info-host: maybe-install-info-ld
 install-info-host: maybe-install-info-libbacktrace
 install-info-host: maybe-install-info-libcpp
-install-info-host: maybe-install-info-libcody
 install-info-host: maybe-install-info-libdecnumber
 install-info-host: maybe-install-info-libgui
 install-info-host: maybe-install-info-libiberty
@@ -1833,7 +1828,6 @@ install-pdf-host: maybe-install-pdf-itcl
 install-pdf-host: maybe-install-pdf-ld
 install-pdf-host: maybe-install-pdf-libbacktrace
 install-pdf-host: maybe-install-pdf-libcpp
-install-pdf-host: maybe-install-pdf-libcody
 install-pdf-host: maybe-install-pdf-libdecnumber
 install-pdf-host: maybe-install-pdf-libgui
 install-pdf-host: maybe-install-pdf-libiberty
@@ -1924,7 +1918,6 @@ install-html-host: maybe-install-html-itcl
 install-html-host: maybe-install-html-ld
 install-html-host: maybe-install-html-libbacktrace
 install-html-host: maybe-install-html-libcpp
-install-html-host: maybe-install-html-libcody
 install-html-host: maybe-install-html-libdecnumber
 install-html-host: maybe-install-html-libgui
 install-html-host: maybe-install-html-libiberty
