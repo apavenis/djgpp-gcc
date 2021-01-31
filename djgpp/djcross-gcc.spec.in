@@ -412,6 +412,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++fs.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++.a-gdb.py
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1plus
+%{_libexecdir}/gcc/%{target}/%{gcc_version}/g++-mapper-server
 %{_mandir}/man1/%{target}-g++.1.gz
 
 %if %include_fortran
