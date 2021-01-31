@@ -1,5 +1,5 @@
 /* Dead code elimination pass for the GNU compiler.
-   Copyright (C) 2002-2020 Free Software Foundation, Inc.
+   Copyright (C) 2002-2021 Free Software Foundation, Inc.
    Contributed by Ben Elliston <bje@redhat.com>
    and Andrew MacLeod <amacleod@redhat.com>
    Adapted to use control dependence by Steven Bosscher, SUSE Labs.
@@ -1516,7 +1516,7 @@ eliminate_unnecessary_stmts (void)
 			    || gimple_plf (stmt, STMT_NECESSARY))
 			  {
 			    found = true;
-			    BREAK_FROM_IMM_USE_STMT (iter);
+			    break;
 			  }
 		      }
 		    if (found)
@@ -1787,14 +1787,25 @@ class pass_cd_dce : public gimple_opt_pass
 {
 public:
   pass_cd_dce (gcc::context *ctxt)
-    : gimple_opt_pass (pass_data_cd_dce, ctxt)
+    : gimple_opt_pass (pass_data_cd_dce, ctxt), update_address_taken_p (false)
   {}
 
   /* opt_pass methods: */
   opt_pass * clone () { return new pass_cd_dce (m_ctxt); }
+  void set_pass_param (unsigned n, bool param)
+    {
+      gcc_assert (n == 0);
+      update_address_taken_p = param;
+    }
   virtual bool gate (function *) { return flag_tree_dce != 0; }
-  virtual unsigned int execute (function *) { return tree_ssa_cd_dce (); }
+  virtual unsigned int execute (function *)
+    {
+      return (tree_ssa_cd_dce ()
+	      | (update_address_taken_p ? TODO_update_address_taken : 0));
+    }
 
+private:
+  bool update_address_taken_p;
 }; // class pass_cd_dce
 
 } // anon namespace

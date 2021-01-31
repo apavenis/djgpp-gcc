@@ -1,6 +1,6 @@
 // Debugging support implementation -*- C++ -*-
 
-// Copyright (C) 2003-2020 Free Software Foundation, Inc.
+// Copyright (C) 2003-2021 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -244,6 +244,11 @@ _GLIBCXX_DEBUG_VERIFY(_First._M_attached_to(this),			\
  *  valid iterator range within this sequence.
 */
 #define __glibcxx_check_erase_range_after(_First,_Last)			\
+_GLIBCXX_DEBUG_VERIFY(!_First._M_singular() && !_Last._M_singular(),	\
+		      _M_message(__gnu_debug::__msg_erase_different)	\
+		      ._M_sequence(*this, "this")			\
+		      ._M_iterator(_First, #_First)			\
+		      ._M_iterator(_Last, #_Last));			\
 _GLIBCXX_DEBUG_VERIFY(_First._M_can_compare(_Last),			\
 		      _M_message(__gnu_debug::__msg_erase_different)	\
 		      ._M_sequence(*this, "this")			\

@@ -1,5 +1,5 @@
 ;; Unspec defintions.
-;; Copyright (C) 2012-2020 Free Software Foundation, Inc.
+;; Copyright (C) 2012-2021 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 
 ;; This file is part of GCC.
@@ -510,10 +510,13 @@
   UNSPEC_VCMLA90
   UNSPEC_VCMLA180
   UNSPEC_VCMLA270
+  UNSPEC_VCMLA_CONJ
+  UNSPEC_VCMLA180_CONJ
   UNSPEC_VCMUL
   UNSPEC_VCMUL90
   UNSPEC_VCMUL180
   UNSPEC_VCMUL270
+  UNSPEC_VCMUL_CONJ
   UNSPEC_MATMUL_S
   UNSPEC_MATMUL_U
   UNSPEC_MATMUL_US

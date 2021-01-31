@@ -1,5 +1,5 @@
 /* Declarations for interface to insn recognizer and insn-output.c.
-   Copyright (C) 1987-2020 Free Software Foundation, Inc.
+   Copyright (C) 1987-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -547,12 +547,18 @@ class insn_change_watermark
 {
 public:
   insn_change_watermark () : m_old_num_changes (num_validated_changes ()) {}
-  ~insn_change_watermark () { cancel_changes (m_old_num_changes); }
+  ~insn_change_watermark ();
   void keep () { m_old_num_changes = num_validated_changes (); }
 
 private:
   int m_old_num_changes;
 };
+
+inline insn_change_watermark::~insn_change_watermark ()
+{
+  if (m_old_num_changes < num_validated_changes ())
+    cancel_changes (m_old_num_changes);
+}
 
 #endif
 

@@ -1,5 +1,5 @@
 /* Definitions of target machine for GCC for IA-32.
-   Copyright (C) 1988-2020 Free Software Foundation, Inc.
+   Copyright (C) 1988-2021 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -654,8 +654,8 @@ extern unsigned char ix86_arch_features[X86_ARCH_LAST];
 
 #define TARGET_FISTTP		(TARGET_SSE3 && TARGET_80387)
 
-extern unsigned char x86_prefetch_sse;
-#define TARGET_PREFETCH_SSE	x86_prefetch_sse
+extern unsigned char ix86_prefetch_sse;
+#define TARGET_PREFETCH_SSE	ix86_prefetch_sse
 
 #define ASSEMBLER_DIALECT	(ix86_asm_dialect)
 
@@ -2562,7 +2562,7 @@ public:
 };
 
 extern const pta processor_alias_table[];
-extern int const pta_size;
+extern unsigned int const pta_size;
 extern unsigned int const num_arch_names;
 #endif
 

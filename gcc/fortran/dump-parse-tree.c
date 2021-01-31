@@ -1,5 +1,5 @@
 /* Parse tree dumper
-   Copyright (C) 2003-2020 Free Software Foundation, Inc.
+   Copyright (C) 2003-2021 Free Software Foundation, Inc.
    Contributed by Steven Bosscher
 
 This file is part of GCC.
@@ -1725,6 +1725,12 @@ show_omp_clauses (gfc_omp_clauses *omp_clauses)
     {
       fputs (" PRIORITY(", dumpfile);
       show_expr (omp_clauses->priority);
+      fputc (')', dumpfile);
+    }
+  if (omp_clauses->detach)
+    {
+      fputs (" DETACH(", dumpfile);
+      show_expr (omp_clauses->detach);
       fputc (')', dumpfile);
     }
   for (i = 0; i < OMP_IF_LAST; i++)
