@@ -1,5 +1,5 @@
 ;; Machine description for AArch64 architecture.
-;; Copyright (C) 2009-2020 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2021 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 ;;
 ;; This file is part of GCC.
@@ -197,6 +197,7 @@
     UNSPEC_REV
     UNSPEC_RBIT
     UNSPEC_SABAL
+    UNSPEC_SABAL2
     UNSPEC_SABDL2
     UNSPEC_SADALP
     UNSPEC_SCVTF
@@ -218,6 +219,7 @@
     UNSPEC_TLSLE32
     UNSPEC_TLSLE48
     UNSPEC_UABAL
+    UNSPEC_UABAL2
     UNSPEC_UABDL2
     UNSPEC_UADALP
     UNSPEC_UCVTF
@@ -5724,10 +5726,10 @@
     {
       case 0:
 	operands[3] = GEN_INT (ctz_hwi (~INTVAL (operands[3])));
-	return "bfxil\\t%0, %1, 0, %3";
+	return "bfxil\\t%w0, %w1, 0, %3";
       case 1:
 	operands[3] = GEN_INT (ctz_hwi (~INTVAL (operands[4])));
-	return "bfxil\\t%0, %2, 0, %3";
+	return "bfxil\\t%w0, %w2, 0, %3";
       default:
 	gcc_unreachable ();
     }

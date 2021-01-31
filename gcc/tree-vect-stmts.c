@@ -1,5 +1,5 @@
 /* Statement Analysis and Transformation for Vectorization
-   Copyright (C) 2003-2020 Free Software Foundation, Inc.
+   Copyright (C) 2003-2021 Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
    and Ira Rosen <irar@il.ibm.com>
 
@@ -1119,6 +1119,30 @@ vect_model_load_cost (vec_info *vinfo,
      the cost of the statement itself.  For SLP we only get called
      once per group anyhow.  */
   bool first_stmt_p = (first_stmt_info == stmt_info);
+
+  /* An IFN_LOAD_LANES will load all its vector results, regardless of which
+     ones we actually need.  Account for the cost of unused results.  */
+  if (first_stmt_p && !slp_node && memory_access_type == VMAT_LOAD_STORE_LANES)
+    {
+      unsigned int gaps = DR_GROUP_SIZE (first_stmt_info);
+      stmt_vec_info next_stmt_info = first_stmt_info;
+      do
+	{
+	  gaps -= 1;
+	  next_stmt_info = DR_GROUP_NEXT_ELEMENT (next_stmt_info);
+	}
+      while (next_stmt_info);
+      if (gaps)
+	{
+	  if (dump_enabled_p ())
+	    dump_printf_loc (MSG_NOTE, vect_location,
+			     "vect_model_load_cost: %d unused vectors.\n",
+			     gaps);
+	  vect_get_load_cost (vinfo, stmt_info, ncopies * gaps, false,
+			      &inside_cost, &prologue_cost,
+			      cost_vec, cost_vec, true);
+	}
+    }
 
   /* We assume that the cost of a single load-lanes instruction is
      equivalent to the cost of DR_GROUP_SIZE separate loads.  If a grouped
@@ -2354,19 +2378,26 @@ get_load_store_type (vec_info  *vinfo, stmt_vec_info stmt_info,
   else
     {
       int cmp = compare_step_with_zero (vinfo, stmt_info);
-      if (cmp < 0)
-	*memory_access_type = get_negative_load_store_type
-	  (vinfo, stmt_info, vectype, vls_type, ncopies);
-      else if (cmp == 0)
+      if (cmp == 0)
 	{
 	  gcc_assert (vls_type == VLS_LOAD);
 	  *memory_access_type = VMAT_INVARIANT;
+	  /* Invariant accesses perform only component accesses, alignment
+	     is irrelevant for them.  */
+	  *alignment_support_scheme = dr_unaligned_supported;
 	}
       else
-	*memory_access_type = VMAT_CONTIGUOUS;
-      *alignment_support_scheme
-	= vect_supportable_dr_alignment (vinfo,
-					 STMT_VINFO_DR_INFO (stmt_info), false);
+	{
+	  if (cmp < 0)
+	    *memory_access_type = get_negative_load_store_type
+	       (vinfo, stmt_info, vectype, vls_type, ncopies);
+	  else
+	    *memory_access_type = VMAT_CONTIGUOUS;
+	  *alignment_support_scheme
+	    = vect_supportable_dr_alignment (vinfo,
+					     STMT_VINFO_DR_INFO (stmt_info),
+					     false);
+	}
     }
 
   if ((*memory_access_type == VMAT_ELEMENTWISE
@@ -7717,11 +7748,11 @@ vectorizable_store (vec_info *vinfo,
 		}
 	    }
 	  next_stmt_info = DR_GROUP_NEXT_ELEMENT (next_stmt_info);
+	  vec_oprnds.release ();
 	  if (slp)
 	    break;
 	}
 
-      vec_oprnds.release ();
       return true;
     }
 
@@ -7964,7 +7995,7 @@ vectorizable_store (vec_info *vinfo,
 	      /* Emit:
 		   MASK_STORE_LANES (DATAREF_PTR, ALIAS_PTR, VEC_MASK,
 				     VEC_ARRAY).  */
-	      unsigned int align = TYPE_ALIGN_UNIT (TREE_TYPE (vectype));
+	      unsigned int align = TYPE_ALIGN (TREE_TYPE (vectype));
 	      tree alias_ptr = build_int_cst (ref_type, align);
 	      call = gimple_build_call_internal (IFN_MASK_STORE_LANES, 4,
 						 dataref_ptr, alias_ptr,
@@ -8079,7 +8110,7 @@ vectorizable_store (vec_info *vinfo,
 	      if (final_mask)
 		{
 		  align = least_bit_hwi (misalign | align);
-		  tree ptr = build_int_cst (ref_type, align);
+		  tree ptr = build_int_cst (ref_type, align * BITS_PER_UNIT);
 		  gcall *call
 		    = gimple_build_call_internal (IFN_MASK_STORE, 4,
 						  dataref_ptr, ptr,
@@ -8094,7 +8125,7 @@ vectorizable_store (vec_info *vinfo,
 		    = vect_get_loop_len (loop_vinfo, loop_lens,
 					 vec_num * ncopies, vec_num * j + i);
 		  align = least_bit_hwi (misalign | align);
-		  tree ptr = build_int_cst (ref_type, align);
+		  tree ptr = build_int_cst (ref_type, align * BITS_PER_UNIT);
 		  machine_mode vmode = TYPE_MODE (vectype);
 		  opt_machine_mode new_ovmode
 		    = get_len_load_store_mode (vmode, false);
@@ -8563,6 +8594,17 @@ vectorizable_load (vec_info *vinfo,
 
   if (!vec_stmt) /* transformation not required.  */
     {
+      if (slp_node
+	  && mask
+	  && !vect_maybe_update_slp_op_vectype (SLP_TREE_CHILDREN (slp_node)[0],
+						mask_vectype))
+	{
+	  if (dump_enabled_p ())
+	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			     "incompatible vector types for invariants\n");
+	  return false;
+	}
+
       if (!slp)
 	STMT_VINFO_MEMORY_ACCESS_TYPE (stmt_info) = memory_access_type;
 
@@ -9235,7 +9277,7 @@ vectorizable_load (vec_info *vinfo,
 	      /* Emit:
 		   VEC_ARRAY = MASK_LOAD_LANES (DATAREF_PTR, ALIAS_PTR,
 		                                VEC_MASK).  */
-	      unsigned int align = TYPE_ALIGN_UNIT (TREE_TYPE (vectype));
+	      unsigned int align = TYPE_ALIGN (TREE_TYPE (vectype));
 	      tree alias_ptr = build_int_cst (ref_type, align);
 	      call = gimple_build_call_internal (IFN_MASK_LOAD_LANES, 3,
 						 dataref_ptr, alias_ptr,
@@ -9336,7 +9378,8 @@ vectorizable_load (vec_info *vinfo,
 		    if (final_mask)
 		      {
 			align = least_bit_hwi (misalign | align);
-			tree ptr = build_int_cst (ref_type, align);
+			tree ptr = build_int_cst (ref_type,
+						  align * BITS_PER_UNIT);
 			gcall *call
 			  = gimple_build_call_internal (IFN_MASK_LOAD, 3,
 							dataref_ptr, ptr,
@@ -9352,7 +9395,8 @@ vectorizable_load (vec_info *vinfo,
 					       vec_num * ncopies,
 					       vec_num * j + i);
 			align = least_bit_hwi (misalign | align);
-			tree ptr = build_int_cst (ref_type, align);
+			tree ptr = build_int_cst (ref_type,
+						  align * BITS_PER_UNIT);
 			gcall *call
 			  = gimple_build_call_internal (IFN_LEN_LOAD, 3,
 							dataref_ptr, ptr,

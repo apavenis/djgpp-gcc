@@ -1,5 +1,5 @@
 /* Header file for gimple range GORI structures.
-   Copyright (C) 2017-2020 Free Software Foundation, Inc.
+   Copyright (C) 2017-2021 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod <amacleod@redhat.com>
    and Aldy Hernandez <aldyh@redhat.com>.
 
@@ -72,6 +72,7 @@ public:
   ~gori_compute ();
   bool outgoing_edge_range_p (irange &r, edge e, tree name);
   bool has_edge_range_p (tree name, edge e = NULL);
+  void set_range_invariant (tree name);
   void dump (FILE *f);
 protected:
   virtual void ssa_range_in_bb (irange &r, tree name, basic_block bb);

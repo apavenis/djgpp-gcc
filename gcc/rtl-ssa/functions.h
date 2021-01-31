@@ -1,5 +1,5 @@
 // Function-related RTL SSA classes                                 -*- C++ -*-
-// Copyright (C) 2020 Free Software Foundation, Inc.
+// Copyright (C) 2020-2021 Free Software Foundation, Inc.
 //
 // This file is part of GCC.
 //
@@ -100,7 +100,7 @@ public:
   // Return a list of all definitions of register REGNO, in reverse postorder.
   // This includes both real stores by instructions and artificial
   // definitions by things like phi nodes.
-  iterator_range<def_iterator> ref_defs (unsigned int regno) const;
+  iterator_range<def_iterator> reg_defs (unsigned int regno) const;
 
   // Check if all uses of register REGNO are either unconditionally undefined
   // or use the same single dominating definition.  Return the definition

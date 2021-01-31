@@ -1,4 +1,4 @@
-#   Copyright (C) 1999-2020 Free Software Foundation, Inc.
+#   Copyright (C) 1999-2021 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -323,6 +323,12 @@ proc check_weak_available { } {
     # pdp11 doesn't support it
 
     if { [istarget pdp11*-*-*] } {
+	return 0
+    }
+
+    # VxWorks hardly supports it (vx7 RTPs only)
+
+    if { [istarget *-*-vxworks*] } {
 	return 0
     }
 
@@ -2606,6 +2612,11 @@ proc check_function_available { function } {
 # Returns true iff "fork" is available on the target system.
 
 proc check_fork_available {} {
+    if { [istarget *-*-vxworks*] } {
+	# VxWorks doesn't have fork but our way to test can't
+	# tell as we're doing partial links for kernel modules.
+	return 0
+     }    
     return [check_function_available "fork"]
 }
 
@@ -4356,6 +4367,10 @@ proc add_options_for_aarch64_sve { flags } {
 # set et_arm_neon_fp16_flags to the best options to add.
 
 proc check_effective_target_arm_fp16_alternative_ok_nocache { } {
+    if { [istarget *-*-vxworks7*] } {
+	# Not supported by the target system.
+	return 0
+    }
     global et_arm_neon_fp16_flags
     set et_arm_neon_fp16_flags ""
     if { [check_effective_target_arm32] } {
@@ -9295,6 +9310,11 @@ proc check_effective_target_gld { } {
 # (LTO) support.
 
 proc check_effective_target_lto { } {
+    if { [istarget *-*-vxworks*] } {
+	# No LTO on VxWorks, with kernel modules
+	# built with partial links
+	return 0
+    }
     if { [istarget nvptx-*-*]
 	 || [istarget amdgcn-*-*] } {
 	return 0;
@@ -9483,7 +9503,10 @@ proc check_effective_target_c++2a_only { } {
     return 0
 }
 proc check_effective_target_c++2a { } {
-    return [check_effective_target_c++2a_only]
+    if [check_effective_target_c++2a_only] {
+	return 1
+    }
+    return [check_effective_target_c++23]
 }
 
 proc check_effective_target_c++20_only { } {
@@ -9492,6 +9515,29 @@ proc check_effective_target_c++20_only { } {
 
 proc check_effective_target_c++20 { } {
     return [check_effective_target_c++2a]
+}
+proc check_effective_target_c++20_down { } {
+    if ![check_effective_target_c++] {
+	return 0
+    }
+    return [expr ![check_effective_target_c++23] ]
+}
+
+proc check_effective_target_c++23_only { } {
+    global cxx_default
+    if ![check_effective_target_c++] {
+	return 0
+    }
+    if [check-flags { { } { } { -std=c++23 -std=gnu++23 -std=c++2b -std=gnu++2b } }] {
+	return 1
+    }
+    if { $cxx_default == "c++23" && [check-flags { { } { } { } { -std=* } }] } {
+	return 1
+    }
+    return 0
+}
+proc check_effective_target_c++23 { } {
+    return [check_effective_target_c++23_only]
 }
 
 # Check for C++ Concepts support, i.e. -fconcepts flag.
@@ -9514,6 +9560,11 @@ proc check_effective_target_run_expensive_tests { } {
 # Returns 1 if "mempcpy" is available on the target system.
 
 proc check_effective_target_mempcpy {} {
+    if { [istarget *-*-vxworks*] } {
+	# VxWorks doesn't have mempcpy but our way to test fails
+	# to detect as we're doing partial links for kernel modules.
+	return 0
+     }
     return [check_function_available "mempcpy"]
 }
 
@@ -9710,7 +9761,7 @@ proc check_effective_target_aarch64_tiny { } {
 # various architecture extensions via the .arch_extension pseudo-op.
 
 foreach { aarch64_ext } { "fp" "simd" "crypto" "crc" "lse" "dotprod" "sve"
-			  "i8mm" "f32mm" "f64mm" "bf16" "sb" } {
+			  "i8mm" "f32mm" "f64mm" "bf16" "sb" "sve2" } {
     eval [string map [list FUNC $aarch64_ext] {
 	proc check_effective_target_aarch64_asm_FUNC_ok { } {
 	  if { [istarget aarch64*-*-*] } {
@@ -10633,7 +10684,20 @@ proc check_effective_target_arm_v8_1_lob_ok { } {
     }
 }
 
-# Return 1 is this is an ARM target where -mthumb causes Thumb-2 to be
+# Return 1 if this is an ARM target where Thumb-2 is used without
+# options added by the test and the target does not support executing
+# the Armv8.1-M Mainline Low Overhead Loop, 0 otherwise.  The test is
+# valid for ARM.
+
+proc check_effective_target_arm_thumb2_no_arm_v8_1_lob { } {
+    if { [check_effective_target_arm_thumb2]
+	 && ![check_effective_target_arm_v8_1_lob_ok] } {
+	return 1
+    }
+    return 0
+}
+
+# Return 1 if this is an ARM target where -mthumb causes Thumb-2 to be
 # used and the target does not support executing the Armv8.1-M
 # Mainline Low Overhead Loop, 0 otherwise.  The test is valid for ARM.
 

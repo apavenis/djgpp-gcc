@@ -1,5 +1,5 @@
 /* OpenMP directive translation -- generate GCC trees from gfc_code.
-   Copyright (C) 2005-2020 Free Software Foundation, Inc.
+   Copyright (C) 2005-2021 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>
 
 This file is part of GCC.
@@ -3670,6 +3670,22 @@ gfc_trans_omp_clauses (stmtblock_t *block, gfc_omp_clauses *clauses,
 
       c = build_omp_clause (gfc_get_location (&where), OMP_CLAUSE_PRIORITY);
       OMP_CLAUSE_PRIORITY_EXPR (c) = priority;
+      omp_clauses = gfc_trans_add_clause (c, omp_clauses);
+    }
+
+  if (clauses->detach)
+    {
+      tree detach;
+
+      gfc_init_se (&se, NULL);
+      gfc_conv_expr (&se, clauses->detach);
+      gfc_add_block_to_block (block, &se.pre);
+      detach = se.expr;
+      gfc_add_block_to_block (block, &se.post);
+
+      c = build_omp_clause (gfc_get_location (&where), OMP_CLAUSE_DETACH);
+      TREE_ADDRESSABLE (detach) = 1;
+      OMP_CLAUSE_DECL (c) = detach;
       omp_clauses = gfc_trans_add_clause (c, omp_clauses);
     }
 

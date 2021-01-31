@@ -1,5 +1,5 @@
 ;; Arm M-profile Vector Extension Machine Description
-;; Copyright (C) 2019-2020 Free Software Foundation, Inc.
+;; Copyright (C) 2019-2021 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -763,6 +763,7 @@
 ;;
 ;; [vshrq_n_s, vshrq_n_u])
 ;;
+;; Version that takes an immediate as operand 2.
 (define_insn "mve_vshrq_n_<supf><mode>"
   [
    (set (match_operand:MVE_2 0 "s_register_operand" "=w")
@@ -772,6 +773,39 @@
   ]
   "TARGET_HAVE_MVE"
   "vshr.<supf><V_sz_elem>\t%q0, %q1, %2"
+  [(set_attr "type" "mve_move")
+])
+
+;; Versions that take constant vectors as operand 2 (with all elements
+;; equal).
+(define_insn "mve_vshrq_n_s<mode>_imm"
+  [
+   (set (match_operand:MVE_2 0 "s_register_operand" "=w")
+	(ashiftrt:MVE_2 (match_operand:MVE_2 1 "s_register_operand" "w")
+			(match_operand:MVE_2 2 "imm_for_neon_rshift_operand" "i")))
+  ]
+  "TARGET_HAVE_MVE"
+  {
+    return neon_output_shift_immediate ("vshr", 's', &operands[2],
+					<MODE>mode,
+					VALID_NEON_QREG_MODE (<MODE>mode),
+					true);
+  }
+  [(set_attr "type" "mve_move")
+])
+(define_insn "mve_vshrq_n_u<mode>_imm"
+  [
+   (set (match_operand:MVE_2 0 "s_register_operand" "=w")
+	(lshiftrt:MVE_2 (match_operand:MVE_2 1 "s_register_operand" "w")
+			(match_operand:MVE_2 2 "imm_for_neon_rshift_operand" "i")))
+  ]
+  "TARGET_HAVE_MVE"
+  {
+    return neon_output_shift_immediate ("vshr", 'u', &operands[2],
+					<MODE>mode,
+					VALID_NEON_QREG_MODE (<MODE>mode),
+					true);
+  }
   [(set_attr "type" "mve_move")
 ])
 
@@ -822,18 +856,7 @@
 
 ;;
 ;; [vshlq_s, vshlq_u])
-;;
-(define_insn "mve_vshlq_<supf><mode>"
-  [
-   (set (match_operand:MVE_2 0 "s_register_operand" "=w")
-	(unspec:MVE_2 [(match_operand:MVE_2 1 "s_register_operand" "w")
-		       (match_operand:MVE_2 2 "s_register_operand" "w")]
-	 VSHLQ))
-  ]
-  "TARGET_HAVE_MVE"
-  "vshl.<supf>%#<V_sz_elem>\t%q0, %q1, %q2"
-  [(set_attr "type" "mve_move")
-])
+;; See vec-common.md
 
 ;;
 ;; [vabdq_s, vabdq_u])
@@ -4078,15 +4101,16 @@
 (define_insn "mve_vcmlaq<mve_rot><mode>"
   [
    (set (match_operand:MVE_0 0 "s_register_operand" "=w,w")
-	(unspec:MVE_0 [(match_operand:MVE_0 1 "s_register_operand" "0,Dz")
-		       (match_operand:MVE_0 2 "s_register_operand" "w,w")
-		       (match_operand:MVE_0 3 "s_register_operand" "w,w")]
-	 VCMLA))
+	(plus:MVE_0 (match_operand:MVE_0 1 "reg_or_zero_operand" "Dz,0")
+		    (unspec:MVE_0
+		        [(match_operand:MVE_0 2 "s_register_operand" "w,w")
+		         (match_operand:MVE_0 3 "s_register_operand" "w,w")]
+		     VCMLA)))
   ]
   "TARGET_HAVE_MVE && TARGET_HAVE_MVE_FLOAT"
   "@
-   vcmla.f%#<V_sz_elem>	%q0, %q2, %q3, #<rot>
-   vcmul.f%#<V_sz_elem>	%q0, %q2, %q3, #<rot>"
+   vcmul.f%#<V_sz_elem>	%q0, %q2, %q3, #<rot>
+   vcmla.f%#<V_sz_elem>	%q0, %q2, %q3, #<rot>"
   [(set_attr "type" "mve_move")
 ])
 
@@ -10824,4 +10848,27 @@
   "vpst\;vcx3<a>t\\tp%c1, %q0, %q3, %q4, #%c5"
   [(set_attr "type" "coproc")
    (set_attr "length" "8")]
+)
+
+(define_insn "*movmisalign<mode>_mve_store"
+  [(set (match_operand:MVE_VLD_ST 0 "neon_permissive_struct_operand"	     "=Um")
+	(unspec:MVE_VLD_ST [(match_operand:MVE_VLD_ST 1 "s_register_operand" " w")]
+	 UNSPEC_MISALIGNED_ACCESS))]
+  "((TARGET_HAVE_MVE && VALID_MVE_SI_MODE (<MODE>mode))
+    || (TARGET_HAVE_MVE_FLOAT && VALID_MVE_SF_MODE (<MODE>mode)))
+   && !BYTES_BIG_ENDIAN && unaligned_access"
+  "vstr<V_sz_elem1>.<V_sz_elem>\t%q1, %E0"
+  [(set_attr "type" "mve_store")]
+)
+
+
+(define_insn "*movmisalign<mode>_mve_load"
+  [(set (match_operand:MVE_VLD_ST 0 "s_register_operand"				 "=w")
+	(unspec:MVE_VLD_ST [(match_operand:MVE_VLD_ST 1 "neon_permissive_struct_operand" " Um")]
+	 UNSPEC_MISALIGNED_ACCESS))]
+  "((TARGET_HAVE_MVE && VALID_MVE_SI_MODE (<MODE>mode))
+    || (TARGET_HAVE_MVE_FLOAT && VALID_MVE_SF_MODE (<MODE>mode)))
+   && !BYTES_BIG_ENDIAN && unaligned_access"
+  "vldr<V_sz_elem1>.<V_sz_elem>\t%q0, %E1"
+  [(set_attr "type" "mve_load")]
 )
