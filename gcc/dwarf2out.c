@@ -19752,7 +19752,7 @@ reference_to_unused (tree * tp, int * walk_subtrees,
   /* ???  The C++ FE emits debug information for using decls, so
      putting gcc_unreachable here falls over.  See PR31899.  For now
      be conservative.  */
-  else if (!symtab->global_info_ready && VAR_OR_FUNCTION_DECL_P (*tp))
+  else if (!symtab->global_info_ready && VAR_P (*tp))
     return *tp;
   else if (VAR_P (*tp))
     {
@@ -19767,7 +19767,7 @@ reference_to_unused (tree * tp, int * walk_subtrees,
          optimizing and gimplifying the CU by now.
 	 So if *TP has no call graph node associated
 	 to it, it means *TP will not be emitted.  */
-      if (!cgraph_node::get (*tp))
+      if (!symtab->global_info_ready || !cgraph_node::get (*tp))
 	return *tp;
     }
   else if (TREE_CODE (*tp) == STRING_CST && !TREE_ASM_WRITTEN (*tp))
@@ -20291,12 +20291,11 @@ tree_add_const_value_attribute (dw_die_ref die, tree t)
 	  return true;
 	}
     }
-  if (! early_dwarf)
-    {
-      rtl = rtl_for_decl_init (init, type);
-      if (rtl)
-	return add_const_value_attribute (die, rtl);
-    }
+  /* Generate the RTL even if early_dwarf to force mangling of all refered to
+     symbols.  */
+  rtl = rtl_for_decl_init (init, type);
+  if (rtl && !early_dwarf)
+    return add_const_value_attribute (die, rtl);
   /* If the host and target are sane, try harder.  */
   if (CHAR_BIT == 8 && BITS_PER_UNIT == 8
       && initializer_constant_valid_p (init, type))
@@ -20696,12 +20695,23 @@ add_scalar_info (dw_die_ref die, enum dwarf_attribute attr, tree value,
 	  else
 	    add_AT_int (die, attr, TREE_INT_CST_LOW (value));
 	}
-      else
+      else if (dwarf_version >= 5
+	       && TREE_INT_CST_LOW (TYPE_SIZE (TREE_TYPE (value))) == 128)
 	/* Otherwise represent the bound as an unsigned value with
 	   the precision of its type.  The precision and signedness
 	   of the type will be necessary to re-interpret it
 	   unambiguously.  */
 	add_AT_wide (die, attr, wi::to_wide (value));
+      else
+	{
+	  rtx v = immed_wide_int_const (wi::to_wide (value),
+					TYPE_MODE (TREE_TYPE (value)));
+	  dw_loc_descr_ref loc
+	    = loc_descriptor (v, TYPE_MODE (TREE_TYPE (value)),
+			      VAR_INIT_STATUS_INITIALIZED);
+	  if (loc)
+	    add_AT_loc (die, attr, loc);
+	}
       return;
     }
 
@@ -22689,6 +22699,7 @@ gen_subprogram_die (tree decl, dw_die_ref context_die)
   tree origin = decl_ultimate_origin (decl);
   dw_die_ref subr_die;
   dw_die_ref old_die = lookup_decl_die (decl);
+  bool old_die_had_no_children = false;
 
   /* This function gets called multiple times for different stages of
      the debug process.  For example, for func() in this code:
@@ -22772,12 +22783,16 @@ gen_subprogram_die (tree decl, dw_die_ref context_die)
           available.
   */
   int declaration = (current_function_decl != decl
+		     || (!DECL_INITIAL (decl) && !origin)
 		     || class_or_namespace_scope_p (context_die));
 
   /* A declaration that has been previously dumped needs no
      additional information.  */
   if (old_die && declaration)
     return;
+
+  if (in_lto_p && old_die && old_die->die_child == NULL)
+    old_die_had_no_children = true;
 
   /* Now that the C++ front end lazily declares artificial member fns, we
      might need to retrofit the declaration into its class.  */
@@ -23298,6 +23313,10 @@ gen_subprogram_die (tree decl, dw_die_ref context_die)
 	  else if (DECL_INITIAL (decl) == NULL_TREE)
 	    gen_unspecified_parameters_die (decl, subr_die);
 	}
+      else if ((subr_die != old_die || old_die_had_no_children)
+	       && prototype_p (TREE_TYPE (decl))
+	       && stdarg_p (TREE_TYPE (decl)))
+	gen_unspecified_parameters_die (decl, subr_die);
     }
 
   if (subr_die != old_die)
@@ -27204,7 +27223,7 @@ static bool maybe_at_text_label_p = true;
 /* One above highest N where .LVLN label might be equal to .Ltext0 label.  */
 static unsigned int first_loclabel_num_not_at_text_label;
 
-/* Look ahead for a real insn, or for a begin stmt marker.  */
+/* Look ahead for a real insn.  */
 
 static rtx_insn *
 dwarf2out_next_real_insn (rtx_insn *loc_note)
@@ -27229,7 +27248,7 @@ dwarf2out_var_location (rtx_insn *loc_note)
 {
   char loclabel[MAX_ARTIFICIAL_LABEL_BYTES + 2];
   struct var_loc_node *newloc;
-  rtx_insn *next_real, *next_note;
+  rtx_insn *next_real;
   rtx_insn *call_insn = NULL;
   static const char *last_label;
   static const char *last_postcall_label;
@@ -27254,7 +27273,6 @@ dwarf2out_var_location (rtx_insn *loc_note)
 	      var_loc_p = false;
 
 	      next_real = dwarf2out_next_real_insn (call_insn);
-	      next_note = NULL;
 	      cached_next_real_insn = NULL;
 	      goto create_label;
 	    }
@@ -27282,7 +27300,6 @@ dwarf2out_var_location (rtx_insn *loc_note)
 		  var_loc_p = false;
 
 		  next_real = dwarf2out_next_real_insn (call_insn);
-		  next_note = NULL;
 		  cached_next_real_insn = NULL;
 		  goto create_label;
 		}
@@ -27311,22 +27328,28 @@ dwarf2out_var_location (rtx_insn *loc_note)
 	next_real = NULL;
     }
 
-  next_note = NEXT_INSN (loc_note);
-  if (! next_note
-      || next_note->deleted ()
-      || ! NOTE_P (next_note)
-      || (NOTE_KIND (next_note) != NOTE_INSN_VAR_LOCATION
-	  && NOTE_KIND (next_note) != NOTE_INSN_BEGIN_STMT
-	  && NOTE_KIND (next_note) != NOTE_INSN_INLINE_ENTRY))
-    next_note = NULL;
-
   if (! next_real)
     next_real = dwarf2out_next_real_insn (loc_note);
 
-  if (next_note)
+  if (next_real)
     {
-      expected_next_loc_note = next_note;
-      cached_next_real_insn = next_real;
+      rtx_insn *next_note = NEXT_INSN (loc_note);
+      while (next_note != next_real)
+	{
+	  if (! next_note->deleted ()
+	      && NOTE_P (next_note)
+	      && NOTE_KIND (next_note) == NOTE_INSN_VAR_LOCATION)
+	    break;
+	  next_note = NEXT_INSN (next_note);
+	}
+
+      if (next_note == next_real)
+	cached_next_real_insn = NULL;
+      else
+	{
+	  expected_next_loc_note = next_note;
+	  cached_next_real_insn = next_real;
+	}
     }
   else
     cached_next_real_insn = NULL;
@@ -32064,12 +32087,12 @@ dwarf2out_early_finish (const char *filename)
      emit full debugging info for them.  */
   retry_incomplete_types ();
 
+  gen_scheduled_generic_parms_dies ();
+  gen_remaining_tmpl_value_param_die_attribute ();
+
   /* The point here is to flush out the limbo list so that it is empty
      and we don't need to stream it for LTO.  */
   flush_limbo_die_list ();
-
-  gen_scheduled_generic_parms_dies ();
-  gen_remaining_tmpl_value_param_die_attribute ();
 
   /* Add DW_AT_linkage_name for all deferred DIEs.  */
   for (limbo_die_node *node = deferred_asm_name; node; node = node->next)

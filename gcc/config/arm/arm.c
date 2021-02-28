@@ -3407,6 +3407,20 @@ arm_configure_build_target (struct arm_build_target *target,
       bitmap_ior (target->isa, target->isa, fpu_bits);
     }
 
+  /* There may be implied bits which we still need to enable. These are
+     non-named features which are needed to complete other sets of features,
+     but cannot be enabled from arm-cpus.in due to being shared between
+     multiple fgroups. Each entry in all_implied_fbits is of the form
+     ante -> cons, meaning that if the feature "ante" is enabled, we should
+     implicitly enable "cons".  */
+  const struct fbit_implication *impl = all_implied_fbits;
+  while (impl->ante)
+    {
+      if (bitmap_bit_p (target->isa, impl->ante))
+	bitmap_set_bit (target->isa, impl->cons);
+      impl++;
+    }
+
   if (!arm_selected_tune)
     arm_selected_tune = arm_selected_cpu;
   else /* Validate the features passed to -mtune.  */
@@ -3431,8 +3445,9 @@ arm_option_override (void)
 {
   static const enum isa_feature fpu_bitlist_internal[]
     = { ISA_ALL_FPU_INTERNAL, isa_nobit };
+  /* isa_bit_mve_float is also part of FP bit list for arch v8.1-m.main.  */
   static const enum isa_feature fp_bitlist[]
-    = { ISA_ALL_FP, isa_nobit };
+    = { ISA_ALL_FP, isa_bit_mve_float, isa_nobit };
   static const enum isa_feature quirk_bitlist[] = { ISA_ALL_QUIRKS, isa_nobit};
   cl_target_option opts;
 
@@ -13192,13 +13207,14 @@ neon_element_bits (machine_mode mode)
 /* Predicates for `match_operand' and `match_operator'.  */
 
 /* Return TRUE if OP is a valid coprocessor memory address pattern.
-   WB is true if full writeback address modes are allowed and is false
+   WB level is 2 if full writeback address modes are allowed, 1
    if limited writeback address modes (POST_INC and PRE_DEC) are
-   allowed.  */
+   allowed and 0 if no writeback at all is supported.  */
 
 int
-arm_coproc_mem_operand (rtx op, bool wb)
+arm_coproc_mem_operand_wb (rtx op, int wb_level)
 {
+  gcc_assert (wb_level == 0 || wb_level == 1 || wb_level == 2);
   rtx ind;
 
   /* Reject eliminable registers.  */
@@ -13231,16 +13247,18 @@ arm_coproc_mem_operand (rtx op, bool wb)
 
   /* Autoincremment addressing modes.  POST_INC and PRE_DEC are
      acceptable in any case (subject to verification by
-     arm_address_register_rtx_p).  We need WB to be true to accept
+     arm_address_register_rtx_p).  We need full writeback to accept
+     PRE_INC and POST_DEC, and at least restricted writeback for
      PRE_INC and POST_DEC.  */
-  if (GET_CODE (ind) == POST_INC
-      || GET_CODE (ind) == PRE_DEC
-      || (wb
-	  && (GET_CODE (ind) == PRE_INC
-	      || GET_CODE (ind) == POST_DEC)))
+  if (wb_level > 0
+      && (GET_CODE (ind) == POST_INC
+	  || GET_CODE (ind) == PRE_DEC
+	  || (wb_level > 1
+	      && (GET_CODE (ind) == PRE_INC
+		  || GET_CODE (ind) == POST_DEC))))
     return arm_address_register_rtx_p (XEXP (ind, 0), 0);
 
-  if (wb
+  if (wb_level > 1
       && (GET_CODE (ind) == POST_MODIFY || GET_CODE (ind) == PRE_MODIFY)
       && arm_address_register_rtx_p (XEXP (ind, 0), 0)
       && GET_CODE (XEXP (ind, 1)) == PLUS
@@ -13249,17 +13267,40 @@ arm_coproc_mem_operand (rtx op, bool wb)
 
   /* Match:
      (plus (reg)
-	   (const)).  */
+	   (const))
+
+     The encoded immediate for 16-bit modes is multiplied by 2,
+     while the encoded immediate for 32-bit and 64-bit modes is
+     multiplied by 4.  */
+  int factor = MIN (GET_MODE_SIZE (GET_MODE (op)), 4);
   if (GET_CODE (ind) == PLUS
       && REG_P (XEXP (ind, 0))
       && REG_MODE_OK_FOR_BASE_P (XEXP (ind, 0), VOIDmode)
       && CONST_INT_P (XEXP (ind, 1))
-      && INTVAL (XEXP (ind, 1)) > -1024
-      && INTVAL (XEXP (ind, 1)) <  1024
-      && (INTVAL (XEXP (ind, 1)) & 3) == 0)
+      && IN_RANGE (INTVAL (XEXP (ind, 1)), -255 * factor, 255 * factor)
+      && (INTVAL (XEXP (ind, 1)) & (factor - 1)) == 0)
     return TRUE;
 
   return FALSE;
+}
+
+/* Return TRUE if OP is a valid coprocessor memory address pattern.
+   WB is true if full writeback address modes are allowed and is false
+   if limited writeback address modes (POST_INC and PRE_DEC) are
+   allowed.  */
+
+int arm_coproc_mem_operand (rtx op, bool wb)
+{
+  return arm_coproc_mem_operand_wb (op, wb ? 2 : 1);
+}
+
+/* Return TRUE if OP is a valid coprocessor memory address pattern in a
+   context in which no writeback address modes are allowed.  */
+
+int
+arm_coproc_mem_operand_no_writeback (rtx op)
+{
+  return arm_coproc_mem_operand_wb (op, 0);
 }
 
 /* This function returns TRUE on matching mode and op.
@@ -13334,6 +13375,7 @@ mve_vector_mem_operand (machine_mode mode, rtx op, bool strict)
 	    if (val % 4 == 0 && val >= 0 && val <= 1020)
 	      return ((reg_no < LAST_ARM_REGNUM && reg_no != SP_REGNUM)
 		      || (!strict && reg_no >= FIRST_PSEUDO_REGISTER));
+	    return FALSE;
 	  default:
 	    return FALSE;
 	}
@@ -13388,7 +13430,9 @@ neon_vector_mem_operand (rtx op, int type, bool strict)
   /* Allow post-increment by register for VLDn */
   if (type == 2 && GET_CODE (ind) == POST_MODIFY
       && GET_CODE (XEXP (ind, 1)) == PLUS
-      && REG_P (XEXP (XEXP (ind, 1), 1)))
+      && REG_P (XEXP (XEXP (ind, 1), 1))
+      && REG_P (XEXP (ind, 0))
+      && rtx_equal_p (XEXP (ind, 0), XEXP (XEXP (ind, 1), 0)))
      return true;
 
   /* Match:
@@ -23532,7 +23576,7 @@ arm_print_condition (FILE *stream)
 /* Globally reserved letters: acln
    Puncutation letters currently used: @_|?().!#
    Lower case letters currently used: bcdefhimpqtvwxyz
-   Upper case letters currently used: ABCDFGHJKLMNOPQRSTU
+   Upper case letters currently used: ABCDEFGHIJKLMNOPQRSTU
    Letters previously used, but now deprecated/obsolete: sVWXYZ.
 
    Note that the global reservation for 'c' is only for CONSTANT_ADDRESS_P.
@@ -24098,11 +24142,12 @@ arm_print_operand (FILE *stream, rtx x, int code)
       }
       return;
 
-    /* To print the memory operand with "Ux" constraint.  Based on the rtx_code
-       the memory operands output looks like following.
+    /* To print the memory operand with "Ux" or "Uj" constraint.  Based on the
+       rtx_code the memory operands output looks like following.
        1. [Rn], #+/-<imm>
        2. [Rn, #+/-<imm>]!
-       3. [Rn].  */
+       3. [Rn, #+/-<imm>]
+       4. [Rn].  */
     case 'E':
       {
 	rtx addr;
@@ -24136,6 +24181,16 @@ arm_print_operand (FILE *stream, rtx x, int code)
 		else
 		  asm_fprintf (stream, ", #%wd]!",INTVAL (postinc_reg));
 	      }
+	  }
+	else if (code == PLUS)
+	  {
+	    rtx base = XEXP (addr, 0);
+	    rtx index = XEXP (addr, 1);
+
+	    gcc_assert (REG_P (base) && CONST_INT_P (index));
+
+	    HOST_WIDE_INT offset = INTVAL (index);
+	    asm_fprintf (stream, "[%r, #%wd]", REGNO (base), offset);
 	  }
 	else
 	  {
@@ -30530,7 +30585,7 @@ arm_split_atomic_op (enum rtx_code code, rtx old_out, rtx new_out, rtx mem,
     case MINUS:
       if (CONST_INT_P (value))
 	{
-	  value = GEN_INT (-INTVAL (value));
+	  value = gen_int_mode (-INTVAL (value), wmode);
 	  code = PLUS;
 	}
       /* FALLTHRU */

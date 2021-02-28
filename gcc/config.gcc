@@ -513,7 +513,7 @@ powerpc*-*-*)
 	extra_headers="${extra_headers} ppu_intrinsics.h spu2vmx.h vec_types.h si2vmx.h"
 	extra_headers="${extra_headers} amo.h"
 	case x$with_cpu in
-	    xpowerpc64|xdefault64|x6[23]0|x970|xG5|xpower[3456789]|xpower6x|xrs64a|xcell|xa2|xe500mc64|xe5500|xe6500|xfuture)
+	    xpowerpc64|xdefault64|x6[23]0|x970|xG5|xpower[3456789]|xpower10|xpower6x|xrs64a|xcell|xa2|xe500mc64|xe5500|xe6500)
 		cpu_is_64bit=yes
 		;;
 	esac
@@ -1490,6 +1490,7 @@ bfin*-*)
 	use_gcc_stdint=wrap
 	;;
 bpf-*-*)
+        tm_file="elfos.h ${tm_file}"
         tmake_file="${tmake_file} bpf/t-bpf"
         use_collect2=no
         extra_headers="bpf-helpers.h"
@@ -2868,6 +2869,10 @@ powerpc*-*-freebsd*)
 	extra_options="${extra_options} rs6000/sysv4.opt"
 	tmake_file="rs6000/t-fprules rs6000/t-ppcos ${tmake_file} rs6000/t-ppccomm"
 	case ${target} in
+	    powerpc*le-*-*)
+		tm_file="${tm_file} rs6000/sysv4le.h" ;;
+	esac
+	case ${target} in
 	     powerpc64*)
 	    	tm_file="${tm_file} rs6000/default64.h rs6000/freebsd64.h"
 		tmake_file="${tmake_file} rs6000/t-freebsd64"
@@ -3537,7 +3542,9 @@ esac
 case ${target} in
 *-*-linux*android*|*-*-linux*uclibc*|*-*-linux*musl*)
         ;;
-*-*-linux*)
+*-*-kfreebsd*-gnu | *-*-kopensolaris*-gnu)
+        ;;
+*-*-linux* | *-*-gnu*)
 	case ${target} in
 	aarch64*-* | arm*-* | i[34567]86-* | powerpc*-* | s390*-* | sparc*-* | x86_64-*)
 		default_gnu_indirect_function=yes
@@ -4064,9 +4071,17 @@ fi
 supported_defaults=
 case "${target}" in
 	aarch64*-*-*)
-		supported_defaults="abi cpu arch"
-		for which in cpu arch; do
-
+		supported_defaults="abi cpu cpu_64 arch arch_64 tune tune_64"
+		if test x$with_cpu_64 != x && test x$with_cpu = x; then
+			with_cpu=$with_cpu_64
+		fi
+		if test x$with_arch_64 != x && test x$with_arch = x; then
+			with_arch=$with_arch_64
+		fi
+		if test x$with_tune_64 != x && test x$with_tune = x; then
+			with_tune=$with_tune_64
+		fi
+		for which in cpu arch tune; do
 			eval "val=\$with_$which"
 			base_val=`echo $val | sed -e 's/\+.*//'`
 			ext_val=`echo $val | sed -e 's/[a-z0-9.-]\+//'`
@@ -4103,6 +4118,12 @@ case "${target}" in
 				  ${srcdir}/config/aarch64/$def | \
 				  sed -e 's/^[^,]*,[ 	]*//' | \
 				  sed -e 's/,.*$//'`
+			  fi
+
+			  # Disallow extensions in --with-tune=cortex-a53+crc.
+			  if [ $which = tune ] && [ x"$ext_val" != x ]; then
+			    echo "Architecture extensions not supported in --with-$which=$val" 1>&2
+			    exit 1
 			  fi
 
 			  # Use the pre-processor to strip flatten the options.
@@ -4162,8 +4183,13 @@ case "${target}" in
 			  fi
 			  true
 			else
-			  echo "Unknown $which used in --with-$which=$val" 1>&2
-			  exit 1
+			  # Allow --with-$which=native.
+			  if [ "$val" = native ]; then
+			    true
+			  else
+			    echo "Unknown $which used in --with-$which=$val" 1>&2
+			    exit 1
+			  fi
 			fi
 		done
 		;;
@@ -4928,7 +4954,7 @@ case "${target}" in
 				eval "with_$which=405"
 				;;
 			"" | common | native \
-			| power[3456789] | power5+ | power6x \
+			| power[3456789] | power10 | power5+ | power6x \
 			| powerpc | powerpc64 | powerpc64le \
 			| rs64 \
 			| 401 | 403 | 405 | 405fp | 440 | 440fp | 464 | 464fp \

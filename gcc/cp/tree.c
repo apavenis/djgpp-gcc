@@ -669,9 +669,6 @@ build_aggr_init_expr (tree type, tree init)
   else
     rval = init;
 
-  if (location_t loc = EXPR_LOCATION (init))
-    SET_EXPR_LOCATION (rval, loc);
-
   return rval;
 }
 
@@ -782,7 +779,15 @@ build_vec_init_expr (tree type, tree init, tsubst_flags_t complain)
 {
   tree slot;
   bool value_init = false;
-  tree elt_init = build_vec_init_elt (type, init, complain);
+  tree elt_init;
+  if (init && TREE_CODE (init) == CONSTRUCTOR)
+    {
+      gcc_assert (!BRACE_ENCLOSED_INITIALIZER_P (init));
+      /* We built any needed constructor calls in digest_init.  */
+      elt_init = init;
+    }
+  else
+    elt_init = build_vec_init_elt (type, init, complain);
 
   if (init == void_type_node)
     {
@@ -3811,6 +3816,8 @@ cp_tree_equal (tree t1, tree t2)
 	    if (SIZEOF_EXPR_TYPE_P (t2))
 	      o2 = TREE_TYPE (o2);
 	  }
+	else if (ALIGNOF_EXPR_STD_P (t1) != ALIGNOF_EXPR_STD_P (t2))
+	  return false;
 
 	if (TREE_CODE (o1) != TREE_CODE (o2))
 	  return false;

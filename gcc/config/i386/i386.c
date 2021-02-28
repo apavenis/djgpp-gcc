@@ -6965,10 +6965,12 @@ ix86_update_stack_boundary (void)
 static rtx
 ix86_get_drap_rtx (void)
 {
-  /* We must use DRAP if there are outgoing arguments on stack and
+  /* We must use DRAP if there are outgoing arguments on stack or
+     the stack pointer register is clobbered by asm statment and
      ACCUMULATE_OUTGOING_ARGS is false.  */
   if (ix86_force_drap
-      || (cfun->machine->outgoing_args_on_stack
+      || ((cfun->machine->outgoing_args_on_stack
+	   || crtl->sp_is_clobbered_by_asm)
 	  && !ACCUMULATE_OUTGOING_ARGS))
     crtl->need_drap = true;
 
@@ -12735,40 +12737,6 @@ ix86_print_operand (FILE *file, rtx x, int code)
 	    {
 	      ix86_print_operand (file, x, 0);
 	      fputs (", ", file);
-	    }
-	  return;
-
-	case 'I':
-	  if (ASSEMBLER_DIALECT == ASM_ATT)
-	    putc ('$', file);
-	  switch (GET_CODE (x))
-	    {
-	    case EQ:
-	      putc ('0', file);
-	      break;
-	    case NE:
-	      putc ('4', file);
-	      break;
-	    case GE:
-	    case GEU:
-	      putc ('5', file);
-	      break;
-	    case GT:
-	    case GTU:
-	      putc ('6', file);
-	      break;
-	    case LE:
-	    case LEU:
-	      putc ('2', file);
-	      break;
-	    case LT:
-	    case LTU:
-	      putc ('1', file);
-	      break;
-	    default:
-	      output_operand_lossage ("operand is not a condition code, "
-				      "invalid operand code 'I'");
-	      return;
 	    }
 	  return;
 
@@ -21147,40 +21115,18 @@ ix86_md_asm_adjust (vec<rtx> &outputs, vec<rtx> &/*inputs*/,
 	  continue;
 	}
 
-      if (dest_mode == DImode && !TARGET_64BIT)
-	dest_mode = SImode;
-
-      if (dest_mode != QImode)
-	{
-	  rtx destqi = gen_reg_rtx (QImode);
-	  emit_insn (gen_rtx_SET (destqi, x));
-
-	  if (TARGET_ZERO_EXTEND_WITH_AND
-	      && optimize_function_for_speed_p (cfun))
-	    {
-	      x = force_reg (dest_mode, const0_rtx);
-
-	      emit_insn (gen_movstrictqi (gen_lowpart (QImode, x), destqi));
-	    }
-	  else
-	    {
-	      x = gen_rtx_ZERO_EXTEND (dest_mode, destqi);
-	      if (dest_mode == GET_MODE (dest)
-		  && !register_operand (dest, GET_MODE (dest)))
-		x = force_reg (dest_mode, x);
-	    }
-	}
-
-      if (dest_mode != GET_MODE (dest))
-	{
-	  rtx tmp = gen_reg_rtx (SImode);
-
-	  emit_insn (gen_rtx_SET (tmp, x));
-	  emit_insn (gen_zero_extendsidi2 (dest, tmp));
-	}
-      else
+      if (dest_mode == QImode)
 	emit_insn (gen_rtx_SET (dest, x));
+      else
+	{
+	  rtx reg = gen_reg_rtx (QImode);
+	  emit_insn (gen_rtx_SET (reg, x));
+
+	  reg = convert_to_mode (dest_mode, reg, 1);
+	  emit_move_insn (dest, reg);
+	}
     }
+
   rtx_insn *seq = get_insns ();
   end_sequence ();
 
@@ -22658,7 +22604,7 @@ ix86_init_libfuncs (void)
    apparently at random.  */
 
 static enum flt_eval_method
-ix86_excess_precision (enum excess_precision_type type)
+ix86_get_excess_precision (enum excess_precision_type type)
 {
   switch (type)
     {
@@ -23180,7 +23126,7 @@ ix86_run_selftests (void)
 #define TARGET_MD_ASM_ADJUST ix86_md_asm_adjust
 
 #undef TARGET_C_EXCESS_PRECISION
-#define TARGET_C_EXCESS_PRECISION ix86_excess_precision
+#define TARGET_C_EXCESS_PRECISION ix86_get_excess_precision
 #undef TARGET_PROMOTE_PROTOTYPES
 #define TARGET_PROMOTE_PROTOTYPES hook_bool_const_tree_true
 #undef TARGET_SETUP_INCOMING_VARARGS
