@@ -17,6 +17,9 @@ features. See <link linkend="manual.intro.using.flags">dialect</link>
 options. The pre-defined symbol
 <constant>__cplusplus</constant> is used to check for the
 presence of the required flag.
+GCC 9.1 was the first release with non-experimental C++17 support,
+so the API and ABI of features added in C++17 is only stable
+since that release.
 </para>
 
 <para>
@@ -457,7 +460,7 @@ Feature-testing recommendations for C++</link>.
 	P0185R1
 	</link>
       </entry>
-      <entry align="center"> 7 (<code>__is_swappable</code> available since 6.1)</entry>
+      <entry align="center"> 7.1 (<code>__is_swappable</code> available since 6.1)</entry>
       <entry><code> __cpp_lib_is_swappable >= 201603 </code></entry>
     </row>
 
@@ -641,7 +644,7 @@ Feature-testing recommendations for C++</link>.
 	</link>
       </entry>
       <entry align="center"> 9.1 </entry>
-      <entry><code> __has_include(&lt;execution&gt;) </code>,
+      <entry><code> __has_include(&lt;execution&gt;)</code>,
 	     <code> __cpp_lib_execution >= 201603 </code>,
 	     <code> __cpp_lib_parallel_algorithm >= 201603 </code>
              (requires linking with <code>-ltbb</code>, see Note 3)
@@ -702,7 +705,7 @@ Feature-testing recommendations for C++</link>.
 	</link>
       </entry>
       <entry align="center"> 8.1 </entry>
-      <entry><code> __has_include(&lt;filesystem&gt;) </code>,
+      <entry><code> __has_include(&lt;filesystem&gt;)</code>,
 	     <code> __cpp_lib_filesystem >= 201603 </code>
 	     (GCC 8.x requires linking with <code>-lstdc++fs</code>)
       </entry>
@@ -787,15 +790,14 @@ Feature-testing recommendations for C++</link>.
     </row>
 
     <row>
-      <?dbhtml bgcolor="#B0B0B0" ?>
       <entry> Elementary string conversions </entry>
       <entry>
 	<link xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/p0067r5.html">
 	P0067R5
 	</link>
       </entry>
-      <entry align="center"> 8.1 (only integral types supported) </entry>
-      <entry><code> __has_include(&lt;charconv&gt;) </code>
+      <entry align="center"> 11.1 (integral types supported since 8.1) </entry>
+      <entry><code> __has_include(&lt;charconv&gt;)</code>,
              <code> __cpp_lib_to_chars >= 201611 </code></entry>
     </row>
 
@@ -1182,18 +1184,16 @@ since C++14 and the implementation is complete.
       <entry/>
     </row>
     <row>
-      <?dbhtml bgcolor="#B0B0B0" ?>
       <entry>23.2.8</entry>
       <entry>Primitive numeric output conversion</entry>
       <entry>Partial</entry>
-      <entry>Only integer types supported, not floating-point types</entry>
+      <entry/>
     </row>
     <row>
-      <?dbhtml bgcolor="#B0B0B0" ?>
       <entry>23.2.9</entry>
       <entry>Primitive numeric input conversion</entry>
       <entry>Partial</entry>
-      <entry>Only integer types supported, not floating-point types</entry>
+      <entry/>
     </row>
     <row>
       <entry>23.3</entry>
@@ -2227,7 +2227,6 @@ since C++14 and the implementation is complete.
       <entry>Class template <code>regex_traits</code></entry>
       <entry>Partial</entry>
       <entry><code>transform_primary</code> is not correctly implemented</entry>
-      <entry/>
     </row>
     <row>
       <entry>31.8</entry>
@@ -2508,10 +2507,11 @@ since C++14 and the implementation is complete.
       <?dbhtml bgcolor="#B0B0B0" ?>
       <entry>33.4.6.2</entry>
       <entry>Function <code>call_once</code></entry>
-      <entry>Broken</entry>
-      <entry>See <link xmlns:xlink="http://www.w3.org/1999/xlink"
+      <entry>Y</entry>
+      <entry>Exception support is broken on non-Linux targets.
+	See <link xmlns:xlink="http://www.w3.org/1999/xlink"
 	xlink:href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66146">PR
-	66146</link>
+	66146</link>.
       </entry>
     </row>
     <row>
@@ -2992,7 +2992,8 @@ since C++14 and the implementation is complete.
       <emphasis>30.10.2.1 [fs.conform.9945]</emphasis>
       The behavior of the filesystem library implementation will depend on
       the target operating system. Some features will not be supported
-      on some targets.
+      on some targets. Symbolic links and file permissions
+      are not supported on Windows.
    </para>
 
    <para>
@@ -3024,6 +3025,18 @@ since C++14 and the implementation is complete.
       <emphasis>30.10.15.4 [fs.op.file_size]</emphasis>
       If <code>!is_regular_file(p)</code>, an error is reported.
    </para>
+
+    <para>
+      <emphasis>30.10.15.32 [fs.op.rename]</emphasis>
+      On Windows, <code>filesystem::rename</code>
+      is implemented by calling <code>MoveFileExW</code> and so
+      does not meet the requirements of POSIX <code>rename</code>
+      when one or both of the paths resolves to an existing directory.
+      Specifically, it is not possible to rename a directory to replace another
+      directory (POSIX requires that to work if the directory being
+      replaced is empty).
+    </para>
+
 
    <section xml:id="iso.2017.par2ts" xreflabel="Implementation Specific Behavior of the Parallelism 2 TS"><info><title>Parallelism 2 TS</title></info>
 

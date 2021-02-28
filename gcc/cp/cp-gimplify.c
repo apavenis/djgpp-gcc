@@ -324,6 +324,18 @@ simple_empty_class_p (tree type, tree op, tree_code code)
       && TYPE_HAS_TRIVIAL_DESTRUCTOR (type))
     /* The TARGET_EXPR is itself a simple copy, look through it.  */
     return simple_empty_class_p (type, TARGET_EXPR_INITIAL (op), code);
+
+  if (TREE_CODE (op) == PARM_DECL
+      && TREE_ADDRESSABLE (TREE_TYPE (op)))
+    {
+      tree fn = DECL_CONTEXT (op);
+      if (DECL_THUNK_P (fn)
+	  || lambda_static_thunk_p (fn))
+	/* In a thunk, we pass through invisible reference parms, so this isn't
+	   actually a copy.  */
+	return false;
+    }
+
   return
     (TREE_CODE (op) == EMPTY_CLASS_EXPR
      || code == MODIFY_EXPR
@@ -1374,7 +1386,7 @@ cp_genericize_r (tree *stmt_p, int *walk_subtrees, void *data)
 	  break;
 	}
 
-      if (tree fndecl = cp_get_callee_fndecl (stmt))
+      if (tree fndecl = cp_get_callee_fndecl_nofold (stmt))
 	if (DECL_IMMEDIATE_FUNCTION_P (fndecl))
 	  {
 	    gcc_assert (source_location_current_p (fndecl));
