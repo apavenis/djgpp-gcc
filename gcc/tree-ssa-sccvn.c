@@ -543,7 +543,8 @@ vn_get_stmt_kind (gimple *stmt)
 		     || code == IMAGPART_EXPR
 		     || code == VIEW_CONVERT_EXPR
 		     || code == BIT_FIELD_REF)
-		    && TREE_CODE (TREE_OPERAND (rhs1, 0)) == SSA_NAME)
+		    && (TREE_CODE (TREE_OPERAND (rhs1, 0)) == SSA_NAME
+			|| is_gimple_min_invariant (TREE_OPERAND (rhs1, 0))))
 		  return VN_NARY;
 
 		/* Fallthrough.  */
@@ -1102,7 +1103,7 @@ ao_ref_init_from_vn_reference (ao_ref *ref,
 	      poly_offset_int woffset
 		= wi::sext (wi::to_poly_offset (op->op0)
 			    - wi::to_poly_offset (op->op1),
-			    TYPE_PRECISION (TREE_TYPE (op->op0)));
+			    TYPE_PRECISION (sizetype));
 	      woffset *= wi::to_offset (op->op2) * vn_ref_op_align_unit (op);
 	      woffset <<= LOG2_BITS_PER_UNIT;
 	      offset += woffset;
@@ -2047,12 +2048,12 @@ vn_walk_cb_data::push_partial_def (pd_data pd,
 	}
       else
 	{
-	  size = MIN (size, (HOST_WIDE_INT) needed_len * BITS_PER_UNIT);
 	  if (pd.offset >= 0)
 	    {
 	      /* LSB of this_buffer[0] byte should be at pd.offset bits
 		 in buffer.  */
 	      unsigned int msk;
+	      size = MIN (size, (HOST_WIDE_INT) needed_len * BITS_PER_UNIT);
 	      amnt = pd.offset % BITS_PER_UNIT;
 	      if (amnt)
 		shift_bytes_in_array_left (this_buffer, len + 1, amnt);
@@ -2081,6 +2082,9 @@ vn_walk_cb_data::push_partial_def (pd_data pd,
 	  else
 	    {
 	      amnt = (unsigned HOST_WIDE_INT) pd.offset % BITS_PER_UNIT;
+	      if (amnt)
+		size -= BITS_PER_UNIT - amnt;
+	      size = MIN (size, (HOST_WIDE_INT) needed_len * BITS_PER_UNIT);
 	      if (amnt)
 		shift_bytes_in_array_left (this_buffer, len + 1, amnt);
 	    }
@@ -3567,6 +3571,7 @@ vn_reference_lookup_call (gcall *call, vn_reference_t *vnresult,
   vr->vuse = vuse ? SSA_VAL (vuse) : NULL_TREE;
   vr->operands = valueize_shared_reference_ops_from_call (call);
   vr->type = gimple_expr_type (call);
+  vr->punned = false;
   vr->set = 0;
   vr->base_set = 0;
   vr->hashcode = vn_reference_compute_hash (vr);
@@ -3590,6 +3595,7 @@ vn_reference_insert (tree op, tree result, tree vuse, tree vdef)
   vr1->vuse = vuse_ssa_val (vuse);
   vr1->operands = valueize_shared_reference_ops_from_ref (op, &tem).copy ();
   vr1->type = TREE_TYPE (op);
+  vr1->punned = false;
   ao_ref op_ref;
   ao_ref_init (&op_ref, op);
   vr1->set = ao_ref_alias_set (&op_ref);
@@ -3649,6 +3655,7 @@ vn_reference_insert_pieces (tree vuse, alias_set_type set,
   vr1->vuse = vuse_ssa_val (vuse);
   vr1->operands = valueize_refs (operands);
   vr1->type = type;
+  vr1->punned = false;
   vr1->set = set;
   vr1->base_set = base_set;
   vr1->hashcode = vn_reference_compute_hash (vr1);
@@ -4881,6 +4888,7 @@ visit_reference_op_call (tree lhs, gcall *stmt)
 	 them here.  */
       vr2->operands = vr1.operands.copy ();
       vr2->type = vr1.type;
+      vr2->punned = vr1.punned;
       vr2->set = vr1.set;
       vr2->base_set = vr1.base_set;
       vr2->hashcode = vr1.hashcode;
@@ -4907,10 +4915,11 @@ visit_reference_op_load (tree lhs, tree op, gimple *stmt)
   bool changed = false;
   tree last_vuse;
   tree result;
+  vn_reference_t res;
 
   last_vuse = gimple_vuse (stmt);
   result = vn_reference_lookup (op, gimple_vuse (stmt),
-				default_vn_walk_kind, NULL, true, &last_vuse);
+				default_vn_walk_kind, &res, true, &last_vuse);
 
   /* We handle type-punning through unions by value-numbering based
      on offset and size of the access.  Be prepared to handle a
@@ -4932,6 +4941,13 @@ visit_reference_op_load (tree lhs, tree op, gimple *stmt)
 	  gimple_match_op res_op (gimple_match_cond::UNCOND,
 				  VIEW_CONVERT_EXPR, TREE_TYPE (op), result);
 	  result = vn_nary_build_or_lookup (&res_op);
+	  if (result
+	      && TREE_CODE (result) == SSA_NAME
+	      && VN_INFO (result)->needs_insertion)
+	    /* Track whether this is the canonical expression for different
+	       typed loads.  We use that as a stopgap measure for code
+	       hoisting when dealing with floating point loads.  */
+	    res->punned = true;
 	}
 
       /* When building the conversion fails avoid inserting the reference
@@ -5837,8 +5853,7 @@ eliminate_dom_walker::eliminate_stmt (basic_block b, gimple_stmt_iterator *gsi)
 	      duplicate_ssa_name_ptr_info (sprime,
 					   SSA_NAME_PTR_INFO (lhs));
 	      if (b != sprime_b)
-		mark_ptr_info_alignment_unknown
-		    (SSA_NAME_PTR_INFO (sprime));
+		reset_flow_sensitive_info (sprime);
 	    }
 	  else if (INTEGRAL_TYPE_P (TREE_TYPE (lhs))
 		   && SSA_NAME_RANGE_INFO (lhs)

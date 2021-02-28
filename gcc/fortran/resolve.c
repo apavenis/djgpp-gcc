@@ -5024,8 +5024,8 @@ resolve_array_ref (gfc_array_ref *ar)
 }
 
 
-static bool
-resolve_substring (gfc_ref *ref, bool *equal_length)
+bool
+gfc_resolve_substring (gfc_ref *ref, bool *equal_length)
 {
   int k = gfc_validate_kind (BT_INTEGER, gfc_charlen_int_kind, false);
 
@@ -5236,7 +5236,7 @@ gfc_resolve_ref (gfc_expr *expr)
 
       case REF_SUBSTRING:
 	equal_length = false;
-	if (!resolve_substring (*prev, &equal_length))
+	if (!gfc_resolve_substring (*prev, &equal_length))
 	  return false;
 
 	if (expr->expr_type != EXPR_SUBSTRING && equal_length)
@@ -5557,6 +5557,7 @@ resolve_variable (gfc_expr *e)
     }
   /* TS 29113, C535b.  */
   else if (((sym->ts.type == BT_CLASS && sym->attr.class_ok
+	     && sym->ts.u.derived && CLASS_DATA (sym)
 	     && CLASS_DATA (sym)->as
 	     && CLASS_DATA (sym)->as->type == AS_ASSUMED_RANK)
 	    || (sym->ts.type != BT_CLASS && sym->as
@@ -5604,6 +5605,7 @@ resolve_variable (gfc_expr *e)
 
   /* TS 29113, C535b.  */
   if (((sym->ts.type == BT_CLASS && sym->attr.class_ok
+	&& sym->ts.u.derived && CLASS_DATA (sym)
 	&& CLASS_DATA (sym)->as
 	&& CLASS_DATA (sym)->as->type == AS_ASSUMED_RANK)
        || (sym->ts.type != BT_CLASS && sym->as
@@ -8998,7 +9000,9 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 	  if (as->corank != 0)
 	    sym->attr.codimension = 1;
 	}
-      else if (sym->ts.type == BT_CLASS && (!CLASS_DATA (sym)->as || sym->assoc->rankguessed))
+      else if (sym->ts.type == BT_CLASS
+	       && CLASS_DATA (sym)
+	       && (!CLASS_DATA (sym)->as || sym->assoc->rankguessed))
 	{
 	  if (!CLASS_DATA (sym)->as)
 	    CLASS_DATA (sym)->as = gfc_get_array_spec ();
@@ -9015,7 +9019,7 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
     {
       /* target's rank is 0, but the type of the sym is still array valued,
 	 which has to be corrected.  */
-      if (sym->ts.type == BT_CLASS
+      if (sym->ts.type == BT_CLASS && sym->ts.u.derived
 	  && CLASS_DATA (sym) && CLASS_DATA (sym)->as)
 	{
 	  gfc_array_spec *as;
@@ -9227,10 +9231,13 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 	{
 	  if (code->expr1->symtree->n.sym->attr.untyped)
 	    code->expr1->symtree->n.sym->ts = code->expr2->ts;
-	  selector_type = CLASS_DATA (code->expr2)->ts.u.derived;
+	  selector_type = CLASS_DATA (code->expr2)
+	    ? CLASS_DATA (code->expr2)->ts.u.derived : code->expr2->ts.u.derived;
 	}
 
-      if (code->expr2->rank && CLASS_DATA (code->expr1)->as)
+      if (code->expr2->rank
+	  && code->expr1->ts.type == BT_CLASS
+	  && CLASS_DATA (code->expr1)->as)
 	CLASS_DATA (code->expr1)->as->rank = code->expr2->rank;
 
       /* F2008: C803 The selector expression must not be coindexed.  */
@@ -10998,7 +11005,7 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
 
   /* Make sure there is a vtable and, in particular, a _copy for the
      rhs type.  */
-  if (UNLIMITED_POLY (lhs) && lhs->rank && rhs->ts.type != BT_CLASS)
+  if (lhs->ts.type == BT_CLASS && rhs->ts.type != BT_CLASS)
     gfc_find_vtab (&rhs->ts);
 
   bool caf_convert_to_send = flag_coarray == GFC_FCOARRAY_LIB
@@ -11683,6 +11690,8 @@ gfc_resolve_code (gfc_code *code, gfc_namespace *ns)
 	      omp_workshare_flag = 1;
 	      gfc_resolve_omp_parallel_blocks (code, ns);
 	      break;
+	    case EXEC_OMP_DISTRIBUTE_PARALLEL_DO:
+	    case EXEC_OMP_DISTRIBUTE_PARALLEL_DO_SIMD:
 	    case EXEC_OMP_PARALLEL:
 	    case EXEC_OMP_PARALLEL_DO:
 	    case EXEC_OMP_PARALLEL_DO_SIMD:
@@ -11835,6 +11844,9 @@ start:
 	case EXEC_ASSIGN:
 	  if (!t)
 	    break;
+
+	  if (code->expr1->ts.type == BT_CLASS)
+	   gfc_find_vtab (&code->expr2->ts);
 
 	  /* Remove a GFC_ISYM_CAF_GET inserted for a coindexed variable on
 	     the LHS.  */
@@ -12366,7 +12378,8 @@ resolve_charlen (gfc_charlen *cl)
 	}
 
       /* cl->length has been resolved.  It should have an integer type.  */
-      if (cl->length->ts.type != BT_INTEGER || cl->length->rank != 0)
+      if (cl->length
+	  && (cl->length->ts.type != BT_INTEGER || cl->length->rank != 0))
 	{
 	  gfc_error ("Scalar INTEGER expression expected at %L",
 		     &cl->length->where);
@@ -12600,7 +12613,8 @@ resolve_fl_var_and_proc (gfc_symbol *sym, int mp_flag)
 {
   gfc_array_spec *as;
 
-  if (sym->ts.type == BT_CLASS && sym->attr.class_ok)
+  if (sym->ts.type == BT_CLASS && sym->attr.class_ok
+      && sym->ts.u.derived && CLASS_DATA (sym))
     as = CLASS_DATA (sym)->as;
   else
     as = sym->as;
@@ -12610,7 +12624,8 @@ resolve_fl_var_and_proc (gfc_symbol *sym, int mp_flag)
     {
       bool pointer, allocatable, dimension;
 
-      if (sym->ts.type == BT_CLASS && sym->attr.class_ok)
+      if (sym->ts.type == BT_CLASS && sym->attr.class_ok
+	  && sym->ts.u.derived && CLASS_DATA (sym))
 	{
 	  pointer = CLASS_DATA (sym)->attr.class_pointer;
 	  allocatable = CLASS_DATA (sym)->attr.allocatable;
@@ -12661,6 +12676,7 @@ resolve_fl_var_and_proc (gfc_symbol *sym, int mp_flag)
     {
       /* F03:C502.  */
       if (sym->attr.class_ok
+	  && sym->ts.u.derived
 	  && !sym->attr.select_type_temporary
 	  && !UNLIMITED_POLY (sym)
 	  && !gfc_type_is_extensible (CLASS_DATA (sym)->ts.u.derived))
@@ -12699,7 +12715,8 @@ resolve_fl_variable_derived (gfc_symbol *sym, int no_init_flag)
      associated by the presence of another class I symbol in the same
      namespace.  14.6.1.3 of the standard and the discussion on
      comp.lang.fortran.  */
-  if (sym->ns != sym->ts.u.derived->ns
+  if (sym->ts.u.derived
+      && sym->ns != sym->ts.u.derived->ns
       && !sym->ts.u.derived->attr.use_assoc
       && sym->ns->proc_name->attr.if_source != IFSRC_IFBODY)
     {
@@ -12967,6 +12984,7 @@ static bool
 resolve_fl_procedure (gfc_symbol *sym, int mp_flag)
 {
   gfc_formal_arglist *arg;
+  bool allocatable_or_pointer;
 
   if (sym->attr.function
       && !resolve_fl_var_and_proc (sym, mp_flag))
@@ -13151,8 +13169,16 @@ resolve_fl_procedure (gfc_symbol *sym, int mp_flag)
   /* F2018, C15100: "The result of an elemental function shall be scalar,
      and shall not have the POINTER or ALLOCATABLE attribute."  The scalar
      pointer is tested and caught elsewhere.  */
+  if (sym->result)
+    allocatable_or_pointer = sym->result->ts.type == BT_CLASS
+			     && CLASS_DATA (sym->result) ?
+			     (CLASS_DATA (sym->result)->attr.allocatable
+			      || CLASS_DATA (sym->result)->attr.pointer) :
+			     (sym->result->attr.allocatable
+			      || sym->result->attr.pointer);
+
   if (sym->attr.elemental && sym->result
-      && (sym->result->attr.allocatable || sym->result->attr.pointer))
+      && allocatable_or_pointer)
     {
       gfc_error ("Function result variable %qs at %L of elemental "
 		 "function %qs shall not have an ALLOCATABLE or POINTER "
@@ -14310,7 +14336,7 @@ resolve_component (gfc_component *c, gfc_symbol *sym)
   /* F2008, C448.  */
   if (c->ts.type == BT_CLASS)
     {
-      if (CLASS_DATA (c))
+      if (c->attr.class_ok && CLASS_DATA (c))
 	{
 	  attr = &(CLASS_DATA (c)->attr);
 
@@ -15330,7 +15356,7 @@ resolve_symbol (gfc_symbol *sym)
       specification_expr = saved_specification_expr;
     }
 
-  if (sym->ts.type == BT_CLASS && sym->attr.class_ok)
+  if (sym->ts.type == BT_CLASS && sym->attr.class_ok && sym->ts.u.derived)
     {
       as = CLASS_DATA (sym)->as;
       class_attr = CLASS_DATA (sym)->attr;
@@ -15731,6 +15757,7 @@ resolve_symbol (gfc_symbol *sym)
   /* F2008, C525.  */
   if ((((sym->ts.type == BT_DERIVED && sym->ts.u.derived->attr.coarray_comp)
 	 || (sym->ts.type == BT_CLASS && sym->attr.class_ok
+	     && sym->ts.u.derived && CLASS_DATA (sym)
 	     && CLASS_DATA (sym)->attr.coarray_comp))
        || class_attr.codimension)
       && (sym->attr.result || sym->result == sym))
@@ -15752,6 +15779,7 @@ resolve_symbol (gfc_symbol *sym)
   /* F2008, C525.  */
   if (((sym->ts.type == BT_DERIVED && sym->ts.u.derived->attr.coarray_comp)
 	|| (sym->ts.type == BT_CLASS && sym->attr.class_ok
+	    && sym->ts.u.derived && CLASS_DATA (sym)
 	    && CLASS_DATA (sym)->attr.coarray_comp))
       && (class_attr.codimension || class_attr.pointer || class_attr.dimension
 	  || class_attr.allocatable))
@@ -15795,6 +15823,7 @@ resolve_symbol (gfc_symbol *sym)
   /* F2008, C541.  */
   if ((((sym->ts.type == BT_DERIVED && sym->ts.u.derived->attr.coarray_comp)
 	|| (sym->ts.type == BT_CLASS && sym->attr.class_ok
+	    && sym->ts.u.derived && CLASS_DATA (sym)
 	    && CLASS_DATA (sym)->attr.coarray_comp))
        || (class_attr.codimension && class_attr.allocatable))
       && sym->attr.dummy && sym->attr.intent == INTENT_OUT)
@@ -15913,7 +15942,7 @@ resolve_symbol (gfc_symbol *sym)
       if (formal)
 	{
 	  sym->formal_ns = formal->sym->ns;
-          if (sym->ns != formal->sym->ns)
+	  if (sym->formal_ns && sym->ns != formal->sym->ns)
 	    sym->formal_ns->refs++;
 	}
     }
@@ -16255,7 +16284,7 @@ traverse_data_list (gfc_data_variable *var, locus *where)
       || end->expr_type != EXPR_CONSTANT)
     {
       gfc_error ("end of implied-do loop at %L could not be "
-		 "simplified to a constant value", &start->where);
+		 "simplified to a constant value", &end->where);
       retval = false;
       goto cleanup;
     }
@@ -16263,7 +16292,14 @@ traverse_data_list (gfc_data_variable *var, locus *where)
       || step->expr_type != EXPR_CONSTANT)
     {
       gfc_error ("step of implied-do loop at %L could not be "
-		 "simplified to a constant value", &start->where);
+		 "simplified to a constant value", &step->where);
+      retval = false;
+      goto cleanup;
+    }
+  if (mpz_cmp_si (step->value.integer, 0) == 0)
+    {
+      gfc_error ("step of implied-do loop at %L shall not be zero",
+		 &step->where);
       retval = false;
       goto cleanup;
     }
@@ -16421,6 +16457,7 @@ gfc_impure_variable (gfc_symbol *sym)
 
   proc = sym->ns->proc_name;
   if (sym->attr.dummy
+      && !sym->attr.value
       && ((proc->attr.subroutine && sym->attr.intent == INTENT_IN)
 	  || proc->attr.function))
     return 1;

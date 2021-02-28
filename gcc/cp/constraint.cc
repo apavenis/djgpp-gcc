@@ -686,7 +686,8 @@ normalize_concept_check (tree check, tree args, norm_info info)
     }
 
   /* Substitute through the arguments of the concept check. */
-  targs = tsubst_template_args (targs, args, info.complain, info.in_decl);
+  if (args)
+    targs = tsubst_template_args (targs, args, info.complain, info.in_decl);
   if (targs == error_mark_node)
     return error_mark_node;
 
@@ -1274,7 +1275,6 @@ build_concept_check_arguments (tree arg, tree rest)
     }
   else
     {
-      gcc_assert (rest != NULL_TREE);
       args = rest;
     }
   return args;
@@ -1373,13 +1373,6 @@ build_concept_check (tree target, tree args, tsubst_flags_t complain)
 tree
 build_concept_check (tree decl, tree arg, tree rest, tsubst_flags_t complain)
 {
-  if (arg == NULL_TREE && rest == NULL_TREE)
-    {
-      tree id = build_nt (TEMPLATE_ID_EXPR, decl, rest);
-      error ("invalid use concept %qE", id);
-      return error_mark_node;
-    }
-
   tree args = build_concept_check_arguments (arg, rest);
 
   if (standard_concept_p (decl))
@@ -2865,6 +2858,9 @@ constraint_satisfaction_value (tree t, tree args, tsubst_flags_t complain)
 bool
 constraints_satisfied_p (tree t)
 {
+  if (!flag_concepts)
+    return true;
+
   return constraint_satisfaction_value (t, tf_none) == boolean_true_node;
 }
 
@@ -2874,6 +2870,9 @@ constraints_satisfied_p (tree t)
 bool
 constraints_satisfied_p (tree t, tree args)
 {
+  if (!flag_concepts)
+    return true;
+
   return constraint_satisfaction_value (t, args, tf_none) == boolean_true_node;
 }
 
