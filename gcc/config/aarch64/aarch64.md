@@ -198,6 +198,7 @@
     UNSPEC_RBIT
     UNSPEC_SABAL
     UNSPEC_SABAL2
+    UNSPEC_SABDL
     UNSPEC_SABDL2
     UNSPEC_SADALP
     UNSPEC_SCVTF
@@ -220,6 +221,7 @@
     UNSPEC_TLSLE48
     UNSPEC_UABAL
     UNSPEC_UABAL2
+    UNSPEC_UABDL
     UNSPEC_UABDL2
     UNSPEC_UADALP
     UNSPEC_UCVTF
@@ -228,6 +230,7 @@
     UNSPEC_SSP_SYSREG
     UNSPEC_SP_SET
     UNSPEC_SP_TEST
+    UNSPEC_RSHRN
     UNSPEC_RSQRT
     UNSPEC_RSQRTE
     UNSPEC_RSQRTS
@@ -1929,6 +1932,14 @@
       && can_create_pseudo_p ()
       && (!REG_P (op1)
 	 || !REGNO_PTR_FRAME_P (REGNO (op1))))
+    operands[2] = force_reg (<MODE>mode, operands[2]);
+  /* Some tunings prefer to avoid VL-based operations.
+     Split off the poly immediate here.  The rtx costs hook will reject attempts
+     to combine them back.  */
+  else if (GET_CODE (operands[2]) == CONST_POLY_INT
+	   && can_create_pseudo_p ()
+	   && (aarch64_tune_params.extra_tuning_flags
+	       & AARCH64_EXTRA_TUNE_CSE_SVE_VL_CONSTANTS))
     operands[2] = force_reg (<MODE>mode, operands[2]);
   /* Expand polynomial additions now if the destination is the stack
      pointer, since we don't want to use that as a temporary.  */
@@ -4418,7 +4429,7 @@
 		      (match_operand:QI 2 "aarch64_shift_imm_<mode>" "n"))
 		     (match_operand:GPI 3 "register_operand" "r")))]
   ""
-  "<logical>\\t%<w>0, %<w>3, %<w>1, ror (<sizen> - %2)"
+  "<logical>\\t%<w>0, %<w>3, %<w>1, ror #(<sizen> - %2)"
   [(set_attr "type" "logic_shift_imm")]
 )
 
@@ -4443,7 +4454,7 @@
 		      (match_operand:QI 2 "aarch64_shift_imm_si" "n"))
 		     (match_operand:SI 3 "register_operand" "r"))))]
   ""
-  "<logical>\\t%w0, %w3, %w1, ror (32 - %2)"
+  "<logical>\\t%w0, %w3, %w1, ror #(32 - %2)"
   [(set_attr "type" "logic_shift_imm")]
 )
 

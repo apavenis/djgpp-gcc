@@ -456,6 +456,9 @@ private:
 static int
 readability (const_tree expr)
 {
+  /* Arbitrarily-chosen "high readability" value.  */
+  const int HIGH_READABILITY = 65536;
+
   gcc_assert (expr);
   switch (TREE_CODE (expr))
     {
@@ -479,8 +482,7 @@ readability (const_tree expr)
     case PARM_DECL:
     case VAR_DECL:
       if (DECL_NAME (expr))
-	/* Arbitrarily-chosen "high readability" value.  */
-	return 65536;
+	return HIGH_READABILITY;
       else
 	/* We don't want to print temporaries.  For example, the C FE
 	   prints them as e.g. "<Uxxxx>" where "xxxx" is the low 16 bits
@@ -490,7 +492,17 @@ readability (const_tree expr)
     case RESULT_DECL:
       /* Printing "<return-value>" isn't ideal, but is less awful than
 	 trying to print a temporary.  */
-      return 32768;
+      return HIGH_READABILITY / 2;
+
+    case NOP_EXPR:
+      {
+	/* Impose a moderate readability penalty for casts.  */
+	const int CAST_PENALTY = 32;
+	return readability (TREE_OPERAND (expr, 0)) - CAST_PENALTY;
+      }
+
+    case INTEGER_CST:
+      return HIGH_READABILITY;
 
     default:
       return 0;
@@ -508,14 +520,25 @@ readability_comparator (const void *p1, const void *p2)
   path_var pv1 = *(path_var const *)p1;
   path_var pv2 = *(path_var const *)p2;
 
-  int r1 = readability (pv1.m_tree);
-  int r2 = readability (pv2.m_tree);
-  if (int cmp = r2 - r1)
-    return cmp;
+  const int tree_r1 = readability (pv1.m_tree);
+  const int tree_r2 = readability (pv2.m_tree);
 
   /* Favor items that are deeper on the stack and hence more recent;
      this also favors locals over globals.  */
-  if (int cmp = pv2.m_stack_depth - pv1.m_stack_depth)
+  const int COST_PER_FRAME = 64;
+  const int depth_r1 = pv1.m_stack_depth * COST_PER_FRAME;
+  const int depth_r2 = pv2.m_stack_depth * COST_PER_FRAME;
+
+  /* Combine the scores from the tree and from the stack depth.
+     This e.g. lets us have a slightly penalized cast in the most
+     recent stack frame "beat" an uncast value in an older stack frame.  */
+  const int sum_r1 = tree_r1 + depth_r1;
+  const int sum_r2 = tree_r2 + depth_r2;
+  if (int cmp = sum_r2 - sum_r1)
+    return cmp;
+
+  /* Otherwise, more readable trees win.  */
+  if (int cmp = tree_r2 - tree_r1)
     return cmp;
 
   /* Otherwise, if they have the same readability, then impose an
@@ -579,6 +602,10 @@ impl_region_model_context::on_state_leak (const state_machine &sm,
   path_var leaked_pv
     = m_old_state->m_region_model->get_representative_path_var (sval,
 								&visited);
+
+  /* Strip off top-level casts  */
+  if (leaked_pv.m_tree && TREE_CODE (leaked_pv.m_tree) == NOP_EXPR)
+    leaked_pv.m_tree = TREE_OPERAND (leaked_pv.m_tree, 0);
 
   /* This might be NULL; the pending_diagnostic subclasses need to cope
      with this.  */
@@ -1105,6 +1132,7 @@ exploded_node::on_stmt (exploded_graph &eg,
 				  stmt);
 
   bool unknown_side_effects = false;
+  bool terminate_path = false;
 
   switch (gimple_code (stmt))
     {
@@ -1176,7 +1204,7 @@ exploded_node::on_stmt (exploded_graph &eg,
 	  }
 	else
 	  unknown_side_effects
-	    = state->m_region_model->on_call_pre (call, &ctxt);
+	    = state->m_region_model->on_call_pre (call, &ctxt, &terminate_path);
       }
       break;
 
@@ -1187,6 +1215,9 @@ exploded_node::on_stmt (exploded_graph &eg,
       }
       break;
     }
+
+  if (terminate_path)
+    return on_stmt_flags::terminate_path ();
 
   bool any_sm_changes = false;
   int sm_idx;
@@ -2348,38 +2379,27 @@ exploded_graph::get_per_function_data (function *fun) const
   return NULL;
 }
 
-/* Return true if NODE and FUN should be traversed directly, rather than
+/* Return true if FUN should be traversed directly, rather than only as
    called via other functions.  */
 
 static bool
-toplevel_function_p (cgraph_node *node, function *fun, logger *logger)
+toplevel_function_p (function *fun, logger *logger)
 {
-  /* TODO: better logic here
-     e.g. only if more than one caller, and significantly complicated.
-     Perhaps some whole-callgraph analysis to decide if it's worth summarizing
-     an edge, and if so, we need summaries.  */
-  if (flag_analyzer_call_summaries)
-    {
-      int num_call_sites = 0;
-      for (cgraph_edge *edge = node->callers; edge; edge = edge->next_caller)
-	++num_call_sites;
-
-      /* For now, if there's more than one in-edge, and we want call
-	 summaries, do it at the top level so that there's a chance
-	 we'll have a summary when we need one.  */
-      if (num_call_sites > 1)
-	{
-	  if (logger)
-	    logger->log ("traversing %qE (%i call sites)",
-			 fun->decl, num_call_sites);
-	  return true;
-	}
-    }
-
-  if (!TREE_PUBLIC (fun->decl))
+  /* Don't directly traverse into functions that have an "__analyzer_"
+     prefix.  Doing so is useful for the analyzer test suite, allowing
+     us to have functions that are called in traversals, but not directly
+     explored, thus testing how the analyzer handles calls and returns.
+     With this, we can have DejaGnu directives that cover just the case
+     of where a function is called by another function, without generating
+     excess messages from the case of the first function being traversed
+     directly.  */
+#define ANALYZER_PREFIX "__analyzer_"
+  if (!strncmp (IDENTIFIER_POINTER (DECL_NAME (fun->decl)), ANALYZER_PREFIX,
+		strlen (ANALYZER_PREFIX)))
     {
       if (logger)
-	logger->log ("not traversing %qE (static)", fun->decl);
+	logger->log ("not traversing %qE (starts with %qs)",
+		     fun->decl, ANALYZER_PREFIX);
       return false;
     }
 
@@ -2387,18 +2407,6 @@ toplevel_function_p (cgraph_node *node, function *fun, logger *logger)
     logger->log ("traversing %qE (all checks passed)", fun->decl);
 
   return true;
-}
-
-/* Callback for walk_tree for finding callbacks within initializers;
-   ensure they are treated as possible entrypoints to the analysis.  */
-
-static tree
-add_any_callbacks (tree *tp, int *, void *data)
-{
-  exploded_graph *eg = (exploded_graph *)data;
-  if (TREE_CODE (*tp) == FUNCTION_DECL)
-    eg->on_escaped_function (*tp);
-  return NULL_TREE;
 }
 
 /* Add initial nodes to EG, with entrypoints for externally-callable
@@ -2414,7 +2422,7 @@ exploded_graph::build_initial_worklist ()
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
   {
     function *fun = node->get_fun ();
-    if (!toplevel_function_p (node, fun, logger))
+    if (!toplevel_function_p (fun, logger))
       continue;
     exploded_node *enode = add_function_entry (fun);
     if (logger)
@@ -2426,19 +2434,6 @@ exploded_graph::build_initial_worklist ()
 	  logger->log ("did not create enode for %qE entrypoint", fun->decl);
       }
   }
-
-  /* Find callbacks that are reachable from global initializers.  */
-  varpool_node *vpnode;
-  FOR_EACH_VARIABLE (vpnode)
-    {
-      tree decl = vpnode->decl;
-      if (!TREE_PUBLIC (decl))
-	continue;
-      tree init = DECL_INITIAL (decl);
-      if (!init)
-	continue;
-      walk_tree (&init, add_any_callbacks, this, NULL);
-    }
 }
 
 /* The main loop of the analysis.
@@ -3355,6 +3350,15 @@ exploded_graph::to_json () const
      auto_vec<int> m_PK_AFTER_SUPERNODE_per_snode;  */
 
   return egraph_obj;
+}
+
+exploded_path::exploded_path (const exploded_path &other)
+: m_edges (other.m_edges.length ())
+{
+  int i;
+  const exploded_edge *eedge;
+  FOR_EACH_VEC_ELT (other.m_edges, i, eedge)
+    m_edges.quick_push (eedge);
 }
 
 /* Look for the last use of SEARCH_STMT within this path.
@@ -4586,45 +4590,30 @@ private:
     pp_printf (pp, "DIAGNOSTIC: %s", sd->m_d->get_kind ());
     gv->end_tdtr ();
     gv->begin_trtd ();
-    pp_printf (pp, "epath length: %i", sd->get_epath_length ());
+    if (sd->get_best_epath ())
+      pp_printf (pp, "epath length: %i", sd->get_epath_length ());
+    else
+      pp_printf (pp, "no best epath");
     gv->end_tdtr ();
-    switch (sd->get_status ())
+    if (const feasibility_problem *p = sd->get_feasibility_problem ())
       {
-      default:
-      case saved_diagnostic::STATUS_NEW:
-	gcc_unreachable ();
-	break;
-      case saved_diagnostic::STATUS_INFEASIBLE_PATH:
-	{
-	  gv->begin_trtd ();
-	  pp_printf (pp, "INFEASIBLE");
-	  gv->end_tdtr ();
-	  const feasibility_problem *p = sd->get_feasibility_problem ();
-	  gcc_assert (p);
-	  gv->begin_trtd ();
-	  pp_printf (pp, "at eedge %i: EN:%i -> EN:%i",
-		     p->m_eedge_idx,
-		     p->m_eedge.m_src->m_index,
-		     p->m_eedge.m_dest->m_index);
-	  pp_write_text_as_html_like_dot_to_stream (pp);
-	  gv->end_tdtr ();
-	  gv->begin_trtd ();
-	  p->m_eedge.m_sedge->dump (pp);
-	  pp_write_text_as_html_like_dot_to_stream (pp);
-	  gv->end_tdtr ();
-	  gv->begin_trtd ();
-	  pp_gimple_stmt_1 (pp, p->m_last_stmt, 0, (dump_flags_t)0);
-	  pp_write_text_as_html_like_dot_to_stream (pp);
-	  gv->end_tdtr ();
-	  /* Ideally we'd print p->m_model here; see the notes above about
-	     tooltips.  */
-	}
-	break;
-      case saved_diagnostic::STATUS_FEASIBLE_PATH:
 	gv->begin_trtd ();
-	pp_printf (pp, "FEASIBLE");
+	pp_printf (pp, "INFEASIBLE at eedge %i: EN:%i -> EN:%i",
+		   p->m_eedge_idx,
+		   p->m_eedge.m_src->m_index,
+		   p->m_eedge.m_dest->m_index);
+	pp_write_text_as_html_like_dot_to_stream (pp);
 	gv->end_tdtr ();
-	break;
+	gv->begin_trtd ();
+	p->m_eedge.m_sedge->dump (pp);
+	pp_write_text_as_html_like_dot_to_stream (pp);
+	gv->end_tdtr ();
+	gv->begin_trtd ();
+	pp_gimple_stmt_1 (pp, p->m_last_stmt, 0, (dump_flags_t)0);
+	pp_write_text_as_html_like_dot_to_stream (pp);
+	gv->end_tdtr ();
+	/* Ideally we'd print p->m_model here; see the notes above about
+	   tooltips.  */
       }
     pp_printf (pp, "</TABLE>");
     gv->end_tdtr ();

@@ -317,6 +317,9 @@ version2string (unsigned version, verstr_t &out)
 /* Include files to note translation for.  */
 static vec<const char *, va_heap, vl_embed> *note_includes;
 
+/* Modules to note CMI pathames.  */
+static vec<const char *, va_heap, vl_embed> *note_cmis;
+
 /* Traits to hash an arbitrary pointer.  Entries are not deletable,
    and removal is a noop (removal needed upon destruction).  */
 template <typename T>
@@ -3108,7 +3111,8 @@ private:
   unsigned section;
 #if CHECKING_P
   int importedness;		/* Checker that imports not occurring
-				   inappropriately.  */
+				   inappropriately.  +ve imports ok,
+				   -ve imports not ok.  */
 #endif
 
 public:
@@ -3359,6 +3363,8 @@ public:
 };
 
 static loc_spans spans;
+/* Indirection to allow bsearching imports by ordinary location.  */
+static vec<module_state *> *ool;
 
 /********************************************************************/
 /* Data needed by a module during the process of loading.  */
@@ -3546,9 +3552,11 @@ class GTY((chain_next ("%h.parent"), for_user)) module_state {
 			   do it again  */
   bool call_init_p : 1; /* This module's global initializer needs
 			   calling.  */
+  bool inform_cmi_p : 1; /* Inform of a read/write.  */
+  bool visited_p : 1;    /* A walk-once flag. */
   /* Record extensions emitted or permitted.  */
   unsigned extensions : SE_BITS;
-  /* 12 bits used, 4 bits remain  */
+  /* 14 bits used, 2 bits remain  */
 
  public:
   module_state (tree name, module_state *, bool);
@@ -3608,8 +3616,8 @@ class GTY((chain_next ("%h.parent"), for_user)) module_state {
   }
 
  public:
-  /* Is this not a real module?  */
-  bool is_rooted () const
+  /* Is this a real module?  */
+  bool has_location () const
   {
     return loc != UNKNOWN_LOCATION;
   }
@@ -3781,6 +3789,9 @@ module_state::module_state (tree name, module_state *parent, bool partition)
 
   partition_p = partition;
 
+  inform_cmi_p = false;
+  visited_p = false;
+
   extensions = 0;
   if (name && TREE_CODE (name) == STRING_CST)
     {
@@ -3865,6 +3876,9 @@ module_state_hash::equal (const value_type existing,
 
 /* Mapper name.  */
 static const char *module_mapper_name;
+
+/* Deferred import queue (FIFO).  */
+static vec<module_state *, va_heap, vl_embed> *pending_imports;
 
 /* CMI repository path and workspace.  */
 static char *cmi_repo;
@@ -4416,7 +4430,7 @@ dumper::operator () (const char *format, ...)
 	    const char *str = "(none)";
 	    if (module_state *m = va_arg (args, module_state *))
 	      {
-		if (!m->is_rooted ())
+		if (!m->has_location ())
 		  str = "(detached)";
 		else
 		  str = m->get_flatname ();
@@ -8161,6 +8175,12 @@ trees_in::decl_value ()
       if (inner_tag)
 	/* Set the TEMPLATE_DECL's type.  */
 	TREE_TYPE (decl) = TREE_TYPE (inner);
+
+      if (NAMESPACE_SCOPE_P (decl)
+	  && (mk == MK_named || mk == MK_unique
+	      || mk == MK_enum || mk == MK_friend_spec)
+	  && !(VAR_OR_FUNCTION_DECL_P (decl) && DECL_LOCAL_DECL_P (decl)))
+	add_module_namespace_decl (CP_DECL_CONTEXT (decl), decl);
 
       /* The late insertion of an alias here or an implicit member
          (next block), is ok, because we ensured that all imports were
@@ -13740,13 +13760,12 @@ loc_spans::init (const line_maps *lmaps, const line_map_ordinary *map)
    interface and we're importing a partition.  */
 
 bool
-loc_spans::maybe_propagate (module_state *import,
-			    location_t loc = UNKNOWN_LOCATION)
+loc_spans::maybe_propagate (module_state *import, location_t hwm)
 {
   bool opened = (module_interface_p () && !module_partition_p ()
 		 && import->is_partition ());
   if (opened)
-    open (loc);
+    open (hwm);
   return opened;
 }
 
@@ -13754,11 +13773,8 @@ loc_spans::maybe_propagate (module_state *import,
    first map of the interval.  */
 
 void
-loc_spans::open (location_t hwm = UNKNOWN_LOCATION)
+loc_spans::open (location_t hwm)
 {
-  if (hwm == UNKNOWN_LOCATION)
-    hwm = MAP_START_LOCATION (LINEMAPS_LAST_ORDINARY_MAP (line_table));
-
   span interval;
   interval.ordinary.first = interval.ordinary.second = hwm;
   interval.macro.first = interval.macro.second
@@ -13768,6 +13784,13 @@ loc_spans::open (location_t hwm = UNKNOWN_LOCATION)
     && dump ("Opening span %u ordinary:[%u,... macro:...,%u)",
 	     spans->length (), interval.ordinary.first,
 	     interval.macro.second);
+  if (spans->length ())
+    {
+      /* No overlapping!  */
+      auto &last = spans->last ();
+      gcc_checking_assert (interval.ordinary.first >= last.ordinary.second);
+      gcc_checking_assert (interval.macro.second <= last.macro.first);
+    }
   spans->safe_push (interval);
 }
 
@@ -14441,16 +14464,17 @@ module_state::read_partitions (unsigned count)
       dump () && dump ("Reading elided partition %s (crc=%x)", name, crc);
 
       module_state *imp = get_module (name);
-      if (!imp || !imp->is_partition () || imp->is_rooted ()
-	  || get_primary (imp) != this)
+      if (!imp	/* Partition should be ...  */
+	  || !imp->is_partition () /* a partition ...  */
+	  || imp->loadedness != ML_NONE  /* that is not yet loaded ...  */
+	  || get_primary (imp) != this) /* whose primary is this.  */
 	{
 	  sec.set_overrun ();
 	  break;
 	}
 
-      /* Attach the partition without loading it.  We'll have to load
-	 for real if it's indirectly imported.  */
-      imp->loc = floc;
+      if (!imp->has_location ())
+	imp->loc = floc;
       imp->crc = crc;
       if (!imp->filename && fname[0])
 	imp->filename = xstrdup (fname);
@@ -14625,13 +14649,36 @@ module_state::write_cluster (elf_out *to, depset *scc[], unsigned size,
 	{
 	  depset *dep = b->deps[jx];
 
-	  if (!dep->is_binding ()
-	      && dep->is_import () && !TREE_VISITED (dep->get_entity ()))
+	  if (dep->is_binding ())
+	    {
+	      /* A cross-module using decl could be here.  */
+	      for (unsigned ix = dep->deps.length (); --ix;)
+		{
+		  depset *bind = dep->deps[ix];
+		  if (bind->get_entity_kind () == depset::EK_USING
+		      && bind->deps[1]->is_import ())
+		    {
+		      tree import = bind->deps[1]->get_entity ();
+		      if (!TREE_VISITED (import))
+			{
+			  sec.tree_node (import);
+			  dump (dumper::CLUSTER)
+			    && dump ("Seeded import %N", import);
+			}
+		    }
+		}
+	      /* Also check the namespace itself.  */
+	      dep = dep->deps[0];
+	    }
+
+	  if (dep->is_import ())
 	    {
 	      tree import = dep->get_entity ();
-
-	      sec.tree_node (import);
-	      dump (dumper::CLUSTER) && dump ("Seeded import %N", import);
+	      if (!TREE_VISITED (import))
+		{
+		  sec.tree_node (import);
+		  dump (dumper::CLUSTER) && dump ("Seeded import %N", import);
+		}
 	    }
 	}
     }
@@ -14801,7 +14848,7 @@ module_state::read_cluster (unsigned snum)
   dump.indent ();
 
   /* We care about structural equality.  */
-  comparing_specializations++;
+  comparing_dependent_aliases++;
 
   /* First seed the imports.  */
   while (tree import = sec.tree_node ())
@@ -14892,20 +14939,6 @@ module_state::read_cluster (unsigned snum)
 				     : 0,
 				     decls, type, visible))
 	      sec.set_overrun ();
-
-	    if (type
-		&& CP_DECL_CONTEXT (type) == ns
-		&& !sec.is_duplicate (type))
-	      add_module_decl (ns, name, type);
-
-	    for (ovl_iterator iter (decls); iter; ++iter)
-	      if (!iter.using_p ())
-		{
-		  tree decl = *iter;
-		  if (CP_DECL_CONTEXT (decl) == ns
-		      && !sec.is_duplicate (decl))
-		    add_module_decl (ns, name, decl);
-		}
 	  }
 	  break;
 
@@ -14976,7 +15009,7 @@ module_state::read_cluster (unsigned snum)
 #undef cfun
   cfun = old_cfun;
   current_function_decl = old_cfd;
-  comparing_specializations--;
+  comparing_dependent_aliases--;
 
   dump.outdent ();
   dump () && dump ("Read section:%u", snum);
@@ -15519,13 +15552,13 @@ enum loc_kind {
 static const module_state *
 module_for_ordinary_loc (location_t loc)
 {
-  unsigned pos = 1;
-  unsigned len = modules->length () - pos;
+  unsigned pos = 0;
+  unsigned len = ool->length () - pos;
 
   while (len)
     {
       unsigned half = len / 2;
-      module_state *probe = (*modules)[pos + half];
+      module_state *probe = (*ool)[pos + half];
       if (loc < probe->ordinary_locs.first)
 	len = half;
       else if (loc < probe->ordinary_locs.second)
@@ -15537,7 +15570,7 @@ module_for_ordinary_loc (location_t loc)
 	}
     }
 
-  return NULL;
+  return nullptr;
 }
 
 static const module_state *
@@ -15821,31 +15854,49 @@ module_state::write_prepare_maps (module_state_config *)
   for (unsigned ix = loc_spans::SPAN_FIRST; ix != spans.length (); ix++)
     {
       loc_spans::span &span = spans[ix];
-      line_map_ordinary const *omap
-	= linemap_check_ordinary (linemap_lookup (line_table,
-						  span.ordinary.first));
 
-      /* We should exactly match up.  */
-      gcc_checking_assert (MAP_START_LOCATION (omap) == span.ordinary.first);
-
-      line_map_ordinary const *fmap = omap;
-      for (; MAP_START_LOCATION (omap) < span.ordinary.second; omap++)
+      if (span.ordinary.first != span.ordinary.second)
 	{
-	  /* We should never find a module linemap in an interval.  */
-	  gcc_checking_assert (!MAP_MODULE_P (omap));
+	  line_map_ordinary const *omap
+	    = linemap_check_ordinary (linemap_lookup (line_table,
+						      span.ordinary.first));
 
-	  if (max_range < omap->m_range_bits)
-	    max_range = omap->m_range_bits;
+	  /* We should exactly match up.  */
+	  gcc_checking_assert (MAP_START_LOCATION (omap) == span.ordinary.first);
+
+	  line_map_ordinary const *fmap = omap;
+	  for (; MAP_START_LOCATION (omap) < span.ordinary.second; omap++)
+	    {
+	      /* We should never find a module linemap in an interval.  */
+	      gcc_checking_assert (!MAP_MODULE_P (omap));
+
+	      if (max_range < omap->m_range_bits)
+		max_range = omap->m_range_bits;
+	    }
+
+	  info.num_maps.first += omap - fmap;
 	}
-
-      unsigned count = omap - fmap;
-      info.num_maps.first += count;
 
       if (span.macro.first != span.macro.second)
 	{
-	  count = linemap_lookup_macro_index (line_table, span.macro.first) + 1;
-	  count -= linemap_lookup_macro_index (line_table,
+	  /* Iterate over the span's macros, to elide the empty
+	     expansions.  */
+	  unsigned count = 0;
+	  for (unsigned macro
+		 = linemap_lookup_macro_index (line_table,
 					       span.macro.second - 1);
+	       macro < LINEMAPS_MACRO_USED (line_table);
+	       macro++)
+	    {
+	      line_map_macro const *mmap
+		= LINEMAPS_MACRO_MAP_AT (line_table, macro);
+	      if (MAP_START_LOCATION (mmap) < span.macro.first)
+		/* Fallen out of the span.  */
+		break;
+
+	      if (mmap->n_tokens)
+		count++;
+	    }
 	  dump (dumper::LOCATION) && dump ("Span:%u %u macro maps", ix, count);
 	  info.num_maps.second += count;
 	}
@@ -15873,7 +15924,7 @@ module_state::write_prepare_maps (module_state_config *)
 
       line_map_ordinary const *omap
 	= linemap_check_ordinary (linemap_lookup (line_table,
-						  span.ordinary.first));
+						      span.ordinary.first));
       location_t base = MAP_START_LOCATION (omap);
 
       /* Preserve the low MAX_RANGE bits of base by incrementing ORD_OFF.  */
@@ -15888,24 +15939,28 @@ module_state::write_prepare_maps (module_state_config *)
 	  location_t start_loc = MAP_START_LOCATION (omap);
 	  unsigned to = start_loc + span.ordinary_delta;
 	  location_t end_loc = MAP_START_LOCATION (omap + 1);
-	  
-	  dump () && dump ("Ordinary span:%u [%u,%u):%u->%d(%u)", ix, start_loc,
+
+	  dump () && dump ("Ordinary span:%u [%u,%u):%u->%d(%u)",
+			   ix, start_loc,
 			   end_loc, end_loc - start_loc,
 			   span.ordinary_delta, to);
 
 	  /* There should be no change in the low order bits.  */
 	  gcc_checking_assert (((start_loc ^ to) & range_mask) == 0);
 	}
+
       /* The ending serialized value.  */
       ord_off = span.ordinary.second + span.ordinary_delta;
     }
 
-  dump () && dump ("Ordinary hwm:%u macro lwm:%u", ord_off, mac_off);
+  dump () && dump ("Ordinary:%u maps hwm:%u macro:%u maps lwm:%u ",
+		   info.num_maps.first, ord_off,
+		   info.num_maps.second, mac_off);
 
   dump.outdent ();
 
   info.max_range = max_range;
-
+  
   return info;
 }
 
@@ -15973,14 +16028,15 @@ module_state::write_ordinary_maps (elf_out *to, location_map_info &info,
 	  /* We should never find a module linemap in an interval.  */
 	  gcc_checking_assert (!MAP_MODULE_P (omap));
 
-	  /* We expect very few filenames, so just an array.  */
+	  /* We expect very few filenames, so just an array.
+	     (Not true when headers are still in play :()  */
 	  for (unsigned jx = filenames.length (); jx--;)
 	    {
 	      const char *name = filenames[jx];
 	      if (0 == strcmp (name, fname))
 		{
 		  /* Reset the linemap's name, because for things like
-		     preprocessed input we could have multple
+		     preprocessed input we could have multiple
 		     instances of the same name, and we'd rather not
 		     percolate that.  */
 		  const_cast<line_map_ordinary *> (omap)->to_file = name;
@@ -16105,27 +16161,24 @@ module_state::write_macro_maps (elf_out *to, location_map_info &info,
     {
       loc_spans::span &span = spans[ix];
       if (span.macro.first == span.macro.second)
+	/* Empty span.  */
 	continue;
 
-      for (unsigned first
+      for (unsigned macro
 	     = linemap_lookup_macro_index (line_table, span.macro.second - 1);
-	   first < LINEMAPS_MACRO_USED (line_table);
-	   first++)
+	   macro < LINEMAPS_MACRO_USED (line_table);
+	   macro++)
 	{
 	  line_map_macro const *mmap
-	    = LINEMAPS_MACRO_MAP_AT (line_table, first);
+	    = LINEMAPS_MACRO_MAP_AT (line_table, macro);
 	  location_t start_loc = MAP_START_LOCATION (mmap);
 	  if (start_loc < span.macro.first)
+	    /* Fallen out of the span.  */
 	    break;
-	  if (macro_num == info.num_maps.second)
-	    {
-	      /* We're ending on an empty macro expansion.  The
-		 preprocessor doesn't prune such things.  */
-	      // FIXME:QOI This is an example of the non-pruning of
-	      // locations.  See write_prepare_maps.
-	      gcc_checking_assert (!mmap->n_tokens);
-	      continue;
-	    }
+
+	  if (!mmap->n_tokens)
+	    /* Empty expansion.  */
+	    continue;
 
 	  sec.u (offset);
 	  sec.u (mmap->n_tokens);
@@ -16290,7 +16343,8 @@ module_state::read_macro_maps ()
   location_t zero = sec.u ();
   dump () && dump ("Macro maps:%u zero:%u", num_macros, zero);
 
-  bool propagated = spans.maybe_propagate (this);
+  bool propagated = spans.maybe_propagate (this,
+					   line_table->highest_location + 1);
 
   location_t offset = LINEMAPS_MACRO_LOWEST_LOCATION (line_table);
   slurp->loc_deltas.second = zero - offset;
@@ -16549,7 +16603,7 @@ module_state::read_define (bytes_in &sec, cpp_reader *reader, bool located) cons
 }
 
 /* Exported macro data.  */
-struct macro_export {
+struct GTY(()) macro_export {
   cpp_macro *def;
   location_t undef_loc;
 
@@ -16714,7 +16768,7 @@ static vec<macro_import, va_heap, vl_embed> *macro_imports;
    indexes this array.  If the zeroth slot is not for module zero,
    there is no export.  */
 
-static vec<macro_export, va_heap, vl_embed> *macro_exports;
+static GTY(()) vec<macro_export, va_gc> *macro_exports;
 
 /* The reachable set of header imports from this TU.  */
 
@@ -17491,6 +17545,21 @@ module_state::read_config (module_state_config &config)
   return cfg.end (from ());
 }
 
+/* Comparator for ordering the Ordered Ordinary Location array.  */
+
+static int
+ool_cmp (const void *a_, const void *b_)
+{
+  auto *a = *static_cast<const module_state *const *> (a_);
+  auto *b = *static_cast<const module_state *const *> (b_);
+  if (a == b)
+    return 0;
+  else if (a->ordinary_locs.first < b->ordinary_locs.second)
+    return -1;
+  else
+    return +1;
+}
+
 /* Use ELROND format to record the following sections:
      qualified-names	    : binding value(s)
      MOD_SNAME_PFX.README   : human readable, strings
@@ -17596,6 +17665,16 @@ module_state::write (elf_out *to, cpp_reader *reader)
 
   /* Determine Strongy Connected Components.  */
   vec<depset *> sccs = table.connect ();
+
+  vec_alloc (ool, modules->length ());
+  for (unsigned ix = modules->length (); --ix;)
+    {
+      auto *import = (*modules)[ix];
+      if (import->loadedness > ML_NONE
+	  && !(partitions && bitmap_bit_p (partitions, import->mod)))
+	ool->quick_push (import);
+    }
+  ool->qsort (ool_cmp);
 
   unsigned crc = 0;
   module_state_config config;
@@ -17759,6 +17838,8 @@ module_state::write (elf_out *to, cpp_reader *reader)
 
   spaces.release ();
   sccs.release ();
+
+  vec_free (ool);
 
   /* Human-readable info.  */
   write_readme (to, reader, config.dialect_str, extensions);
@@ -18490,6 +18571,7 @@ set_defining_module (tree decl)
 		  gcc_checking_assert (!use_tpl);
 		  /* Get to the TEMPLATE_DECL.  */
 		  decl = TI_TEMPLATE (ti);
+		  gcc_checking_assert (!DECL_MODULE_IMPORT_P (decl));
 		}
 
 	      /* Record it on the class_members list.  */
@@ -18617,6 +18699,8 @@ module_state::do_import (cpp_reader *reader, bool outermost)
     {
       const char *file = maybe_add_cmi_prefix (filename);
       dump () && dump ("CMI is %s", file);
+      if (note_module_cmi_yes || inform_cmi_p)
+	inform (loc, "reading CMI %qs", file);
       fd = open (file, O_RDONLY | O_CLOEXEC | O_BINARY);
       e = errno;
     }
@@ -18857,7 +18941,7 @@ direct_import (module_state *import, cpp_reader *reader)
   timevar_start (TV_MODULE_IMPORT);
   unsigned n = dump.push (import);
 
-  gcc_checking_assert (import->is_direct () && import->is_rooted ());
+  gcc_checking_assert (import->is_direct () && import->has_location ());
   if (import->loadedness == ML_NONE)
     if (!import->do_import (reader, true))
       gcc_unreachable ();
@@ -18904,7 +18988,7 @@ import_module (module_state *import, location_t from_loc, bool exporting_p,
       linemap_module_reparent (line_table, import->loc, from_loc);
     }
   gcc_checking_assert (!import->module_p);
-  gcc_checking_assert (import->is_direct () && import->is_rooted ());
+  gcc_checking_assert (import->is_direct () && import->has_location ());
 
   direct_import (import, reader);
 }
@@ -18919,7 +19003,7 @@ declare_module (module_state *module, location_t from_loc, bool exporting_p,
   gcc_assert (global_namespace == current_scope ());
 
   module_state *current = (*modules)[0];
-  if (module_purview_p () || module->loadedness != ML_NONE)
+  if (module_purview_p () || module->loadedness > ML_CONFIG)
     {
       error_at (from_loc, module_purview_p ()
 		? G_("module already declared")
@@ -18934,7 +19018,7 @@ declare_module (module_state *module, location_t from_loc, bool exporting_p,
     }
 
   gcc_checking_assert (module->module_p);
-  gcc_checking_assert (module->is_direct () && module->is_rooted ());
+  gcc_checking_assert (module->is_direct () && module->has_location ());
 
   /* Yer a module, 'arry.  */
   module_kind &= ~MK_GLOBAL;
@@ -19074,7 +19158,7 @@ canonicalize_header_name (cpp_reader *reader, location_t loc, bool unquoted,
       buf[len] = 0;
 
       if (const char *hdr
-	  = cpp_find_header_unit (reader, buf, str[-1] == '<', loc))
+	  = cpp_probe_header_unit (reader, buf, str[-1] == '<', loc))
 	{
 	  len = strlen (hdr);
 	  str = hdr;
@@ -19168,19 +19252,11 @@ maybe_translate_include (cpp_reader *reader, line_maps *lmaps, location_t loc,
   else if (note_include_translate_no && xlate == 0)
     note = true;
   else if (note_includes)
-    {
-      /* We do not expect the note_includes vector to be large, so O(N)
-	 iteration.  */
-      for (unsigned ix = note_includes->length (); !note && ix--;)
-	{
-	  const char *hdr = (*note_includes)[ix];
-	  size_t hdr_len = strlen (hdr);
-	  if ((hdr_len == len
-	       || (hdr_len < len && IS_DIR_SEPARATOR (path[len - hdr_len - 1])))
-	      && !memcmp (hdr, path + len - hdr_len, hdr_len))
-	    note = true;
-	}
-    }
+    /* We do not expect the note_includes vector to be large, so O(N)
+       iteration.  */
+    for (unsigned ix = note_includes->length (); !note && ix--;)
+      if (!strcmp ((*note_includes)[ix], path))
+	note = true;
 
   if (note)
     inform (loc, xlate
@@ -19258,6 +19334,68 @@ module_begin_main_file (cpp_reader *reader, line_maps *lmaps,
     }
 }
 
+/* Process the pending_import queue, making sure we know the
+   filenames.   */
+
+static void
+name_pending_imports (cpp_reader *reader, bool at_end)
+{
+  auto *mapper = get_mapper (cpp_main_loc (reader));
+
+  bool only_headers = (flag_preprocess_only
+		       && !bool (mapper->get_flags () & Cody::Flags::NameOnly)
+		       && !cpp_get_deps (reader));
+  if (at_end
+      && (!vec_safe_length (pending_imports) || only_headers))
+    /* Not doing anything.  */
+    return;
+
+  timevar_start (TV_MODULE_MAPPER);
+
+  auto n = dump.push (NULL);
+  dump () && dump ("Resolving direct import names");
+
+  mapper->Cork ();
+  for (unsigned ix = 0; ix != pending_imports->length (); ix++)
+    {
+      module_state *module = (*pending_imports)[ix];
+      gcc_checking_assert (module->is_direct ());
+      if (!module->filename
+	  && !module->visited_p
+	  && (module->is_header () || !only_headers))
+	{
+	  module->visited_p = true;
+	  Cody::Flags flags = (flag_preprocess_only
+			       ? Cody::Flags::None : Cody::Flags::NameOnly);
+
+	  if (module->module_p
+	      && (module->is_partition () || module->exported_p))
+	    mapper->ModuleExport (module->get_flatname (), flags);
+	  else
+	    mapper->ModuleImport (module->get_flatname (), flags);
+	}
+    }
+  
+  auto response = mapper->Uncork ();
+  auto r_iter = response.begin ();
+  for (unsigned ix = 0; ix != pending_imports->length (); ix++)
+    {
+      module_state *module = (*pending_imports)[ix];
+      if (module->visited_p)
+	{
+	  module->visited_p = false;
+	  gcc_checking_assert (!module->filename);
+
+	  module->set_filename (*r_iter);
+	  ++r_iter;
+	}
+    }
+
+  dump.pop (n);
+
+  timevar_stop (TV_MODULE_MAPPER);
+}
+
 /* We've just lexed a module-specific control line for MODULE.  Mark
    the module as a direct import, and possibly load up its macro
    state.  Returns the primary module, if this is a module
@@ -19305,21 +19443,28 @@ preprocess_module (module_state *module, location_t from_loc,
 	}
     }
 
+  auto desired = ML_CONFIG;
   if (is_import
-      && !module->is_module () && module->is_header ()
-      && module->loadedness < ML_PREPROCESSOR
+      && module->is_header ()
       && (!cpp_get_options (reader)->preprocessed
 	  || cpp_get_options (reader)->directives_only))
-    {
-      timevar_start (TV_MODULE_IMPORT);
-      unsigned n = dump.push (module);
+    /* We need preprocessor state now.  */
+    desired = ML_PREPROCESSOR;
 
-      if (module->loadedness == ML_NONE)
+  if (!is_import || module->loadedness < desired)
+    {
+      vec_safe_push (pending_imports, module);
+
+      if (desired == ML_PREPROCESSOR)
 	{
-	  unsigned pre_hwm = 0;
+	  unsigned n = dump.push (NULL);
+
+	  dump () && dump ("Reading %s preprocessor state", module);
+	  name_pending_imports (reader, false);
 
 	  /* Preserve the state of the line-map.  */
-	  pre_hwm = LINEMAPS_ORDINARY_USED (line_table);
+	  unsigned pre_hwm = LINEMAPS_ORDINARY_USED (line_table);
+
 	  /* We only need to close the span, if we're going to emit a
 	     CMI.  But that's a little tricky -- our token scanner
 	     needs to be smarter -- and this isn't much state.
@@ -19328,25 +19473,38 @@ preprocess_module (module_state *module, location_t from_loc,
 	  spans.maybe_init ();
 	  spans.close ();
 
-	  if (!module->filename)
+	  timevar_start (TV_MODULE_IMPORT);
+
+	  /* Load the config of each pending import -- we must assign
+	     module numbers monotonically.  */
+	  for (unsigned ix = 0; ix != pending_imports->length (); ix++)
 	    {
-	      auto *mapper = get_mapper (cpp_main_loc (reader));
-	      auto packet = mapper->ModuleImport (module->get_flatname ());
-	      module->set_filename (packet);
+	      auto *import = (*pending_imports)[ix];
+	      if (!(import->module_p
+		    && (import->is_partition () || import->exported_p))
+		  && import->loadedness == ML_NONE
+		  && (import->is_header () || !flag_preprocess_only))
+		{
+		  unsigned n = dump.push (import);
+		  import->do_import (reader, true);
+		  dump.pop (n);
+		}
 	    }
-	  module->do_import (reader, true);
+	  vec_free (pending_imports);
 
 	  /* Restore the line-map state.  */
-	  linemap_module_restore (line_table, pre_hwm);
-	  spans.open ();
+	  spans.open (linemap_module_restore (line_table, pre_hwm));
+
+	  /* Now read the preprocessor state of this particular
+	     import.  */
+	  if (module->loadedness == ML_CONFIG
+	      && module->read_preprocessor (true))
+	    module->import_macros ();
+
+	  timevar_stop (TV_MODULE_IMPORT);
+
+	  dump.pop (n);
 	}
-
-      if (module->loadedness < ML_PREPROCESSOR)
-	if (module->read_preprocessor (true))
-	  module->import_macros ();
-
-      dump.pop (n);
-      timevar_stop (TV_MODULE_IMPORT);
     }
 
   return is_import ? NULL : get_primary (module);
@@ -19360,68 +19518,17 @@ preprocess_module (module_state *module, location_t from_loc,
 void
 preprocessed_module (cpp_reader *reader)
 {
-  auto *mapper = get_mapper (cpp_main_loc (reader));
+  unsigned n = dump.push (NULL);
+
+  dump () && dump ("Completed phase-4 (tokenization) processing");
+
+  name_pending_imports (reader, true);
+  vec_free (pending_imports);
 
   spans.maybe_init ();
   spans.close ();
 
-  /* Stupid GTY doesn't grok a typedef here.  And using type = is, too
-     modern.  */
-#define iterator hash_table<module_state_hash>::iterator
-  /* using iterator = hash_table<module_state_hash>::iterator;  */
-
-  /* Walk the module hash, asking for the names of all unknown
-     direct imports and informing of an export (if that's what we
-     are).  Notice these are emitted even when preprocessing as they
-     inform the server of dependency edges.  */
-  timevar_start (TV_MODULE_MAPPER);
-
-  dump.push (NULL);
-  dump () && dump ("Resolving direct import names");
-
-  if (!flag_preprocess_only
-      || bool (mapper->get_flags () & Cody::Flags::NameOnly)
-      || cpp_get_deps (reader))
-    {
-      mapper->Cork ();
-      iterator end = modules_hash->end ();
-      for (iterator iter = modules_hash->begin (); iter != end; ++iter)
-	{
-	  module_state *module = *iter;
-	  if (module->is_direct () && !module->filename)
-	    {
-	      Cody::Flags flags
-		= (flag_preprocess_only ? Cody::Flags::None
-		   : Cody::Flags::NameOnly);
-
-	      if (module->module_p
-		  && (module->is_partition () || module->exported_p))
-		mapper->ModuleExport (module->get_flatname (), flags);
-	      else
-		mapper->ModuleImport (module->get_flatname (), flags);
-	    }
-	}
-
-      auto response = mapper->Uncork ();
-      auto r_iter = response.begin ();
-      for (iterator iter = modules_hash->begin (); iter != end; ++iter)
-	{
-	  module_state *module = *iter;
-
-	  if (module->is_direct () && !module->filename)
-	    {
-	      Cody::Packet const &p = *r_iter;
-	      ++r_iter;
-
-	      module->set_filename (p);
-	    }
-	}
-    }
-
-  dump.pop (0);
-
-  timevar_stop (TV_MODULE_MAPPER);
-
+  using iterator = hash_table<module_state_hash>::iterator;
   if (mkdeps *deps = cpp_get_deps (reader))
     {
       /* Walk the module hash, informing the dependency machinery.  */
@@ -19445,6 +19552,8 @@ preprocessed_module (cpp_reader *reader)
 
   if (flag_header_unit && !flag_preprocess_only)
     {
+      /* Find the main module -- remember, it's not yet in the module
+	 array.  */
       iterator end = modules_hash->end ();
       for (iterator iter = modules_hash->begin (); iter != end; ++iter)
 	{
@@ -19456,7 +19565,8 @@ preprocessed_module (cpp_reader *reader)
 	    }
 	}
     }
-#undef iterator
+
+  dump.pop (n);
 }
 
 /* VAL is a global tree, add it to the global vec if it is
@@ -19536,6 +19646,7 @@ init_modules (cpp_reader *reader)
   headers = BITMAP_GGC_ALLOC ();
 
   if (note_includes)
+    /* Canonicalize header names.  */
     for (unsigned ix = 0; ix != note_includes->length (); ix++)
       {
 	const char *hdr = (*note_includes)[ix];
@@ -19553,9 +19664,40 @@ init_modules (cpp_reader *reader)
 					0, !delimed, hdr, len);
 	char *path = XNEWVEC (char, len + 1);
 	memcpy (path, hdr, len);
-	path[len+1] = 0;
+	path[len] = 0;
 
 	(*note_includes)[ix] = path;
+      }
+
+  if (note_cmis)
+    /* Canonicalize & mark module names.  */
+    for (unsigned ix = 0; ix != note_cmis->length (); ix++)
+      {
+	const char *name = (*note_cmis)[ix];
+	size_t len = strlen (name);
+
+	bool is_system = name[0] == '<';
+	bool is_user = name[0] == '"';
+	bool is_pathname = false;
+	if (!(is_system || is_user))
+	  for (unsigned ix = len; !is_pathname && ix--;)
+	    is_pathname = IS_DIR_SEPARATOR (name[ix]);
+	if (is_system || is_user || is_pathname)
+	  {
+	    if (len <= (is_pathname ? 0 : 2)
+		|| (!is_pathname && name[len-1] != (is_system ? '>' : '"')))
+	      {
+		error ("invalid header name %qs", name);
+		continue;
+	      }
+	    else
+	      name = canonicalize_header_name (is_pathname ? nullptr : reader,
+					       0, is_pathname, name, len);
+	  }
+	if (auto module = get_module (name))
+	  module->inform_cmi_p = 1;
+	else
+	  error ("invalid module name %qs", name);
       }
 
   dump.push (NULL);
@@ -19761,6 +19903,8 @@ finish_module_processing (cpp_reader *reader)
 		  break;
 		create_dirs (tmp_name);
 	      }
+	  if (note_module_cmi_yes || state->inform_cmi_p)
+	    inform (state->loc, "writing CMI %qs", path);
 	  dump () && dump ("CMI is %s", path);
 	}
 
@@ -19773,7 +19917,7 @@ finish_module_processing (cpp_reader *reader)
 	  if (to.begin ())
 	    {
 	      auto loc = input_location;
-	      /* So crashes finger point the module decl.  */
+	      /* So crashes finger-point the module decl.  */
 	      input_location = state->loc;
 	      state->write (&to, reader);
 	      input_location = loc;
@@ -19941,6 +20085,10 @@ handle_module_option (unsigned code, const char *str, int)
 
     case OPT_flang_info_include_translate_:
       vec_safe_push (note_includes, str);
+      return true;
+
+    case OPT_flang_info_module_cmi_:
+      vec_safe_push (note_cmis, str);
       return true;
 
     default:

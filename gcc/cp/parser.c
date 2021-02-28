@@ -8934,7 +8934,7 @@ cp_parser_has_attribute_expression (cp_parser *parser)
     {
       if (oper == error_mark_node)
 	/* Nothing.  */;
-      else if (type_dependent_expression_p (oper))
+      else if (processing_template_decl && uses_template_parms (oper))
 	sorry_at (atloc, "%<__builtin_has_attribute%> with dependent argument "
 		  "not supported yet");
       else
@@ -11223,12 +11223,12 @@ cp_parser_lambda_introducer (cp_parser* parser, tree lambda_expr)
 /* Parse the (optional) middle of a lambda expression.
 
    lambda-declarator:
-     ( parameter-declaration-clause )
-       decl-specifier-seq [opt]
-       noexcept-specifier [opt]
-       attribute-specifier-seq [opt]
-       trailing-return-type [opt]
-       requires-clause [opt]
+     ( parameter-declaration-clause ) lambda-specifiers requires-clause [opt]
+     lambda-specifiers (C++23)
+
+   lambda-specifiers:
+     decl-specifier-seq [opt] noexcept-specifier [opt]
+       attribute-specifier-seq [opt] trailing-return-type [opt]
 
    LAMBDA_EXPR is the current representation of the lambda expression.  */
 
@@ -11248,6 +11248,8 @@ cp_parser_lambda_declarator_opt (cp_parser* parser, tree lambda_expr)
   tree tx_qual = NULL_TREE;
   tree return_type = NULL_TREE;
   tree trailing_requires_clause = NULL_TREE;
+  bool has_param_list = false;
+  location_t omitted_parms_loc = UNKNOWN_LOCATION;
   cp_decl_specifier_seq lambda_specs;
   clear_decl_specs (&lambda_specs);
   /* A lambda op() is const unless explicitly 'mutable'.  */
@@ -11334,42 +11336,87 @@ cp_parser_lambda_declarator_opt (cp_parser* parser, tree lambda_expr)
 		     "default argument specified for lambda parameter");
 
       parens.require_close (parser);
+      has_param_list = true;
+    }
+  else if (cxx_dialect < cxx23)
+    omitted_parms_loc = cp_lexer_peek_token (parser->lexer)->location;
 
-      /* In the decl-specifier-seq of the lambda-declarator, each
-	 decl-specifier shall either be mutable or constexpr.  */
-      int declares_class_or_enum;
-      if (cp_lexer_next_token_is_decl_specifier_keyword (parser->lexer)
-	  && !cp_next_tokens_can_be_gnu_attribute_p (parser))
-	cp_parser_decl_specifier_seq (parser,
-				      CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR,
-				      &lambda_specs, &declares_class_or_enum);
-      if (lambda_specs.storage_class == sc_mutable)
-	{
-	  LAMBDA_EXPR_MUTABLE_P (lambda_expr) = 1;
-	  quals = TYPE_UNQUALIFIED;
-	  if (lambda_specs.conflicting_specifiers_p)
-	    error_at (lambda_specs.locations[ds_storage_class],
-		      "duplicate %<mutable%>");
-	}
+  /* In the decl-specifier-seq of the lambda-declarator, each
+     decl-specifier shall either be mutable or constexpr.  */
+  int declares_class_or_enum;
+  if (cp_lexer_next_token_is_decl_specifier_keyword (parser->lexer)
+      && !cp_next_tokens_can_be_gnu_attribute_p (parser))
+    cp_parser_decl_specifier_seq (parser,
+				  CP_PARSER_FLAGS_ONLY_MUTABLE_OR_CONSTEXPR,
+				  &lambda_specs, &declares_class_or_enum);
 
-      tx_qual = cp_parser_tx_qualifier_opt (parser);
+  if (omitted_parms_loc && lambda_specs.any_specifiers_p)
+    {
+      pedwarn (omitted_parms_loc, 0,
+	       "parameter declaration before lambda declaration "
+	       "specifiers only optional with %<-std=c++2b%> or "
+	       "%<-std=gnu++2b%>");
+      omitted_parms_loc = UNKNOWN_LOCATION;
+    }
 
-      /* Parse optional exception specification.  */
-      exception_spec
-	= cp_parser_exception_specification_opt (parser, CP_PARSER_FLAGS_NONE);
+  if (lambda_specs.storage_class == sc_mutable)
+    {
+      LAMBDA_EXPR_MUTABLE_P (lambda_expr) = 1;
+      quals = TYPE_UNQUALIFIED;
+      if (lambda_specs.conflicting_specifiers_p)
+	error_at (lambda_specs.locations[ds_storage_class],
+		  "duplicate %<mutable%>");
+    }
 
-      std_attrs = cp_parser_std_attribute_spec_seq (parser);
+  tx_qual = cp_parser_tx_qualifier_opt (parser);
+  if (omitted_parms_loc && tx_qual)
+    {
+      pedwarn (omitted_parms_loc, 0,
+	       "parameter declaration before lambda transaction "
+	       "qualifier only optional with %<-std=c++2b%> or "
+	       "%<-std=gnu++2b%>");
+      omitted_parms_loc = UNKNOWN_LOCATION;
+    }
 
-      /* Parse optional trailing return type.  */
-      if (cp_lexer_next_token_is (parser->lexer, CPP_DEREF))
-        {
-          cp_lexer_consume_token (parser->lexer);
-          return_type = cp_parser_trailing_type_id (parser);
-        }
+  /* Parse optional exception specification.  */
+  exception_spec
+    = cp_parser_exception_specification_opt (parser, CP_PARSER_FLAGS_NONE);
 
-      if (cp_next_tokens_can_be_gnu_attribute_p (parser))
-	gnu_attrs = cp_parser_gnu_attributes_opt (parser);
+  if (omitted_parms_loc && exception_spec)
+    {
+      pedwarn (omitted_parms_loc, 0,
+	       "parameter declaration before lambda exception "
+	       "specification only optional with %<-std=c++2b%> or "
+	       "%<-std=gnu++2b%>");
+      omitted_parms_loc = UNKNOWN_LOCATION;
+    }
 
+  /* GCC 8 accepted attributes here, and this is the place for standard C++11
+     attributes that appertain to the function type.  */
+  if (cp_next_tokens_can_be_gnu_attribute_p (parser))
+    gnu_attrs = cp_parser_gnu_attributes_opt (parser);
+  else
+    std_attrs = cp_parser_std_attribute_spec_seq (parser);
+
+  /* Parse optional trailing return type.  */
+  if (cp_lexer_next_token_is (parser->lexer, CPP_DEREF))
+    {
+      if (omitted_parms_loc)
+	pedwarn (omitted_parms_loc, 0,
+		 "parameter declaration before lambda trailing "
+		 "return type only optional with %<-std=c++2b%> or "
+		 "%<-std=gnu++2b%>");
+      cp_lexer_consume_token (parser->lexer);
+      return_type = cp_parser_trailing_type_id (parser);
+    }
+
+  /* Also allow GNU attributes at the very end of the declaration, the usual
+     place for GNU attributes.  */
+  if (cp_next_tokens_can_be_gnu_attribute_p (parser))
+    gnu_attrs = chainon (gnu_attrs, cp_parser_gnu_attributes_opt (parser));
+
+  if (has_param_list)
+    {
       /* Parse optional trailing requires clause.  */
       trailing_requires_clause = cp_parser_requires_clause_opt (parser, false);
 
@@ -12247,12 +12294,9 @@ cp_parser_selection_statement (cp_parser* parser, bool *if_p,
 		       "init-statement in selection statements only available "
 		       "with %<-std=c++17%> or %<-std=gnu++17%>");
 	    if (cp_lexer_next_token_is_not (parser->lexer, CPP_SEMICOLON))
-	      {
-		/* A non-empty init-statement can have arbitrary side
-		   effects.  */
-		delete chain;
-		chain = NULL;
-	      }
+	      /* A non-empty init-statement can have arbitrary side
+		 effects.  */
+	      vec_free (chain);
 	    cp_parser_init_statement (parser, &decl);
 	  }
 
@@ -12343,13 +12387,10 @@ cp_parser_selection_statement (cp_parser* parser, bool *if_p,
 		      }
 		    else if (!cp_lexer_next_token_is_keyword (parser->lexer,
 							      RID_IF))
-		      {
-			/* This is if-else without subsequent if.  Zap the
-			   condition chain; we would have already warned at
-			   this point.  */
-			delete chain;
-			chain = NULL;
-		      }
+		      /* This is if-else without subsequent if.  Zap the
+			 condition chain; we would have already warned at
+			 this point.  */
+		      vec_free (chain);
 		  }
 		begin_else_clause (statement);
 		/* Parse the else-clause.  */
@@ -12384,11 +12425,8 @@ cp_parser_selection_statement (cp_parser* parser, bool *if_p,
 			      "suggest explicit braces to avoid ambiguous"
 			      " %<else%>");
 		if (warn_duplicated_cond)
-		  {
-		    /* We don't need the condition chain anymore.  */
-		    delete chain;
-		    chain = NULL;
-		  }
+		  /* We don't need the condition chain anymore.  */
+		  vec_free (chain);
 	      }
 
 	    /* Now we're all done with the if-statement.  */
@@ -25026,8 +25064,8 @@ cp_parser_class_specifier_1 (cp_parser* parser)
 	      pushed_scope = push_scope (class_type);
 	    }
 
-	  tree spec = TYPE_RAISES_EXCEPTIONS (TREE_TYPE (decl));
-	  spec = TREE_PURPOSE (spec);
+	  tree def_parse = TYPE_RAISES_EXCEPTIONS (TREE_TYPE (decl));
+	  def_parse = TREE_PURPOSE (def_parse);
 
 	  /* Make sure that any template parameters are in scope.  */
 	  maybe_begin_member_template_processing (decl);
@@ -25044,7 +25082,7 @@ cp_parser_class_specifier_1 (cp_parser* parser)
 	    parser->local_variables_forbidden_p |= THIS_FORBIDDEN;
 
 	  /* Now we can parse the noexcept-specifier.  */
-	  spec = cp_parser_late_noexcept_specifier (parser, spec);
+	  tree spec = cp_parser_late_noexcept_specifier (parser, def_parse);
 
 	  if (spec == error_mark_node)
 	    spec = NULL_TREE;
@@ -25052,6 +25090,12 @@ cp_parser_class_specifier_1 (cp_parser* parser)
 	  /* Update the fn's type directly -- it might have escaped
 	     beyond this decl :(  */
 	  fixup_deferred_exception_variants (TREE_TYPE (decl), spec);
+	  /* Update any instantiations we've already created.  We must
+	     keep the new noexcept-specifier wrapped in a DEFERRED_NOEXCEPT
+	     so that maybe_instantiate_noexcept can tsubst the NOEXCEPT_EXPR
+	     in the pattern.  */
+	  for (tree i : DEFPARSE_INSTANTIATIONS (def_parse))
+	    DEFERRED_NOEXCEPT_PATTERN (TREE_PURPOSE (i)) = TREE_PURPOSE (spec);
 
 	  /* Restore the state of local_variables_forbidden_p.  */
 	  parser->local_variables_forbidden_p = local_variables_forbidden_p;
@@ -26695,6 +26739,7 @@ cp_parser_save_noexcept (cp_parser *parser)
   /* Save away the noexcept-specifier; we will process it when the
      class is complete.  */
   DEFPARSE_TOKENS (expr) = cp_token_cache_new (first, last);
+  DEFPARSE_INSTANTIATIONS (expr) = nullptr;
   expr = build_tree_list (expr, NULL_TREE);
   return expr;
 }
@@ -28809,7 +28854,9 @@ cp_parser_requirement_seq (cp_parser *parser)
       tree req = cp_parser_requirement (parser);
       if (req != error_mark_node)
 	result = tree_cons (NULL_TREE, req, result);
-    } while (cp_lexer_next_token_is_not (parser->lexer, CPP_CLOSE_BRACE));
+    }
+  while (cp_lexer_next_token_is_not (parser->lexer, CPP_CLOSE_BRACE)
+	 && cp_lexer_next_token_is_not (parser->lexer, CPP_EOF));
 
   /* If there are no valid requirements, this is not a valid expression. */
   if (!result)
