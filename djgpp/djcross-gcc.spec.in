@@ -466,6 +466,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat Apr 10 2021 Andris Pavēnis <andris.pavenis@iki.fi>
+- Update to GCC-10.3.0
+
 * Fri Jul 24 2020 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to GCC-10.2.0
 
