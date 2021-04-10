@@ -554,7 +554,7 @@ map_arguments (tree parms, tree args)
 	TREE_PURPOSE (p) = TMPL_ARG (args, level, index);
       }
     else
-      TREE_PURPOSE (p) = TREE_VALUE (p);
+      TREE_PURPOSE (p) = template_parm_to_arg (p);
 
   return parms;
 }
@@ -840,6 +840,8 @@ get_normalized_constraints_from_decl (tree d, bool diag = false)
   if (!diag)
     if (tree *p = hash_map_safe_get (normalized_map, tmpl))
       return *p;
+
+  push_nested_class_guard pncs (DECL_CONTEXT (d));
 
   tree args = generic_targs_for (tmpl);
   tree ci = get_constraints (decl);
@@ -1483,7 +1485,7 @@ finish_shorthand_constraint (tree decl, tree constr)
 
   /* Get the argument and overload used for the requirement
      and adjust it if we're going to expand later.  */
-  tree arg = template_parm_to_arg (build_tree_list (NULL_TREE, decl));
+  tree arg = template_parm_to_arg (decl);
   if (apply_to_each_p && declared_pack_p)
     arg = PACK_EXPANSION_PATTERN (TREE_VEC_ELT (ARGUMENT_PACK_ARGS (arg), 0));
 

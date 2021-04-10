@@ -4687,29 +4687,37 @@ end_template_decl (void)
   current_template_parms = TREE_CHAIN (current_template_parms);
 }
 
-/* Takes a TREE_LIST representing a template parameter and convert it
-   into an argument suitable to be passed to the type substitution
-   functions.  Note that If the TREE_LIST contains an error_mark
-   node, the returned argument is error_mark_node.  */
+/* Takes a TEMPLATE_PARM_P or DECL_TEMPLATE_PARM_P node or a TREE_LIST
+   thereof, and converts it into an argument suitable to be passed to
+   the type substitution functions.  Note that if the TREE_LIST contains
+   an error_mark node, the returned argument is error_mark_node.  */
 
 tree
 template_parm_to_arg (tree t)
 {
+  if (!t)
+    return NULL_TREE;
 
-  if (t == NULL_TREE
-      || TREE_CODE (t) != TREE_LIST)
-    return t;
+  if (TREE_CODE (t) == TREE_LIST)
+    t = TREE_VALUE (t);
 
-  if (error_operand_p (TREE_VALUE (t)))
+  if (error_operand_p (t))
     return error_mark_node;
 
-  t = TREE_VALUE (t);
-
-  if (TREE_CODE (t) == TYPE_DECL
-      || TREE_CODE (t) == TEMPLATE_DECL)
+  if (DECL_P (t) && DECL_TEMPLATE_PARM_P (t))
     {
-      t = TREE_TYPE (t);
+      if (TREE_CODE (t) == TYPE_DECL
+	  || TREE_CODE (t) == TEMPLATE_DECL)
+	t = TREE_TYPE (t);
+      else
+	t = DECL_INITIAL (t);
+    }
 
+  gcc_assert (TEMPLATE_PARM_P (t));
+
+  if (TREE_CODE (t) == TEMPLATE_TYPE_PARM
+      || TREE_CODE (t) == TEMPLATE_TEMPLATE_PARM)
+    {
       if (TEMPLATE_TYPE_PARAMETER_PACK (t))
 	{
 	  /* Turn this argument into a TYPE_ARGUMENT_PACK
@@ -4726,8 +4734,6 @@ template_parm_to_arg (tree t)
     }
   else
     {
-      t = DECL_INITIAL (t);
-
       if (TEMPLATE_PARM_PARAMETER_PACK (t))
 	{
 	  /* Turn this argument into a NONTYPE_ARGUMENT_PACK
@@ -10493,6 +10499,11 @@ keep_template_parm (tree t, void* data)
   template_parm_level_and_index (t, &level, &index);
   if (level > ftpi->max_depth)
     return 0;
+
+  if (TREE_CODE (t) == BOUND_TEMPLATE_TEMPLATE_PARM)
+    /* We want the underlying TEMPLATE_TEMPLATE_PARM, not the
+       BOUND_TEMPLATE_TEMPLATE_PARM itself.  */
+    t = TREE_TYPE (TEMPLATE_TEMPLATE_PARM_TEMPLATE_DECL (t));
 
   /* Arguments like const T yield parameters like const T. This means that
      a template-id like X<T, const T> would yield two distinct parameters:
@@ -16651,13 +16662,26 @@ tsubst_copy (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 		  tree type = tsubst (TREE_TYPE (t), args, complain, in_decl);
 		  return build1 (code, type, op);
 		}
-	      else
+	      else if (!CP_TYPE_CONST_P (TREE_TYPE (op)))
 		{
-		  gcc_assert (CP_TYPE_CONST_P (TREE_TYPE (op))
-			      || (TREE_CODE (op) == IMPLICIT_CONV_EXPR
-				  && IMPLICIT_CONV_EXPR_NONTYPE_ARG (op)));
-		  return op;
+		  /* The template argument is not const, presumably because
+		     it is still dependent, and so not the const template parm
+		     object.  */
+		  tree type = tsubst (TREE_TYPE (t), args, complain, in_decl);
+		  gcc_checking_assert (same_type_ignoring_top_level_qualifiers_p
+				       (type, TREE_TYPE (op)));
+		  if (TREE_CODE (op) == CONSTRUCTOR
+		      || TREE_CODE (op) == IMPLICIT_CONV_EXPR)
+		    {
+		      /* Don't add a wrapper to these.  */
+		      op = copy_node (op);
+		      TREE_TYPE (op) = type;
+		    }
+		  else
+		    /* Do add a wrapper otherwise.  */
+		    op = build1 (code, type, op);
 		}
+	      return op;
 	    }
 	  /* force_paren_expr can also create a VIEW_CONVERT_EXPR.  */
 	  else if (code == VIEW_CONVERT_EXPR && REF_PARENTHESIZED_P (t))
@@ -19600,6 +19624,11 @@ tsubst_copy_and_build (tree t,
     case SCOPE_REF:
       RETURN (tsubst_qualified_id (t, args, complain, in_decl, /*done=*/true,
 				  /*address_p=*/false));
+
+    case BASELINK:
+      RETURN (tsubst_baselink (t, current_nonlambda_class_type (),
+			       args, complain, in_decl));
+
     case ARRAY_REF:
       op1 = tsubst_non_call_postfix_expression (TREE_OPERAND (t, 0),
 						args, complain, in_decl);
@@ -29293,22 +29322,24 @@ splice_late_return_type (tree type, tree late_return_type)
       return late_return_type;
     }
 
-  if (tree *auto_node = find_type_usage (&type, is_auto))
-    {
-      tree idx = get_template_parm_index (*auto_node);
-      if (TEMPLATE_PARM_LEVEL (idx) <= processing_template_decl)
-	{
-	  /* In an abbreviated function template we didn't know we were dealing
-	     with a function template when we saw the auto return type, so update
-	     it to have the correct level.  */
-	  tree new_auto = make_auto_1 (TYPE_IDENTIFIER (*auto_node), false);
-	  PLACEHOLDER_TYPE_CONSTRAINTS (new_auto)
-	    = PLACEHOLDER_TYPE_CONSTRAINTS (*auto_node);
-	  TYPE_CANONICAL (new_auto) = canonical_type_parameter (new_auto);
-	  new_auto = cp_build_qualified_type (new_auto, TYPE_QUALS (*auto_node));
-	  *auto_node = new_auto;
-	}
-    }
+  if (tree auto_node = find_type_usage (type, is_auto))
+    if (TEMPLATE_TYPE_LEVEL (auto_node) <= processing_template_decl)
+      {
+	/* In an abbreviated function template we didn't know we were dealing
+	   with a function template when we saw the auto return type, so rebuild
+	   the return type using an auto with the correct level.  */
+	tree new_auto = make_auto_1 (TYPE_IDENTIFIER (auto_node), false);
+	tree auto_vec = make_tree_vec (1);
+	TREE_VEC_ELT (auto_vec, 0) = new_auto;
+	tree targs = add_outermost_template_args (current_template_args (),
+						  auto_vec);
+	/* FIXME: We should also rebuild the constraint to refer to the new
+	   auto.  */
+	PLACEHOLDER_TYPE_CONSTRAINTS (new_auto)
+	  = PLACEHOLDER_TYPE_CONSTRAINTS (auto_node);
+	TYPE_CANONICAL (new_auto) = canonical_type_parameter (new_auto);
+	return tsubst (type, targs, tf_none, NULL_TREE);
+      }
   return type;
 }
 
@@ -29353,10 +29384,8 @@ type_uses_auto (tree type)
       else
 	return NULL_TREE;
     }
-  else if (tree *tp = find_type_usage (&type, is_auto))
-    return *tp;
   else
-    return NULL_TREE;
+    return find_type_usage (type, is_auto);
 }
 
 /* Report ill-formed occurrences of auto types in ARGUMENTS.  If
@@ -29582,7 +29611,7 @@ convert_generic_types_to_packs (tree parm, int start_idx, int end_idx)
       if (tree constr = TEMPLATE_PARM_CONSTRAINTS (node))
 	{
 	  tree id = unpack_concept_check (constr);
-	  TREE_VEC_ELT (TREE_OPERAND (id, 1), 0) = template_parm_to_arg (t);
+	  TREE_VEC_ELT (TREE_OPERAND (id, 1), 0) = t;
 	  tree fold = finish_left_unary_fold_expr (constr, TRUTH_ANDIF_EXPR);
 	  TEMPLATE_PARM_CONSTRAINTS (node) = fold;
 

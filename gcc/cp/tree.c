@@ -3022,6 +3022,48 @@ bot_manip (tree* tp, int* walk_subtrees, void* data_)
 	}
       return NULL_TREE;
     }
+  if (TREE_CODE (*tp) == DECL_EXPR
+      && VAR_P (DECL_EXPR_DECL (*tp))
+      && DECL_ARTIFICIAL (DECL_EXPR_DECL (*tp))
+      && !TREE_STATIC (DECL_EXPR_DECL (*tp)))
+    {
+      tree t;
+      splay_tree_node n
+	= splay_tree_lookup (target_remap,
+			     (splay_tree_key) DECL_EXPR_DECL (*tp));
+      if (n)
+	t = (tree) n->value;
+      else
+	{
+	  t = create_temporary_var (TREE_TYPE (DECL_EXPR_DECL (*tp)));
+	  DECL_INITIAL (t) = DECL_INITIAL (DECL_EXPR_DECL (*tp));
+	  splay_tree_insert (target_remap,
+			     (splay_tree_key) DECL_EXPR_DECL (*tp),
+			     (splay_tree_value) t);
+	}
+      copy_tree_r (tp, walk_subtrees, NULL);
+      DECL_EXPR_DECL (*tp) = t;
+      if (data.clear_location && EXPR_HAS_LOCATION (*tp))
+	SET_EXPR_LOCATION (*tp, input_location);
+      return NULL_TREE;
+    }
+  if (TREE_CODE (*tp) == BIND_EXPR && BIND_EXPR_VARS (*tp))
+    {
+      copy_tree_r (tp, walk_subtrees, NULL);
+      for (tree *p = &BIND_EXPR_VARS (*tp); *p; p = &DECL_CHAIN (*p))
+	{
+	  gcc_assert (VAR_P (*p) && DECL_ARTIFICIAL (*p) && !TREE_STATIC (*p));
+	  tree t = create_temporary_var (TREE_TYPE (*p));
+	  DECL_INITIAL (t) = DECL_INITIAL (*p);
+	  DECL_CHAIN (t) = DECL_CHAIN (*p);
+	  splay_tree_insert (target_remap, (splay_tree_key) *p,
+			     (splay_tree_value) t);
+	  *p = t;
+	}
+      if (data.clear_location && EXPR_HAS_LOCATION (*tp))
+	SET_EXPR_LOCATION (*tp, input_location);
+      return NULL_TREE;
+    }
 
   /* Make a copy of this node.  */
   t = copy_tree_r (tp, walk_subtrees, NULL);
@@ -5013,8 +5055,18 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
   while (0)
 
   if (TYPE_P (*tp))
-    /* Walk into template args without looking through typedefs.  */
-    if (tree ti = TYPE_TEMPLATE_INFO_MAYBE_ALIAS (*tp))
+    /* If *WALK_SUBTREES_P is 1, we're interested in the syntactic form of
+       the argument, so don't look through typedefs, but do walk into
+       template arguments for alias templates (and non-typedefed classes).
+
+       If *WALK_SUBTREES_P > 1, we're interested in type identity or
+       equivalence, so look through typedefs, ignoring template arguments for
+       alias templates, and walk into template args of classes.
+
+       See find_abi_tags_r for an example of setting *WALK_SUBTREES_P to 2
+       when that's the behavior the walk_tree_fn wants.  */
+    if (tree ti = (*walk_subtrees_p > 1 ? TYPE_TEMPLATE_INFO (*tp)
+		   : TYPE_TEMPLATE_INFO_MAYBE_ALIAS (*tp)))
       WALK_SUBTREE (TI_ARGS (ti));
 
   /* Not one of the easy cases.  We must explicitly go through the
@@ -5022,12 +5074,15 @@ cp_walk_subtrees (tree *tp, int *walk_subtrees_p, walk_tree_fn func,
   result = NULL_TREE;
   switch (code)
     {
+    case TEMPLATE_TYPE_PARM:
+      if (template_placeholder_p (*tp))
+	WALK_SUBTREE (CLASS_PLACEHOLDER_TEMPLATE (*tp));
+      /* Fall through.  */
     case DEFERRED_PARSE:
     case TEMPLATE_TEMPLATE_PARM:
     case BOUND_TEMPLATE_TEMPLATE_PARM:
     case UNBOUND_CLASS_TEMPLATE:
     case TEMPLATE_PARM_INDEX:
-    case TEMPLATE_TYPE_PARM:
     case TYPENAME_TYPE:
     case TYPEOF_TYPE:
     case UNDERLYING_TYPE:

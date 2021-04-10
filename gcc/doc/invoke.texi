@@ -26216,9 +26216,10 @@ SVR4 ABI)@.
 @item -mabi=@var{abi-type}
 @opindex mabi
 Extend the current ABI with a particular extension, or remove such extension.
-Valid values are @samp{altivec}, @samp{no-altivec},
+Valid values are: @samp{altivec}, @samp{no-altivec},
 @samp{ibmlongdouble}, @samp{ieeelongdouble},
-@samp{elfv1}, @samp{elfv2}@.
+@samp{elfv1}, @samp{elfv2},
+and for AIX: @samp{vec-extabi}, @samp{vec-default}@.
 
 @item -mabi=ibmlongdouble
 @opindex mabi=ibmlongdouble
@@ -28879,6 +28880,13 @@ supersets BMI, BMI2, CLWB, F16C, FMA, FSGSBASE, AVX, AVX2, ADCX, RDSEED,
 MWAITX, SHA, CLZERO, AES, PCLMUL, CX16, MOVBE, MMX, SSE, SSE2, SSE3, SSE4A,
 SSSE3, SSE4.1, SSE4.2, ABM, XSAVEC, XSAVES, CLFLUSHOPT, POPCNT, RDPID,
 WBNOINVD, and 64-bit instruction set extensions.)
+
+@item znver3
+AMD Family 19h core based CPUs with x86-64 instruction set support. (This
+supersets BMI, BMI2, CLWB, F16C, FMA, FSGSBASE, AVX, AVX2, ADCX, RDSEED,
+MWAITX, SHA, CLZERO, AES, PCLMUL, CX16, MOVBE, MMX, SSE, SSE2, SSE3, SSE4A,
+SSSE3, SSE4.1, SSE4.2, ABM, XSAVEC, XSAVES, CLFLUSHOPT, POPCNT, RDPID,
+WBNOINVD, PKU, VPCLMULQDQ, VAES, and 64-bit instruction set extensions.)
 
 @item btver1
 CPUs based on AMD Family 14h cores with x86-64 instruction set support.  (This

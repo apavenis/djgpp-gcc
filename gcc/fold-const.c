@@ -6658,6 +6658,8 @@ extract_muldiv_1 (tree t, tree c, enum tree_code code, tree wide_type,
       break;
 
     CASE_CONVERT: case NON_LVALUE_EXPR:
+      if (!INTEGRAL_TYPE_P (TREE_TYPE (op0)))
+	break;
       /* If op0 is an expression ...  */
       if ((COMPARISON_CLASS_P (op0)
 	   || UNARY_CLASS_P (op0)
@@ -6666,8 +6668,7 @@ extract_muldiv_1 (tree t, tree c, enum tree_code code, tree wide_type,
 	   || EXPRESSION_CLASS_P (op0))
 	  /* ... and has wrapping overflow, and its type is smaller
 	     than ctype, then we cannot pass through as widening.  */
-	  && (((ANY_INTEGRAL_TYPE_P (TREE_TYPE (op0))
-		&& TYPE_OVERFLOW_WRAPS (TREE_TYPE (op0)))
+	  && ((TYPE_OVERFLOW_WRAPS (TREE_TYPE (op0))
 	       && (TYPE_PRECISION (ctype)
 	           > TYPE_PRECISION (TREE_TYPE (op0))))
 	      /* ... or this is a truncation (t is narrower than op0),
@@ -6682,8 +6683,7 @@ extract_muldiv_1 (tree t, tree c, enum tree_code code, tree wide_type,
 	      /* ... or has undefined overflow while the converted to
 		 type has not, we cannot do the operation in the inner type
 		 as that would introduce undefined overflow.  */
-	      || ((ANY_INTEGRAL_TYPE_P (TREE_TYPE (op0))
-		   && TYPE_OVERFLOW_UNDEFINED (TREE_TYPE (op0)))
+	      || (TYPE_OVERFLOW_UNDEFINED (TREE_TYPE (op0))
 		  && !TYPE_OVERFLOW_UNDEFINED (type))))
 	break;
 
@@ -7943,21 +7943,21 @@ native_encode_initializer (tree init, unsigned char *ptr, int len,
       int o = off == -1 ? 0 : off;
       if (TREE_CODE (type) == ARRAY_TYPE)
 	{
-	  HOST_WIDE_INT min_index;
+	  tree min_index;
 	  unsigned HOST_WIDE_INT cnt;
 	  HOST_WIDE_INT curpos = 0, fieldsize;
 	  constructor_elt *ce;
 
-	  if (TYPE_DOMAIN (type) == NULL_TREE
-	      || !tree_fits_shwi_p (TYPE_MIN_VALUE (TYPE_DOMAIN (type))))
+	  if (!TYPE_DOMAIN (type)
+	      || TREE_CODE (TYPE_MIN_VALUE (TYPE_DOMAIN (type))) != INTEGER_CST)
 	    return 0;
 
 	  fieldsize = int_size_in_bytes (TREE_TYPE (type));
 	  if (fieldsize <= 0)
 	    return 0;
 
-	  min_index = tree_to_shwi (TYPE_MIN_VALUE (TYPE_DOMAIN (type)));
-	  if (ptr != NULL)
+	  min_index = TYPE_MIN_VALUE (TYPE_DOMAIN (type));
+	  if (ptr)
 	    memset (ptr, '\0', MIN (total_bytes - off, len));
 
 	  FOR_EACH_VEC_SAFE_ELT (CONSTRUCTOR_ELTS (init), cnt, ce)
@@ -7968,19 +7968,37 @@ native_encode_initializer (tree init, unsigned char *ptr, int len,
 	      bool full = false;
 	      if (index && TREE_CODE (index) == RANGE_EXPR)
 		{
-		  if (!tree_fits_shwi_p (TREE_OPERAND (index, 0))
-		      || !tree_fits_shwi_p (TREE_OPERAND (index, 1)))
+		  if (TREE_CODE (TREE_OPERAND (index, 0)) != INTEGER_CST
+		      || TREE_CODE (TREE_OPERAND (index, 1)) != INTEGER_CST)
 		    return 0;
-		  pos = (tree_to_shwi (TREE_OPERAND (index, 0)) - min_index)
-			* fieldsize;
-		  count = (tree_to_shwi (TREE_OPERAND (index, 1))
-			   - tree_to_shwi (TREE_OPERAND (index, 0)));
+		  offset_int wpos
+		    = wi::sext (wi::to_offset (TREE_OPERAND (index, 0))
+				- wi::to_offset (min_index),
+				TYPE_PRECISION (sizetype));
+		  wpos *= fieldsize;
+		  if (!wi::fits_shwi_p (pos))
+		    return 0;
+		  pos = wpos.to_shwi ();
+		  offset_int wcount
+		    = wi::sext (wi::to_offset (TREE_OPERAND (index, 1))
+				- wi::to_offset (TREE_OPERAND (index, 0)),
+				TYPE_PRECISION (sizetype));
+		  if (!wi::fits_shwi_p (wcount))
+		    return 0;
+		  count = wcount.to_shwi ();
 		}
 	      else if (index)
 		{
-		  if (!tree_fits_shwi_p (index))
+		  if (TREE_CODE (index) != INTEGER_CST)
 		    return 0;
-		  pos = (tree_to_shwi (index) - min_index) * fieldsize;
+		  offset_int wpos
+		    = wi::sext (wi::to_offset (index)
+				- wi::to_offset (min_index),
+				TYPE_PRECISION (sizetype));
+		  wpos *= fieldsize;
+		  if (!wi::fits_shwi_p (wpos))
+		    return 0;
+		  pos = wpos.to_shwi ();
 		}
 
 	      curpos = pos;
@@ -11485,23 +11503,23 @@ fold_binary_loc (location_t loc, enum tree_code code, tree type,
 	      && integer_onep (TREE_OPERAND (arg00, 0)))
 	    {
 	      tree tem = fold_build2_loc (loc, RSHIFT_EXPR, TREE_TYPE (arg00),
-				      arg01, TREE_OPERAND (arg00, 1));
+					  arg01, TREE_OPERAND (arg00, 1));
 	      tem = fold_build2_loc (loc, BIT_AND_EXPR, TREE_TYPE (arg0), tem,
-				 build_int_cst (TREE_TYPE (arg0), 1));
+				     build_one_cst (TREE_TYPE (arg0)));
 	      return fold_build2_loc (loc, code, type,
-				  fold_convert_loc (loc, TREE_TYPE (arg1), tem),
-				  arg1);
+				      fold_convert_loc (loc, TREE_TYPE (arg1),
+							tem), arg1);
 	    }
 	  else if (TREE_CODE (arg01) == LSHIFT_EXPR
 		   && integer_onep (TREE_OPERAND (arg01, 0)))
 	    {
 	      tree tem = fold_build2_loc (loc, RSHIFT_EXPR, TREE_TYPE (arg01),
-				      arg00, TREE_OPERAND (arg01, 1));
+					  arg00, TREE_OPERAND (arg01, 1));
 	      tem = fold_build2_loc (loc, BIT_AND_EXPR, TREE_TYPE (arg0), tem,
-				 build_int_cst (TREE_TYPE (arg0), 1));
+				     build_one_cst (TREE_TYPE (arg0)));
 	      return fold_build2_loc (loc, code, type,
-				  fold_convert_loc (loc, TREE_TYPE (arg1), tem),
-				  arg1);
+				      fold_convert_loc (loc, TREE_TYPE (arg1),
+							tem), arg1);
 	    }
 	}
 
@@ -14648,7 +14666,7 @@ fold_read_from_constant_string (tree exp)
       if (string
 	  && TYPE_MODE (TREE_TYPE (exp)) == TYPE_MODE (TREE_TYPE (TREE_TYPE (string)))
 	  && TREE_CODE (string) == STRING_CST
-	  && TREE_CODE (index) == INTEGER_CST
+	  && tree_fits_uhwi_p (index)
 	  && compare_tree_int (index, TREE_STRING_LENGTH (string)) < 0
 	  && is_int_mode (TYPE_MODE (TREE_TYPE (TREE_TYPE (string))),
 			  &char_mode)

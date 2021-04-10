@@ -996,22 +996,26 @@ ao_ref_init_from_vn_reference (ao_ref *ref,
   poly_offset_int size = -1;
   tree size_tree = NULL_TREE;
 
-  /* First get the final access size from just the outermost expression.  */
+  machine_mode mode = TYPE_MODE (type);
+  if (mode == BLKmode)
+    size_tree = TYPE_SIZE (type);
+  else
+    size = GET_MODE_BITSIZE (mode);
+  if (size_tree != NULL_TREE
+      && poly_int_tree_p (size_tree))
+    size = wi::to_poly_offset (size_tree);
+
+  /* Lower the final access size from the outermost expression.  */
   op = &ops[0];
+  size_tree = NULL_TREE;
   if (op->opcode == COMPONENT_REF)
     size_tree = DECL_SIZE (op->op0);
   else if (op->opcode == BIT_FIELD_REF)
     size_tree = op->op0;
-  else
-    {
-      machine_mode mode = TYPE_MODE (type);
-      if (mode == BLKmode)
-	size_tree = TYPE_SIZE (type);
-      else
-	size = GET_MODE_BITSIZE (mode);
-    }
   if (size_tree != NULL_TREE
-      && poly_int_tree_p (size_tree))
+      && poly_int_tree_p (size_tree)
+      && (!known_size_p (size)
+	  || known_lt (wi::to_poly_offset (size_tree), size)))
     size = wi::to_poly_offset (size_tree);
 
   /* Initially, maxsize is the same as the accessed element size.
@@ -3206,7 +3210,17 @@ vn_reference_lookup_3 (ao_ref *ref, tree vuse, void *data_,
 	return (void *)-1;
       /* This can happen with bitfields.  */
       if (maybe_ne (ref->size, r.size))
-	return (void *)-1;
+	{
+	  /* If the access lacks some subsetting simply apply that by
+	     shortening it.  That in the end can only be successful
+	     if we can pun the lookup result which in turn requires
+	     exact offsets.  */
+	  if (known_eq (r.size, r.max_size)
+	      && known_lt (ref->size, r.size))
+	    r.size = r.max_size = ref->size;
+	  else
+	    return (void *)-1;
+	}
       *ref = r;
 
       /* Do not update last seen VUSE after translating.  */
@@ -4650,7 +4664,7 @@ visit_copy (tree lhs, tree rhs)
    is the same.  */
 
 static tree
-valueized_wider_op (tree wide_type, tree op)
+valueized_wider_op (tree wide_type, tree op, bool allow_truncate)
 {
   if (TREE_CODE (op) == SSA_NAME)
     op = vn_valueize (op);
@@ -4664,7 +4678,7 @@ valueized_wider_op (tree wide_type, tree op)
     return tem;
 
   /* Or the op is truncated from some existing value.  */
-  if (TREE_CODE (op) == SSA_NAME)
+  if (allow_truncate && TREE_CODE (op) == SSA_NAME)
     {
       gimple *def = SSA_NAME_DEF_STMT (op);
       if (is_gimple_assign (def)
@@ -4729,12 +4743,15 @@ visit_nary_op (tree lhs, gassign *stmt)
 		  || gimple_assign_rhs_code (def) == MULT_EXPR))
 	    {
 	      tree ops[3] = {};
+	      /* When requiring a sign-extension we cannot model a
+		 previous truncation with a single op so don't bother.  */
+	      bool allow_truncate = TYPE_UNSIGNED (TREE_TYPE (rhs1));
 	      /* Either we have the op widened available.  */
-	      ops[0] = valueized_wider_op (type,
-					   gimple_assign_rhs1 (def));
+	      ops[0] = valueized_wider_op (type, gimple_assign_rhs1 (def),
+					   allow_truncate);
 	      if (ops[0])
-		ops[1] = valueized_wider_op (type,
-					     gimple_assign_rhs2 (def));
+		ops[1] = valueized_wider_op (type, gimple_assign_rhs2 (def),
+					     allow_truncate);
 	      if (ops[0] && ops[1])
 		{
 		  ops[0] = vn_nary_op_lookup_pieces
@@ -5117,6 +5134,8 @@ visit_phi (gimple *phi, bool *inserted, bool backedges_varying_p)
       {
 	tree def = PHI_ARG_DEF_FROM_EDGE (phi, e);
 
+	if (def == PHI_RESULT (phi))
+	  continue;
 	++n_executable;
 	if (TREE_CODE (def) == SSA_NAME)
 	  {
