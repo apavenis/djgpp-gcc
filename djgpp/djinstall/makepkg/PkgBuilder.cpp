@@ -74,6 +74,26 @@ namespace {
             throw std::runtime_error("Failed to write " + fn.string() + ": " + e.what());
         }
     }
+
+#ifdef __DJGPP__
+    const std::vector<std::string> strip_cmd_variants = { "strip" };
+#else
+    const std::vector<std::string> strip_cmd_variants = { "i686-pc-msdosdjgpp-strip", "i586-pc-msdosdjgpp-strip" };
+#endif
+
+    std::string get_strip_cmd()
+    {
+        for (const std::string& s : strip_cmd_variants) {
+            std::cout << "Checking for command to strip executables or libraries - " << s << " : ";
+            if (system((s + " --help >/dev/null 2>&1").c_str()) == 0) {
+                std::cout << "found" << std::endl;
+                return s;
+            } else {
+                std::cout << "not found" << std::endl;
+            }
+        }
+        return "";
+    }
 }
 
 PkgBuilder::PkgBuilder(const fs::path& src_search, const fs::path& inst_dir)
@@ -82,6 +102,7 @@ PkgBuilder::PkgBuilder(const fs::path& src_search, const fs::path& inst_dir)
     , base_ver(read_file(gcc_src_dir / "gcc" / "BASE-VER"))
     , date_stamp(read_file(gcc_src_dir / "gcc" / "DATESTAMP"))
     , inst_dir(inst_dir)
+    , strip_cmd(get_strip_cmd())
 {
     parse_version();
     std::cout << "Source directory   : " << gcc_src_dir << std::endl;
@@ -103,6 +124,11 @@ void PkgBuilder::run()
     convert_man_pages();
     sfn_check("../install.gcc");
     create_mft();
+    if (strip_cmd != "") {
+        strip_executables();
+        strip_libraries();
+    }
+    create_dist_packages();
 }
 
 fs::path PkgBuilder::find_source_dir(const fs::path& base_dir)
@@ -326,12 +352,17 @@ void PkgBuilder::remove_files(const std::vector<std::regex> remove_instr)
 
 void PkgBuilder::create_mft()
 {
+    const std::vector<std::string> mft_other = {
+        ".*"
+    };
+
     ManifestInfo m_ignore(mft_ignore);
     ManifestInfo m_ada(mft_ada);
     ManifestInfo m_for(mft_for);
     ManifestInfo m_gpp(mft_gpp);
     ManifestInfo m_objc(mft_objc);
     ManifestInfo m_gcc(mft_gcc);
+    ManifestInfo m_other(mft_other);
 
     std::map<std::string, ManifestInfo*> m = {
         { "", &m_ignore },
@@ -339,18 +370,13 @@ void PkgBuilder::create_mft()
         { "gfor", &m_for },
         { "gpp", &m_gpp },
         { "objc", &m_objc },
-        { "gcc", &m_gcc }
+        { "gcc", &m_gcc },
+        { "", &m_other }
     };
 
+    std::ofstream ignored("unknown.mft");
+
     fs::create_directories(inst_dir / "manifest");
-
-    const std::string mft_suffix = major + minor + revision
-        + (include_datestamp ? "_" + date_stamp : "");
-
-
-    const auto mft_path = [&](const std::string& n , const std::string& ext) {
-                              return inst_dir / "manifest" / (n + mft_suffix + "b." + ext);
-                          };
 
     for (const auto& item : m) {
         if (item.first != "") {
@@ -366,14 +392,34 @@ void PkgBuilder::create_mft()
         }
     }
 
+    auto required_perms = fs::perms::owner_read | fs::perms::owner_write;
+
+    std::regex r_exe("\\.exe$");
+    std::regex r_library("\\.a$");
+
     for (const fs::path& p : fs::recursive_directory_iterator(inst_dir)) {
         if (fs::is_regular_file(p)) {
             bool found = false;
             const fs::path pr = make_relative(p, inst_dir);
+
+            //std::cout << "& '" << pr.string() << '\'' << std::endl;
             for (const auto& x : m) {
                 found |= x.second->check_file(pr);
             }
-            if (not found) {
+
+            if (found) {
+                if (std::regex_search(pr.string(), r_exe)) {
+                    executables.push_back(pr.string());
+                } else if (std::regex_search(pr.string(), r_library)) {
+                    libraries.push_back(pr.string());
+                }
+
+                auto permissions = fs::status(pr).permissions();
+                if ((permissions & required_perms) != required_perms) {
+                    std::cout << "CHMOD: " << pr << std::endl;
+                    fs::permissions(pr, fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::add);
+                }
+            } else {
                 std::cout << "SKIPPED: " << pr << std::endl;
             }
         }
@@ -385,6 +431,8 @@ void PkgBuilder::create_mft()
             item.second->write(p_mft);
         }
     }
+    m_ignore.write("ignored.mft");
+    m_other.write("unknown.mft");
 }
 
 void PkgBuilder::write_ver(const std::string& name, const fs::path& p) const
@@ -437,6 +485,9 @@ void PkgBuilder::sfn_check(const fs::path& dir)
     for (const fs::path& p : fs::recursive_directory_iterator(dir)) {
         if (fs::is_regular_file(p)) {
             const fs::path rel_path = make_relative(p, dir);
+            if (rel_path.string().find("makepkg/") != std::string::npos) {
+                continue;
+            }
             std::string sfn_name;
             bool ok = true;
             for (const auto& x : rel_path) {
@@ -496,3 +547,61 @@ void PkgBuilder::convert_man_pages()
     }
 }
 
+void PkgBuilder::strip_executables()
+{
+    for (const auto& p : executables) {
+        std::ostringstream cmd;
+        cmd << strip_cmd << ' ' << p.string();
+        std::cout << "RUN: " << cmd.str() << std::endl;
+        int rc = system(cmd.str().c_str());
+        if (rc) {
+            std::cout << "*** FAILED: " << cmd.str() << std::endl;
+        }
+    }
+}
+
+void PkgBuilder::strip_libraries()
+{
+    for (const auto& p : libraries) {
+        std::ostringstream cmd;
+        cmd << strip_cmd << " -g " << p.string();
+        std::cout << "RUN: " << cmd.str() << std::endl;
+        int rc = system(cmd.str().c_str());
+        if (rc) {
+            std::cout << "*** FAILED: " << cmd.str() << std::endl;
+        }
+    }
+}
+
+std::string PkgBuilder::mft_suffix() const
+{
+    return major + minor + revision
+        + (include_datestamp ? "_" + date_stamp : "");
+}
+
+std::filesystem::path PkgBuilder::pkg_path(const std::string& name) const
+{
+    return inst_dir / (name + mft_suffix() + "b.zip");
+}
+
+std::filesystem::path PkgBuilder::mft_path(const std::string& name, const std::string& ext) const
+{
+    return inst_dir / "manifest" / (name + mft_suffix() + "b." + ext);
+}
+
+void PkgBuilder::create_dist_packages() const
+{
+    const std::vector<std::string> names = {"ada", "gcc", "gfor", "gpp", "objc"};
+    for (const auto& n : names) {
+        std::ostringstream cmd;
+        std::error_code e;
+        const auto mft = mft_path(n, "mft");
+        const auto pkg = pkg_path(n);
+        fs::remove(pkg, e);
+        cmd << "cat " << mft.string() << " | zip -9 -q -@ " << pkg.string();
+        std::cout << "RUN: " << cmd.str() << std::endl;
+        if (system(cmd.str().c_str()) != 0) {
+            throw std::runtime_error("Failed to execute '" + cmd.str() + "'");
+        }
+    }
+}

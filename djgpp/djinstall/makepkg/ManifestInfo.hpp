@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <regex>
 #include <set>
 #include <string>
@@ -17,6 +18,6 @@ public:
     void write(const std::filesystem::path& p) const;
 
 private:
-    std::vector<std::regex> rules;
+    std::vector<std::shared_ptr<std::regex> > rules;
     std::set<std::filesystem::path> files;
 };

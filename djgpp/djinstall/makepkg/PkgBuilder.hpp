@@ -60,6 +60,18 @@ private:
 
     void write_header_gcc(const std::filesystem::path& header_dir, const std::filesystem::path& orig_rel, const std::filesystem::path& new_rel);
 
+    void strip_executables();
+
+    void strip_libraries();
+
+    std::filesystem::path pkg_path(const std::string& name) const;
+
+    std::filesystem::path mft_path(const std::string& name, const std::string& ext) const;
+
+    void create_dist_packages() const;
+
+    std::string mft_suffix() const;
+
 private:
     const std::regex r_sfn;
     const std::filesystem::path gcc_src_dir;
@@ -70,6 +82,10 @@ private:
     std::string revision;
     bool include_datestamp;
     std::filesystem::path inst_dir;
+
+    std::vector<std::filesystem::path> executables;
+    std::vector<std::filesystem::path> libraries;
+    const std::string strip_cmd;
 
 private:
     static const std::map<std::filesystem::path, std::filesystem::path> cpp_rename;

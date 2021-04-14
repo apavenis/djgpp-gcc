@@ -8,7 +8,7 @@ const std::vector<std::string> PkgBuilder::mft_gpp = {
     "/libstdcxx",
     "/libsupcxx",
     "^bin/gpp\\.exe$",
-    "^include/cxx/",
+    "include/cxx/[0-9]",
     "^manifest/gpp",
 };
 
@@ -93,7 +93,7 @@ const std::vector<std::string> PkgBuilder::mft_gcc = {
     "info/(?:cpp|gcc|libquadmath)",
     "manifest/gcc",
     "readme.djgpp",
-    "share/locale/",
+    "share/locale/"
 };
 
 const std::vector<std::string> PkgBuilder::mft_ignore = {
@@ -103,15 +103,18 @@ const std::vector<std::string> PkgBuilder::mft_ignore = {
     "share/man/man[1-9]/",
     "bin/djgpp-gcc-",
     "bin/djgpp-gfortran\\.exe$",
-    "^.*?.pl",
-    "^.*?.sh",
+    "^.*?.pl$",
+    "^.*?.sh$",
     "/gcc/config/",
     "/gcc/d/",
     "/maintainer-scripts/",
     "/libphobos/",
     "/libbacktrace/",
     "/libffi/",
-    "/contrib/reg",
+    "/contrib/reghunt/",
+    "/contrib/regression/",
     "/contrib/vim-gcc-dev",
-    "/libhsail/"
+    "/libhsail/",
+    "/makepkg/"
 };
+

@@ -13,14 +13,23 @@ ManifestInfo::ManifestInfo(const std::vector<std::string>& rules)
         rules.begin(),
         rules.end(),
         std::back_inserter(this->rules),
-        [](const std::string& r) { return std::regex(r, std::regex::icase); });
+        [](const std::string& r) {
+            try
+            {
+                return std::shared_ptr<std::regex>(new std::regex(r, std::regex::icase | std::regex::basic));
+            }
+            catch (...)
+            {
+                std::cout << "Failed to compile regex '" << r << "'" << std::endl;
+                throw;
+            }});
 }
 
 bool ManifestInfo::check_file(const std::filesystem::path& p)
 {
     const std::string fn = p.string();
-    for (const std::regex& r : rules) {
-        if (std::regex_search(fn, r)) {
+    for (std::shared_ptr<std::regex> r : rules) {
+        if (std::regex_search(fn, *r)) {
             files.insert(p);
             return true;
         }
