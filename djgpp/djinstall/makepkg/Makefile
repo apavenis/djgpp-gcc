@@ -1,5 +1,12 @@
-CXX = g++
+ifneq ($(DJGPP),)
+CXX := gpp
+else
+CXX := g++
+#CXX := clang++
+endif
+
 CXXFLAGS = -std=c++17 -Og -Wall -g3
+#-fsanitize=address,undefined
 
 SRCS = \
 	main.cpp \
@@ -13,13 +20,14 @@ SRCS = \
 
 OBJS = $(patsubst %.cpp,%.o,$(SRCS))
 
-all:	makepkg
+all:	makepkg.exe
 
 clean:
 	rm -f makepkg $(OBJS)
 
-makepkg: $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) -o $@ -lstdc++
+makepkg.exe: $(OBJS)
+	echo $(OS)
+	$(CXX) $(CXXFLAGS) $(OBJS) -o $@
 
 %o : %.cpp;  $(CXX) -o $@ $< -M $CXXFLAGS
 

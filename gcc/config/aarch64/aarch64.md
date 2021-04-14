@@ -1898,6 +1898,14 @@
       && (!REG_P (op1)
 	 || !REGNO_PTR_FRAME_P (REGNO (op1))))
     operands[2] = force_reg (<MODE>mode, operands[2]);
+  /* Some tunings prefer to avoid VL-based operations.
+     Split off the poly immediate here.  The rtx costs hook will reject attempts
+     to combine them back.  */
+  else if (GET_CODE (operands[2]) == CONST_POLY_INT
+	   && can_create_pseudo_p ()
+	   && (aarch64_tune_params.extra_tuning_flags
+	       & AARCH64_EXTRA_TUNE_CSE_SVE_VL_CONSTANTS))
+    operands[2] = force_reg (<MODE>mode, operands[2]);
   /* Expand polynomial additions now if the destination is the stack
      pointer, since we don't want to use that as a temporary.  */
   else if (operands[0] == stack_pointer_rtx
@@ -2007,8 +2015,8 @@
   [(set
     (match_operand:GPI 0 "register_operand" "=r,r,r,r,r,r,&r")
     (plus:GPI
-     (match_operand:GPI 1 "register_operand" "%rk,rk,rk,rk,rk,0,rk")
-     (match_operand:GPI 2 "aarch64_pluslong_or_poly_operand" "I,r,J,Uaa,Uav,Uai,Uat")))]
+     (match_operand:GPI 1 "register_operand" "%rk,rk,rk,rk,0,rk,rk")
+     (match_operand:GPI 2 "aarch64_pluslong_or_poly_operand" "I,r,J,Uaa,Uai,Uav,Uat")))]
   "TARGET_SVE && operands[0] != stack_pointer_rtx"
   "@
   add\\t%<w>0, %<w>1, %2

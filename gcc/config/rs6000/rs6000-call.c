@@ -91,6 +91,12 @@
 #define TARGET_NO_PROTOTYPE 0
 #endif
 
+struct builtin_compatibility
+{
+  const enum rs6000_builtins code;
+  const char *const name;
+};
+
 struct builtin_description
 {
   const HOST_WIDE_INT mask;
@@ -8299,6 +8305,13 @@ def_builtin (const char *name, tree type, enum rs6000_builtins code)
 	     (int)code, name, attr_string);
 }
 
+static const struct builtin_compatibility bdesc_compat[] =
+{
+#define RS6000_BUILTIN_COMPAT
+#include "rs6000-builtin.def"
+};
+#undef RS6000_BUILTIN_COMPAT
+
 /* Simple ternary operations: VECd = foo (VECa, VECb, VECc).  */
 
 #undef RS6000_BUILTIN_0
@@ -10828,7 +10841,7 @@ rs6000_gimple_fold_mma_builtin (gimple_stmt_iterator *gsi)
     {
       /* This is an MMA disassemble built-in function.  */
       gcc_assert (fncode == MMA_BUILTIN_DISASSEMBLE_ACC
-		  || fncode == MMA_BUILTIN_DISASSEMBLE_PAIR);
+		  || fncode == VSX_BUILTIN_DISASSEMBLE_PAIR);
 
       push_gimplify_context (true);
       tree dst_ptr = gimple_call_arg (stmt, 0);
@@ -10837,10 +10850,12 @@ rs6000_gimple_fold_mma_builtin (gimple_stmt_iterator *gsi)
       tree src = make_ssa_name (TREE_TYPE (src_type));
       gimplify_assign (src, build_simple_mem_ref (src_ptr), &new_seq);
 
-      /* If we are not disassembling an accumulator or our destination is
-	 another accumulator, then just copy the entire thing as is.  */
-      if (fncode != MMA_BUILTIN_DISASSEMBLE_ACC
-	  || TREE_TYPE (TREE_TYPE (dst_ptr)) == vector_quad_type_node)
+      /* If we are disassembling an accumulator/pair and our destination is
+	 another accumulator/pair, then just copy the entire thing as is.  */
+      if ((fncode == MMA_BUILTIN_DISASSEMBLE_ACC
+	   && TREE_TYPE (TREE_TYPE (dst_ptr)) == vector_quad_type_node)
+	  || (fncode == VSX_BUILTIN_DISASSEMBLE_PAIR
+	      && TREE_TYPE (TREE_TYPE (dst_ptr)) == vector_pair_type_node))
 	{
 	  tree dst = build_simple_mem_ref (build1 (VIEW_CONVERT_EXPR,
 						   src_type, dst_ptr));
@@ -10852,21 +10867,25 @@ rs6000_gimple_fold_mma_builtin (gimple_stmt_iterator *gsi)
 
       /* We're disassembling an accumulator into a different type, so we need
 	 to emit a xxmfacc instruction now, since we cannot do it later.  */
-      new_decl = rs6000_builtin_decls[MMA_BUILTIN_XXMFACC_INTERNAL];
-      new_call = gimple_build_call (new_decl, 1, src);
-      src = make_ssa_name (vector_quad_type_node);
-      gimple_call_set_lhs (new_call, src);
-      gimple_seq_add_stmt (&new_seq, new_call);
+      if (fncode == MMA_BUILTIN_DISASSEMBLE_ACC)
+	{
+	  new_decl = rs6000_builtin_decls[MMA_BUILTIN_XXMFACC_INTERNAL];
+	  new_call = gimple_build_call (new_decl, 1, src);
+	  src = make_ssa_name (vector_quad_type_node);
+	  gimple_call_set_lhs (new_call, src);
+	  gimple_seq_add_stmt (&new_seq, new_call);
+	}
 
-      /* Copy the accumulator vector by vector.  */
+      /* Copy the accumulator/pair vector by vector.  */
+      unsigned nvecs = (fncode == MMA_BUILTIN_DISASSEMBLE_ACC) ? 4 : 2;
       tree dst_type = build_pointer_type_for_mode (unsigned_V16QI_type_node,
 						   ptr_mode, true);
       tree dst_base = build1 (VIEW_CONVERT_EXPR, dst_type, dst_ptr);
-      tree array_type = build_array_type_nelts (unsigned_V16QI_type_node, 4);
+      tree array_type = build_array_type_nelts (unsigned_V16QI_type_node, nvecs);
       tree src_array = build1 (VIEW_CONVERT_EXPR, array_type, src);
-      for (unsigned i = 0; i < 4; i++)
+      for (unsigned i = 0; i < nvecs; i++)
 	{
-	  unsigned index = WORDS_BIG_ENDIAN ? i : 3 - i;
+	  unsigned index = WORDS_BIG_ENDIAN ? i : nvecs - 1 - i;
 	  tree ref = build4 (ARRAY_REF, unsigned_V16QI_type_node, src_array,
 			     build_int_cst (size_type_node, i),
 			     NULL_TREE, NULL_TREE);
@@ -10937,7 +10956,7 @@ rs6000_gimple_fold_mma_builtin (gimple_stmt_iterator *gsi)
       gcc_unreachable ();
     }
 
-  if (fncode == MMA_BUILTIN_ASSEMBLE_PAIR)
+  if (fncode == VSX_BUILTIN_ASSEMBLE_PAIR)
     lhs = make_ssa_name (vector_pair_type_node);
   else
     lhs = make_ssa_name (vector_quad_type_node);
@@ -12511,6 +12530,18 @@ rs6000_init_builtins (void)
 #ifdef SUBTARGET_INIT_BUILTINS
   SUBTARGET_INIT_BUILTINS;
 #endif
+
+  /* Register the compatibility builtins after all of the normal
+     builtins have been defined.  */
+  const struct builtin_compatibility *d = bdesc_compat;
+  unsigned i;
+  for (i = 0; i < ARRAY_SIZE (bdesc_compat); i++, d++)
+    {
+      tree decl = rs6000_builtin_decls[(int)d->code];
+      if (decl != NULL)
+	add_builtin_function (d->name, TREE_TYPE (decl), (int)d->code,
+			      BUILT_IN_MD, NULL, NULL_TREE);
+    }
 }
 
 /* Returns the rs6000 builtin decl for CODE.  */
@@ -13179,7 +13210,7 @@ mma_init_builtins (void)
 	  /* This is a disassemble MMA built-in function.  */
 	  gcc_assert (attr_args == RS6000_BTC_BINARY
 		      && (d->code == MMA_BUILTIN_DISASSEMBLE_ACC
-			  || d->code == MMA_BUILTIN_DISASSEMBLE_PAIR));
+			  || d->code == VSX_BUILTIN_DISASSEMBLE_PAIR));
 	  op[nopnds++] = build_pointer_type (void_type_node);
 	  if (attr & RS6000_BTC_QUAD)
 	    op[nopnds++] = build_pointer_type (vector_quad_type_node);
@@ -13196,7 +13227,7 @@ mma_init_builtins (void)
 	      if (gimple_func && mode == PXImode)
 		op[nopnds++] = build_pointer_type (vector_quad_type_node);
 	      else if (gimple_func && mode == POImode
-		       && d->code == MMA_BUILTIN_ASSEMBLE_PAIR)
+		       && d->code == VSX_BUILTIN_ASSEMBLE_PAIR)
 		op[nopnds++] = build_pointer_type (vector_pair_type_node);
 	      else
 		/* MMA uses unsigned types.  */

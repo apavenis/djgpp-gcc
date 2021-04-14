@@ -13787,6 +13787,7 @@ instructions, but allow the compiler to schedule those calls.
 * PowerPC Hardware Transactional Memory Built-in Functions::
 * PowerPC Atomic Memory Operation Functions::
 * PowerPC Matrix-Multiply Assist Built-in Functions::
+* RISC-V Built-in Functions::
 * RX Built-in Functions::
 * S/390 System z Built-in Functions::
 * SH Built-in Functions::
@@ -20955,12 +20956,22 @@ void __builtin_mma_xxsetaccz (__vector_quad *);
 void __builtin_mma_assemble_acc (__vector_quad *, vec_t, vec_t, vec_t, vec_t);
 void __builtin_mma_disassemble_acc (void *, __vector_quad *);
 
-void __builtin_mma_assemble_pair (__vector_pair *, vec_t, vec_t);
-void __builtin_mma_disassemble_pair (void *, __vector_pair *);
+void __builtin_vsx_assemble_pair (__vector_pair *, vec_t, vec_t);
+void __builtin_vsx_disassemble_pair (void *, __vector_pair *);
 
 vec_t __builtin_vsx_xvcvspbf16 (vec_t);
 vec_t __builtin_vsx_xvcvbf16spn (vec_t);
 @end smallexample
+
+@node RISC-V Built-in Functions
+@subsection RISC-V Built-in Functions
+
+These built-in functions are available for the RISC-V family of
+processors.
+
+@deftypefn {Built-in Function} {void *} __builtin_thread_pointer (void)
+Returns the value that is currently set in the @samp{tp} register.
+@end deftypefn
 
 @node RX Built-in Functions
 @subsection RX Built-in Functions
@@ -21799,6 +21810,12 @@ AMD Family 17h Zen version 1.
 
 @item znver2
 AMD Family 17h Zen version 2.
+
+@item amdfam19h
+AMD Family 19h CPU.
+
+@item znver3
+AMD Family 19h Zen version 3.
 @end table
 
 Here is an example:

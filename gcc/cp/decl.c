@@ -6580,6 +6580,19 @@ check_array_initializer (tree decl, tree type, tree init)
 {
   tree element_type = TREE_TYPE (type);
 
+  /* Structured binding when initialized with an array type needs
+     to have complete type.  */
+  if (decl
+      && DECL_DECOMPOSITION_P (decl)
+      && !DECL_DECOMP_BASE (decl)
+      && !COMPLETE_TYPE_P (type))
+    {
+      error_at (DECL_SOURCE_LOCATION (decl),
+		"structured binding has incomplete type %qT", type);
+      TREE_TYPE (decl) = error_mark_node;
+      return true;
+    }
+
   /* The array type itself need not be complete, because the
      initializer may tell us how many elements are in the array.
      But, the elements of the array must be complete.  */
@@ -8372,6 +8385,12 @@ cp_finish_decomp (tree decl, tree first, unsigned int count)
 			 : get_tuple_element_type (type, i));
 	  input_location = sloc;
 
+	  if (VOID_TYPE_P (eltype))
+	    {
+	      error ("%<std::tuple_element<%u, %T>::type%> is %<void%>",
+		     i, type);
+	      eltype = error_mark_node;
+	    }
 	  if (init == error_mark_node || eltype == error_mark_node)
 	    {
 	      inform (dloc, "in initialization of structured binding "
@@ -8988,17 +9007,25 @@ expand_static_init (tree decl, tree init)
 
 	  /* Do the initialization itself.  */
 	  init = add_stmt_to_compound (begin, init);
-	  init = add_stmt_to_compound
-	    (init, build2 (MODIFY_EXPR, void_type_node, flag, boolean_true_node));
-	  init = add_stmt_to_compound
-	    (init, build_call_n (release_fn, 1, guard_addr));
+	  init = add_stmt_to_compound (init,
+				       build2 (MODIFY_EXPR, void_type_node,
+					       flag, boolean_true_node));
+
+	  /* Use atexit to register a function for destroying this static
+	     variable.  Do this before calling __cxa_guard_release.  */
+	  init = add_stmt_to_compound (init, register_dtor_fn (decl));
+
+	  init = add_stmt_to_compound (init, build_call_n (release_fn, 1,
+							   guard_addr));
 	}
       else
-	init = add_stmt_to_compound (init, set_guard (guard));
+	{
+	  init = add_stmt_to_compound (init, set_guard (guard));
 
-      /* Use atexit to register a function for destroying this static
-	 variable.  */
-      init = add_stmt_to_compound (init, register_dtor_fn (decl));
+	  /* Use atexit to register a function for destroying this static
+	     variable.  */
+	  init = add_stmt_to_compound (init, register_dtor_fn (decl));
+	}
 
       finish_expr_stmt (init);
 

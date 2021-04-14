@@ -1057,7 +1057,7 @@ struct processor_costs power8_cost = {
   COSTS_N_INSNS (17),	/* ddiv */
   128,			/* cache line size */
   32,			/* l1 cache */
-  256,			/* l2 cache */
+  512,			/* l2 cache */
   12,			/* prefetch streams */
   COSTS_N_INSNS (3),	/* SF->DF convert */
 };
@@ -2515,6 +2515,9 @@ rs6000_debug_reg_global (void)
 
   if (rs6000_altivec_abi)
     fprintf (stderr, DEBUG_FMT_S, "altivec_abi", "true");
+
+  if (rs6000_aix_extabi)
+    fprintf (stderr, DEBUG_FMT_S, "AIX vec-extabi", "true");
 
   if (rs6000_darwin64_abi)
     fprintf (stderr, DEBUG_FMT_S, "darwin64_abi", "true");
@@ -8406,26 +8409,6 @@ rs6000_output_dwarf_dtprel (FILE *file, int size, rtx x)
   output_addr_const (file, x);
   if (TARGET_ELF)
     fputs ("@dtprel+0x8000", file);
-  else if (TARGET_XCOFF && SYMBOL_REF_P (x))
-    {
-      switch (SYMBOL_REF_TLS_MODEL (x))
-	{
-	case 0:
-	  break;
-	case TLS_MODEL_LOCAL_EXEC:
-	  fputs ("@le", file);
-	  break;
-	case TLS_MODEL_INITIAL_EXEC:
-	  fputs ("@ie", file);
-	  break;
-	case TLS_MODEL_GLOBAL_DYNAMIC:
-	case TLS_MODEL_LOCAL_DYNAMIC:
-	  fputs ("@m", file);
-	  break;
-	default:
-	  gcc_unreachable ();
-	}
-    }
 }
 
 /* Return true if X is a symbol that refers to real (rather than emulated)
@@ -9277,7 +9260,7 @@ rs6000_conditional_register_usage (void)
 	call_used_regs[i] = 1;
 
       /* AIX reserves VR20:31 in non-extended ABI mode.  */
-      if (TARGET_XCOFF)
+      if (TARGET_XCOFF && !rs6000_aix_extabi)
 	for (i = FIRST_ALTIVEC_REGNO + 20; i < FIRST_ALTIVEC_REGNO + 32; ++i)
 	  fixed_regs[i] = call_used_regs[i] = 1;
     }
@@ -9515,6 +9498,9 @@ rs6000_const_vec (machine_mode mode)
 void
 rs6000_emit_le_vsx_permute (rtx dest, rtx source, machine_mode mode)
 {
+  gcc_assert (!altivec_indexed_or_indirect_operand (dest, mode));
+  gcc_assert (!altivec_indexed_or_indirect_operand (source, mode));
+
   /* Scalar permutations are easier to express in integer modes rather than
      floating-point modes, so cast them here.  We use V1TImode instead
      of TImode to ensure that the values don't go through GPRs.  */
