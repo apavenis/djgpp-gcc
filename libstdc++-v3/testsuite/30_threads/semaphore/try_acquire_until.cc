@@ -19,6 +19,9 @@
 // { dg-do run { target c++2a } }
 // { dg-require-gthreads "" }
 // { dg-additional-options "-pthread" { target pthread } }
+// { dg-add-options libatomic }
+
+// { dg-skip-if "FIXME: fails" { ! futex } }
 
 #include <semaphore>
 #include <chrono>

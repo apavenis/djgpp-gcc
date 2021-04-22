@@ -473,6 +473,7 @@ extern const struct processor_costs ix86_size_cost;
 #define TARGET_COOPERLAKE (ix86_tune == PROCESSOR_COOPERLAKE)
 #define TARGET_SAPPHIRERAPIDS (ix86_tune == PROCESSOR_SAPPHIRERAPIDS)
 #define TARGET_ALDERLAKE (ix86_tune == PROCESSOR_ALDERLAKE)
+#define TARGET_ROCKETLAKE (ix86_tune == PROCESSOR_ROCKETLAKE)
 #define TARGET_INTEL (ix86_tune == PROCESSOR_INTEL)
 #define TARGET_GENERIC (ix86_tune == PROCESSOR_GENERIC)
 #define TARGET_AMDFAM10 (ix86_tune == PROCESSOR_AMDFAM10)
@@ -523,6 +524,8 @@ extern unsigned char ix86_tune_features[X86_TUNE_LAST];
 #define TARGET_PROMOTE_QImode	ix86_tune_features[X86_TUNE_PROMOTE_QIMODE]
 #define TARGET_FAST_PREFIX	ix86_tune_features[X86_TUNE_FAST_PREFIX]
 #define TARGET_SINGLE_STRINGOP	ix86_tune_features[X86_TUNE_SINGLE_STRINGOP]
+#define TARGET_PREFER_KNOWN_REP_MOVSB_STOSB \
+  ix86_tune_features[X86_TUNE_PREFER_KNOWN_REP_MOVSB_STOSB]
 #define TARGET_MISALIGNED_MOVE_STRING_PRO_EPILOGUES \
 	ix86_tune_features[X86_TUNE_MISALIGNED_MOVE_STRING_PRO_EPILOGUES]
 #define TARGET_QIMODE_MATH	ix86_tune_features[X86_TUNE_QIMODE_MATH]
@@ -799,8 +802,10 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
 /* Target Pragmas.  */
 #define REGISTER_TARGET_PRAGMAS() ix86_register_pragmas ()
 
-/* Target CPU versions for D.  */
+/* Target hooks for D language.  */
 #define TARGET_D_CPU_VERSIONS ix86_d_target_versions
+#define TARGET_D_REGISTER_CPU_TARGET_INFO ix86_d_register_target_info
+#define TARGET_D_HAS_STDCALL_CONVENTION ix86_d_has_stdcall_convention
 
 #ifndef CC1_SPEC
 #define CC1_SPEC "%(cc1_cpu) "
@@ -2384,6 +2389,7 @@ enum processor_type
   PROCESSOR_COOPERLAKE,
   PROCESSOR_SAPPHIRERAPIDS,
   PROCESSOR_ALDERLAKE,
+  PROCESSOR_ROCKETLAKE,
   PROCESSOR_INTEL,
   PROCESSOR_GEODE,
   PROCESSOR_K6,
@@ -2537,6 +2543,7 @@ constexpr wide_int_bitmask PTA_CANNONLAKE = PTA_SKYLAKE | PTA_AVX512F
 constexpr wide_int_bitmask PTA_ICELAKE_CLIENT = PTA_CANNONLAKE | PTA_AVX512VNNI
   | PTA_GFNI | PTA_VAES | PTA_AVX512VBMI2 | PTA_VPCLMULQDQ | PTA_AVX512BITALG
   | PTA_RDPID | PTA_AVX512VPOPCNTDQ;
+constexpr wide_int_bitmask PTA_ROCKETLAKE = PTA_ICELAKE_CLIENT & ~PTA_SGX;
 constexpr wide_int_bitmask PTA_ICELAKE_SERVER = PTA_ICELAKE_CLIENT
   | PTA_PCONFIG | PTA_WBNOINVD | PTA_CLWB;
 constexpr wide_int_bitmask PTA_TIGERLAKE = PTA_ICELAKE_CLIENT | PTA_MOVDIRI
@@ -2545,9 +2552,6 @@ constexpr wide_int_bitmask PTA_SAPPHIRERAPIDS = PTA_COOPERLAKE | PTA_MOVDIRI
   | PTA_MOVDIR64B | PTA_AVX512VP2INTERSECT | PTA_ENQCMD | PTA_CLDEMOTE
   | PTA_PTWRITE | PTA_WAITPKG | PTA_SERIALIZE | PTA_TSXLDTRK | PTA_AMX_TILE
   | PTA_AMX_INT8 | PTA_AMX_BF16 | PTA_UINTR | PTA_AVXVNNI;
-constexpr wide_int_bitmask PTA_ALDERLAKE = PTA_SKYLAKE | PTA_CLDEMOTE
-  | PTA_PTWRITE | PTA_WAITPKG | PTA_SERIALIZE | PTA_HRESET | PTA_KL
-  | PTA_WIDEKL | PTA_AVXVNNI;
 constexpr wide_int_bitmask PTA_KNL = PTA_BROADWELL | PTA_AVX512PF
   | PTA_AVX512ER | PTA_AVX512F | PTA_AVX512CD | PTA_PREFETCHWT1;
 constexpr wide_int_bitmask PTA_BONNELL = PTA_CORE2 | PTA_MOVBE;
@@ -2560,6 +2564,10 @@ constexpr wide_int_bitmask PTA_GOLDMONT_PLUS = PTA_GOLDMONT | PTA_RDPID
   | PTA_SGX | PTA_PTWRITE;
 constexpr wide_int_bitmask PTA_TREMONT = PTA_GOLDMONT_PLUS | PTA_CLWB
   | PTA_GFNI | PTA_MOVDIRI | PTA_MOVDIR64B | PTA_CLDEMOTE | PTA_WAITPKG;
+constexpr wide_int_bitmask PTA_ALDERLAKE = PTA_TREMONT | PTA_ADX | PTA_AVX
+  | PTA_AVX2 | PTA_BMI | PTA_BMI2 | PTA_F16C | PTA_FMA | PTA_LZCNT
+  | PTA_PCONFIG | PTA_PKU | PTA_VAES | PTA_VPCLMULQDQ | PTA_SERIALIZE
+  | PTA_HRESET | PTA_KL | PTA_WIDEKL | PTA_AVXVNNI;
 constexpr wide_int_bitmask PTA_KNM = PTA_KNL | PTA_AVX5124VNNIW
   | PTA_AVX5124FMAPS | PTA_AVX512VPOPCNTDQ;
 
@@ -2940,6 +2948,14 @@ struct GTY(()) machine_function {
 
   /* True if the function needs a stack frame.  */
   BOOL_BITFIELD stack_frame_required : 1;
+
+  /* True if __builtin_ia32_vzeroupper () has been expanded in current
+     function.  */
+  BOOL_BITFIELD has_explicit_vzeroupper : 1;
+
+  /* True if we should act silently, rather than raise an error for
+     invalid calls.  */
+  BOOL_BITFIELD silent_p : 1;
 
   /* The largest alignment, in bytes, of stack slot actually used.  */
   unsigned int max_used_stack_alignment;

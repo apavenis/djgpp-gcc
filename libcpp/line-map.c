@@ -981,16 +981,15 @@ linemap_position_for_loc_and_offset (line_maps *set,
      (loc + offset) should be less than the first location encoded by
      the next line map of the set.  Otherwise, we try to encode the
      location in the next map.  */
-  while (map != LINEMAPS_LAST_ORDINARY_MAP (set)
+  for (; map != LINEMAPS_LAST_ORDINARY_MAP (set)
 	 && (loc + (column_offset << map->m_range_bits)
-	     >= MAP_START_LOCATION (&map[1])))
-    {
-      map = &map[1];
-      /* If the next map starts in a higher line, we cannot encode the
-	 location there.  */
-      if (line < ORDINARY_MAP_STARTING_LINE_NUMBER (map))
-	return loc;
-    }
+	     >= MAP_START_LOCATION (map + 1)); map++)
+    /* If the next map is a different file, or starts in a higher line, we
+       cannot encode the location there.  */
+    if ((map + 1)->reason != LC_RENAME
+	|| line < ORDINARY_MAP_STARTING_LINE_NUMBER (map + 1)
+	|| 0 != strcmp (LINEMAP_FILE (map + 1), LINEMAP_FILE (map)))
+      return loc;
 
   column += column_offset;
 
@@ -1321,7 +1320,7 @@ linemap_location_from_macro_expansion_p (const class line_maps *set,
   if (IS_ADHOC_LOC (location))
     location = get_location_from_adhoc_loc (set, location);
 
-  return IS_MACRO_LOC (location);
+  return location >= LINEMAPS_MACRO_LOWEST_LOCATION (set);
 }
 
 /* Given two virtual locations *LOC0 and *LOC1, return the first
@@ -2427,6 +2426,14 @@ rich_location::maybe_add_fixit (location_t start,
      endpoints straddle the boundary for which the linemap can represent
      columns (PR c/82050).  */
   if (exploc_start.column > exploc_next_loc.column)
+    {
+      stop_supporting_fixits ();
+      return;
+    }
+  /* If we have very long lines, tokens will eventually fall back to
+     having column == 0.
+     We can't handle fix-it hints that use such locations.  */
+  if (exploc_start.column == 0 || exploc_next_loc.column == 0)
     {
       stop_supporting_fixits ();
       return;

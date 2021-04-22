@@ -202,7 +202,7 @@ in the following sections.
 -aux-info @var{filename}  -fallow-parameterless-variadic-functions @gol
 -fno-asm  -fno-builtin  -fno-builtin-@var{function}  -fgimple@gol
 -fhosted  -ffreestanding @gol
--fopenacc  -fopenacc-dim=@var{geom}  -fopenacc-kernels=@var{mode} @gol
+-fopenacc  -fopenacc-dim=@var{geom} @gol
 -fopenmp  -fopenmp-simd @gol
 -fms-extensions  -fplan9-extensions  -fsso-struct=@var{endianness} @gol
 -fallow-single-precision  -fcond-mismatch  -flax-vector-conversions @gol
@@ -424,6 +424,7 @@ Objective-C and Objective-C++ Dialects}.
 -fdump-analyzer-exploded-nodes @gol
 -fdump-analyzer-exploded-nodes-2 @gol
 -fdump-analyzer-exploded-nodes-3 @gol
+-fdump-analyzer-feasibility @gol
 -fdump-analyzer-json @gol
 -fdump-analyzer-state-purge @gol
 -fdump-analyzer-supergraph @gol
@@ -1170,6 +1171,7 @@ See RS/6000 and PowerPC Options.
 -mrelax  -mno-relax @gol
 -mriscv-attribute  -mmo-riscv-attribute @gol
 -malign-data=@var{type} @gol
+-mbig-endian  -mlittle-endian @gol
 +-mstack-protector-guard=@var{guard} -mstack-protector-guard-reg=@var{reg} @gol
 +-mstack-protector-guard-offset=@var{offset}}
 
@@ -2616,18 +2618,6 @@ Specify default compute dimensions for parallel offload regions that do
 not explicitly specify.  The @var{geom} value is a triple of
 ':'-separated sizes, in order 'gang', 'worker' and, 'vector'.  A size
 can be omitted, to use a target-specific default value.
-
-@item -fopenacc-kernels=@var{mode}
-@opindex fopenacc-kernels
-@cindex OpenACC accelerator programming
-Specify mode of OpenACC `kernels' constructs handling.
-With @option{-fopenacc-kernels=decompose}, OpenACC `kernels'
-constructs are decomposed into parts, a sequence of compute
-constructs, each then handled individually.
-This is work in progress.
-With @option{-fopenacc-kernels=parloops}, OpenACC `kernels' constructs
-are handled by the @samp{parloops} pass, en bloc.
-This is the current default.
 
 @item -fopenmp
 @opindex fopenmp
@@ -9566,6 +9556,13 @@ Dump a textual representation of the ``exploded graph'' to
 one dump file per node, to @file{@var{file}.eg-@var{id}.txt}.
 This is typically a large number of dump files.
 
+@item -fdump-analyzer-feasibility
+@opindex dump-analyzer-feasibility
+Dump internal details about the analyzer's search for feasible paths.
+The details are written in a form suitable for viewing with GraphViz
+to filenames of the form @file{@var{file}.*.fg.dot} and
+@file{@var{file}.*.tg.dot}.
+
 @item -fdump-analyzer-json
 @opindex fdump-analyzer-json
 Dump a compressed JSON representation of analyzer internals to
@@ -12362,10 +12359,12 @@ the link-time optimization step directly from the WPA phase.
 @opindex flto-compression-level
 This option specifies the level of compression used for intermediate
 language written to LTO object files, and is only meaningful in
-conjunction with LTO mode (@option{-flto}).  Valid
-values are 0 (no compression) to 9 (maximum compression).  Values
-outside this range are clamped to either 0 or 9.  If the option is not
-given, a default balanced compression setting is used.
+conjunction with LTO mode (@option{-flto}).  GCC currently supports two
+LTO compression algorithms. For zstd, valid values are 0 (no compression)
+to 19 (maximum compression), while zlib supports values from 0 to 9.
+Values outside this range are clamped to either minimum or maximum
+of the supported values.  If the option is not given,
+a default balanced compression setting is used.
 
 @item -fuse-linker-plugin
 @opindex fuse-linker-plugin
@@ -13038,7 +13037,6 @@ also use other heuristics to decide whether if-conversion is likely to be
 profitable.
 
 @item max-rtl-if-conversion-predictable-cost
-@itemx max-rtl-if-conversion-unpredictable-cost
 RTL if-conversion will try to remove conditional branches around a block
 and replace them with conditionally executed instructions.  These parameters
 give the maximum permissible cost for the sequence that would be generated
@@ -13257,7 +13255,7 @@ are shared across multiple compilation units.
 @item modref-max-bases
 @item modref-max-refs
 @item modref-max-accesses
-Specifies the maximal number of base pointers, referneces and accesses stored
+Specifies the maximal number of base pointers, references and accesses stored
 for a single function by mod/ref analysis.
 
 @item modref-max-tests
@@ -14354,6 +14352,10 @@ recurse deeper.
 The maximum depth of a symbolic value, before approximating
 the value as unknown.
 
+@item analyzer-max-infeasible-edges
+The maximum number of infeasible edges to reject before declaring
+a diagnostic as infeasible.
+
 @item gimple-fe-computed-hot-bb-threshold
 The number of executions of a basic block which is considered hot.
 The parameter is used only in GIMPLE FE.
@@ -14361,6 +14363,20 @@ The parameter is used only in GIMPLE FE.
 @item analyzer-bb-explosion-factor
 The maximum number of 'after supernode' exploded nodes within the analyzer
 per supernode, before terminating analysis.
+
+@item ranger-logical-depth
+Maximum depth of logical expression evaluation ranger will look through
+when evaluating outgoing edge ranges.
+
+@item openacc-kernels
+Specify mode of OpenACC `kernels' constructs handling.
+With @option{--param=openacc-kernels=decompose}, OpenACC `kernels'
+constructs are decomposed into parts, a sequence of compute
+constructs, each then handled individually.
+This is work in progress.
+With @option{--param=openacc-kernels=parloops}, OpenACC `kernels'
+constructs are handled by the @samp{parloops} pass, en bloc.
+This is the current default.
 
 @end table
 
@@ -14403,6 +14419,14 @@ deemed equal.
 Use both Advanced SIMD and SVE.  Prefer SVE when the costs are deemed equal.
 @end table
 The default value is 0.
+
+@item aarch64-loop-vect-issue-rate-niters
+The tuning for some AArch64 CPUs tries to take both latencies and issue
+rates into account when deciding whether a loop should be vectorized
+using SVE, vectorized using Advanced SIMD, or not vectorized at all.
+If this parameter is set to @var{n}, GCC will not use this heuristic
+for loops that are known to execute in fewer than @var{n} Advanced
+SIMD iterations.
 
 @end table
 
@@ -16151,7 +16175,7 @@ arbitrary signal handlers such as @code{SIGALRM}.
 @opindex fdelete-dead-exceptions
 Consider that instructions that may throw exceptions but don't otherwise
 contribute to the execution of the program can be optimized away.
-This option is enabled by default for the Ada front end, as permitted by
+This option is enabled by default for the Ada compiler, as permitted by
 the Ada language specification.
 Optimization passes that cause dead exceptions to be removed are enabled independently at different optimization levels.
 
@@ -26736,6 +26760,17 @@ types.  Supported values for @var{type} are @samp{xlen} which uses x register
 width as the alignment value, and @samp{natural} which uses natural alignment.
 @samp{xlen} is the default.
 
+@item -mbig-endian
+@opindex mbig-endian
+Generate big-endian code.  This is the default when GCC is configured for a
+@samp{riscv64be-*-*} or @samp{riscv32be-*-*} target.
+
+@item -mlittle-endian
+@opindex mlittle-endian
+Generate little-endian code.  This is the default when GCC is configured for a
+@samp{riscv64-*-*} or @samp{riscv32-*-*} but not a @samp{riscv64be-*-*} or
+@samp{riscv32be-*-*} target.
+
 @item -mstack-protector-guard=@var{guard}
 @itemx -mstack-protector-guard-reg=@var{reg}
 @itemx -mstack-protector-guard-offset=@var{offset}
@@ -30154,10 +30189,19 @@ instruction set support.
 
 @item alderlake
 Intel Alderlake CPU with 64-bit extensions, MOVBE, MMX, SSE, SSE2, SSE3, SSSE3,
-SSE4.1, SSE4.2, POPCNT, AVX, AVX2, AES, PCLMUL, FSGSBASE, RDRND, FMA, BMI,
-BMI2, F16C, RDSEED, ADCX, PREFETCHW, CLFLUSHOPT, XSAVEC, XSAVES, CLDEMOTE,
-PTWRITE, WAITPKG, SERIALIZE, KEYLOCKER, HRESET and AVX-VNNI instruction set
-support.
+SSE4.1, SSE4.2, POPCNT, AES, PREFETCHW, PCLMUL, RDRND, XSAVE, XSAVEC, XSAVES,
+XSAVEOPT, FSGSBASE, PTWRITE, RDPID, SGX, UMIP, GFNI-SSE, CLWB, MOVDIRI,
+MOVDIR64B, CLDEMOTE, WAITPKG, ADCX, AVX, AVX2, BMI, BMI2, F16C, FMA, LZCNT,
+PCONFIG, PKU, VAES, VPCLMULQDQ, SERIALIZE, HRESET, KL, WIDEKL and AVX-VNNI
+instruction set support.
+
+@item rocketlake
+Intel Rocketlake CPU with 64-bit extensions, MOVBE, MMX, SSE, SSE2,
+SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT, PKU, AVX, AVX2, AES, PCLMUL, FSGSBASE,
+RDRND, FMA, BMI, BMI2, F16C, RDSEED, ADCX, PREFETCHW, CLFLUSHOPT, XSAVEC,
+XSAVES, AVX512F, AVX512VL, AVX512BW, AVX512DQ, AVX512CD, AVX512VBMI,
+AVX512IFMA, SHA, CLWB, UMIP, RDPID, GFNI, AVX512VBMI2, AVX512VPOPCNTDQ,
+AVX512BITALG, AVX512VNNI, VPCLMULQDQ, VAES instruction set support.
 
 @item k6
 AMD K6 CPU with MMX instruction set support.

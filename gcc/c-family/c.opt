@@ -800,7 +800,7 @@ functions.
 
 Wmismatched-new-delete
 C++ ObjC++ Var(warn_mismatched_new_delete) Warning LangEnabledBy(C ObjC C++ ObjC++,Wall)
-Warn for mismatches between calls to operator new or delete and the corrsponding
+Warn for mismatches between calls to operator new or delete and the corresponding
 call to the allocation or deallocation function.
 
 Wmismatched-tags
@@ -1872,19 +1872,6 @@ Enable OpenACC.
 fopenacc-dim=
 C ObjC C++ ObjC++ LTO Joined Var(flag_openacc_dims)
 Specify default OpenACC compute dimensions.
-
-fopenacc-kernels=
-C ObjC C++ ObjC++ RejectNegative Joined Enum(openacc_kernels) Var(flag_openacc_kernels) Init(OPENACC_KERNELS_PARLOOPS)
--fopenacc-kernels=[decompose|parloops]	Specify mode of OpenACC 'kernels' constructs handling.
-
-Enum
-Name(openacc_kernels) Type(enum openacc_kernels)
-
-EnumValue
-Enum(openacc_kernels) String(decompose) Value(OPENACC_KERNELS_DECOMPOSE)
-
-EnumValue
-Enum(openacc_kernels) String(parloops) Value(OPENACC_KERNELS_PARLOOPS)
 
 fopenmp
 C ObjC C++ ObjC++ LTO Var(flag_openmp)
