@@ -41,6 +41,7 @@ build_lambda_expr (void)
   LAMBDA_EXPR_DEFAULT_CAPTURE_MODE (lambda) = CPLD_NONE;
   LAMBDA_EXPR_CAPTURE_LIST         (lambda) = NULL_TREE;
   LAMBDA_EXPR_THIS_CAPTURE         (lambda) = NULL_TREE;
+  LAMBDA_EXPR_REGEN_INFO           (lambda) = NULL_TREE;
   LAMBDA_EXPR_PENDING_PROXIES      (lambda) = NULL;
   LAMBDA_EXPR_MUTABLE_P            (lambda) = false;
   return lambda;
@@ -606,8 +607,11 @@ add_capture (tree lambda, tree id, tree orig_init, bool by_reference_p,
 	   parameter pack in this context.  We will want as many fields as we
 	   have elements in the expansion of the initializer, so use its packs
 	   instead.  */
-	PACK_EXPANSION_PARAMETER_PACKS (type)
-	  = uses_parameter_packs (initializer);
+	{
+	  PACK_EXPANSION_PARAMETER_PACKS (type)
+	    = uses_parameter_packs (initializer);
+	  PACK_EXPANSION_AUTO_P (type) = true;
+	}
     }
 
   /* Make member variable.  */

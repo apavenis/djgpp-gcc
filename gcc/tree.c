@@ -5849,7 +5849,7 @@ free_lang_data_in_decl (tree decl, class free_lang_data_d *fld)
       if (!(node = cgraph_node::get (decl))
 	  || (!node->definition && !node->clones))
 	{
-	  if (node)
+	  if (node && !node->declare_variant_alt)
 	    node->release_body ();
 	  else
 	    {
@@ -6609,7 +6609,9 @@ check_aligned_type (const_tree cand, const_tree base, unsigned int align)
 	  && TYPE_CONTEXT (cand) == TYPE_CONTEXT (base)
 	  /* Check alignment.  */
 	  && TYPE_ALIGN (cand) == align
-	  && TYPE_USER_ALIGN (cand) == TYPE_USER_ALIGN (base)
+	  /* Check this is a user-aligned type as build_aligned_type
+	     would create.  */
+	  && TYPE_USER_ALIGN (cand)
 	  && attribute_list_equal (TYPE_ATTRIBUTES (cand),
 				   TYPE_ATTRIBUTES (base))
 	  && check_lang_type (cand, base));
@@ -13857,7 +13859,7 @@ component_ref_size (tree ref, special_array_member *sam /* = NULL */)
 		    *sam = special_array_member::trail_1;
 		}
 
-      /* For a refernce to a zero- or one-element array member of a union
+      /* For a reference to a zero- or one-element array member of a union
 	 use the size of the union instead of the size of the member.  */
       if (TREE_CODE (argtype) == UNION_TYPE)
 	memsize = TYPE_SIZE_UNIT (argtype);

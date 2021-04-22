@@ -5231,6 +5231,7 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 						       TREE_TYPE (ce->value)))
 	      TREE_STATIC (ctor) = 0;
 	  }
+	recompute_constructor_flags (ctor);
 	if (!is_gimple_reg (TREE_OPERAND (*expr_p, 0)))
 	  TREE_OPERAND (*expr_p, 1) = get_formal_tmp_var (ctor, pre_p);
       }
@@ -7078,7 +7079,7 @@ omp_add_variable (struct gimplify_omp_ctx *ctx, tree decl, unsigned int flags)
       if ((flags & GOVD_SHARED) == 0)
 	{
 	  t = TYPE_SIZE_UNIT (TREE_TYPE (TREE_TYPE (decl)));
-	  if (DECL_P (t))
+	  if (t && DECL_P (t))
 	    omp_notice_variable (ctx, t, true);
 	}
     }
@@ -14327,7 +14328,8 @@ gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	     Doing so would prevent us from reporting a false positives.  */
 	  if (asan_poisoned_variables
 	      && asan_used_labels != NULL
-	      && asan_used_labels->contains (label))
+	      && asan_used_labels->contains (label)
+	      && !gimplify_omp_ctxp)
 	    asan_poison_variables (asan_poisoned_variables, false, pre_p);
 	  break;
 

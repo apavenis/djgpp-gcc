@@ -150,7 +150,7 @@ static rtx cris_function_incoming_arg (cumulative_args_t,
 static void cris_function_arg_advance (cumulative_args_t,
 				       const function_arg_info &);
 static rtx_insn *cris_md_asm_adjust (vec<rtx> &, vec<rtx> &,
-				     vec<const char *> &,
+				     vec<machine_mode> &, vec<const char *> &,
 				     vec<rtx> &, HARD_REG_SET &);
 
 static void cris_option_override (void);
@@ -864,7 +864,7 @@ cris_reg_saved_in_regsave_area (unsigned int regno)
   return
     (((df_regs_ever_live_p (regno)
        && !call_used_or_fixed_reg_p (regno)))
-     && (regno != FRAME_POINTER_REGNUM || !frame_pointer_needed)
+     && (regno != HARD_FRAME_POINTER_REGNUM || !frame_pointer_needed)
      && regno != CRIS_SRP_REGNUM)
     || (crtl->calls_eh_return
 	&& (regno == EH_RETURN_DATA_REGNO (0)
@@ -1445,7 +1445,7 @@ cris_initial_elimination_offset (int fromreg, int toreg)
   int ap_fp_offset = 4 + (return_address_on_stack ? 4 : 0);
 
   if (fromreg == ARG_POINTER_REGNUM
-      && toreg == FRAME_POINTER_REGNUM)
+      && toreg == HARD_FRAME_POINTER_REGNUM)
     return ap_fp_offset;
 
   /* Between the frame pointer and the stack are only "normal" stack
@@ -1458,6 +1458,10 @@ cris_initial_elimination_offset (int fromreg, int toreg)
   if (fromreg == ARG_POINTER_REGNUM
       && toreg == STACK_POINTER_REGNUM)
     return ap_fp_offset + fp_sp_offset - 4;
+
+  if (fromreg == FRAME_POINTER_REGNUM
+      && toreg == HARD_FRAME_POINTER_REGNUM)
+    return 0;
 
   gcc_unreachable ();
 }
@@ -2749,10 +2753,10 @@ cris_expand_prologue (void)
 
       mem = gen_rtx_MEM (SImode, stack_pointer_rtx);
       set_mem_alias_set (mem, get_frame_alias_set ());
-      insn = emit_move_insn (mem, frame_pointer_rtx);
+      insn = emit_move_insn (mem, hard_frame_pointer_rtx);
       RTX_FRAME_RELATED_P (insn) = 1;
 
-      insn = emit_move_insn (frame_pointer_rtx, stack_pointer_rtx);
+      insn = emit_move_insn (hard_frame_pointer_rtx, stack_pointer_rtx);
       RTX_FRAME_RELATED_P (insn) = 1;
 
       framesize += 4;
@@ -3015,11 +3019,11 @@ cris_expand_epilogue (void)
 
       emit_insn (gen_cris_frame_deallocated_barrier ());
 
-      emit_move_insn (stack_pointer_rtx, frame_pointer_rtx);
+      emit_move_insn (stack_pointer_rtx, hard_frame_pointer_rtx);
       mem = gen_rtx_MEM (SImode, gen_rtx_POST_INC (SImode,
 						   stack_pointer_rtx));
       set_mem_alias_set (mem, get_frame_alias_set ());
-      insn = emit_move_insn (frame_pointer_rtx, mem);
+      insn = emit_move_insn (hard_frame_pointer_rtx, mem);
 
       /* Whenever we emit insns with post-incremented addresses
 	 ourselves, we must add a post-inc note manually.  */
@@ -3501,8 +3505,9 @@ cris_function_arg_advance (cumulative_args_t ca_v,
 
 static rtx_insn *
 cris_md_asm_adjust (vec<rtx> &outputs, vec<rtx> &inputs,
-		    vec<const char *> &constraints,
-		    vec<rtx> &clobbers, HARD_REG_SET &clobbered_regs)
+		    vec<machine_mode> & /*input_modes*/,
+		    vec<const char *> &constraints, vec<rtx> &clobbers,
+		    HARD_REG_SET &clobbered_regs)
 {
   /* For the time being, all asms clobber condition codes.
      Revisit when there's a reasonable use for inputs/outputs

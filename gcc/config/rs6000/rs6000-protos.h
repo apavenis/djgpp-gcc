@@ -227,6 +227,7 @@ address_is_prefixed (rtx addr,
 #ifdef TREE_CODE
 extern unsigned int rs6000_data_alignment (tree, unsigned int, enum data_align);
 extern bool rs6000_special_adjust_field_align_p (tree, unsigned int);
+extern unsigned int rs6000_special_adjust_field_align (tree, unsigned int);
 extern unsigned int rs6000_special_round_type_align (tree, unsigned int,
 						     unsigned int);
 extern unsigned int darwin_rs6000_special_round_type_align (tree, unsigned int,
@@ -297,6 +298,7 @@ extern void (*rs6000_target_modify_macros_ptr) (bool, HOST_WIDE_INT,
 
 /* Declare functions in rs6000-d.c  */
 extern void rs6000_d_target_versions (void);
+extern void rs6000_d_register_target_info (void);
 
 #ifdef NO_DOLLAR_IN_LABEL
 const char * rs6000_xcoff_strip_dollar (const char *);

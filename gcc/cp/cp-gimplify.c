@@ -660,6 +660,14 @@ cp_gimplify_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p)
       ret = GS_UNHANDLED;
       break;
 
+    case PTRMEM_CST:
+      *expr_p = cplus_expand_constant (*expr_p);
+      if (TREE_CODE (*expr_p) == PTRMEM_CST)
+	ret = GS_ERROR;
+      else
+	ret = GS_OK;
+      break;
+
     case RETURN_EXPR:
       if (TREE_OPERAND (*expr_p, 0)
 	  && (TREE_CODE (TREE_OPERAND (*expr_p, 0)) == INIT_EXPR
@@ -1381,7 +1389,7 @@ cp_genericize_r (tree *stmt_p, int *walk_subtrees, void *data)
 	 normal functions.  */
       if (concept_check_p (stmt))
 	{
-	  *stmt_p = evaluate_concept_check (stmt, tf_warning_or_error);
+	  *stmt_p = evaluate_concept_check (stmt);
 	  * walk_subtrees = 0;
 	  break;
 	}
@@ -1453,45 +1461,15 @@ cp_genericize_r (tree *stmt_p, int *walk_subtrees, void *data)
 
     case REQUIRES_EXPR:
       /* Emit the value of the requires-expression.  */
-      *stmt_p = constant_boolean_node (constraints_satisfied_p (stmt),
-				       boolean_type_node);
+      *stmt_p = evaluate_requires_expr (stmt);
       *walk_subtrees = 0;
       break;
 
     case TEMPLATE_ID_EXPR:
       gcc_assert (concept_check_p (stmt));
       /* Emit the value of the concept check.  */
-      *stmt_p = evaluate_concept_check (stmt, tf_warning_or_error);
+      *stmt_p = evaluate_concept_check (stmt);
       walk_subtrees = 0;
-      break;
-
-    case STATEMENT_LIST:
-      if (TREE_SIDE_EFFECTS (stmt))
-	{
-	  tree_stmt_iterator i;
-	  int nondebug_stmts = 0;
-	  bool clear_side_effects = true;
-	  /* Genericization can clear TREE_SIDE_EFFECTS, e.g. when
-	     transforming an IF_STMT into COND_EXPR.  If such stmt
-	     appears in a STATEMENT_LIST that contains only that
-	     stmt and some DEBUG_BEGIN_STMTs, without -g where the
-	     STATEMENT_LIST wouldn't be present at all the resulting
-	     expression wouldn't have TREE_SIDE_EFFECTS set, so make sure
-	     to clear it even on the STATEMENT_LIST in such cases.  */
-	  for (i = tsi_start (stmt); !tsi_end_p (i); tsi_next (&i))
-	    {
-	      tree t = tsi_stmt (i);
-	      if (TREE_CODE (t) != DEBUG_BEGIN_STMT && nondebug_stmts < 2)
-		nondebug_stmts++;
-	      cp_walk_tree (tsi_stmt_ptr (i), cp_genericize_r, data, NULL);
-	      if (TREE_CODE (t) != DEBUG_BEGIN_STMT
-		  && (nondebug_stmts > 1 || TREE_SIDE_EFFECTS (tsi_stmt (i))))
-		clear_side_effects = false;
-	    }
-	  if (clear_side_effects)
-	    TREE_SIDE_EFFECTS (stmt) = 0;
-	  *walk_subtrees = 0;
-	}
       break;
 
     case OMP_DISTRIBUTE:
@@ -1567,6 +1545,7 @@ cp_genericize_r (tree *stmt_p, int *walk_subtrees, void *data)
     case OMP_SIMD:
     case OMP_LOOP:
     case OACC_LOOP:
+    case STATEMENT_LIST:
       /* These cases are handled by shared code.  */
       c_genericize_control_stmt (stmt_p, walk_subtrees, data,
 				 cp_genericize_r, cp_walk_subtrees);

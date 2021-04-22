@@ -328,9 +328,10 @@ static unsigned int arm_hard_regno_nregs (unsigned int, machine_mode);
 static bool arm_hard_regno_mode_ok (unsigned int, machine_mode);
 static bool arm_modes_tieable_p (machine_mode, machine_mode);
 static HOST_WIDE_INT arm_constant_alignment (const_tree, HOST_WIDE_INT);
-static rtx_insn * thumb1_md_asm_adjust (vec<rtx> &, vec<rtx> &,
-					vec<const char *> &, vec<rtx> &,
-					HARD_REG_SET &);
+static rtx_insn *thumb1_md_asm_adjust (vec<rtx> &, vec<rtx> &,
+				       vec<machine_mode> &,
+				       vec<const char *> &, vec<rtx> &,
+				       HARD_REG_SET &);
 
 /* Table of machine attributes.  */
 static const struct attribute_spec arm_attribute_table[] =
@@ -3229,21 +3230,22 @@ arm_configure_build_target (struct arm_build_target *target,
 	  bitmap_xor (isa_delta, cpu_isa, target->isa);
 	  /* Ignore any bits that are quirk bits.  */
 	  bitmap_and_compl (isa_delta, isa_delta, isa_quirkbits);
-	  /* Ignore (for now) any bits that might be set by -mfpu.  */
-	  bitmap_and_compl (isa_delta, isa_delta, isa_all_fpubits_internal);
-
-	  /* And if the target ISA lacks floating point, ignore any
-	     extensions that depend on that.  */
-	  if (!bitmap_bit_p (target->isa, isa_bit_vfpv2))
+	  /* If the user (or the default configuration) has specified a
+	     specific FPU, then ignore any bits that depend on the FPU
+	     configuration.  Do similarly if using the soft-float
+	     ABI.  */
+	  if (opts->x_arm_fpu_index != TARGET_FPU_auto
+	      || arm_float_abi == ARM_FLOAT_ABI_SOFT)
 	    bitmap_and_compl (isa_delta, isa_delta, isa_all_fpbits);
 
 	  if (!bitmap_empty_p (isa_delta))
 	    {
 	      if (warn_compatible)
 		warning (0, "switch %<-mcpu=%s%> conflicts "
-			 "with %<-march=%s%> switch",
-			 arm_selected_cpu->common.name,
-			 arm_selected_arch->common.name);
+			 "with switch %<-march=%s%>",
+			 opts->x_arm_cpu_string,
+			 opts->x_arm_arch_string);
+
 	      /* -march wins for code generation.
 		 -mcpu wins for default tuning.  */
 	      if (!arm_selected_tune)
@@ -3394,6 +3396,10 @@ arm_configure_build_target (struct arm_build_target *target,
       auto_sbitmap fpu_bits (isa_num_bits);
 
       arm_initialize_isa (fpu_bits, arm_selected_fpu->isa_bits);
+      /* This should clear out ALL bits relating to the FPU/simd
+	 extensions, to avoid potentially invalid combinations later on
+	 that we can't match.  At present we only clear out those bits
+	 that can be set by -mfpu.  This should be fixed in GCC-12.  */
       bitmap_and_compl (target->isa, target->isa, isa_all_fpubits_internal);
       bitmap_ior (target->isa, target->isa, fpu_bits);
     }
@@ -3855,7 +3861,7 @@ arm_options_perform_arch_sanity_checks (void)
 	  arm_pcs_default = ARM_PCS_AAPCS_VFP;
 	  if (!bitmap_bit_p (arm_active_target.isa, isa_bit_vfpv2)
 	      && !bitmap_bit_p (arm_active_target.isa, isa_bit_mve))
-	    error ("%<-mfloat-abi=hard%>: selected processor lacks an FPU");
+	    error ("%<-mfloat-abi=hard%>: selected architecture lacks an FPU");
 	}
       else
 	arm_pcs_default = ARM_PCS_AAPCS;
@@ -5772,6 +5778,10 @@ arm_libcall_uses_aapcs_base (const_rtx libcall)
 		   convert_optab_libfunc (sfix_optab, DImode, SFmode));
       add_libcall (libcall_htab,
 		   convert_optab_libfunc (ufix_optab, DImode, SFmode));
+      add_libcall (libcall_htab,
+		   convert_optab_libfunc (sfix_optab, SImode, SFmode));
+      add_libcall (libcall_htab,
+		   convert_optab_libfunc (ufix_optab, SImode, SFmode));
 
       /* Values from double-precision helper functions are returned in core
 	 registers if the selected core only supports single-precision
@@ -9460,6 +9470,9 @@ arm_tls_referenced_p (rtx x)
 static bool
 arm_legitimate_constant_p_1 (machine_mode, rtx x)
 {
+  if (GET_CODE (x) == CONST_VECTOR && !neon_make_constant (x, false))
+    return false;
+
   return flag_pic || !label_mentioned_p (x);
 }
 
@@ -13024,12 +13037,14 @@ neon_pairwise_reduce (rtx op0, rtx op1, machine_mode mode,
     }
 }
 
-/* If VALS is a vector constant that can be loaded into a register
-   using VDUP, generate instructions to do so and return an RTX to
-   assign to the register.  Otherwise return NULL_RTX.  */
+/* Return a non-NULL RTX iff VALS is a vector constant that can be
+   loaded into a register using VDUP.
+
+   If this is the case, and GENERATE is set, we also generate
+   instructions to do this and return an RTX to assign to the register.  */
 
 static rtx
-neon_vdup_constant (rtx vals)
+neon_vdup_constant (rtx vals, bool generate)
 {
   machine_mode mode = GET_MODE (vals);
   machine_mode inner_mode = GET_MODE_INNER (mode);
@@ -13045,6 +13060,9 @@ neon_vdup_constant (rtx vals)
        vdup.i16).  */
     return NULL_RTX;
 
+  if (!generate)
+    return x;
+
   /* We can load this constant by using VDUP and a constant in a
      single ARM register.  This will be cheaper than a vector
      load.  */
@@ -13053,13 +13071,15 @@ neon_vdup_constant (rtx vals)
   return gen_vec_duplicate (mode, x);
 }
 
-/* Generate code to load VALS, which is a PARALLEL containing only
-   constants (for vec_init) or CONST_VECTOR, efficiently into a
-   register.  Returns an RTX to copy into the register, or NULL_RTX
-   for a PARALLEL that cannot be converted into a CONST_VECTOR.  */
+/* Return a non-NULL RTX iff VALS, which is a PARALLEL containing only
+   constants (for vec_init) or CONST_VECTOR, can be effeciently loaded
+   into a register.
+
+   If this is the case, and GENERATE is set, we also generate code to do
+   this and return an RTX to copy into the register.  */
 
 rtx
-neon_make_constant (rtx vals)
+neon_make_constant (rtx vals, bool generate)
 {
   machine_mode mode = GET_MODE (vals);
   rtx target;
@@ -13091,7 +13111,7 @@ neon_make_constant (rtx vals)
       && simd_immediate_valid_for_move (const_vec, mode, NULL, NULL))
     /* Load using VMOV.  On Cortex-A8 this takes one cycle.  */
     return const_vec;
-  else if ((target = neon_vdup_constant (vals)) != NULL_RTX)
+  else if ((target = neon_vdup_constant (vals, generate)) != NULL_RTX)
     /* Loaded using VDUP.  On Cortex-A8 the VDUP takes one NEON
        pipeline cycle; creating the constant takes one or two ARM
        pipeline cycles.  */
@@ -13101,7 +13121,7 @@ neon_make_constant (rtx vals)
        (for either double or quad vectors).  We cannot take advantage
        of single-cycle VLD1 because we need a PC-relative addressing
        mode.  */
-    return const_vec;
+    return arm_disable_literal_pool ? NULL_RTX : const_vec;
   else
     /* A PARALLEL containing something not valid inside CONST_VECTOR.
        We cannot construct an initializer.  */
@@ -28139,14 +28159,11 @@ arm_file_start (void)
       if (print_tune_info)
 	arm_print_tune_info ();
 
-      if (! TARGET_SOFT_FLOAT)
-	{
-	  if (TARGET_HARD_FLOAT && TARGET_VFP_SINGLE)
-	    arm_emit_eabi_attribute ("Tag_ABI_HardFP_use", 27, 1);
+      if (TARGET_HARD_FLOAT && TARGET_VFP_SINGLE)
+	arm_emit_eabi_attribute ("Tag_ABI_HardFP_use", 27, 1);
 
-	  if (TARGET_HARD_FLOAT_ABI)
-	    arm_emit_eabi_attribute ("Tag_ABI_VFP_args", 28, 1);
-	}
+      if (TARGET_HARD_FLOAT_ABI)
+	arm_emit_eabi_attribute ("Tag_ABI_VFP_args", 28, 1);
 
       /* Some of these attributes only apply when the corresponding features
 	 are used.  However we don't have any easy way of figuring this out.
@@ -33915,9 +33932,10 @@ arm_run_selftests (void)
    Unlike the arm version, we do NOT implement asm flag outputs.  */
 
 rtx_insn *
-thumb1_md_asm_adjust (vec<rtx> &outputs, vec<rtx> &/*inputs*/,
-		      vec<const char *> &constraints,
-		      vec<rtx> &/*clobbers*/, HARD_REG_SET &/*clobbered_regs*/)
+thumb1_md_asm_adjust (vec<rtx> &outputs, vec<rtx> & /*inputs*/,
+		      vec<machine_mode> & /*input_modes*/,
+		      vec<const char *> &constraints, vec<rtx> & /*clobbers*/,
+		      HARD_REG_SET & /*clobbered_regs*/)
 {
   for (unsigned i = 0, n = outputs.length (); i < n; ++i)
     if (strncmp (constraints[i], "=@cc", 4) == 0)

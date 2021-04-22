@@ -1,3 +1,27 @@
+2021-04-19  Richard Biener  <rguenther@suse.de>
+
+	PR preprocessor/100142
+	* line-map.c (linemap_position_for_loc_and_offset): Revert
+	unintended s/column_offset/column/ change.
+
+2021-04-13  Nathan Sidwell  <nathan@acm.org>
+
+	PR preprocessor/99446
+	* line-map.c (line-map.c): Do not advance to linemaps for
+	different files.
+
+2021-04-13  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* include/line-map.h (IS_MACRO_LOC): Delete.
+	* line-map.c (linemap_location_from_macro_expansion_p): Test
+	LINEMAPS_MACRO_LOWEST_LOCATION of the linemap.
+
+2021-03-02  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c/99323
+	* line-map.c (rich_location::maybe_add_fixit): Reject fix-it hints
+	at column 0.
+
 2021-02-24  Nathan Sidwell  <nathan@acm.org>
 
 	PR c++/98718

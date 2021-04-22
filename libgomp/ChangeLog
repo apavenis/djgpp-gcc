@@ -1,3 +1,105 @@
+2021-04-19  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* testsuite/libgomp.oacc-c-c++-common/declare-vla-kernels-decompose-ice-1.c:
+	'-fopenacc-kernels=[...]' -> '--param=openacc-kernels=[...]'.
+	* testsuite/libgomp.oacc-c-c++-common/declare-vla-kernels-decompose.c:
+	Likewise.
+	* testsuite/libgomp.oacc-c-c++-common/kernels-decompose-1.c:
+	Likewise.
+	* testsuite/libgomp.oacc-fortran/pr94358-1.f90: Likewise.
+
+2021-04-15  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR target/99555
+	* testsuite/lib/libgomp.exp
+	(check_effective_target_offload_device_nvptx): New.
+	* testsuite/libgomp.c/pr99555-1.c <nvptx offload device>: Until
+	resolved, make sure that we exit quickly, with error status,
+	XFAILed.
+	* testsuite/libgomp.c-c++-common/task-detach-6.c: Likewise.
+	* testsuite/libgomp.fortran/task-detach-6.f90: Likewise.
+
+2021-04-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR testsuite/100071
+	* testsuite/libgomp.fortran/alloc-1.F90: Call c_f_pointer after last
+	cp = omp_alloc with cp, p arguments instead of cq, q and call
+	c_f_pointer after last cq = omp_alloc with cq, q.
+
+2021-04-11  Hafiz Abid Qadeer  <abidh@codesourcery.com>
+
+	PR middle-end/98088
+	* testsuite/libgomp.oacc-c-c++-common/collapse-2.c: Add check
+	for loop with GT/GE condition.
+	* testsuite/libgomp.oacc-c-c++-common/collapse-3.c: Likewise.
+
+2021-04-09  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR middle-end/84991
+	PR middle-end/84992
+	PR middle-end/90779
+	* testsuite/libgomp.oacc-c-c++-common/static-variable-1.c: New.
+
+2021-04-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/99984
+	* team.c (gomp_thread_start): Call pthread_setspecific for
+	!(defined HAVE_TLS || defined USE_EMUTLS) only after local_thr
+	has been initialized to avoid false positive warning.
+
+2021-03-29  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR target/99555
+	* testsuite/lib/on_device_arch.c: Move to ...
+	* testsuite/libgomp.c-c++-common/on_device_arch.h: ... here.
+	* testsuite/libgomp.fortran/on_device_arch.c: New file;
+	#include on_device_arch.h.
+	* testsuite/libgomp.c-c++-common/task-detach-6.c: #include
+	on_device_arch.h instead of using dg-additional-source.
+	* testsuite/libgomp.c/pr99555-1.c: Likewise.
+	* testsuite/libgomp.fortran/task-detach-6.f90: Update to use
+	on_device_arch.c without relative paths.
+
+2021-03-25  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* plugin/plugin-gcn.c (init_environment_variables): Don't prepend
+	the 'HSA_RUNTIME_LIB' path to 'libhsa-runtime64.so'.
+	* plugin/configfrag.ac (HSA_RUNTIME_LIB): Clean up.
+	* config.h.in: Regenerate.
+	* configure: Likewise.
+
+2021-03-25  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR target/99555
+	* testsuite/lib/on_device_arch.c: New file.
+	* testsuite/libgomp.c/pr99555-1.c: Likewise.
+	* testsuite/libgomp.c-c++-common/task-detach-6.c: Until resolved,
+	skip for nvptx offloading, with error status.
+	* testsuite/libgomp.fortran/task-detach-6.f90: Likewise.
+
+2021-03-25  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* testsuite/libgomp.oacc-fortran/derivedtypes-arrays-1.f90:
+	OpenACC 'serial' construct diagnostic for nvptx offloading.
+
+2021-03-15  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR c++/99509
+	* testsuite/libgomp.c-c++-common/declare_target-1.c: New test.
+
+2021-03-12  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/98858
+	* testsuite/libgomp.fortran/use_device_ptr-3.f90: New test.
+
+2021-03-04  Jakub Jelinek  <jakub@redhat.com>
+
+	* configure.ac: Add AC_CHECK_SIZEOF([void *]).
+	* plugin/configfrag.ac: Check $ac_cv_sizeof_void_p value instead of
+	checking of -m32 or -mx32 options on the command line.
+	* config.h.in: Regenerated.
+	* configure: Regenerated.
+
 2021-02-27  Iain Sandoe  <iain@sandoe.co.uk>
 
 	* testsuite/libgomp.c-c++-common/pr96390.c: Require alias
