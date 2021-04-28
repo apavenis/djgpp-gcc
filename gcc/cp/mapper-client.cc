@@ -19,7 +19,7 @@ along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
-#if defined (__unix__)
+#if defined (__unix__) && !defined(__DJGPP__)
 // Solaris11's socket header used bcopy, which we poison.  cody.hh
 // will include it later under the above check
 #include <sys/socket.h>

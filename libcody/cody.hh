@@ -20,6 +20,12 @@
 #endif
 #endif
 
+// Do not use networking for DJGPP even if it defines __unix__
+#ifdef __DJGPP__
+#undef CODY_NETWORKING
+#define CODY_NETWORKING 0
+#endif
+
 // C++
 #include <memory>
 #include <string>
