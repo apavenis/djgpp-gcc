@@ -1465,12 +1465,12 @@ esac
 # C++11 compiler can still start the bootstrap.  Otherwise, if building GCC,
 # require C++11 (or higher).
 if test "$enable_bootstrap:$GXX" = "yes:yes"; then
-  AX_CXX_COMPILE_STDCXX(11, [ext])
+  CXX="$CXX -std=c++11"
 elif test "$have_compiler" = yes; then
-  AX_CXX_COMPILE_STDCXX(11, [ext])
+  AX_CXX_COMPILE_STDCXX(11)
 
   if test "${build}" != "${host}"; then
-    AX_CXX_COMPILE_STDCXX(11, [ext], [], [_FOR_BUILD])
+    AX_CXX_COMPILE_STDCXX(11, [], [], [_FOR_BUILD])
   fi
 fi
 
