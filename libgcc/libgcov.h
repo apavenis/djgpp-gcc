@@ -47,6 +47,7 @@
 
 #ifdef __DJGPP__
 #include <stdint.h>
+#undef HAVE_SYS_MMAN_H
 #endif // __DJGPP__
 
 #if __CHAR_BIT__ == 8

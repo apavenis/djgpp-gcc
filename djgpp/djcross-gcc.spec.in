@@ -467,6 +467,10 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Tue Apr 27 2021 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to gcc-11.1.0
+- Update to gmp-6.2.1, mpfr-4.1.0, mpc-1.2.1
+
 * Tue May 15 2018 Andris Pavenis <andris.pavenis@iki.fi>
 - Fix value of macros __DATE__ and __TIME__ for DJGPP host.
 
