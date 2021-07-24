@@ -379,7 +379,7 @@ static void next_runtime_02_initialize (void)
 						TYPE_DECL,
 						objc_selector_name,
 						objc_selector_type));
-  TREE_NO_WARNING (type) = 1;
+  suppress_warning (type);
 
   /* IMP : id (*) (id, _message_ref_t*, ...)
      SUPER_IMP : id (*) ( super_t*, _super_message_ref_t*, ...)
@@ -2209,7 +2209,7 @@ has_load_impl (tree clsmeth)
     {
       tree id = METHOD_SEL_NAME (clsmeth);
       if (IDENTIFIER_LENGTH (id) == 4
-	  && strncmp (IDENTIFIER_POINTER (id), "load", 4) == 0)
+	  && startswith (IDENTIFIER_POINTER (id), "load"))
         return true;
       clsmeth = DECL_CHAIN (clsmeth);
     }

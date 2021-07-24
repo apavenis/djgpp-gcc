@@ -894,12 +894,12 @@ template <typename _Tp, typename _Mp, typename _Abi, size_t _Np>
     class _SimdCastType2
     {
       using _Ap = __intrinsic_type_t<_Tp, _Np>;
-      using _B = __vector_type_t<_Tp, _Np>;
+      using _Bp = __vector_type_t<_Tp, _Np>;
       _SimdMember _M_data;
 
     public:
       _SimdCastType2(_Ap __a) : _M_data(__vector_bitcast<_Tp>(__a)) {}
-      _SimdCastType2(_B __b) : _M_data(__b) {}
+      _SimdCastType2(_Bp __b) : _M_data(__b) {}
       operator _SimdMember() const { return _M_data; }
     };
 
@@ -1632,7 +1632,12 @@ template <typename _Abi>
     template <typename _Tp, size_t _Np>
       _GLIBCXX_SIMD_INTRINSIC static constexpr _SimdWrapper<_Tp, _Np>
       _S_complement(_SimdWrapper<_Tp, _Np> __x) noexcept
-      { return ~__x._M_data; }
+      {
+	if constexpr (is_floating_point_v<_Tp>)
+	  return __vector_bitcast<_Tp>(~__vector_bitcast<__int_for_sizeof_t<_Tp>>(__x));
+	else
+	  return ~__x._M_data;
+      }
 
     // _S_unary_minus {{{2
     template <typename _Tp, size_t _Np>

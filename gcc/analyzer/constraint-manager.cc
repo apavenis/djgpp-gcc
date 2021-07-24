@@ -270,9 +270,7 @@ equiv_class::equiv_class (const equiv_class &other)
 : m_constant (other.m_constant), m_cst_sval (other.m_cst_sval),
   m_vars (other.m_vars.length ())
 {
-  int i;
-  const svalue *sval;
-  FOR_EACH_VEC_ELT (other.m_vars, i, sval)
+  for (const svalue *sval : other.m_vars)
     m_vars.quick_push (sval);
 }
 
@@ -310,9 +308,7 @@ equiv_class::to_json () const
   json::object *ec_obj = new json::object ();
 
   json::array *sval_arr = new json::array ();
-  int i;
-  const svalue *sval;
-  FOR_EACH_VEC_ELT (m_vars, i, sval)
+  for (const svalue *sval : m_vars)
     sval_arr->append (sval->to_json ());
   ec_obj->set ("svals", sval_arr);
 
@@ -337,9 +333,7 @@ equiv_class::hash () const
   inchash::hash hstate;
 
   inchash::add_expr (m_constant, hstate);
-  int i;
-  const svalue *sval;
-  FOR_EACH_VEC_ELT (m_vars, i, sval)
+  for (const svalue * sval : m_vars)
     hstate.add_ptr (sval);
   return hstate.end ();
 }
@@ -811,9 +805,7 @@ constraint_manager::to_json () const
   /* Equivalence classes.  */
   {
     json::array *ec_arr = new json::array ();
-    int i;
-    equiv_class *ec;
-    FOR_EACH_VEC_ELT (m_equiv_classes, i, ec)
+    for (const equiv_class *ec : m_equiv_classes)
       ec_arr->append (ec->to_json ());
     cm_obj->set ("ecs", ec_arr);
   }
@@ -821,10 +813,8 @@ constraint_manager::to_json () const
   /* Constraints.  */
   {
     json::array *con_arr = new json::array ();
-    int i;
-    constraint *c;
-    FOR_EACH_VEC_ELT (m_constraints, i, c)
-      con_arr->append (c->to_json ());
+    for (const constraint &c : m_constraints)
+      con_arr->append (c.to_json ());
     cm_obj->set ("constraints", con_arr);
   }
 
@@ -843,9 +833,9 @@ constraint_manager::add_constraint (const svalue *lhs,
   lhs = lhs->unwrap_any_unmergeable ();
   rhs = rhs->unwrap_any_unmergeable ();
 
-  /* Nothing can be known about unknown values.  */
-  if (lhs->get_kind () == SK_UNKNOWN
-      || rhs->get_kind () == SK_UNKNOWN)
+  /* Nothing can be known about unknown/poisoned values.  */
+  if (!lhs->can_have_associated_state_p ()
+      || !rhs->can_have_associated_state_p ())
     /* Not a contradiction.  */
     return true;
 
@@ -1185,7 +1175,7 @@ constraint_manager::get_or_add_equiv_class (const svalue *sval)
 {
   equiv_class_id result (-1);
 
-  gcc_assert (sval->get_kind () != SK_UNKNOWN);
+  gcc_assert (sval->can_have_associated_state_p ());
 
   /* Convert all NULL pointers to (void *) to avoid state explosions
      involving all of the various (foo *)NULL vs (bar *)NULL.  */
@@ -1660,6 +1650,29 @@ on_liveness_change (const svalue_set &live_svalues,
 		    const region_model *model)
 {
   dead_svalue_purger p (live_svalues, model);
+  purge (p, NULL);
+}
+
+class svalue_purger
+{
+public:
+  svalue_purger (const svalue *sval) : m_sval (sval) {}
+
+  bool should_purge_p (const svalue *sval) const
+  {
+    return sval->involves_p (m_sval);
+  }
+
+private:
+  const svalue *m_sval;
+};
+
+/* Purge any state involving SVAL.  */
+
+void
+constraint_manager::purge_state_involving (const svalue *sval)
+{
+  svalue_purger p (sval);
   purge (p, NULL);
 }
 

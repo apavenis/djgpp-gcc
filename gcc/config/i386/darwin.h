@@ -25,20 +25,6 @@ along with GCC; see the file COPYING3.  If not see
 #undef DARWIN_X86
 #define DARWIN_X86 1
 
-#undef TARGET_64BIT
-#define TARGET_64BIT TARGET_ISA_64BIT
-#undef TARGET_64BIT_P
-#define TARGET_64BIT_P(x) TARGET_ISA_64BIT_P(x)
-
-#ifdef IN_LIBGCC2
-#undef TARGET_64BIT
-#ifdef __x86_64__
-#define TARGET_64BIT 1
-#else
-#define TARGET_64BIT 0
-#endif
-#endif
-
 /* WORKAROUND pr80556:
    For x86_64 Darwin10 and later, the unwinder is in libunwind (redirected
    from libSystem).  This doesn't use the keymgr (see keymgr.c) and therefore
@@ -49,11 +35,15 @@ along with GCC; see the file COPYING3.  If not see
    even when static-libgcc is specified.  We put libSystem first so that
    unwinder symbols are satisfied from there.
    We default to 64b for single-arch builds, so apply this unconditionally. */
+#ifndef PR80556_WORKAROUND
+#define PR80556_WORKAROUND \
+" %:version-compare(>= 10.6 mmacosx-version-min= -lSystem) "
+#endif
 #undef REAL_LIBGCC_SPEC
 #define REAL_LIBGCC_SPEC						   \
-   "%{static-libgcc|static: 						   \
-       %:version-compare(>= 10.6 mmacosx-version-min= -lSystem)		   \
-       -lgcc_eh -lgcc;							   \
+   "%{static-libgcc|static: "						   \
+       PR80556_WORKAROUND						   \
+      " -lgcc_eh -lgcc;							   \
       shared-libgcc|fexceptions|fgnu-runtime:				   \
        %:version-compare(!> 10.5 mmacosx-version-min= -lgcc_s.10.4)	   \
        %:version-compare(>< 10.5 10.6 mmacosx-version-min= -lgcc_s.10.5)   \
@@ -147,8 +137,11 @@ along with GCC; see the file COPYING3.  If not see
    %{mpc64:crtprec64.o%s} \
    %{mpc80:crtprec80.o%s}" TM_DESTRUCTOR
 
+#ifndef DARWIN_ARCH_SPEC
 /* We default to x86_64 for single-arch builds, bi-arch overrides.  */
 #define DARWIN_ARCH_SPEC "x86_64"
+#define DARWIN_SUBARCH_SPEC DARWIN_ARCH_SPEC
+#endif
 
 #undef SUBTARGET_EXTRA_SPECS
 #define SUBTARGET_EXTRA_SPECS                                   \
@@ -222,18 +215,6 @@ along with GCC; see the file COPYING3.  If not see
       }								   \
   } while (0)
 
-#ifdef HAVE_GAS_MAX_SKIP_P2ALIGN
-#define ASM_OUTPUT_MAX_SKIP_ALIGN(FILE,LOG,MAX_SKIP)                    \
-  do {                                                                  \
-    if ((LOG) != 0) {                                                   \
-      if ((MAX_SKIP) == 0 || (MAX_SKIP) >= (1 << (LOG)) - 1)            \
-        fprintf ((FILE), "\t.p2align %d\n", (LOG));                     \
-      else                                                              \
-        fprintf ((FILE), "\t.p2align %d,,%d\n", (LOG), (MAX_SKIP));     \
-    }                                                                   \
-  } while (0)
-#endif
-
 /* Darwin x86 assemblers support the .ident directive.  */
 
 #undef TARGET_ASM_OUTPUT_IDENT
@@ -292,13 +273,13 @@ along with GCC; see the file COPYING3.  If not see
 #undef DBX_REGISTER_NUMBER
 #define DBX_REGISTER_NUMBER(n) 					\
   (TARGET_64BIT ? dbx64_register_map[n]				\
-   : write_symbols == DWARF2_DEBUG ? svr4_dbx_register_map[n]	\
+   : dwarf_debuginfo_p () ? svr4_dbx_register_map[n]		\
    : dbx_register_map[n])
 
 /* Unfortunately, the 32-bit EH information also doesn't use the standard
    DWARF register numbers.  */
 #define DWARF2_FRAME_REG_OUT(n, for_eh)					\
-  (! (for_eh) || write_symbols != DWARF2_DEBUG || TARGET_64BIT ? (n)	\
+  (! (for_eh) || !dwarf_debuginfo_p () || TARGET_64BIT ? (n)	\
    : (n) == 5 ? 4							\
    : (n) == 4 ? 5							\
    : (n) >= 11 && (n) <= 18 ? (n) + 1					\

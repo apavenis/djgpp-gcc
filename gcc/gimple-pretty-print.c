@@ -42,6 +42,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "attribs.h"
 #include "asan.h"
 #include "cfgloop.h"
+#include "gimple-range.h"
 
 /* Disable warnings about quoting issues in the pp_xxx calls below
    that (intentionally) don't follow GCC diagnostic conventions.  */
@@ -1696,8 +1697,11 @@ dump_gimple_omp_target (pretty_printer *buffer, const gomp_target *gs,
     case GF_OMP_TARGET_KIND_OACC_UPDATE:
       kind = " oacc_update";
       break;
-    case GF_OMP_TARGET_KIND_OACC_ENTER_EXIT_DATA:
-      kind = " oacc_enter_exit_data";
+    case GF_OMP_TARGET_KIND_OACC_ENTER_DATA:
+      kind = " oacc_enter_data";
+      break;
+    case GF_OMP_TARGET_KIND_OACC_EXIT_DATA:
+      kind = " oacc_exit_data";
       break;
     case GF_OMP_TARGET_KIND_OACC_DECLARE:
       kind = " oacc_declare";
@@ -2263,8 +2267,17 @@ dump_ssaname_info (pretty_printer *buffer, tree node, int spc)
       && SSA_NAME_RANGE_INFO (node))
     {
       wide_int min, max, nonzero_bits;
-      value_range_kind range_type = get_range_info (node, &min, &max);
+      value_range r;
 
+      get_global_range_query ()->range_of_expr (r, node);
+      value_range_kind range_type = r.kind ();
+      if (!r.undefined_p ())
+	{
+	  min = wi::to_wide (r.min ());
+	  max = wi::to_wide (r.max ());
+	}
+
+      // FIXME: Use irange::dump() instead.
       if (range_type == VR_VARYING)
 	pp_printf (buffer, "# RANGE VR_VARYING");
       else if (range_type == VR_RANGE || range_type == VR_ANTI_RANGE)
@@ -2818,7 +2831,7 @@ dump_gimple_bb_header (FILE *outf, basic_block bb, int indent,
 	  if (bb->loop_father->header == bb)
 	    fprintf (outf, ",loop_header(%d)", bb->loop_father->num);
 	  if (bb->count.initialized_p ())
-	    fprintf (outf, ",%s(%d)",
+	    fprintf (outf, ",%s(%" PRIu64 ")",
 		     profile_quality_as_string (bb->count.quality ()),
 		     bb->count.value ());
 	  fprintf (outf, "):\n");
@@ -3044,23 +3057,6 @@ gimple_dump_bb_for_graph (pretty_printer *pp, basic_block bb)
     }
   dump_implicit_edges (pp, bb, 0, dump_flags);
   pp_write_text_as_dot_label_to_stream (pp, /*for_record=*/true);
-}
-
-
-/* Handle the %G format for TEXT.  Same as %K in handle_K_format in
-   tree-pretty-print.c but with a Gimple statement as an argument.  */
-
-void
-percent_G_format (text_info *text)
-{
-  gimple *stmt = va_arg (*text->args_ptr, gimple*);
-
-  /* Fall back on the rich location if the statement doesn't have one.  */
-  location_t loc = gimple_location (stmt);
-  if (loc == UNKNOWN_LOCATION)
-    loc = text->m_richloc->get_loc ();
-  tree block = gimple_block (stmt);
-  percent_K_format (text, loc, block);
 }
 
 #if __GNUC__ >= 10

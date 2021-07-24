@@ -16,6 +16,7 @@
 // <http://www.gnu.org/licenses/>.
 
 // { dg-do compile }
+// { dg-add-options no_pch }
 
 // Define macros for some common variables names that we must not use for
 // naming variables, parameters etc. in the library.
@@ -122,6 +123,10 @@
 #define ptr (
 #endif
 
+// This clashes with newlib so don't use it.
+# define __lockable		cannot be used as an identifier
+
+
 // Common template parameter names
 #define OutputIterator		OutputIterator is not a reserved name
 #define InputIterator		InputIterator is not a reserved name
@@ -197,9 +202,19 @@
 #undef v
 #endif
 
+#ifdef __APPLE__
+// inttypes.h:  extern intmax_t imaxabs(intmax_t j);
+#undef j
+#endif
+
 #ifdef __hpux__
 #undef d
 #undef r
+#endif
+
+#if defined (__linux__) && defined (__arm__)
+// <sys/ucontext.h> defines fpregset_t::fpregs::j
+#undef j
 #endif
 
 #if defined (__linux__) && defined (__powerpc__)
@@ -209,6 +224,20 @@
 
 #if defined (__linux__) && defined (__sparc__)
 #undef y
+#endif
+
+#if __has_include(<newlib.h>)
+// newlib's <sys/cdefs.h> defines __lockable as a macro.
+#undef __lockable
+// newlib's <time.h> defines __tzrule_type with these members.
+#undef d
+#undef m
+#undef n
+#undef s
+// newlib's <math.h> uses this for parameters
+#undef x
+// newlib's <inttypes.h> uses this for parameters
+#undef j
 #endif
 
 #ifdef __sun__

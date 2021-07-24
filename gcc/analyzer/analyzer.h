@@ -46,6 +46,8 @@ class svalue;
   class unaryop_svalue;
   class binop_svalue;
   class sub_svalue;
+  class repeated_svalue;
+  class bits_within_svalue;
   class unmergeable_svalue;
   class placeholder_svalue;
   class widening_svalue;
@@ -60,6 +62,7 @@ class region;
   class symbolic_region;
   class element_region;
   class offset_region;
+  class sized_region;
   class cast_region;
   class field_region;
   class string_region;
@@ -108,6 +111,8 @@ extern void dump_quoted_tree (pretty_printer *pp, tree t);
 extern void print_quoted_type (pretty_printer *pp, tree t);
 extern int readability_comparator (const void *p1, const void *p2);
 extern int tree_cmp (const void *p1, const void *p2);
+extern tree fixup_tree_for_diagnostic (tree);
+extern tree get_diagnostic_tree_for_gassign (const gassign *);
 
 /* A tree, extended with stack frame information for locals, so that
    we can distinguish between different values of locals within a potentially
@@ -141,7 +146,12 @@ public:
 
 typedef offset_int bit_offset_t;
 typedef offset_int bit_size_t;
+typedef offset_int byte_offset_t;
 typedef offset_int byte_size_t;
+
+extern bool int_size_in_bits (const_tree type, bit_size_t *out);
+
+extern tree get_field_at_bit_offset (tree record_type, bit_offset_t bit_offset);
 
 /* The location of a region expressesd as an offset relative to a
    base region.  */
@@ -196,6 +206,14 @@ class plugin_analyzer_init_iface
 public:
   virtual void register_state_machine (state_machine *) = 0;
   virtual logger *get_logger () const = 0;
+};
+
+/* An enum for describing the direction of an access to memory.  */
+
+enum access_direction
+{
+  DIR_READ,
+  DIR_WRITE
 };
 
 } // namespace ana

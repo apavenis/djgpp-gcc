@@ -683,15 +683,26 @@
 (define_predicate "easy_vector_constant_msb"
   (and (match_code "const_vector")
        (and (match_test "TARGET_ALTIVEC")
-	    (match_test "easy_altivec_constant (op, mode)")))
+	    (match_test "easy_altivec_constant (op, mode)")
+	    (match_test "vspltis_shifted (op) == 0")))
 {
   HOST_WIDE_INT val;
-  int elt;
+  int elt, sz = easy_altivec_constant (op, mode);
+  machine_mode inner = GET_MODE_INNER (mode);
+  int isz = GET_MODE_SIZE (inner);
   if (mode == V2DImode || mode == V2DFmode)
     return 0;
   elt = BYTES_BIG_ENDIAN ? GET_MODE_NUNITS (mode) - 1 : 0;
+  if (isz < sz)
+    {
+      if (const_vector_elt_as_int (op, elt) != 0)
+	return 0;
+      elt += (BYTES_BIG_ENDIAN ? -1 : 1) * (sz - isz) / isz;
+    }
+  else if (isz > sz)
+    inner = smallest_int_mode_for_size (sz * BITS_PER_UNIT);
   val = const_vector_elt_as_int (op, elt);
-  return EASY_VECTOR_MSB (val, GET_MODE_INNER (mode));
+  return EASY_VECTOR_MSB (val, inner);
 })
 
 ;; Return true if this is an easy altivec constant that we form
@@ -992,6 +1003,20 @@
   return INTVAL (offset) % 4 == 0;
 })
 
+;; Return 1 if the operand is a memory operand that has a valid address for
+;; a DS-form instruction. I.e. the address has to be either just a register,
+;; or register + const where the two low order bits of const are zero.
+(define_predicate "ds_form_mem_operand"
+  (match_code "subreg,mem")
+{
+  if (!any_memory_operand (op, mode))
+    return false;
+
+  rtx addr = XEXP (op, 0);
+
+  return address_to_insn_form (addr, mode, NON_PREFIXED_DS) == INSN_FORM_DS;
+})
+
 ;; Return 1 if the operand, used inside a MEM, is a SYMBOL_REF.
 (define_predicate "symbol_ref_operand"
   (and (match_code "symbol_ref")
@@ -1158,7 +1183,8 @@
   (match_test "(mode == V16QImode
 		&& (vsx_register_operand (op, mode)
 		    || (MEM_P (op)
-			&& quad_address_p (XEXP (op, 0), mode, false))))"))
+			&& (indexed_or_indirect_address (XEXP (op, 0), mode)
+			    || quad_address_p (XEXP (op, 0), mode, false)))))"))
 
 ;; Return 1 if this operand is valid for an MMA disassemble insn.
 (define_predicate "mma_disassemble_output_operand"
@@ -1194,10 +1220,11 @@
 (define_predicate "branch_comparison_operator"
    (and (match_operand 0 "comparison_operator")
 	(match_test "GET_MODE_CLASS (GET_MODE (XEXP (op, 0))) == MODE_CC")
-	(if_then_else (match_test "GET_MODE (XEXP (op, 0)) == CCFPmode
-				   && !flag_finite_math_only")
-		      (match_code "lt,gt,eq,unordered,unge,unle,ne,ordered")
-		      (match_code "lt,ltu,le,leu,gt,gtu,ge,geu,eq,ne"))
+	(if_then_else (match_test "GET_MODE (XEXP (op, 0)) == CCFPmode")
+	  (if_then_else (match_test "flag_finite_math_only")
+	    (match_code "lt,le,gt,ge,eq,ne,unordered,ordered")
+	    (match_code "lt,gt,eq,unordered,unge,unle,ne,ordered"))
+	  (match_code "lt,ltu,le,leu,gt,gtu,ge,geu,eq,ne"))
 	(match_test "validate_condition_mode (GET_CODE (op),
 					      GET_MODE (XEXP (op, 0))),
 		     1")))
@@ -1925,3 +1952,9 @@
 
   return !indexed_address (addr, mode);
 })
+
+;; Return 1 if this operand is valid as the index for vec_set.
+(define_predicate "vec_set_index_operand"
+ (if_then_else (match_test "TARGET_VSX")
+  (match_operand 0 "reg_or_cint_operand")
+  (match_operand 0 "const_int_operand")))

@@ -3713,7 +3713,7 @@ ref_conflicts_with_region (gimple_stmt_iterator gsi, ao_ref *ref,
    reduction results in REDUCTION_STORES.  */
 
 static bool
-oacc_entry_exit_ok_1 (bitmap in_loop_bbs, vec<basic_block> region_bbs,
+oacc_entry_exit_ok_1 (bitmap in_loop_bbs, const vec<basic_block> &region_bbs,
 		      reduction_info_table_type *reduction_list,
 		      bitmap reduction_stores)
 {
@@ -3828,7 +3828,8 @@ oacc_entry_exit_ok_1 (bitmap in_loop_bbs, vec<basic_block> region_bbs,
    if any changes were made.  */
 
 static bool
-oacc_entry_exit_single_gang (bitmap in_loop_bbs, vec<basic_block> region_bbs,
+oacc_entry_exit_single_gang (bitmap in_loop_bbs,
+			     const vec<basic_block> &region_bbs,
 			     bitmap reduction_stores)
 {
   tree gang_pos = NULL_TREE;
@@ -3949,7 +3950,7 @@ oacc_entry_exit_ok (class loop *loop,
 		    reduction_info_table_type *reduction_list)
 {
   basic_block *loop_bbs = get_loop_body_in_dom_order (loop);
-  vec<basic_block> region_bbs
+  auto_vec<basic_block> region_bbs
     = get_all_dominated_blocks (CDI_DOMINATORS, ENTRY_BLOCK_PTR_FOR_FN (cfun));
 
   bitmap in_loop_bbs = BITMAP_ALLOC (NULL);
@@ -3972,7 +3973,6 @@ oacc_entry_exit_ok (class loop *loop,
 	}
     }
 
-  region_bbs.release ();
   free (loop_bbs);
 
   BITMAP_FREE (in_loop_bbs);

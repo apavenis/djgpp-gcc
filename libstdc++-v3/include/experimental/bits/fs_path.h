@@ -76,13 +76,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
   using std::basic_string_view;
 #endif
 
+  /// @cond undocumented
+namespace __detail
+{
   /** @addtogroup filesystem-ts
    *  @{
    */
 
-  /// @cond undocumented
-namespace __detail
-{
   template<typename _CharT,
 	   typename _Ch = typename remove_const<_CharT>::type>
     using __is_encoded_char
@@ -129,7 +129,7 @@ namespace __detail
 
   template<typename _Source>
     struct __constructible_from<_Source, void>
-    : decltype(__is_path_src(std::declval<_Source>(), 0))
+    : decltype(__is_path_src(std::declval<const _Source&>(), 0))
     { };
 
   template<typename _Tp1, typename _Tp2 = void,
@@ -193,10 +193,16 @@ namespace __detail
 #endif
       >::value, _UnqualVal>::type;
 
+  /// @} group filesystem-ts
 } // namespace __detail
   /// @endcond
 
+  /** @addtogroup filesystem-ts
+   *  @{
+   */
+
   /// A filesystem path.
+  /// @ingroup filesystem-ts
   class path
   {
   public:
@@ -558,8 +564,7 @@ namespace __detail
   size_t hash_value(const path& __p) noexcept;
 
   /// Compare paths
-  inline bool operator<(const path& __lhs, const path& __rhs) noexcept
-  { return __lhs.compare(__rhs) < 0; }
+  inline bool operator<(const path& __lhs, const path& __rhs) noexcept;
 
   /// Compare paths
   inline bool operator<=(const path& __lhs, const path& __rhs) noexcept
@@ -574,8 +579,7 @@ namespace __detail
   { return !(__lhs < __rhs); }
 
   /// Compare paths
-  inline bool operator==(const path& __lhs, const path& __rhs) noexcept
-  { return __lhs.compare(__rhs) == 0; }
+  inline bool operator==(const path& __lhs, const path& __rhs) noexcept;
 
   /// Compare paths
   inline bool operator!=(const path& __lhs, const path& __rhs) noexcept
@@ -1285,7 +1289,17 @@ namespace __detail
     return _M_at_end == __rhs._M_at_end;
   }
 
-  // @} group filesystem-ts
+  // Define these now that path and path::iterator are complete.
+  // They needs to consider the string_view(Range&&) constructor during
+  // overload resolution, which depends on whether range<path> is satisfied,
+  // which depends on whether path::iterator is complete.
+  inline bool operator<(const path& __lhs, const path& __rhs) noexcept
+  { return __lhs.compare(__rhs) < 0; }
+
+  inline bool operator==(const path& __lhs, const path& __rhs) noexcept
+  { return __lhs.compare(__rhs) == 0; }
+
+  /// @} group filesystem-ts
 _GLIBCXX_END_NAMESPACE_CXX11
 } // namespace v1
 } // namespace filesystem

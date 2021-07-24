@@ -60,7 +60,7 @@ cfi_desc_to_gfc_desc (gfc_array_void *d, CFI_cdesc_t **s_ptr)
   else
     GFC_DESCRIPTOR_SIZE (d) = s->elem_len;
 
-  d->dtype.version = s->version;
+  d->dtype.version = 0;
   GFC_DESCRIPTOR_RANK (d) = (signed char)s->rank;
 
   d->dtype.attribute = (signed short)s->attribute;
@@ -104,7 +104,7 @@ gfc_desc_to_cfi_desc (CFI_cdesc_t **d_ptr, const gfc_array_void *s)
 
   d->base_addr = GFC_DESCRIPTOR_DATA (s);
   d->elem_len = GFC_DESCRIPTOR_SIZE (s);
-  d->version = s->dtype.version;
+  d->version = CFI_VERSION;
   d->rank = (CFI_rank_t)GFC_DESCRIPTOR_RANK (s);
   d->attribute = (CFI_attribute_t)s->dtype.attribute;
 
@@ -229,10 +229,9 @@ CFI_allocate (CFI_cdesc_t *dv, const CFI_index_t lower_bounds[],
 	}
     }
 
-  /* If the type is a character, the descriptor's element length is replaced
-     by the elem_len argument. */
-  if (dv->type == CFI_type_char || dv->type == CFI_type_ucs4_char ||
-      dv->type == CFI_type_signed_char)
+  /* If the type is a Fortran character type, the descriptor's element
+     length is replaced by the elem_len argument. */
+  if (dv->type == CFI_type_char || dv->type == CFI_type_ucs4_char)
     dv->elem_len = elem_len;
 
   /* Dimension information and calculating the array length. */
@@ -254,10 +253,7 @@ CFI_allocate (CFI_cdesc_t *dv, const CFI_index_t lower_bounds[],
 	{
 	  dv->dim[i].lower_bound = lower_bounds[i];
 	  dv->dim[i].extent = upper_bounds[i] - dv->dim[i].lower_bound + 1;
-	  if (i == 0)
-	    dv->dim[i].sm = dv->elem_len;
-	  else
-	    dv->dim[i].sm = dv->elem_len * dv->dim[i - 1].extent;
+	  dv->dim[i].sm = dv->elem_len * arr_len;
 	  arr_len *= dv->dim[i].extent;
         }
     }
@@ -734,9 +730,9 @@ int CFI_select_part (CFI_cdesc_t *result, const CFI_cdesc_t *source,
 	}
     }
 
-  /* Element length. */
-  if (result->type == CFI_type_char || result->type == CFI_type_ucs4_char ||
-      result->type == CFI_type_signed_char)
+  /* Element length is ignored unless result->type specifies a Fortran
+     character type.  */
+  if (result->type == CFI_type_char || result->type == CFI_type_ucs4_char)
     result->elem_len = elem_len;
 
   if (unlikely (compile_options.bounds_check))

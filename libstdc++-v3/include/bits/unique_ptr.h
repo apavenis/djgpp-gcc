@@ -402,7 +402,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       /// Dereference the stored pointer.
       typename add_lvalue_reference<element_type>::type
-      operator*() const
+      operator*() const noexcept(noexcept(*std::declval<pointer>()))
       {
 	__glibcxx_assert(get() != pointer());
 	return *get();
@@ -724,7 +724,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       unique_ptr& operator=(const unique_ptr&) = delete;
     };
 
-  /// @relates unique_ptr @{
+  /// @{
+  /// @relates unique_ptr
 
   /// Swap overload for unique_ptr
   template<typename _Tp, typename _Dp>
@@ -906,7 +907,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       return compare_three_way()(__x.get(), static_cast<pointer>(nullptr));
     }
 #endif
-  // @} relates unique_ptr
+  /// @} relates unique_ptr
 
   /// @cond undocumented
   template<typename _Up, typename _Ptr = typename _Up::pointer,
@@ -936,7 +937,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     { };
 
 #if __cplusplus >= 201402L
-  /// @relates unique_ptr @{
 #define __cpp_lib_make_unique 201304
 
   /// @cond undocumented
@@ -954,6 +954,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     { struct __invalid_type { }; };
 
   /// @endcond
+
+  /// @{
+  /// @relates unique_ptr
 
   /// std::make_unique for single objects
   template<typename _Tp, typename... _Args>
@@ -991,7 +994,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     make_unique_for_overwrite(_Args&&...) = delete;
 #endif // C++20
 
-  // @} relates unique_ptr
+  /// @} relates unique_ptr
 #endif // C++14
 
 #if __cplusplus > 201703L && __cpp_concepts
@@ -1009,7 +1012,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     }
 #endif // C++20
 
-  // @} group pointer_abstractions
+  /// @} group pointer_abstractions
 
 #if __cplusplus >= 201703L
   namespace __detail::__variant

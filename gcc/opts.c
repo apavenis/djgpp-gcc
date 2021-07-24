@@ -37,11 +37,128 @@ along with GCC; see the file COPYING3.  If not see
 
 static void set_Wstrict_aliasing (struct gcc_options *opts, int onoff);
 
-/* Indexed by enum debug_info_type.  */
+/* Names of fundamental debug info formats indexed by enum
+   debug_info_type.  */
+
 const char *const debug_type_names[] =
 {
-  "none", "stabs", "dwarf-2", "xcoff", "vms"
+  "none", "stabs", "dwarf-2", "xcoff", "vms", "ctf", "btf"
 };
+
+/* Bitmasks of fundamental debug info formats indexed by enum
+   debug_info_type.  */
+
+static uint32_t debug_type_masks[] =
+{
+  NO_DEBUG, DBX_DEBUG, DWARF2_DEBUG, XCOFF_DEBUG, VMS_DEBUG,
+  CTF_DEBUG, BTF_DEBUG
+};
+
+/* Names of the set of debug formats requested by user.  Updated and accessed
+   via debug_set_names.  */
+
+static char df_set_names[sizeof "none stabs dwarf-2 xcoff vms ctf btf"];
+
+/* Get enum debug_info_type of the specified debug format, for error messages.
+   Can be used only for individual debug format types.  */
+
+enum debug_info_type
+debug_set_to_format (uint32_t debug_info_set)
+{
+  int idx = 0;
+  enum debug_info_type dinfo_type = DINFO_TYPE_NONE;
+  /* Find first set bit.  */
+  if (debug_info_set)
+    idx = exact_log2 (debug_info_set & - debug_info_set);
+  /* Check that only one bit is set, if at all.  This function is meant to be
+     used only for vanilla debug_info_set bitmask values, i.e. for individual
+     debug format types upto DINFO_TYPE_MAX.  */
+  gcc_assert ((debug_info_set & (debug_info_set - 1)) == 0);
+  dinfo_type = (enum debug_info_type)idx;
+  gcc_assert (dinfo_type <= DINFO_TYPE_MAX);
+  return dinfo_type;
+}
+
+/* Get the number of debug formats enabled for output.  */
+
+unsigned int
+debug_set_count (uint32_t w_symbols)
+{
+  unsigned int count = 0;
+  while (w_symbols)
+    {
+      ++ count;
+      w_symbols &= ~ (w_symbols & - w_symbols);
+    }
+  return count;
+}
+
+/* Get the names of the debug formats enabled for output.  */
+
+const char *
+debug_set_names (uint32_t w_symbols)
+{
+  uint32_t df_mask = 0;
+  /* Reset the string to be returned.  */
+  memset (df_set_names, 0, sizeof (df_set_names));
+  /* Get the popcount.  */
+  int num_set_df = debug_set_count (w_symbols);
+  /* Iterate over the debug formats.  Add name string for those enabled.  */
+  for (int i = DINFO_TYPE_NONE; i <= DINFO_TYPE_MAX; i++)
+    {
+      df_mask = debug_type_masks[i];
+      if (w_symbols & df_mask)
+	{
+	  strcat (df_set_names, debug_type_names[i]);
+	  num_set_df--;
+	  if (num_set_df)
+	    strcat (df_set_names, " ");
+	  else
+	    break;
+	}
+      else if (!w_symbols)
+	{
+	  /* No debug formats enabled.  */
+	  gcc_assert (i == DINFO_TYPE_NONE);
+	  strcat (df_set_names, debug_type_names[i]);
+	  break;
+	}
+    }
+  return df_set_names;
+}
+
+/* Return TRUE iff BTF debug info is enabled.  */
+
+bool
+btf_debuginfo_p ()
+{
+  return (write_symbols & BTF_DEBUG);
+}
+
+/* Return TRUE iff CTF debug info is enabled.  */
+
+bool
+ctf_debuginfo_p ()
+{
+  return (write_symbols & CTF_DEBUG);
+}
+
+/* Return TRUE iff dwarf2 debug info is enabled.  */
+
+bool
+dwarf_debuginfo_p ()
+{
+  return (write_symbols & DWARF2_DEBUG);
+}
+
+/* Return true iff the debug info format is to be generated based on DWARF
+   DIEs (like CTF and BTF debug info formats).  */
+
+bool dwarf_based_debuginfo_p ()
+{
+  return ((write_symbols & CTF_DEBUG)
+	  || (write_symbols & BTF_DEBUG));
+}
 
 /* Parse the -femit-struct-debug-detailed option value
    and set the flag variables. */
@@ -190,7 +307,7 @@ static const char use_diagnosed_msg[] = N_("Uses of this option are diagnosed.")
 
 typedef char *char_p; /* For DEF_VEC_P.  */
 
-static void set_debug_level (enum debug_info_type type, int extended,
+static void set_debug_level (uint32_t dinfo, int extended,
 			     const char *arg, struct gcc_options *opts,
 			     struct gcc_options *opts_set,
 			     location_t loc);
@@ -466,6 +583,7 @@ static const struct default_options default_options_table[] =
     { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_fif_conversion2, NULL, 1 },
     { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_finline_functions_called_once, NULL, 1 },
     { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_fmove_loop_invariants, NULL, 1 },
+    { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_fmove_loop_stores, NULL, 1 },
     { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_fssa_phiopt, NULL, 1 },
     { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_fipa_modref, NULL, 1 },
     { OPT_LEVELS_1_PLUS_NOT_DEBUG, OPT_ftree_bit_ccp, NULL, 1 },
@@ -1817,17 +1935,6 @@ const struct sanitizer_opts_s sanitizer_opts[] =
   { NULL, 0U, 0UL, false }
 };
 
-/* -f{,no-}sanitize-coverage= suboptions.  */
-const struct sanitizer_opts_s coverage_sanitizer_opts[] =
-{
-#define COVERAGE_SANITIZER_OPT(name, flags) \
-    { #name, flags, sizeof #name - 1, true }
-  COVERAGE_SANITIZER_OPT (trace-pc, SANITIZE_COV_TRACE_PC),
-  COVERAGE_SANITIZER_OPT (trace-cmp, SANITIZE_COV_TRACE_CMP),
-#undef COVERAGE_SANITIZER_OPT
-  { NULL, 0U, 0UL, false }
-};
-
 /* -fzero-call-used-regs= suboptions.  */
 const struct zero_call_used_regs_opts_s zero_call_used_regs_opts[] =
 {
@@ -1878,8 +1985,7 @@ struct edit_distance_traits<const string_fragment &>
 /* Given ARG, an unrecognized sanitizer option, return the best
    matching sanitizer option, or NULL if there isn't one.
    OPTS is array of candidate sanitizer options.
-   CODE is OPT_fsanitize_, OPT_fsanitize_recover_ or
-   OPT_fsanitize_coverage_.
+   CODE is OPT_fsanitize_ or OPT_fsanitize_recover_.
    VALUE is non-zero for the regular form of the option, zero
    for the "no-" form (e.g. "-fno-sanitize-recover=").  */
 
@@ -1919,12 +2025,6 @@ parse_sanitizer_options (const char *p, location_t loc, int scode,
 {
   enum opt_code code = (enum opt_code) scode;
 
-  const struct sanitizer_opts_s *opts;
-  if (code == OPT_fsanitize_coverage_)
-    opts = coverage_sanitizer_opts;
-  else
-    opts = sanitizer_opts;
-
   while (*p != 0)
     {
       size_t len, i;
@@ -1942,11 +2042,12 @@ parse_sanitizer_options (const char *p, location_t loc, int scode,
 	}
 
       /* Check to see if the string matches an option class name.  */
-      for (i = 0; opts[i].name != NULL; ++i)
-	if (len == opts[i].len && memcmp (p, opts[i].name, len) == 0)
+      for (i = 0; sanitizer_opts[i].name != NULL; ++i)
+	if (len == sanitizer_opts[i].len
+	    && memcmp (p, sanitizer_opts[i].name, len) == 0)
 	  {
 	    /* Handle both -fsanitize and -fno-sanitize cases.  */
-	    if (value && opts[i].flag == ~0U)
+	    if (value && sanitizer_opts[i].flag == ~0U)
 	      {
 		if (code == OPT_fsanitize_)
 		  {
@@ -1963,14 +2064,14 @@ parse_sanitizer_options (const char *p, location_t loc, int scode,
 		   -fsanitize-recover=return if -fsanitize-recover=undefined
 		   is selected.  */
 		if (code == OPT_fsanitize_recover_
-		    && opts[i].flag == SANITIZE_UNDEFINED)
+		    && sanitizer_opts[i].flag == SANITIZE_UNDEFINED)
 		  flags |= (SANITIZE_UNDEFINED
 			    & ~(SANITIZE_UNREACHABLE | SANITIZE_RETURN));
 		else
-		  flags |= opts[i].flag;
+		  flags |= sanitizer_opts[i].flag;
 	      }
 	    else
-	      flags &= ~opts[i].flag;
+	      flags &= ~sanitizer_opts[i].flag;
 	    found = true;
 	    break;
 	  }
@@ -1979,13 +2080,11 @@ parse_sanitizer_options (const char *p, location_t loc, int scode,
 	{
 	  const char *hint
 	    = get_closest_sanitizer_option (string_fragment (p, len),
-					    opts, code, value);
+					    sanitizer_opts, code, value);
 
 	  const char *suffix;
 	  if (code == OPT_fsanitize_recover_)
 	    suffix = "-recover";
-	  else if (code == OPT_fsanitize_coverage_)
-	    suffix = "-coverage";
 	  else
 	    suffix = "";
 
@@ -2436,9 +2535,7 @@ common_handle_option (struct gcc_options *opts,
       break;
 
     case OPT_fsanitize_coverage_:
-      opts->x_flag_sanitize_coverage
-	= parse_sanitizer_options (arg, loc, code,
-				   opts->x_flag_sanitize_coverage, value, true);
+      opts->x_flag_sanitize_coverage = value;
       break;
 
     case OPT_O:
@@ -2636,7 +2733,7 @@ common_handle_option (struct gcc_options *opts,
       /* Deferred.  */
       break;
 
-    case OPT_foffload_:
+    case OPT_foffload_options_:
       /* Deferred.  */
       break;
 
@@ -2796,6 +2893,24 @@ common_handle_option (struct gcc_options *opts,
     case OPT_g:
       set_debug_level (NO_DEBUG, DEFAULT_GDB_EXTENSIONS, arg, opts, opts_set,
                        loc);
+      break;
+
+    case OPT_gbtf:
+      set_debug_level (BTF_DEBUG, false, arg, opts, opts_set, loc);
+      /* set the debug level to level 2, but if already at level 3,
+	 don't lower it.  */
+      if (opts->x_debug_info_level < DINFO_LEVEL_NORMAL)
+	opts->x_debug_info_level = DINFO_LEVEL_NORMAL;
+      break;
+
+    case OPT_gctf:
+      set_debug_level (CTF_DEBUG, false, arg, opts, opts_set, loc);
+      /* CTF generation feeds off DWARF dies.  For optimal CTF, switch debug
+	 info level to 2.  If off or at level 1, set it to level 2, but if
+	 already at level 3, don't lower it.  */
+      if (opts->x_debug_info_level < DINFO_LEVEL_NORMAL
+	  && opts->x_ctf_debug_info_level > CTFINFO_LEVEL_NONE)
+	opts->x_debug_info_level = DINFO_LEVEL_NORMAL;
       break;
 
     case OPT_gdwarf:
@@ -3027,17 +3142,17 @@ fast_math_flags_struct_set_p (struct cl_optimization *opt)
 }
 
 /* Handle a debug output -g switch for options OPTS
-   (OPTS_SET->x_write_symbols storing whether a debug type was passed
+   (OPTS_SET->x_write_symbols storing whether a debug format was passed
    explicitly), location LOC.  EXTENDED is true or false to support
    extended output (2 is special and means "-ggdb" was given).  */
 static void
-set_debug_level (enum debug_info_type type, int extended, const char *arg,
+set_debug_level (uint32_t dinfo, int extended, const char *arg,
 		 struct gcc_options *opts, struct gcc_options *opts_set,
 		 location_t loc)
 {
   opts->x_use_gnu_debug_info_extensions = extended;
 
-  if (type == NO_DEBUG)
+  if (dinfo == NO_DEBUG)
     {
       if (opts->x_write_symbols == NO_DEBUG)
 	{
@@ -3046,7 +3161,10 @@ set_debug_level (enum debug_info_type type, int extended, const char *arg,
 	  if (extended == 2)
 	    {
 #if defined DWARF2_DEBUGGING_INFO || defined DWARF2_LINENO_DEBUGGING_INFO
-	      opts->x_write_symbols = DWARF2_DEBUG;
+	      if (opts->x_write_symbols & CTF_DEBUG)
+		opts->x_write_symbols |= DWARF2_DEBUG;
+	      else
+		opts->x_write_symbols = DWARF2_DEBUG;
 #elif defined DBX_DEBUGGING_INFO
 	      opts->x_write_symbols = DBX_DEBUG;
 #endif
@@ -3055,37 +3173,81 @@ set_debug_level (enum debug_info_type type, int extended, const char *arg,
 	  if (opts->x_write_symbols == NO_DEBUG)
 	    warning_at (loc, 0, "target system does not support debug output");
 	}
+      else if ((opts->x_write_symbols & CTF_DEBUG)
+	       || (opts->x_write_symbols & BTF_DEBUG))
+	{
+	  opts->x_write_symbols |= DWARF2_DEBUG;
+	  opts_set->x_write_symbols |= DWARF2_DEBUG;
+	}
     }
   else
     {
-      /* Does it conflict with an already selected type?  */
-      if (opts_set->x_write_symbols != NO_DEBUG
-	  && opts->x_write_symbols != NO_DEBUG
-	  && type != opts->x_write_symbols)
-	error_at (loc, "debug format %qs conflicts with prior selection",
-		  debug_type_names[type]);
-      opts->x_write_symbols = type;
-      opts_set->x_write_symbols = type;
+      /* Make and retain the choice if both CTF and DWARF debug info are to
+	 be generated.  */
+      if (((dinfo == DWARF2_DEBUG) || (dinfo == CTF_DEBUG))
+	  && ((opts->x_write_symbols == (DWARF2_DEBUG|CTF_DEBUG))
+	      || (opts->x_write_symbols == DWARF2_DEBUG)
+	      || (opts->x_write_symbols == CTF_DEBUG)))
+	{
+	  opts->x_write_symbols |= dinfo;
+	  opts_set->x_write_symbols |= dinfo;
+	}
+      /* However, CTF and BTF are not allowed together at this time.  */
+      else if (((dinfo == DWARF2_DEBUG) || (dinfo == BTF_DEBUG))
+	       && ((opts->x_write_symbols == (DWARF2_DEBUG|BTF_DEBUG))
+		   || (opts->x_write_symbols == DWARF2_DEBUG)
+		   || (opts->x_write_symbols == BTF_DEBUG)))
+	{
+	  opts->x_write_symbols |= dinfo;
+	  opts_set->x_write_symbols |= dinfo;
+	}
+      else
+	{
+	  /* Does it conflict with an already selected debug format?  */
+	  if (opts_set->x_write_symbols != NO_DEBUG
+	      && opts->x_write_symbols != NO_DEBUG
+	      && dinfo != opts->x_write_symbols)
+	    {
+	      gcc_assert (debug_set_count (dinfo) <= 1);
+	      error_at (loc, "debug format %qs conflicts with prior selection",
+			debug_type_names[debug_set_to_format (dinfo)]);
+	    }
+	  opts->x_write_symbols = dinfo;
+	  opts_set->x_write_symbols = dinfo;
+	}
     }
 
-  /* A debug flag without a level defaults to level 2.
-     If off or at level 1, set it to level 2, but if already
-     at level 3, don't lower it.  */ 
-  if (*arg == '\0')
+  if (dinfo != BTF_DEBUG)
     {
-      if (opts->x_debug_info_level < DINFO_LEVEL_NORMAL)
-	opts->x_debug_info_level = DINFO_LEVEL_NORMAL;
-    }
-  else
-    {
-      int argval = integral_argument (arg);
-      if (argval == -1)
-	error_at (loc, "unrecognized debug output level %qs", arg);
-      else if (argval > 3)
-	error_at (loc, "debug output level %qs is too high", arg);
+      /* A debug flag without a level defaults to level 2.
+	 If off or at level 1, set it to level 2, but if already
+	 at level 3, don't lower it.  */
+      if (*arg == '\0')
+	{
+	  if (dinfo == CTF_DEBUG)
+	    opts->x_ctf_debug_info_level = CTFINFO_LEVEL_NORMAL;
+	  else if (opts->x_debug_info_level < DINFO_LEVEL_NORMAL)
+	    opts->x_debug_info_level = DINFO_LEVEL_NORMAL;
+	}
       else
-	opts->x_debug_info_level = (enum debug_info_levels) argval;
+	{
+	  int argval = integral_argument (arg);
+	  if (argval == -1)
+	    error_at (loc, "unrecognized debug output level %qs", arg);
+	  else if (argval > 3)
+	    error_at (loc, "debug output level %qs is too high", arg);
+	  else
+	    {
+	      if (dinfo == CTF_DEBUG)
+		opts->x_ctf_debug_info_level
+		  = (enum ctf_debug_info_levels) argval;
+	      else
+		opts->x_debug_info_level = (enum debug_info_levels) argval;
+	    }
+	}
     }
+  else if (*arg != '\0')
+    error_at (loc, "unrecognized btf debug output level %qs", arg);
 }
 
 /* Arrange to dump core on error for diagnostic context DC.  (The
@@ -3243,8 +3405,12 @@ get_option_html_page (int option_index)
   const cl_option *cl_opt = &cl_options[option_index];
 
   /* Analyzer options are on their own page.  */
-  if (strstr(cl_opt->opt_text, "analyzer-"))
+  if (strstr (cl_opt->opt_text, "analyzer-"))
     return "gcc/Static-Analyzer-Options.html";
+
+  /* Handle -flto= option.  */
+  if (strstr (cl_opt->opt_text, "flto"))
+    return "gcc/Optimize-Options.html";
 
 #ifdef CL_Fortran
   if ((cl_opt->flags & CL_Fortran) != 0

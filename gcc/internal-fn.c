@@ -51,6 +51,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "ssa-iterators.h"
 #include "explow.h"
 #include "rtl-iter.h"
+#include "gimple-range.h"
 
 /* The names of each internal function, indexed by function number.  */
 const char *const internal_fn_name_array[] = {
@@ -243,6 +244,8 @@ expand_GOMP_SIMT_ENTER_ALLOC (internal_fn, gcall *stmt)
   create_input_operand (&ops[2], align, Pmode);
   gcc_assert (targetm.have_omp_simt_enter ());
   expand_insn (targetm.code_for_omp_simt_enter, 3, ops);
+  if (!rtx_equal_p (target, ops[0].value))
+    emit_move_insn (target, ops[0].value);
 }
 
 /* Deallocate per-lane storage and leave non-uniform execution region.  */
@@ -300,6 +303,8 @@ expand_GOMP_SIMT_LAST_LANE (internal_fn, gcall *stmt)
   create_input_operand (&ops[1], cond, mode);
   gcc_assert (targetm.have_omp_simt_last_lane ());
   expand_insn (targetm.code_for_omp_simt_last_lane, 2, ops);
+  if (!rtx_equal_p (target, ops[0].value))
+    emit_move_insn (target, ops[0].value);
 }
 
 /* Non-transparent predicate used in SIMT lowering of OpenMP "ordered".  */
@@ -319,6 +324,8 @@ expand_GOMP_SIMT_ORDERED_PRED (internal_fn, gcall *stmt)
   create_input_operand (&ops[1], ctr, mode);
   gcc_assert (targetm.have_omp_simt_ordered ());
   expand_insn (targetm.code_for_omp_simt_ordered, 2, ops);
+  if (!rtx_equal_p (target, ops[0].value))
+    emit_move_insn (target, ops[0].value);
 }
 
 /* "Or" boolean reduction across SIMT lanes: return non-zero in all lanes if
@@ -339,6 +346,8 @@ expand_GOMP_SIMT_VOTE_ANY (internal_fn, gcall *stmt)
   create_input_operand (&ops[1], cond, mode);
   gcc_assert (targetm.have_omp_simt_vote_any ());
   expand_insn (targetm.code_for_omp_simt_vote_any, 2, ops);
+  if (!rtx_equal_p (target, ops[0].value))
+    emit_move_insn (target, ops[0].value);
 }
 
 /* Exchange between SIMT lanes with a "butterfly" pattern: source lane index
@@ -361,6 +370,8 @@ expand_GOMP_SIMT_XCHG_BFLY (internal_fn, gcall *stmt)
   create_input_operand (&ops[2], idx, SImode);
   gcc_assert (targetm.have_omp_simt_xchg_bfly ());
   expand_insn (targetm.code_for_omp_simt_xchg_bfly, 3, ops);
+  if (!rtx_equal_p (target, ops[0].value))
+    emit_move_insn (target, ops[0].value);
 }
 
 /* Exchange between SIMT lanes according to given source lane index.  */
@@ -382,6 +393,8 @@ expand_GOMP_SIMT_XCHG_IDX (internal_fn, gcall *stmt)
   create_input_operand (&ops[2], idx, SImode);
   gcc_assert (targetm.have_omp_simt_xchg_idx ());
   expand_insn (targetm.code_for_omp_simt_xchg_idx, 3, ops);
+  if (!rtx_equal_p (target, ops[0].value))
+    emit_move_insn (target, ops[0].value);
 }
 
 /* This should get expanded in adjust_simduid_builtins.  */
@@ -668,8 +681,9 @@ get_min_precision (tree arg, signop sign)
     }
   if (TREE_CODE (arg) != SSA_NAME)
     return prec + (orig_sign != sign);
-  wide_int arg_min, arg_max;
-  while (get_range_info (arg, &arg_min, &arg_max) != VR_RANGE)
+  value_range r;
+  while (!get_global_range_query ()->range_of_expr (r, arg)
+	 || r.kind () != VR_RANGE)
     {
       gimple *g = SSA_NAME_DEF_STMT (arg);
       if (is_gimple_assign (g)
@@ -697,14 +711,14 @@ get_min_precision (tree arg, signop sign)
     }
   if (sign == TYPE_SIGN (TREE_TYPE (arg)))
     {
-      int p1 = wi::min_precision (arg_min, sign);
-      int p2 = wi::min_precision (arg_max, sign);
+      int p1 = wi::min_precision (r.lower_bound (), sign);
+      int p2 = wi::min_precision (r.upper_bound (), sign);
       p1 = MAX (p1, p2);
       prec = MIN (prec, p1);
     }
-  else if (sign == UNSIGNED && !wi::neg_p (arg_min, SIGNED))
+  else if (sign == UNSIGNED && !wi::neg_p (r.lower_bound (), SIGNED))
     {
-      int p = wi::min_precision (arg_max, UNSIGNED);
+      int p = wi::min_precision (r.upper_bound (), UNSIGNED);
       prec = MIN (prec, p);
     }
   return prec + (orig_sign != sign);
@@ -3689,6 +3703,7 @@ first_commutative_argument (internal_fn fn)
     case IFN_FNMS:
     case IFN_AVG_FLOOR:
     case IFN_AVG_CEIL:
+    case IFN_MULH:
     case IFN_MULHS:
     case IFN_MULHRS:
     case IFN_FMIN:
@@ -4095,16 +4110,38 @@ expand_internal_call (gcall *stmt)
 bool
 vectorized_internal_fn_supported_p (internal_fn ifn, tree type)
 {
+  if (VECTOR_MODE_P (TYPE_MODE (type)))
+    return direct_internal_fn_supported_p (ifn, type, OPTIMIZE_FOR_SPEED);
+
   scalar_mode smode;
-  if (!VECTOR_TYPE_P (type) && is_a <scalar_mode> (TYPE_MODE (type), &smode))
+  if (!is_a <scalar_mode> (TYPE_MODE (type), &smode))
+    return false;
+
+  machine_mode vmode = targetm.vectorize.preferred_simd_mode (smode);
+  if (VECTOR_MODE_P (vmode))
     {
-      machine_mode vmode = targetm.vectorize.preferred_simd_mode (smode);
-      if (VECTOR_MODE_P (vmode))
-	type = build_vector_type_for_mode (type, vmode);
+      tree vectype = build_vector_type_for_mode (type, vmode);
+      if (direct_internal_fn_supported_p (ifn, vectype, OPTIMIZE_FOR_SPEED))
+	return true;
     }
 
-  return (VECTOR_MODE_P (TYPE_MODE (type))
-	  && direct_internal_fn_supported_p (ifn, type, OPTIMIZE_FOR_SPEED));
+  auto_vector_modes vector_modes;
+  targetm.vectorize.autovectorize_vector_modes (&vector_modes, true);
+  for (machine_mode base_mode : vector_modes)
+    if (related_vector_mode (base_mode, smode).exists (&vmode))
+      {
+	tree vectype = build_vector_type_for_mode (type, vmode);
+	if (direct_internal_fn_supported_p (ifn, vectype, OPTIMIZE_FOR_SPEED))
+	  return true;
+      }
+
+  return false;
+}
+
+void
+expand_SHUFFLEVECTOR (internal_fn, gcall *)
+{
+  gcc_unreachable ();
 }
 
 void

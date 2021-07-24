@@ -1733,10 +1733,21 @@ c_omp_split_clauses (location_t loc, enum tree_code code,
 		{
 		  /* This must be #pragma omp target simd.  */
 		  s = C_OMP_CLAUSE_SPLIT_TARGET;
+		  OMP_CLAUSE_FIRSTPRIVATE_IMPLICIT (clauses) = 1;
+		  OMP_CLAUSE_FIRSTPRIVATE_IMPLICIT_TARGET (clauses) = 1;
 		  break;
 		}
 	      c = build_omp_clause (OMP_CLAUSE_LOCATION (clauses),
 				    OMP_CLAUSE_FIRSTPRIVATE);
+	      /* firstprivate should not be applied to target if it is
+		 also lastprivate or on the combined/composite construct,
+		 or if it is mentioned in map clause.  OMP_CLAUSE_DECLs
+		 may need to go through FE handling though (instantiation,
+		 C++ non-static data members, array section lowering), so
+		 add the clause with OMP_CLAUSE_FIRSTPRIVATE_IMPLICIT and
+		 let *finish_omp_clauses and the gimplifier handle it
+		 right.  */
+	      OMP_CLAUSE_FIRSTPRIVATE_IMPLICIT (c) = 1;
 	      OMP_CLAUSE_DECL (c) = OMP_CLAUSE_DECL (clauses);
 	      OMP_CLAUSE_CHAIN (c) = cclauses[C_OMP_CLAUSE_SPLIT_TARGET];
 	      cclauses[C_OMP_CLAUSE_SPLIT_TARGET] = c;
@@ -1978,6 +1989,16 @@ c_omp_split_clauses (location_t loc, enum tree_code code,
 			"%<parallel for%>, %<parallel for simd%>");
 	      OMP_CLAUSE_REDUCTION_INSCAN (clauses) = 0;
 	    }
+	  if ((mask & (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_MAP)) != 0)
+	    {
+	      c = build_omp_clause (OMP_CLAUSE_LOCATION (clauses),
+				    OMP_CLAUSE_MAP);
+	      OMP_CLAUSE_DECL (c) = OMP_CLAUSE_DECL (clauses);
+	      OMP_CLAUSE_SET_MAP_KIND (c, GOMP_MAP_TOFROM);
+	      OMP_CLAUSE_MAP_IMPLICIT (c) = 1;
+	      OMP_CLAUSE_CHAIN (c) = cclauses[C_OMP_CLAUSE_SPLIT_TARGET];
+	      cclauses[C_OMP_CLAUSE_SPLIT_TARGET] = c;
+	    }
 	  if ((mask & (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_SCHEDULE)) != 0)
 	    {
 	      if (code == OMP_SIMD)
@@ -2048,12 +2069,42 @@ c_omp_split_clauses (location_t loc, enum tree_code code,
 		  OMP_CLAUSE_CHAIN (c) = cclauses[C_OMP_CLAUSE_SPLIT_TASKLOOP];
 		  cclauses[C_OMP_CLAUSE_SPLIT_TASKLOOP] = c;
 		}
+	      else if ((mask & (OMP_CLAUSE_MASK_1
+				<< PRAGMA_OMP_CLAUSE_NUM_TEAMS)) != 0)
+		{
+		  c = build_omp_clause (OMP_CLAUSE_LOCATION (clauses),
+					OMP_CLAUSE_REDUCTION);
+		  OMP_CLAUSE_DECL (c) = OMP_CLAUSE_DECL (clauses);
+		  OMP_CLAUSE_REDUCTION_CODE (c)
+		    = OMP_CLAUSE_REDUCTION_CODE (clauses);
+		  OMP_CLAUSE_REDUCTION_PLACEHOLDER (c)
+		    = OMP_CLAUSE_REDUCTION_PLACEHOLDER (clauses);
+		  OMP_CLAUSE_REDUCTION_DECL_PLACEHOLDER (c)
+		    = OMP_CLAUSE_REDUCTION_DECL_PLACEHOLDER (clauses);
+		  OMP_CLAUSE_REDUCTION_INSCAN (c)
+		    = OMP_CLAUSE_REDUCTION_INSCAN (clauses);
+		  OMP_CLAUSE_CHAIN (c) = cclauses[C_OMP_CLAUSE_SPLIT_TEAMS];
+		  cclauses[C_OMP_CLAUSE_SPLIT_TEAMS] = c;
+		}
 	      s = C_OMP_CLAUSE_SPLIT_SIMD;
 	    }
 	  else
 	    s = C_OMP_CLAUSE_SPLIT_TEAMS;
 	  break;
 	case OMP_CLAUSE_IN_REDUCTION:
+	  if ((mask & (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_MAP)) != 0)
+	    {
+	      /* When on target, map(always, tofrom: item) is added as
+		 well.  For non-combined target it is added in the FEs.  */
+	      c = build_omp_clause (OMP_CLAUSE_LOCATION (clauses),
+				    OMP_CLAUSE_MAP);
+	      OMP_CLAUSE_DECL (c) = OMP_CLAUSE_DECL (clauses);
+	      OMP_CLAUSE_SET_MAP_KIND (c, GOMP_MAP_ALWAYS_TOFROM);
+	      OMP_CLAUSE_CHAIN (c) = cclauses[C_OMP_CLAUSE_SPLIT_TARGET];
+	      cclauses[C_OMP_CLAUSE_SPLIT_TARGET] = c;
+	      s = C_OMP_CLAUSE_SPLIT_TARGET;
+	      break;
+	    }
 	  /* in_reduction on taskloop simd becomes reduction on the simd
 	     and keeps being in_reduction on taskloop.  */
 	  if (code == OMP_SIMD)
@@ -2860,4 +2911,155 @@ c_omp_adjust_map_clauses (tree clauses, bool is_target)
 	  c_common_mark_addressable_vec (OMP_CLAUSE_DECL (mc.clause));
 	}
     }
+}
+
+static const struct c_omp_directive omp_directives[] = {
+  /* Keep this alphabetically sorted by the first word.  Non-null second/third
+     if any should precede null ones.  */
+  { "allocate", nullptr, nullptr, PRAGMA_OMP_ALLOCATE,
+    C_OMP_DIR_DECLARATIVE, false },
+  /* { "assume", nullptr, nullptr, PRAGMA_OMP_ASSUME,
+    C_OMP_DIR_INFORMATIONAL, false }, */
+  /* { "assumes", nullptr, nullptr, PRAGMA_OMP_ASSUMES,
+    C_OMP_DIR_INFORMATIONAL, false }, */
+  { "atomic", nullptr, nullptr, PRAGMA_OMP_ATOMIC,
+    C_OMP_DIR_CONSTRUCT, false },
+  { "barrier", nullptr, nullptr, PRAGMA_OMP_BARRIER,
+    C_OMP_DIR_STANDALONE, false },
+  /* { "begin", "assumes", nullptr, PRAGMA_OMP_BEGIN,
+    C_OMP_DIR_INFORMATIONAL, false }, */
+  /* { "begin", "declare", "target", PRAGMA_OMP_BEGIN,
+    C_OMP_DIR_DECLARATIVE, false }, */
+  /* { "begin", "declare", "variant", PRAGMA_OMP_BEGIN,
+    C_OMP_DIR_DECLARATIVE, false }, */
+  /* { "begin", "metadirective", nullptr, PRAGMA_OMP_BEGIN,
+    C_OMP_DIR_???, ??? },  */
+  { "cancel", nullptr, nullptr, PRAGMA_OMP_CANCEL,
+    C_OMP_DIR_STANDALONE, false },
+  { "cancellation", "point", nullptr, PRAGMA_OMP_CANCELLATION_POINT,
+    C_OMP_DIR_STANDALONE, false },
+  { "critical", nullptr, nullptr, PRAGMA_OMP_CRITICAL,
+    C_OMP_DIR_CONSTRUCT, false },
+  /* { "declare", "mapper", nullptr, PRAGMA_OMP_DECLARE,
+    C_OMP_DIR_DECLARATIVE, false },  */
+  { "declare", "reduction", nullptr, PRAGMA_OMP_DECLARE,
+    C_OMP_DIR_DECLARATIVE, true },
+  { "declare", "simd", nullptr, PRAGMA_OMP_DECLARE,
+    C_OMP_DIR_DECLARATIVE, true },
+  { "declare", "target", nullptr, PRAGMA_OMP_DECLARE,
+    C_OMP_DIR_DECLARATIVE, false },
+  { "declare", "variant", nullptr, PRAGMA_OMP_DECLARE,
+    C_OMP_DIR_DECLARATIVE, false },
+  { "depobj", nullptr, nullptr, PRAGMA_OMP_DEPOBJ,
+    C_OMP_DIR_STANDALONE, false },
+  /* { "dispatch", nullptr, nullptr, PRAGMA_OMP_DISPATCH,
+    C_OMP_DIR_CONSTRUCT, false },  */
+  { "distribute", nullptr, nullptr, PRAGMA_OMP_DISTRIBUTE,
+    C_OMP_DIR_CONSTRUCT, true },
+  /* { "end", "assumes", nullptr, PRAGMA_OMP_END,
+    C_OMP_DIR_INFORMATIONAL, false }, */
+  { "end", "declare", "target", PRAGMA_OMP_END_DECLARE_TARGET,
+    C_OMP_DIR_DECLARATIVE, false },
+  /* { "end", "declare", "variant", PRAGMA_OMP_END,
+    C_OMP_DIR_DECLARATIVE, false }, */
+  /* { "end", "metadirective", nullptr, PRAGMA_OMP_END,
+    C_OMP_DIR_???, ??? },  */
+  /* error with at(execution) is C_OMP_DIR_STANDALONE.  */
+  /* { "error", nullptr, nullptr, PRAGMA_OMP_ERROR,
+    C_OMP_DIR_UTILITY, false },  */
+  { "flush", nullptr, nullptr, PRAGMA_OMP_FLUSH,
+    C_OMP_DIR_STANDALONE, false },
+  { "for", nullptr, nullptr, PRAGMA_OMP_FOR,
+    C_OMP_DIR_CONSTRUCT, true },
+  /* { "interop", nullptr, nullptr, PRAGMA_OMP_INTEROP,
+    C_OMP_DIR_STANDALONE, false },  */
+  { "loop", nullptr, nullptr, PRAGMA_OMP_LOOP,
+    C_OMP_DIR_CONSTRUCT, true },
+  /* { "masked", nullptr, nullptr, PRAGMA_OMP_MASKED,
+    C_OMP_DIR_CONSTRUCT, true },  */
+  { "master", nullptr, nullptr, PRAGMA_OMP_MASTER,
+    C_OMP_DIR_CONSTRUCT, true },
+  /* { "metadirective", nullptr, nullptr, PRAGMA_OMP_METADIRECTIVE,
+    C_OMP_DIR_???, ??? },  */
+  /* { "nothing", nullptr, nullptr, PRAGMA_OMP_NOTHING,
+    C_OMP_DIR_UTILITY, false },  */
+  /* ordered with depend clause is C_OMP_DIR_STANDALONE.  */
+  { "ordered", nullptr, nullptr, PRAGMA_OMP_ORDERED,
+    C_OMP_DIR_CONSTRUCT, true },
+  { "parallel", nullptr, nullptr, PRAGMA_OMP_PARALLEL,
+    C_OMP_DIR_CONSTRUCT, true },
+  { "requires", nullptr, nullptr, PRAGMA_OMP_REQUIRES,
+    C_OMP_DIR_INFORMATIONAL, false },
+  { "scan", nullptr, nullptr, PRAGMA_OMP_SCAN,
+    C_OMP_DIR_CONSTRUCT, true },
+  /* { "scope", nullptr, nullptr, PRAGMA_OMP_SCOPE,
+    C_OMP_DIR_CONSTRUCT, false },  */
+  { "section", nullptr, nullptr, PRAGMA_OMP_SECTION,
+    C_OMP_DIR_CONSTRUCT, false },
+  { "sections", nullptr, nullptr, PRAGMA_OMP_SECTIONS,
+    C_OMP_DIR_CONSTRUCT, false },
+  { "simd", nullptr, nullptr, PRAGMA_OMP_SIMD,
+    C_OMP_DIR_CONSTRUCT, true },
+  { "single", nullptr, nullptr, PRAGMA_OMP_SINGLE,
+    C_OMP_DIR_CONSTRUCT, false },
+  { "target", "data", nullptr, PRAGMA_OMP_TARGET,
+    C_OMP_DIR_CONSTRUCT, false },
+  { "target", "enter", "data", PRAGMA_OMP_TARGET,
+    C_OMP_DIR_STANDALONE, false },
+  { "target", "exit", "data", PRAGMA_OMP_TARGET,
+    C_OMP_DIR_STANDALONE, false },
+  { "target", "update", nullptr, PRAGMA_OMP_TARGET,
+    C_OMP_DIR_STANDALONE, false },
+  { "target", nullptr, nullptr, PRAGMA_OMP_TARGET,
+    C_OMP_DIR_CONSTRUCT, true },
+  { "task", nullptr, nullptr, PRAGMA_OMP_TASK,
+    C_OMP_DIR_CONSTRUCT, false },
+  { "taskgroup", nullptr, nullptr, PRAGMA_OMP_TASKGROUP,
+    C_OMP_DIR_CONSTRUCT, false },
+  { "taskloop", nullptr, nullptr, PRAGMA_OMP_TASKLOOP,
+    C_OMP_DIR_CONSTRUCT, true },
+  { "taskwait", nullptr, nullptr, PRAGMA_OMP_TASKWAIT,
+    C_OMP_DIR_STANDALONE, false },
+  { "taskyield", nullptr, nullptr, PRAGMA_OMP_TASKYIELD,
+    C_OMP_DIR_STANDALONE, false },
+  /* { "tile", nullptr, nullptr, PRAGMA_OMP_TILE,
+    C_OMP_DIR_CONSTRUCT, false },  */
+  { "teams", nullptr, nullptr, PRAGMA_OMP_TEAMS,
+    C_OMP_DIR_CONSTRUCT, true },
+  { "threadprivate", nullptr, nullptr, PRAGMA_OMP_THREADPRIVATE,
+    C_OMP_DIR_DECLARATIVE, false }
+  /* { "unroll", nullptr, nullptr, PRAGMA_OMP_UNROLL,
+    C_OMP_DIR_CONSTRUCT, false },  */
+};
+
+/* Find (non-combined/composite) OpenMP directive (if any) which starts
+   with FIRST keyword and for multi-word directives has SECOND and
+   THIRD keyword after it.  */
+
+const struct c_omp_directive *
+c_omp_categorize_directive (const char *first, const char *second,
+			    const char *third)
+{
+  const size_t n_omp_directives = ARRAY_SIZE (omp_directives);
+  for (size_t i = 0; i < n_omp_directives; i++)
+    {
+      if ((unsigned char) omp_directives[i].first[0]
+	  < (unsigned char) first[0])
+	continue;
+      if ((unsigned char) omp_directives[i].first[0]
+	  > (unsigned char) first[0])
+	break;
+      if (strcmp (omp_directives[i].first, first))
+	continue;
+      if (!omp_directives[i].second)
+	return &omp_directives[i];
+      if (!second || strcmp (omp_directives[i].second, second))
+	continue;
+      if (!omp_directives[i].third)
+	return &omp_directives[i];
+      if (!third || strcmp (omp_directives[i].third, third))
+	continue;
+      return &omp_directives[i];
+    }
+  return NULL;
 }

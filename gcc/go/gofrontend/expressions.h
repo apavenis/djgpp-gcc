@@ -916,6 +916,11 @@ class Expression
   bool
   is_local_variable() const;
 
+  // Return true if multiple evaluations of this expression are OK.
+  // This is true for simple variable references and constants.
+  bool
+  is_multi_eval_safe();
+
   // Return true if two expressions refer to the same variable or
   // struct field.
   static bool
@@ -3801,9 +3806,6 @@ class Struct_construction_expression : public Expression,
   Expression*
   do_copy();
 
-  Expression*
-  do_flatten(Gogo*, Named_object*, Statement_inserter*);
-
   Bexpression*
   do_get_backend(Translate_context*);
 
@@ -3875,9 +3877,6 @@ protected:
   const std::vector<unsigned long>*
   indexes()
   { return this->indexes_; }
-
-  Expression*
-  do_flatten(Gogo*, Named_object*, Statement_inserter*);
 
   // Get the backend constructor for the array values.
   Bexpression*

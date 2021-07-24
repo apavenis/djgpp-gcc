@@ -339,7 +339,7 @@ s390_cpu_cpp_builtins_internal (cpp_reader *pfile,
   s390_def_or_undef_macro (pfile, target_flag_set_p (MASK_OPT_VX), old_opts,
 			   opts, "__VX__", "__VX__");
   s390_def_or_undef_macro (pfile, target_flag_set_p (MASK_ZVECTOR), old_opts,
-			   opts, "__VEC__=10303", "__VEC__");
+			   opts, "__VEC__=10304", "__VEC__");
   s390_def_or_undef_macro (pfile, target_flag_set_p (MASK_ZVECTOR), old_opts,
 			   opts, "__vector=__attribute__((vector_size(16)))",
 			   "__vector__");
@@ -367,6 +367,8 @@ s390_cpu_cpp_builtins_internal (cpp_reader *pfile,
 			       old_opts, opts, "vector=vector", "vector");
       s390_def_or_undef_macro (pfile, target_flag_set_p (MASK_ZVECTOR),
 			       old_opts, opts, "bool=bool", "bool");
+      s390_def_or_undef_macro (pfile, target_flag_set_p (MASK_ZVECTOR),
+			       old_opts, opts, "_Bool=_Bool", "_Bool");
       if (TARGET_ZVECTOR_P (opts->x_target_flags) && __vector_keyword == NULL)
 	{
 	  __vector_keyword = get_identifier ("__vector");

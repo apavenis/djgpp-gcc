@@ -162,14 +162,14 @@ debug_event::get_desc (bool) const
   return label_text::borrow (m_desc);
 }
 
-/* class custom_event : public checker_event.  */
+/* class precanned_custom_event : public custom_event.  */
 
 /* Implementation of diagnostic_event::get_desc vfunc for
-   custom_event.
+   precanned_custom_event.
    Use the saved string as the event's description.  */
 
 label_text
-custom_event::get_desc (bool) const
+precanned_custom_event::get_desc (bool) const
 {
   return label_text::borrow (m_desc);
 }
@@ -634,12 +634,13 @@ call_event::get_desc (bool can_colorize) const
   if (m_critical_state && m_pending_diagnostic)
     {
       gcc_assert (m_var);
+      tree var = fixup_tree_for_diagnostic (m_var);
       label_text custom_desc
 	= m_pending_diagnostic->describe_call_with_state
 	    (evdesc::call_with_state (can_colorize,
 				      m_sedge->m_src->m_fun->decl,
 				      m_sedge->m_dest->m_fun->decl,
-				      m_var,
+				      var,
 				      m_critical_state));
       if (custom_desc.m_buffer)
 	return custom_desc;
@@ -880,19 +881,20 @@ warning_event::get_desc (bool can_colorize) const
 {
   if (m_pending_diagnostic)
     {
+      tree var = fixup_tree_for_diagnostic (m_var);
       label_text ev_desc
 	= m_pending_diagnostic->describe_final_event
-	    (evdesc::final_event (can_colorize, m_var, m_state));
+	    (evdesc::final_event (can_colorize, var, m_state));
       if (ev_desc.m_buffer)
 	{
 	  if (m_sm && flag_analyzer_verbose_state_changes)
 	    {
 	      label_text result;
-	      if (m_var)
+	      if (var)
 		result = make_label_text (can_colorize,
 					  "%s (%qE is in state %qs)",
 					  ev_desc.m_buffer,
-					  m_var, m_state->get_name ());
+					  var, m_state->get_name ());
 	      else
 		result = make_label_text (can_colorize,
 					  "%s (in global state %qs)",
@@ -999,9 +1001,7 @@ checker_path::add_final_event (const state_machine *sm,
 void
 checker_path::fixup_locations (pending_diagnostic *pd)
 {
-  checker_event *e;
-  int i;
-  FOR_EACH_VEC_ELT (m_events, i, e)
+  for (checker_event *e : m_events)
     e->set_location (pd->fixup_location (e->get_location ()));
 }
 

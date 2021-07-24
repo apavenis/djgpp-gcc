@@ -218,17 +218,25 @@ gfc_free_statement (gfc_code *p)
     case EXEC_OMP_CANCEL:
     case EXEC_OMP_CANCELLATION_POINT:
     case EXEC_OMP_CRITICAL:
+    case EXEC_OMP_DEPOBJ:
     case EXEC_OMP_DISTRIBUTE:
     case EXEC_OMP_DISTRIBUTE_PARALLEL_DO:
     case EXEC_OMP_DISTRIBUTE_PARALLEL_DO_SIMD:
     case EXEC_OMP_DISTRIBUTE_SIMD:
     case EXEC_OMP_DO:
     case EXEC_OMP_DO_SIMD:
+    case EXEC_OMP_LOOP:
     case EXEC_OMP_END_SINGLE:
+    case EXEC_OMP_MASTER_TASKLOOP:
+    case EXEC_OMP_MASTER_TASKLOOP_SIMD:
     case EXEC_OMP_ORDERED:
     case EXEC_OMP_PARALLEL:
     case EXEC_OMP_PARALLEL_DO:
     case EXEC_OMP_PARALLEL_DO_SIMD:
+    case EXEC_OMP_PARALLEL_LOOP:
+    case EXEC_OMP_PARALLEL_MASTER:
+    case EXEC_OMP_PARALLEL_MASTER_TASKLOOP:
+    case EXEC_OMP_PARALLEL_MASTER_TASKLOOP_SIMD:
     case EXEC_OMP_PARALLEL_SECTIONS:
     case EXEC_OMP_PARALLEL_WORKSHARE:
     case EXEC_OMP_SCAN:
@@ -242,12 +250,14 @@ gfc_free_statement (gfc_code *p)
     case EXEC_OMP_TARGET_PARALLEL:
     case EXEC_OMP_TARGET_PARALLEL_DO:
     case EXEC_OMP_TARGET_PARALLEL_DO_SIMD:
+    case EXEC_OMP_TARGET_PARALLEL_LOOP:
     case EXEC_OMP_TARGET_SIMD:
     case EXEC_OMP_TARGET_TEAMS:
     case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE:
     case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO:
     case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
     case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_SIMD:
+    case EXEC_OMP_TARGET_TEAMS_LOOP:
     case EXEC_OMP_TARGET_UPDATE:
     case EXEC_OMP_TASK:
     case EXEC_OMP_TASKLOOP:
@@ -257,6 +267,7 @@ gfc_free_statement (gfc_code *p)
     case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO:
     case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
     case EXEC_OMP_TEAMS_DISTRIBUTE_SIMD:
+    case EXEC_OMP_TEAMS_LOOP:
     case EXEC_OMP_WORKSHARE:
       gfc_free_omp_clauses (p->ext.omp_clauses);
       break;
@@ -266,7 +277,7 @@ gfc_free_statement (gfc_code *p)
       break;
 
     case EXEC_OMP_FLUSH:
-      gfc_free_omp_namelist (p->ext.omp_namelist);
+      gfc_free_omp_namelist (p->ext.omp_namelist, false);
       break;
 
     case EXEC_OMP_BARRIER:

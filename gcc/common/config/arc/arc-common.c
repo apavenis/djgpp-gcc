@@ -62,7 +62,6 @@ static const struct default_options arc_option_optimization_table[] =
     { OPT_LEVELS_SIZE, OPT_fif_conversion, NULL, 0 },
     { OPT_LEVELS_1_PLUS, OPT_fomit_frame_pointer, NULL, 1 },
     { OPT_LEVELS_3_PLUS_SPEED_ONLY, OPT_msize_level_, NULL, 0 },
-    { OPT_LEVELS_3_PLUS_SPEED_ONLY, OPT_malign_call, NULL, 1 },
     { OPT_LEVELS_NONE, 0, NULL, 0 }
   };
 
@@ -84,7 +83,7 @@ arc_handle_option (struct gcc_options *opts,
 	 our caller, so comparing arc_cpu with PROCESSOR_NONE is pointless.  */
 
       if (mcpu_seen != PROCESSOR_NONE && mcpu_seen != value)
-	warning_at (loc, 0, "multiple %<-mcpu=%> options specified.");
+	warning_at (loc, 0, "multiple %<-mcpu=%> options specified");
       mcpu_seen = value;
       break;
 

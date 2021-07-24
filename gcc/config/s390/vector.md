@@ -715,7 +715,7 @@
   DONE;
 })
 
-(define_expand "vcond_mask_<mode><mode>"
+(define_expand "vcond_mask_<mode><tointvec>"
   [(set (match_operand:V 0 "register_operand" "")
 	(if_then_else:V
 	 (eq (match_operand:<TOINTVEC> 3 "register_operand" "")
@@ -1589,7 +1589,7 @@
   [(set (match_operand:<TOINTVEC>  0 "register_operand" "")
 	(match_operator:<TOINTVEC> 1 "vcond_comparison_operator"
 	  [(match_operand:V_HW     2 "register_operand" "")
-	   (match_operand:V_HW     3 "register_operand" "")]))]
+	   (match_operand:V_HW     3 "nonmemory_operand" "")]))]
   "TARGET_VX"
 {
   s390_expand_vec_compare (operands[0], GET_CODE(operands[1]), operands[2], operands[3]);

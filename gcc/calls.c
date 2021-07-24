@@ -1002,7 +1002,8 @@ precompute_register_parameters (int num_actuals, struct arg_data *args,
 	/* If the value is a non-legitimate constant, force it into a
 	   pseudo now.  TLS symbols sometimes need a call to resolve.  */
 	if (CONSTANT_P (args[i].value)
-	    && !targetm.legitimate_constant_p (args[i].mode, args[i].value))
+	    && (!targetm.legitimate_constant_p (args[i].mode, args[i].value)
+		|| targetm.precompute_tls_p (args[i].mode, args[i].value)))
 	  args[i].value = force_reg (args[i].mode, args[i].value);
 
 	/* If we're going to have to load the value by parts, pull the
@@ -1275,19 +1276,20 @@ get_size_range (range_query *query, tree exp, gimple *stmt, tree range[2],
   wide_int min, max;
   enum value_range_kind range_type;
 
+  if (!query)
+    query = get_global_range_query ();
+
   if (integral)
     {
       value_range vr;
-      if (query && query->range_of_expr (vr, exp, stmt))
-	{
-	  if (vr.undefined_p ())
-	    vr.set_varying (TREE_TYPE (exp));
-	  range_type = vr.kind ();
-	  min = wi::to_wide (vr.min ());
-	  max = wi::to_wide (vr.max ());
-	}
-      else
-	range_type = determine_value_range (exp, &min, &max);
+
+      query->range_of_expr (vr, exp, stmt);
+
+      if (vr.undefined_p ())
+	vr.set_varying (TREE_TYPE (exp));
+      range_type = vr.kind ();
+      min = wi::to_wide (vr.min ());
+      max = wi::to_wide (vr.max ());
     }
   else
     range_type = VR_VARYING;
@@ -1433,8 +1435,8 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 	  if (tree_int_cst_lt (args[i], integer_zero_node))
 	    {
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "%Kargument %i value %qE is negative",
-				   exp, idx[i] + 1, args[i]);
+				   "argument %i value %qE is negative",
+				   idx[i] + 1, args[i]);
 	    }
 	  else if (integer_zerop (args[i]))
 	    {
@@ -1450,8 +1452,8 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 		  : !lookup_attribute ("returns_nonnull",
 				       TYPE_ATTRIBUTES (fntype)))
 		warned = warning_at (loc, OPT_Walloc_zero,
-				     "%Kargument %i value is zero",
-				     exp, idx[i] + 1);
+				     "argument %i value is zero",
+				     idx[i] + 1);
 	    }
 	  else if (tree_int_cst_lt (maxobjsize, args[i]))
 	    {
@@ -1468,9 +1470,9 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 		continue;
 
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "%Kargument %i value %qE exceeds "
+				   "argument %i value %qE exceeds "
 				   "maximum object size %E",
-				   exp, idx[i] + 1, args[i], maxobjsize);
+				   idx[i] + 1, args[i], maxobjsize);
 	    }
 	}
       else if (TREE_CODE (args[i]) == SSA_NAME
@@ -1482,16 +1484,16 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 	      && tree_int_cst_le (argrange[i][1], integer_zero_node))
 	    {
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "%Kargument %i range [%E, %E] is negative",
-				   exp, idx[i] + 1,
+				   "argument %i range [%E, %E] is negative",
+				   idx[i] + 1,
 				   argrange[i][0], argrange[i][1]);
 	    }
 	  else if (tree_int_cst_lt (maxobjsize, argrange[i][0]))
 	    {
 	      warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-				   "%Kargument %i range [%E, %E] exceeds "
+				   "argument %i range [%E, %E] exceeds "
 				   "maximum object size %E",
-				   exp, idx[i] + 1,
+				   idx[i] + 1,
 				   argrange[i][0], argrange[i][1],
 				   maxobjsize);
 	    }
@@ -1519,15 +1521,15 @@ maybe_warn_alloc_args_overflow (tree fn, tree exp, tree args[2], int idx[2])
 
       if (vflow)
 	warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-			     "%Kproduct %<%E * %E%> of arguments %i and %i "
+			     "product %<%E * %E%> of arguments %i and %i "
 			     "exceeds %<SIZE_MAX%>",
-			     exp, argrange[0][0], argrange[1][0],
+			     argrange[0][0], argrange[1][0],
 			     idx[0] + 1, idx[1] + 1);
       else if (wi::ltu_p (wi::to_wide (maxobjsize, szprec), prod))
 	warned = warning_at (loc, OPT_Walloc_size_larger_than_,
-			     "%Kproduct %<%E * %E%> of arguments %i and %i "
+			     "product %<%E * %E%> of arguments %i and %i "
 			     "exceeds maximum object size %E",
-			     exp, argrange[0][0], argrange[1][0],
+			     argrange[0][0], argrange[1][0],
 			     idx[0] + 1, idx[1] + 1,
 			     maxobjsize);
 
@@ -1621,7 +1623,7 @@ maybe_warn_nonstring_arg (tree fndecl, tree exp)
   if (!fndecl || !fndecl_built_in_p (fndecl, BUILT_IN_NORMAL))
     return false;
 
-  if (TREE_NO_WARNING (exp) || !warn_stringop_overread)
+  if (!warn_stringop_overread || warning_suppressed_p (exp, OPT_Wstringop_overread))
     return false;
 
   /* Avoid clearly invalid calls (more checking done below).  */
@@ -1727,17 +1729,17 @@ maybe_warn_nonstring_arg (tree fndecl, tree exp)
 	  bool warned = false;
 	  if (tree_int_cst_equal (bndrng[0], bndrng[1]))
 	    warned = warning_at (loc, OPT_Wstringop_overread,
-				 "%K%qD specified bound %E "
+				 "%qD specified bound %E "
 				 "exceeds maximum object size %E",
-				 exp, fndecl, bndrng[0], maxobjsize);
+				 fndecl, bndrng[0], maxobjsize);
 	  else
 	    warned = warning_at (loc, OPT_Wstringop_overread,
-				 "%K%qD specified bound [%E, %E] "
+				 "%qD specified bound [%E, %E] "
 				 "exceeds maximum object size %E",
-				 exp, fndecl, bndrng[0], bndrng[1],
+				 fndecl, bndrng[0], bndrng[1],
 				 maxobjsize);
 	  if (warned)
-	    TREE_NO_WARNING (exp) = true;
+	    suppress_warning (exp, OPT_Wstringop_overread);
 
 	  return warned;
 	}
@@ -1914,7 +1916,7 @@ maybe_warn_nonstring_arg (tree fndecl, tree exp)
     }
 
   if (any_arg_warned)
-    TREE_NO_WARNING (exp) = true;
+    suppress_warning (exp, OPT_Wstringop_overread);
 
   return any_arg_warned;
 }
@@ -1977,7 +1979,7 @@ maybe_warn_rdwr_sizes (rdwr_map *rwm, tree fndecl, tree fntype, tree exp)
 
   /* Set if a warning has been issued for any argument (used to decide
      whether to emit an informational note at the end).  */
-  bool any_warned = false;
+  opt_code opt_warned = N_OPTS;
 
   /* A string describing the attributes that the warnings issued by this
      function apply to.  Used to print one informational note per function
@@ -2052,7 +2054,7 @@ maybe_warn_rdwr_sizes (rdwr_map *rwm, tree fndecl, tree fntype, tree exp)
 	*sizstr = '\0';
 
       /* Set if a warning has been issued for the current argument.  */
-      bool arg_warned = false;
+      opt_code arg_warned = no_warning;
       location_t loc = EXPR_LOCATION (exp);
       tree ptr = access.second.ptr;
       if (*sizstr
@@ -2065,24 +2067,25 @@ maybe_warn_rdwr_sizes (rdwr_map *rwm, tree fndecl, tree fntype, tree exp)
 	      const std::string argtypestr
 		= access.second.array_as_string (ptrtype);
 
-	      arg_warned = warning_at (loc, OPT_Wstringop_overflow_,
-				       "%Kbound argument %i value %s is "
-				       "negative for a variable length array "
-				       "argument %i of type %s",
-				       exp, sizidx + 1, sizstr,
-				       ptridx + 1, argtypestr.c_str ());
+	      if (warning_at (loc, OPT_Wstringop_overflow_,
+			      "bound argument %i value %s is "
+			      "negative for a variable length array "
+			      "argument %i of type %s",
+			      sizidx + 1, sizstr,
+			      ptridx + 1, argtypestr.c_str ()))
+		arg_warned = OPT_Wstringop_overflow_;
 	    }
-	  else
-	    arg_warned = warning_at (loc, OPT_Wstringop_overflow_,
-				     "%Kargument %i value %s is negative",
-				     exp, sizidx + 1, sizstr);
+	  else if (warning_at (loc, OPT_Wstringop_overflow_,
+			       "argument %i value %s is negative",
+			       sizidx + 1, sizstr))
+	    arg_warned = OPT_Wstringop_overflow_;
 
-	  if (arg_warned)
+	  if (arg_warned != no_warning)
 	    {
 	      append_attrname (access, attrstr, sizeof attrstr);
 	      /* Remember a warning has been issued and avoid warning
 		 again below for the same attribute.  */
-	      any_warned = true;
+	      opt_warned = arg_warned;
 	      continue;
 	    }
 	}
@@ -2120,39 +2123,39 @@ maybe_warn_rdwr_sizes (rdwr_map *rwm, tree fndecl, tree fntype, tree exp)
 		  const std::string argtypestr
 		    = access.second.array_as_string (ptrtype);
 
-		  arg_warned = warning_at (loc, OPT_Wnonnull,
-					   "%Kargument %i of variable length "
-					   "array %s is null but "
-					   "the corresponding bound argument "
-					   "%i value is %s",
-					   exp, sizidx + 1, argtypestr.c_str (),
-					   ptridx + 1, sizstr);
+		  if (warning_at (loc, OPT_Wnonnull,
+				  "argument %i of variable length "
+				  "array %s is null but "
+				  "the corresponding bound argument "
+				  "%i value is %s",
+				  sizidx + 1, argtypestr.c_str (),
+				  ptridx + 1, sizstr))
+		    arg_warned = OPT_Wnonnull;
 		}
-	      else
-		arg_warned = warning_at (loc, OPT_Wnonnull,
-					 "%Kargument %i is null but "
-					 "the corresponding size argument "
-					 "%i value is %s",
-					 exp, ptridx + 1, sizidx + 1,
-					 sizstr);
+	      else if (warning_at (loc, OPT_Wnonnull,
+				   "argument %i is null but "
+				   "the corresponding size argument "
+				   "%i value is %s",
+				   ptridx + 1, sizidx + 1, sizstr))
+		arg_warned = OPT_Wnonnull;
 	    }
 	  else if (access_size && access.second.static_p)
 	    {
 	      /* Warn about null pointers for [static N] array arguments
 		 but do not warn for ordinary (i.e., nonstatic) arrays.  */
-	      arg_warned = warning_at (loc, OPT_Wnonnull,
-				       "%Kargument %i to %<%T[static %E]%> "
-				       "is null where non-null expected",
-				       exp, ptridx + 1, argtype,
-				       access_size);
+	      if (warning_at (loc, OPT_Wnonnull,
+			      "argument %i to %<%T[static %E]%> "
+			      "is null where non-null expected",
+			      ptridx + 1, argtype, access_size))
+		arg_warned = OPT_Wnonnull;		
 	    }
 
-	  if (arg_warned)
+	  if (arg_warned != no_warning)
 	    {
 	      append_attrname (access, attrstr, sizeof attrstr);
 	      /* Remember a warning has been issued and avoid warning
 		 again below for the same attribute.  */
-	      any_warned = true;
+	      opt_warned = OPT_Wnonnull;
 	      continue;
 	    }
 	}
@@ -2188,17 +2191,17 @@ maybe_warn_rdwr_sizes (rdwr_map *rwm, tree fndecl, tree fntype, tree exp)
       /* Clear the no-warning bit in case it was set by check_access
 	 in a prior iteration so that accesses via different arguments
 	 are diagnosed.  */
-      TREE_NO_WARNING (exp) = false;
+      suppress_warning (exp, OPT_Wstringop_overflow_, false);
       access_mode mode = data.mode;
       if (mode == access_deferred)
 	mode = TYPE_READONLY (argtype) ? access_read_only : access_read_write;
       check_access (exp, access_size, /*maxread=*/ NULL_TREE, srcsize,
 		    dstsize, mode, &data);
 
-      if (TREE_NO_WARNING (exp))
+      if (warning_suppressed_p (exp, OPT_Wstringop_overflow_))
+	opt_warned = OPT_Wstringop_overflow_;
+      if (opt_warned != N_OPTS)
 	{
-	  any_warned = true;
-
 	  if (access.second.internal_p)
 	    inform (loc, "referencing argument %u of type %qT",
 		    ptridx + 1, ptrtype);
@@ -2220,7 +2223,7 @@ maybe_warn_rdwr_sizes (rdwr_map *rwm, tree fndecl, tree fntype, tree exp)
 		"in a call with type %qT and attribute %qs",
 		fntype, attrstr);
     }
-  else if (any_warned)
+  else if (opt_warned != N_OPTS)
     {
       if (fndecl)
 	inform (DECL_SOURCE_LOCATION (fndecl),
@@ -2231,7 +2234,8 @@ maybe_warn_rdwr_sizes (rdwr_map *rwm, tree fndecl, tree fntype, tree exp)
     }
 
   /* Set the bit in case if was cleared and not set above.  */
-  TREE_NO_WARNING (exp) = true;
+  if (opt_warned != N_OPTS)
+    suppress_warning (exp, opt_warned);
 }
 
 /* Fill in ARGS_SIZE and ARGS array based on the parameters found in
@@ -2388,19 +2392,18 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
       function_arg_info arg (type, argpos < n_named_args);
       if (pass_by_reference (args_so_far_pnt, arg))
 	{
-	  bool callee_copies;
-	  tree base = NULL_TREE;
+	  const bool callee_copies
+	    = reference_callee_copied (args_so_far_pnt, arg);
+	  tree base;
 
-	  callee_copies = reference_callee_copied (args_so_far_pnt, arg);
-
-	  /* If we're compiling a thunk, pass through invisible references
-	     instead of making a copy.  */
-	  if (call_from_thunk_p
-	      || (callee_copies
-		  && !TREE_ADDRESSABLE (type)
-		  && (base = get_base_address (args[i].tree_value))
-		  && TREE_CODE (base) != SSA_NAME
-		  && (!DECL_P (base) || MEM_P (DECL_RTL (base)))))
+	  /* If we're compiling a thunk, pass directly the address of an object
+	     already in memory, instead of making a copy.  Likewise if we want
+	     to make the copy in the callee instead of the caller.  */
+	  if ((call_from_thunk_p || callee_copies)
+	      && TREE_CODE (args[i].tree_value) != WITH_SIZE_EXPR
+	      && ((base = get_base_address (args[i].tree_value)), true)
+	      && TREE_CODE (base) != SSA_NAME
+	      && (!DECL_P (base) || MEM_P (DECL_RTL (base))))
 	    {
 	      /* We may have turned the parameter value into an SSA name.
 		 Go back to the original parameter so we can take the
@@ -3728,7 +3731,7 @@ expand_call (tree exp, rtx target, int ignore)
      So the entire argument block must then be preallocated (i.e., we
      ignore PUSH_ROUNDING in that case).  */
 
-  int must_preallocate = !PUSH_ARGS;
+  int must_preallocate = !targetm.calls.push_argument (0);
 
   /* Size of the stack reserved for parameter registers.  */
   int reg_parm_stack_space = 0;
@@ -3809,6 +3812,7 @@ expand_call (tree exp, rtx target, int ignore)
      side-effects.  */
   if ((flags & (ECF_CONST | ECF_PURE))
       && (!(flags & ECF_LOOPING_CONST_OR_PURE))
+      && (flags & ECF_NOTHROW)
       && (ignore || target == const0_rtx
 	  || TYPE_MODE (rettype) == VOIDmode))
     {
@@ -3836,7 +3840,7 @@ expand_call (tree exp, rtx target, int ignore)
 #endif
 
   if (! OUTGOING_REG_PARM_STACK_SPACE ((!fndecl ? fntype : TREE_TYPE (fndecl)))
-      && reg_parm_stack_space > 0 && PUSH_ARGS)
+      && reg_parm_stack_space > 0 && targetm.calls.push_argument (0))
     must_preallocate = 1;
 
   /* Set up a place to return a structure.  */
@@ -5477,7 +5481,7 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
     }
   else
     {
-      if (!PUSH_ARGS)
+      if (!targetm.calls.push_argument (0))
 	argblock = push_block (gen_int_mode (args_size.constant, Pmode), 0, 0);
     }
 

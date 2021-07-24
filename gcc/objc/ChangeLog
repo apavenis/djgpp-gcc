@@ -1,3 +1,36 @@
+2021-06-28  Martin Sebor  <msebor@redhat.com>
+
+	* objc-act.c (objc_maybe_build_modify_expr): Replace direct uses
+	of TREE_NO_WARNING with warning_suppressed_p, and suppress_warning.
+	(objc_build_incr_expr_for_property_ref): Same.
+	(objc_build_struct): Same.
+	(synth_module_prologue): Same.
+	* objc-gnu-runtime-abi-01.c (gnu_runtime_01_initialize): Same.
+	* objc-next-runtime-abi-01.c (next_runtime_01_initialize): Same.
+	* objc-next-runtime-abi-02.c (next_runtime_02_initialize): Same.
+
+2021-06-08  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	* Make-lang.in (cc1-obj-checksum.c): Check previous
+	stage checksum exists.
+
+2021-06-07  Bernd Edlinger  <bernd.edlinger@hotmail.de>
+
+	* Make-lang.in (cc1obj-checksum.c): For stage-final re-use
+	the checksum from the previous stage.
+
+2021-05-20  Indu Bhagat  <indu.bhagat@oracle.com>
+
+	* objc-act.c (synth_module_prologue): Use uint32_t instead of enum
+	debug_info_type.
+
+2021-05-10  Martin Liska  <mliska@suse.cz>
+
+	* objc-act.c (objc_string_ref_type_p): Use startswith
+	function instead of strncmp.
+	* objc-encoding.c (encode_type): Likewise.
+	* objc-next-runtime-abi-02.c (has_load_impl): Likewise.
+
 2020-11-20  Jakub Jelinek  <jakub@redhat.com>
 
 	PR other/97911

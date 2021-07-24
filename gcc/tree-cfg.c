@@ -93,6 +93,9 @@ static hash_map<edge, tree> *edge_to_cases;
 
 static bitmap touched_switch_bbs;
 
+/* OpenMP region idxs for blocks during cfg pass.  */
+static vec<int> bb_to_omp_idx;
+
 /* CFG statistics.  */
 struct cfg_stats_d
 {
@@ -372,6 +375,9 @@ execute_build_cfg (void)
       dump_scope_blocks (dump_file, dump_flags);
     }
   cleanup_tree_cfg ();
+
+  bb_to_omp_idx.release ();
+
   loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
   replace_loop_annotate ();
   return 0;
@@ -724,8 +730,7 @@ get_abnormal_succ_dispatcher (basic_block bb)
    if COMPUTED_GOTO is false, otherwise factor the computed gotos.  */
 
 static void
-handle_abnormal_edges (basic_block *dispatcher_bbs,
-		       basic_block for_bb, int *bb_to_omp_idx,
+handle_abnormal_edges (basic_block *dispatcher_bbs, basic_block for_bb,
 		       auto_vec<basic_block> *bbs, bool computed_goto)
 {
   basic_block *dispatcher = dispatcher_bbs + (computed_goto ? 1 : 0);
@@ -733,7 +738,7 @@ handle_abnormal_edges (basic_block *dispatcher_bbs,
   basic_block bb;
   bool inner = false;
 
-  if (bb_to_omp_idx)
+  if (!bb_to_omp_idx.is_empty ())
     {
       dispatcher = dispatcher_bbs + 2 * bb_to_omp_idx[for_bb->index];
       if (bb_to_omp_idx[for_bb->index] != 0)
@@ -748,7 +753,7 @@ handle_abnormal_edges (basic_block *dispatcher_bbs,
       /* Check if there are any basic blocks that need to have
 	 abnormal edges to this dispatcher.  If there are none, return
 	 early.  */
-      if (bb_to_omp_idx == NULL)
+      if (bb_to_omp_idx.is_empty ())
 	{
 	  if (bbs->is_empty ())
 	    return;
@@ -790,7 +795,7 @@ handle_abnormal_edges (basic_block *dispatcher_bbs,
 
 	  FOR_EACH_VEC_ELT (*bbs, idx, bb)
 	    {
-	      if (bb_to_omp_idx
+	      if (!bb_to_omp_idx.is_empty ()
 		  && bb_to_omp_idx[bb->index] != bb_to_omp_idx[for_bb->index])
 		continue;
 
@@ -820,7 +825,7 @@ handle_abnormal_edges (basic_block *dispatcher_bbs,
 	  /* Create predecessor edges of the dispatcher.  */
 	  FOR_EACH_VEC_ELT (*bbs, idx, bb)
 	    {
-	      if (bb_to_omp_idx
+	      if (!bb_to_omp_idx.is_empty ()
 		  && bb_to_omp_idx[bb->index] != bb_to_omp_idx[for_bb->index])
 		continue;
 	      make_edge (bb, *dispatcher, EDGE_ABNORMAL);
@@ -957,7 +962,6 @@ make_edges (void)
   struct omp_region *cur_region = NULL;
   auto_vec<basic_block> ab_edge_goto;
   auto_vec<basic_block> ab_edge_call;
-  int *bb_to_omp_idx = NULL;
   int cur_omp_region_idx = 0;
 
   /* Create an edge from entry to the first block with executable
@@ -971,7 +975,7 @@ make_edges (void)
     {
       int mer;
 
-      if (bb_to_omp_idx)
+      if (!bb_to_omp_idx.is_empty ())
 	bb_to_omp_idx[bb->index] = cur_omp_region_idx;
 
       mer = make_edges_bb (bb, &cur_region, &cur_omp_region_idx);
@@ -980,8 +984,8 @@ make_edges (void)
       else if (mer == 2)
 	ab_edge_call.safe_push (bb);
 
-      if (cur_region && bb_to_omp_idx == NULL)
-	bb_to_omp_idx = XCNEWVEC (int, n_basic_blocks_for_fn (cfun));
+      if (cur_region && bb_to_omp_idx.is_empty ())
+	bb_to_omp_idx.safe_grow_cleared (n_basic_blocks_for_fn (cfun), true);
     }
 
   /* Computed gotos are hell to deal with, especially if there are
@@ -1006,7 +1010,7 @@ make_edges (void)
       basic_block *dispatcher_bbs = dispatcher_bb_array;
       int count = n_basic_blocks_for_fn (cfun);
 
-      if (bb_to_omp_idx)
+      if (!bb_to_omp_idx.is_empty ())
 	dispatcher_bbs = XCNEWVEC (basic_block, 2 * count);
 
       FOR_EACH_BB_FN (bb, cfun)
@@ -1024,12 +1028,12 @@ make_edges (void)
 	      /* Make an edge to every label block that has been marked as a
 		 potential target for a computed goto or a non-local goto.  */
 	      if (FORCED_LABEL (target))
-		handle_abnormal_edges (dispatcher_bbs, bb, bb_to_omp_idx,
-				       &ab_edge_goto, true);
+		handle_abnormal_edges (dispatcher_bbs, bb, &ab_edge_goto,
+				       true);
 	      if (DECL_NONLOCAL (target))
 		{
-		  handle_abnormal_edges (dispatcher_bbs, bb, bb_to_omp_idx,
-					 &ab_edge_call, false);
+		  handle_abnormal_edges (dispatcher_bbs, bb, &ab_edge_call,
+					 false);
 		  break;
 		}
 	    }
@@ -1044,16 +1048,14 @@ make_edges (void)
 		  && ((gimple_call_flags (call_stmt) & ECF_RETURNS_TWICE)
 		      || gimple_call_builtin_p (call_stmt,
 						BUILT_IN_SETJMP_RECEIVER)))
-		handle_abnormal_edges (dispatcher_bbs, bb, bb_to_omp_idx,
-				       &ab_edge_call, false);
+		handle_abnormal_edges (dispatcher_bbs, bb, &ab_edge_call,
+				       false);
 	    }
 	}
 
-      if (bb_to_omp_idx)
+      if (!bb_to_omp_idx.is_empty ())
 	XDELETE (dispatcher_bbs);
     }
-
-  XDELETE (bb_to_omp_idx);
 
   omp_free_regions ();
 }
@@ -1479,6 +1481,7 @@ cleanup_dead_labels_eh (label_record *label_for_bb)
 	if (lab != lp->post_landing_pad)
 	  {
 	    EH_LANDING_PAD_NR (lp->post_landing_pad) = 0;
+	    lp->post_landing_pad = lab;
 	    EH_LANDING_PAD_NR (lab) = lp->index;
 	  }
       }
@@ -1705,7 +1708,10 @@ cleanup_dead_labels (void)
 	      || FORCED_LABEL (label))
 	    gsi_next (&i);
 	  else
-	    gsi_remove (&i, true);
+	    {
+	      gcc_checking_assert (EH_LANDING_PAD_NR (label) == 0);
+	      gsi_remove (&i, true);
+	    }
 	}
     }
 
@@ -2301,6 +2307,30 @@ remove_bb (basic_block bb)
 		  new_bb = single_succ (new_bb);
 		  gcc_assert (new_bb != bb);
 		}
+	      if ((unsigned) bb->index < bb_to_omp_idx.length ()
+		  && ((unsigned) new_bb->index >= bb_to_omp_idx.length ()
+		      || (bb_to_omp_idx[bb->index]
+			  != bb_to_omp_idx[new_bb->index])))
+		{
+		  /* During cfg pass make sure to put orphaned labels
+		     into the right OMP region.  */
+		  unsigned int i;
+		  int idx;
+		  new_bb = NULL;
+		  FOR_EACH_VEC_ELT (bb_to_omp_idx, i, idx)
+		    if (i >= NUM_FIXED_BLOCKS
+			&& idx == bb_to_omp_idx[bb->index]
+			&& i != (unsigned) bb->index)
+		      {
+			new_bb = BASIC_BLOCK_FOR_FN (cfun, i);
+			break;
+		      }
+		  if (new_bb == NULL)
+		    {
+		      new_bb = single_succ (ENTRY_BLOCK_PTR_FOR_FN (cfun));
+		      gcc_assert (new_bb != bb);
+		    }
+		}
 	      new_gsi = gsi_after_labels (new_bb);
 	      gsi_remove (&i, false);
 	      gsi_insert_before (&new_gsi, stmt, GSI_NEW_STMT);
@@ -2319,6 +2349,8 @@ remove_bb (basic_block bb)
 	}
     }
 
+  if ((unsigned) bb->index < bb_to_omp_idx.length ())
+    bb_to_omp_idx[bb->index] = -1;
   remove_phi_nodes_and_edges_for_unreachable_block (bb);
   bb->il.gimple.seq = NULL;
   bb->il.gimple.phi_nodes = NULL;
@@ -3008,40 +3040,6 @@ verify_address (tree t, bool verify_addressable)
 }
 
 
-/* Verify if EXPR is either a GIMPLE ID or a GIMPLE indirect reference.
-   Returns true if there is an error, otherwise false.  */
-
-static bool
-verify_types_in_gimple_min_lval (tree expr)
-{
-  tree op;
-
-  if (is_gimple_id (expr))
-    return false;
-
-  if (TREE_CODE (expr) != TARGET_MEM_REF
-      && TREE_CODE (expr) != MEM_REF)
-    {
-      error ("invalid expression for min lvalue");
-      return true;
-    }
-
-  /* TARGET_MEM_REFs are strange beasts.  */
-  if (TREE_CODE (expr) == TARGET_MEM_REF)
-    return false;
-
-  op = TREE_OPERAND (expr, 0);
-  if (!is_gimple_val (op))
-    {
-      error ("invalid operand in indirect reference");
-      debug_generic_stmt (op);
-      return true;
-    }
-  /* Memory references now generally can involve a value conversion.  */
-
-  return false;
-}
-
 /* Verify if EXPR is a valid GIMPLE reference expression.  If
    REQUIRE_LVALUE is true verifies it is an lvalue.  Returns true
    if there is an error, otherwise false.  */
@@ -3279,8 +3277,21 @@ verify_types_in_gimple_reference (tree expr, bool require_lvalue)
       return true;
     }
 
-  return ((require_lvalue || !is_gimple_min_invariant (expr))
-	  && verify_types_in_gimple_min_lval (expr));
+  if (!require_lvalue
+      && (TREE_CODE (expr) == SSA_NAME || is_gimple_min_invariant (expr)))
+    return false;
+
+  if (TREE_CODE (expr) != SSA_NAME && is_gimple_id (expr))
+    return false;
+
+  if (TREE_CODE (expr) != TARGET_MEM_REF
+      && TREE_CODE (expr) != MEM_REF)
+    {
+      error ("invalid expression for min lvalue");
+      return true;
+    }
+
+  return false;
 }
 
 /* Returns true if there is one pointer type in TYPE_POINTER_TO (SRC_OBJ)
@@ -3370,8 +3381,11 @@ verify_gimple_call (gcall *stmt)
 
   tree lhs = gimple_call_lhs (stmt);
   if (lhs
-      && (!is_gimple_lvalue (lhs)
-	  || verify_types_in_gimple_reference (lhs, true)))
+      && (!is_gimple_reg (lhs)
+	  && (!is_gimple_lvalue (lhs)
+	      || verify_types_in_gimple_reference
+		   (TREE_CODE (lhs) == WITH_SIZE_EXPR
+		    ? TREE_OPERAND (lhs, 0) : lhs, true))))
     {
       error ("invalid LHS in gimple call");
       return true;
@@ -3459,6 +3473,13 @@ verify_gimple_call (gcall *stmt)
 	  error ("invalid argument to gimple call");
 	  debug_generic_expr (arg);
 	  return true;
+	}
+      if (!is_gimple_reg (arg))
+	{
+	  if (TREE_CODE (arg) == WITH_SIZE_EXPR)
+	    arg = TREE_OPERAND (arg, 0);
+	  if (verify_types_in_gimple_reference (arg, false))
+	    return true;
 	}
     }
 
@@ -3735,6 +3756,15 @@ verify_gimple_assign_unary (gassign *stmt)
     case BIT_NOT_EXPR:
     case PAREN_EXPR:
     case CONJ_EXPR:
+      /* Disallow pointer and offset types for many of the unary gimple. */
+      if (POINTER_TYPE_P (lhs_type)
+	  || TREE_CODE (lhs_type) == OFFSET_TYPE)
+	{
+	  error ("invalid types for %qs", code_name);
+	  debug_generic_expr (lhs_type);
+	  debug_generic_expr (rhs1_type);
+	  return true;
+	}
       break;
 
     case ABSU_EXPR:
@@ -4110,6 +4140,19 @@ verify_gimple_assign_binary (gassign *stmt)
     case ROUND_MOD_EXPR:
     case RDIV_EXPR:
     case EXACT_DIV_EXPR:
+      /* Disallow pointer and offset types for many of the binary gimple. */
+      if (POINTER_TYPE_P (lhs_type)
+	  || TREE_CODE (lhs_type) == OFFSET_TYPE)
+	{
+	  error ("invalid types for %qs", code_name);
+	  debug_generic_expr (lhs_type);
+	  debug_generic_expr (rhs1_type);
+	  debug_generic_expr (rhs2_type);
+	  return true;
+	}
+      /* Continue with generic binary expression handling.  */
+      break;
+
     case MIN_EXPR:
     case MAX_EXPR:
     case BIT_IOR_EXPR:
@@ -4218,6 +4261,8 @@ verify_gimple_assign_ternary (gassign *stmt)
 	  debug_generic_expr (rhs1_type);
 	  return true;
 	}
+      if (!is_gimple_val (rhs1))
+	return true;
       /* Fallthrough.  */
     case COND_EXPR:
       if (!is_gimple_val (rhs1)
@@ -4393,7 +4438,8 @@ verify_gimple_assign_ternary (gassign *stmt)
 		  && !SCALAR_FLOAT_TYPE_P (rhs1_type))
 		 || (!INTEGRAL_TYPE_P (lhs_type)
 		     && !SCALAR_FLOAT_TYPE_P (lhs_type))))
-	    || !types_compatible_p (rhs1_type, rhs2_type)
+	    /* rhs1_type and rhs2_type may differ in sign.  */
+	    || !tree_nop_conversion_p (rhs1_type, rhs2_type)
 	    || !useless_type_conversion_p (lhs_type, rhs3_type)
 	    || maybe_lt (GET_MODE_SIZE (element_mode (rhs3_type)),
 			 2 * GET_MODE_SIZE (element_mode (rhs1_type))))
@@ -4444,6 +4490,14 @@ verify_gimple_assign_single (gassign *stmt)
       && !(DECL_P (lhs) || TREE_CODE (lhs) == MEM_REF))
     {
       error ("%qs LHS in clobber statement",
+	     get_tree_code_name (TREE_CODE (lhs)));
+      debug_generic_expr (lhs);
+      return true;
+    }
+
+  if (TREE_CODE (lhs) == WITH_SIZE_EXPR)
+    {
+      error ("%qs LHS in assignment statement",
 	     get_tree_code_name (TREE_CODE (lhs)));
       debug_generic_expr (lhs);
       return true;
@@ -4639,8 +4693,13 @@ verify_gimple_assign_single (gassign *stmt)
 	}
       break;
 
-    case OBJ_TYPE_REF:
     case WITH_SIZE_EXPR:
+      error ("%qs RHS in assignment statement",
+	     get_tree_code_name (rhs_code));
+      debug_generic_expr (rhs1);
+      return true;
+
+    case OBJ_TYPE_REF:
       /* FIXME.  */
       return res;
 
@@ -5534,37 +5593,29 @@ gimple_verify_flow_info (void)
 	  label = gimple_label_label (as_a <glabel *> (stmt));
 	  if (prev_stmt && DECL_NONLOCAL (label))
 	    {
-	      error ("nonlocal label ");
-	      print_generic_expr (stderr, label);
-	      fprintf (stderr, " is not first in a sequence of labels in bb %d",
-		       bb->index);
+	      error ("nonlocal label %qD is not first in a sequence "
+		     "of labels in bb %d", label, bb->index);
 	      err = 1;
 	    }
 
 	  if (prev_stmt && EH_LANDING_PAD_NR (label) != 0)
 	    {
-	      error ("EH landing pad label ");
-	      print_generic_expr (stderr, label);
-	      fprintf (stderr, " is not first in a sequence of labels in bb %d",
-		       bb->index);
+	      error ("EH landing pad label %qD is not first in a sequence "
+		     "of labels in bb %d", label, bb->index);
 	      err = 1;
 	    }
 
 	  if (label_to_block (cfun, label) != bb)
 	    {
-	      error ("label ");
-	      print_generic_expr (stderr, label);
-	      fprintf (stderr, " to block does not match in bb %d",
-		       bb->index);
+	      error ("label %qD to block does not match in bb %d",
+		     label, bb->index);
 	      err = 1;
 	    }
 
 	  if (decl_function_context (label) != current_function_decl)
 	    {
-	      error ("label ");
-	      print_generic_expr (stderr, label);
-	      fprintf (stderr, " has incorrect context in bb %d",
-		       bb->index);
+	      error ("label %qD has incorrect context in bb %d",
+		     label, bb->index);
 	      err = 1;
 	    }
 	}
@@ -5586,9 +5637,8 @@ gimple_verify_flow_info (void)
 
 	  if (glabel *label_stmt = dyn_cast <glabel *> (stmt))
 	    {
-	      error ("label ");
-	      print_generic_expr (stderr, gimple_label_label (label_stmt));
-	      fprintf (stderr, " in the middle of basic block %d", bb->index);
+	      error ("label %qD in the middle of basic block %d",
+		     gimple_label_label (label_stmt), bb->index);
 	      err = 1;
 	    }
 	}
@@ -6472,7 +6522,6 @@ gimple_duplicate_sese_region (edge entry, edge exit,
   bool free_region_copy = false, copying_header = false;
   class loop *loop = entry->dest->loop_father;
   edge exit_copy;
-  vec<basic_block> doms = vNULL;
   edge redirected;
   profile_count total_count = profile_count::uninitialized ();
   profile_count entry_count = profile_count::uninitialized ();
@@ -6526,9 +6575,9 @@ gimple_duplicate_sese_region (edge entry, edge exit,
 
   /* Record blocks outside the region that are dominated by something
      inside.  */
+  auto_vec<basic_block> doms;
   if (update_dominance)
     {
-      doms.create (0);
       doms = get_dominated_by_region (CDI_DOMINATORS, region, n_region);
     }
 
@@ -6573,7 +6622,6 @@ gimple_duplicate_sese_region (edge entry, edge exit,
       set_immediate_dominator (CDI_DOMINATORS, entry->dest, entry->src);
       doms.safe_push (get_bb_original (entry->dest));
       iterate_fix_dominators (CDI_DOMINATORS, doms, false);
-      doms.release ();
     }
 
   /* Add the other PHI node arguments.  */
@@ -6639,7 +6687,6 @@ gimple_duplicate_sese_tail (edge entry, edge exit,
   class loop *loop = exit->dest->loop_father;
   class loop *orig_loop = entry->dest->loop_father;
   basic_block switch_bb, entry_bb, nentry_bb;
-  vec<basic_block> doms;
   profile_count total_count = profile_count::uninitialized (),
 		exit_count = profile_count::uninitialized ();
   edge exits[2], nexits[2], e;
@@ -6682,7 +6729,8 @@ gimple_duplicate_sese_tail (edge entry, edge exit,
 
   /* Record blocks outside the region that are dominated by something
      inside.  */
-  doms = get_dominated_by_region (CDI_DOMINATORS, region, n_region);
+  auto_vec<basic_block> doms = get_dominated_by_region (CDI_DOMINATORS, region,
+							n_region);
 
   total_count = exit->src->count;
   exit_count = exit->count ();
@@ -6762,7 +6810,6 @@ gimple_duplicate_sese_tail (edge entry, edge exit,
   /* Anything that is outside of the region, but was dominated by something
      inside needs to update dominance info.  */
   iterate_fix_dominators (CDI_DOMINATORS, doms, false);
-  doms.release ();
   /* Update the SSA web.  */
   update_ssa (TODO_update_ssa);
 
@@ -7509,7 +7556,7 @@ fold_loop_internal_call (gimple *g, tree value)
   gimple *use_stmt;
   gimple_stmt_iterator gsi = gsi_for_stmt (g);
 
-  update_call_from_tree (&gsi, value);
+  replace_call_with_value (&gsi, value);
   FOR_EACH_IMM_USE_STMT (use_stmt, iter, lhs)
     {
       FOR_EACH_IMM_USE_ON_STMT (use_p, iter)
@@ -7544,7 +7591,7 @@ basic_block
 move_sese_region_to_fn (struct function *dest_cfun, basic_block entry_bb,
 		        basic_block exit_bb, tree orig_block)
 {
-  vec<basic_block> bbs, dom_bbs;
+  vec<basic_block> bbs;
   basic_block dom_entry = get_immediate_dominator (CDI_DOMINATORS, entry_bb);
   basic_block after, bb, *entry_pred, *exit_succ, abb;
   struct function *saved_cfun = cfun;
@@ -7576,9 +7623,9 @@ move_sese_region_to_fn (struct function *dest_cfun, basic_block entry_bb,
 
   /* The blocks that used to be dominated by something in BBS will now be
      dominated by the new block.  */
-  dom_bbs = get_dominated_by_region (CDI_DOMINATORS,
-				     bbs.address (),
-				     bbs.length ());
+  auto_vec<basic_block> dom_bbs = get_dominated_by_region (CDI_DOMINATORS,
+							   bbs.address (),
+							   bbs.length ());
 
   /* Detach ENTRY_BB and EXIT_BB from CFUN->CFG.  We need to remember
      the predecessor edges to ENTRY_BB and the successor edges to
@@ -7914,7 +7961,6 @@ move_sese_region_to_fn (struct function *dest_cfun, basic_block entry_bb,
   set_immediate_dominator (CDI_DOMINATORS, bb, dom_entry);
   FOR_EACH_VEC_ELT (dom_bbs, i, abb)
     set_immediate_dominator (CDI_DOMINATORS, abb, bb);
-  dom_bbs.release ();
 
   if (exit_bb)
     {
@@ -8040,7 +8086,7 @@ dump_function_to_file (tree fndecl, FILE *file, dump_flags_t flags)
 	{
 	  basic_block bb = ENTRY_BLOCK_PTR_FOR_FN (cfun);
 	  if (bb->count.initialized_p ())
-	    fprintf (file, ",%s(%d)",
+	    fprintf (file, ",%s(%" PRIu64 ")",
 		     profile_quality_as_string (bb->count.quality ()),
 		     bb->count.value ());
 	  fprintf (file, ")\n%s (", function_name (fun));
@@ -8127,7 +8173,12 @@ dump_function_to_file (tree fndecl, FILE *file, dump_flags_t flags)
       if (gimple_in_ssa_p (cfun))
 	FOR_EACH_SSA_NAME (ix, name, cfun)
 	  {
-	    if (!SSA_NAME_VAR (name))
+	    if (!SSA_NAME_VAR (name)
+		/* SSA name with decls without a name still get
+		   dumped as _N, list those explicitely as well even
+		   though we've dumped the decl declaration as D.xxx
+		   above.  */
+		|| !SSA_NAME_IDENTIFIER (name))
 	      {
 		fprintf (file, "  ");
 		print_generic_expr (file, TREE_TYPE (name), flags);
@@ -8659,7 +8710,6 @@ gimple_flow_call_edges_add (sbitmap blocks)
 void
 remove_edge_and_dominated_blocks (edge e)
 {
-  vec<basic_block> bbs_to_remove = vNULL;
   vec<basic_block> bbs_to_fix_dom = vNULL;
   edge f;
   edge_iterator ei;
@@ -8710,6 +8760,7 @@ remove_edge_and_dominated_blocks (edge e)
     }
 
   auto_bitmap df, df_idom;
+  auto_vec<basic_block> bbs_to_remove;
   if (none_removed)
     bitmap_set_bit (df_idom,
 		    get_immediate_dominator (CDI_DOMINATORS, e->dest)->index);
@@ -8776,7 +8827,6 @@ remove_edge_and_dominated_blocks (edge e)
 
   iterate_fix_dominators (CDI_DOMINATORS, bbs_to_fix_dom, true);
 
-  bbs_to_remove.release ();
   bbs_to_fix_dom.release ();
 }
 
@@ -9172,49 +9222,6 @@ insert_cond_bb (basic_block bb, gimple *stmt, gimple *cond,
   return new_bb;
 }
 
-/* Build a ternary operation and gimplify it.  Emit code before GSI.
-   Return the gimple_val holding the result.  */
-
-tree
-gimplify_build3 (gimple_stmt_iterator *gsi, enum tree_code code,
-		 tree type, tree a, tree b, tree c)
-{
-  tree ret;
-  location_t loc = gimple_location (gsi_stmt (*gsi));
-
-  ret = fold_build3_loc (loc, code, type, a, b, c);
-  return force_gimple_operand_gsi (gsi, ret, true, NULL, true,
-                                   GSI_SAME_STMT);
-}
-
-/* Build a binary operation and gimplify it.  Emit code before GSI.
-   Return the gimple_val holding the result.  */
-
-tree
-gimplify_build2 (gimple_stmt_iterator *gsi, enum tree_code code,
-		 tree type, tree a, tree b)
-{
-  tree ret;
-
-  ret = fold_build2_loc (gimple_location (gsi_stmt (*gsi)), code, type, a, b);
-  return force_gimple_operand_gsi (gsi, ret, true, NULL, true,
-                                   GSI_SAME_STMT);
-}
-
-/* Build a unary operation and gimplify it.  Emit code before GSI.
-   Return the gimple_val holding the result.  */
-
-tree
-gimplify_build1 (gimple_stmt_iterator *gsi, enum tree_code code, tree type,
-		 tree a)
-{
-  tree ret;
-
-  ret = fold_build1_loc (gimple_location (gsi_stmt (*gsi)), code, type, a);
-  return force_gimple_operand_gsi (gsi, ret, true, NULL, true,
-                                   GSI_SAME_STMT);
-}
-
 
 
 /* Given a basic block B which ends with a conditional and has
@@ -9443,7 +9450,7 @@ pass_warn_function_return::execute (function *fun)
   /* If we see "return;" in some basic block, then we do reach the end
      without returning a value.  */
   else if (warn_return_type > 0
-	   && !TREE_NO_WARNING (fun->decl)
+	   && !warning_suppressed_p (fun->decl, OPT_Wreturn_type)
 	   && !VOID_TYPE_P (TREE_TYPE (TREE_TYPE (fun->decl))))
     {
       FOR_EACH_EDGE (e, ei, EXIT_BLOCK_PTR_FOR_FN (fun)->preds)
@@ -9452,14 +9459,14 @@ pass_warn_function_return::execute (function *fun)
 	  greturn *return_stmt = dyn_cast <greturn *> (last);
 	  if (return_stmt
 	      && gimple_return_retval (return_stmt) == NULL
-	      && !gimple_no_warning_p (last))
+	      && !warning_suppressed_p (last, OPT_Wreturn_type))
 	    {
 	      location = gimple_location (last);
 	      if (LOCATION_LOCUS (location) == UNKNOWN_LOCATION)
 		location = fun->function_end_locus;
 	      if (warning_at (location, OPT_Wreturn_type,
 			      "control reaches end of non-void function"))
-		TREE_NO_WARNING (fun->decl) = 1;
+		suppress_warning (fun->decl, OPT_Wreturn_type);
 	      break;
 	    }
 	}
@@ -9467,7 +9474,7 @@ pass_warn_function_return::execute (function *fun)
 	 into __builtin_unreachable () call with BUILTINS_LOCATION.
 	 Recognize those too.  */
       basic_block bb;
-      if (!TREE_NO_WARNING (fun->decl))
+      if (!warning_suppressed_p (fun->decl, OPT_Wreturn_type))
 	FOR_EACH_BB_FN (bb, fun)
 	  if (EDGE_COUNT (bb->succs) == 0)
 	    {
@@ -9491,7 +9498,7 @@ pass_warn_function_return::execute (function *fun)
 		    location = fun->function_end_locus;
 		  if (warning_at (location, OPT_Wreturn_type,
 				  "control reaches end of non-void function"))
-		    TREE_NO_WARNING (fun->decl) = 1;
+		    suppress_warning (fun->decl, OPT_Wreturn_type);
 		  break;
 		}
 	    }
@@ -9932,22 +9939,20 @@ test_linear_chain ()
   calculate_dominance_info (CDI_DOMINATORS);
   ASSERT_EQ (bb_a, get_immediate_dominator (CDI_DOMINATORS, bb_b));
   ASSERT_EQ (bb_b, get_immediate_dominator (CDI_DOMINATORS, bb_c));
-  vec<basic_block> dom_by_b = get_dominated_by (CDI_DOMINATORS, bb_b);
+  auto_vec<basic_block> dom_by_b = get_dominated_by (CDI_DOMINATORS, bb_b);
   ASSERT_EQ (1, dom_by_b.length ());
   ASSERT_EQ (bb_c, dom_by_b[0]);
   free_dominance_info (CDI_DOMINATORS);
-  dom_by_b.release ();
 
   /* Similarly for post-dominance: each BB in our chain is post-dominated
      by the one after it.  */
   calculate_dominance_info (CDI_POST_DOMINATORS);
   ASSERT_EQ (bb_b, get_immediate_dominator (CDI_POST_DOMINATORS, bb_a));
   ASSERT_EQ (bb_c, get_immediate_dominator (CDI_POST_DOMINATORS, bb_b));
-  vec<basic_block> postdom_by_b = get_dominated_by (CDI_POST_DOMINATORS, bb_b);
+  auto_vec<basic_block> postdom_by_b = get_dominated_by (CDI_POST_DOMINATORS, bb_b);
   ASSERT_EQ (1, postdom_by_b.length ());
   ASSERT_EQ (bb_a, postdom_by_b[0]);
   free_dominance_info (CDI_POST_DOMINATORS);
-  postdom_by_b.release ();
 
   pop_cfun ();
 }
@@ -10006,10 +10011,10 @@ test_diamond ()
   ASSERT_EQ (bb_a, get_immediate_dominator (CDI_DOMINATORS, bb_b));
   ASSERT_EQ (bb_a, get_immediate_dominator (CDI_DOMINATORS, bb_c));
   ASSERT_EQ (bb_a, get_immediate_dominator (CDI_DOMINATORS, bb_d));
-  vec<basic_block> dom_by_a = get_dominated_by (CDI_DOMINATORS, bb_a);
+  auto_vec<basic_block> dom_by_a = get_dominated_by (CDI_DOMINATORS, bb_a);
   ASSERT_EQ (3, dom_by_a.length ()); /* B, C, D, in some order.  */
   dom_by_a.release ();
-  vec<basic_block> dom_by_b = get_dominated_by (CDI_DOMINATORS, bb_b);
+  auto_vec<basic_block> dom_by_b = get_dominated_by (CDI_DOMINATORS, bb_b);
   ASSERT_EQ (0, dom_by_b.length ());
   dom_by_b.release ();
   free_dominance_info (CDI_DOMINATORS);
@@ -10019,10 +10024,10 @@ test_diamond ()
   ASSERT_EQ (bb_d, get_immediate_dominator (CDI_POST_DOMINATORS, bb_a));
   ASSERT_EQ (bb_d, get_immediate_dominator (CDI_POST_DOMINATORS, bb_b));
   ASSERT_EQ (bb_d, get_immediate_dominator (CDI_POST_DOMINATORS, bb_c));
-  vec<basic_block> postdom_by_d = get_dominated_by (CDI_POST_DOMINATORS, bb_d);
+  auto_vec<basic_block> postdom_by_d = get_dominated_by (CDI_POST_DOMINATORS, bb_d);
   ASSERT_EQ (3, postdom_by_d.length ()); /* A, B, C in some order.  */
   postdom_by_d.release ();
-  vec<basic_block> postdom_by_b = get_dominated_by (CDI_POST_DOMINATORS, bb_b);
+  auto_vec<basic_block> postdom_by_b = get_dominated_by (CDI_POST_DOMINATORS, bb_b);
   ASSERT_EQ (0, postdom_by_b.length ());
   postdom_by_b.release ();
   free_dominance_info (CDI_POST_DOMINATORS);

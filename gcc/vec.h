@@ -612,6 +612,7 @@ public:
   void block_remove (unsigned, unsigned);
   void qsort (int (*) (const void *, const void *));
   void sort (int (*) (const void *, const void *, void *), void *);
+  void stablesort (int (*) (const void *, const void *, void *), void *);
   T *bsearch (const void *key, int (*compar)(const void *, const void *));
   T *bsearch (const void *key,
 	      int (*compar)(const void *, const void *, void *), void *);
@@ -1160,6 +1161,17 @@ vec<T, A, vl_embed>::sort (int (*cmp) (const void *, const void *, void *),
     gcc_sort_r (address (), length (), sizeof (T), cmp, data);
 }
 
+/* Sort the contents of this vector with gcc_stablesort_r.  CMP is the
+   comparison function to pass to qsort.  */
+
+template<typename T, typename A>
+inline void
+vec<T, A, vl_embed>::stablesort (int (*cmp) (const void *, const void *,
+					     void *), void *data)
+{
+  if (length () > 1)
+    gcc_stablesort_r (address (), length (), sizeof (T), cmp, data);
+}
 
 /* Search the contents of the sorted vector with a binary search.
    CMP is the comparison function to pass to bsearch.  */
@@ -1488,6 +1500,7 @@ public:
   void block_remove (unsigned, unsigned);
   void qsort (int (*) (const void *, const void *));
   void sort (int (*) (const void *, const void *, void *), void *);
+  void stablesort (int (*) (const void *, const void *, void *), void *);
   T *bsearch (const void *key, int (*compar)(const void *, const void *));
   T *bsearch (const void *key,
 	      int (*compar)(const void *, const void *, void *), void *);
@@ -1557,14 +1570,43 @@ public:
       this->m_vec = r.m_vec;
       r.m_vec = NULL;
     }
+
+  auto_vec (auto_vec<T> &&r)
+    {
+      gcc_assert (!r.using_auto_storage ());
+      this->m_vec = r.m_vec;
+      r.m_vec = NULL;
+    }
+
   auto_vec& operator= (vec<T, va_heap>&& r)
     {
+	    if (this == &r)
+		    return *this;
+
       gcc_assert (!r.using_auto_storage ());
       this->release ();
       this->m_vec = r.m_vec;
       r.m_vec = NULL;
       return *this;
     }
+
+  auto_vec& operator= (auto_vec<T> &&r)
+    {
+	    if (this == &r)
+		    return *this;
+
+      gcc_assert (!r.using_auto_storage ());
+      this->release ();
+      this->m_vec = r.m_vec;
+      r.m_vec = NULL;
+      return *this;
+    }
+
+  // You probably don't want to copy a vector, so these are deleted to prevent
+  // unintentional use.  If you really need a copy of the vectors contents you
+  // can use copy ().
+  auto_vec(const auto_vec &) = delete;
+  auto_vec &operator= (const auto_vec &) = delete;
 };
 
 
@@ -2053,6 +2095,17 @@ vec<T, va_heap, vl_ptr>::sort (int (*cmp) (const void *, const void *,
     m_vec->sort (cmp, data);
 }
 
+/* Sort the contents of this vector with gcc_stablesort_r.  CMP is the
+   comparison function to pass to qsort.  */
+
+template<typename T>
+inline void
+vec<T, va_heap, vl_ptr>::stablesort (int (*cmp) (const void *, const void *,
+						 void *), void *data)
+{
+  if (m_vec)
+    m_vec->stablesort (cmp, data);
+}
 
 /* Search the contents of the sorted vector with a binary search.
    CMP is the comparison function to pass to bsearch.  */
@@ -2123,7 +2176,7 @@ template<typename T>
 inline bool
 vec<T, va_heap, vl_ptr>::using_auto_storage () const
 {
-  return m_vec->m_vecpfx.m_using_auto_storage;
+  return m_vec ? m_vec->m_vecpfx.m_using_auto_storage : false;
 }
 
 /* Release VEC and call release of all element vectors.  */

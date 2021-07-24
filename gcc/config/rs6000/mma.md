@@ -288,6 +288,7 @@
   DONE;
 }
   [(set_attr "type" "vecload,vecstore,veclogical")
+   (set_attr "size" "256")
    (set_attr "length" "*,*,8")])
 
 
@@ -539,7 +540,8 @@
 		    MMA_VVI4I4I8))]
   "TARGET_MMA"
   "<vvi4i4i8> %A0,%x1,%x2,%3,%4,%5"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<avvi4i4i8>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -552,7 +554,8 @@
 		    MMA_AVVI4I4I8))]
   "TARGET_MMA"
   "<avvi4i4i8> %A0,%x2,%x3,%4,%5,%6"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<vvi4i4i2>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -564,7 +567,8 @@
 		    MMA_VVI4I4I2))]
   "TARGET_MMA"
   "<vvi4i4i2> %A0,%x1,%x2,%3,%4,%5"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<avvi4i4i2>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -577,7 +581,8 @@
 		    MMA_AVVI4I4I2))]
   "TARGET_MMA"
   "<avvi4i4i2> %A0,%x2,%x3,%4,%5,%6"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<vvi4i4>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -588,7 +593,8 @@
 		    MMA_VVI4I4))]
   "TARGET_MMA"
   "<vvi4i4> %A0,%x1,%x2,%3,%4"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<avvi4i4>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -600,7 +606,8 @@
 		    MMA_AVVI4I4))]
   "TARGET_MMA"
   "<avvi4i4> %A0,%x2,%x3,%4,%5"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<pvi4i2>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -611,7 +618,8 @@
 		    MMA_PVI4I2))]
   "TARGET_MMA"
   "<pvi4i2> %A0,%x1,%x2,%3,%4"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<apvi4i2>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -623,7 +631,8 @@
 		    MMA_APVI4I2))]
   "TARGET_MMA"
   "<apvi4i2> %A0,%x2,%x3,%4,%5"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<vvi4i4i4>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -635,7 +644,8 @@
 		    MMA_VVI4I4I4))]
   "TARGET_MMA"
   "<vvi4i4i4> %A0,%x1,%x2,%3,%4,%5"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
 
 (define_insn "mma_<avvi4i4i4>"
   [(set (match_operand:XO 0 "fpr_reg_operand" "=&d")
@@ -648,4 +658,5 @@
 		    MMA_AVVI4I4I4))]
   "TARGET_MMA"
   "<avvi4i4i4> %A0,%x2,%x3,%4,%5,%6"
-  [(set_attr "type" "mma")])
+  [(set_attr "type" "mma")
+   (set_attr "prefixed" "yes")])
