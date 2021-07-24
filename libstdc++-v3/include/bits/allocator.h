@@ -60,6 +60,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  @{
    */
 
+  // Since C++20 the primary template should be used for allocator<void>,
+  // but then it would have a non-trivial default ctor and dtor, which
+  // would be an ABI change. So C++20 still uses the allocator<void> explicit
+  // specialization, with the historical ABI properties, but with the same
+  // members that are present in the primary template.
+
+#if ! _GLIBCXX_INLINE_VERSION
   /// allocator<void> specialization.
   template<>
     class allocator<void>
@@ -68,27 +75,41 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       typedef void        value_type;
       typedef size_t      size_type;
       typedef ptrdiff_t   difference_type;
+
 #if __cplusplus <= 201703L
+      // These were removed for C++20.
       typedef void*       pointer;
       typedef const void* const_pointer;
 
       template<typename _Tp1>
 	struct rebind
 	{ typedef allocator<_Tp1> other; };
-#else
+#endif
+
+#if __cplusplus >= 201103L
+      // _GLIBCXX_RESOLVE_LIB_DEFECTS
+      // 2103. std::allocator propagate_on_container_move_assignment
+      using propagate_on_container_move_assignment = true_type;
+
+      using is_always_equal
+	_GLIBCXX20_DEPRECATED_SUGGEST("allocator_traits::is_always_equal")
+	= true_type;
+
+#if __cplusplus >= 202002L
       allocator() = default;
 
       template<typename _Up>
 	constexpr
-	allocator(const allocator<_Up>&) { }
-#endif // ! C++20
+	allocator(const allocator<_Up>&) noexcept { }
 
-#if __cplusplus >= 201103L && __cplusplus <= 201703L
-      // _GLIBCXX_RESOLVE_LIB_DEFECTS
-      // 2103. std::allocator propagate_on_container_move_assignment
-      typedef true_type propagate_on_container_move_assignment;
+      // No allocate member because it's ill-formed by LWG 3307.
+      // No deallocate member because it would be undefined to call it
+      // with any pointer which wasn't obtained from allocate.
 
-      typedef true_type is_always_equal;
+#else // ! C++20
+    private:
+      // This uses construct and destroy in C++11/14/17 modes.
+      friend allocator_traits<allocator<void>>;
 
       template<typename _Up, typename... _Args>
 	void
@@ -101,11 +122,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	destroy(_Up* __p)
 	noexcept(std::is_nothrow_destructible<_Up>::value)
 	{ __p->~_Up(); }
-#endif // C++11 to C++17
+#endif // C++17
+#endif // C++11
+
     };
+#endif // ! _GLIBCXX_INLINE_VERSION
 
   /**
-   * @brief  The @a standard allocator, as per [20.4].
+   * @brief  The @a standard allocator, as per C++03 [20.4.1].
    *
    *  See https://gcc.gnu.org/onlinedocs/libstdc++/manual/memory.html#std.util.memory.allocator
    *  for further details.
@@ -119,7 +143,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       typedef _Tp        value_type;
       typedef size_t     size_type;
       typedef ptrdiff_t  difference_type;
+
 #if __cplusplus <= 201703L
+      // These were removed for C++20.
       typedef _Tp*       pointer;
       typedef const _Tp* const_pointer;
       typedef _Tp&       reference;
@@ -133,9 +159,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 #if __cplusplus >= 201103L
       // _GLIBCXX_RESOLVE_LIB_DEFECTS
       // 2103. std::allocator propagate_on_container_move_assignment
-      typedef true_type propagate_on_container_move_assignment;
+      using propagate_on_container_move_assignment = true_type;
 
-      typedef true_type is_always_equal;
+      using is_always_equal
+	_GLIBCXX20_DEPRECATED_SUGGEST("allocator_traits::is_always_equal")
+	= true_type;
 #endif
 
       // _GLIBCXX_RESOLVE_LIB_DEFECTS

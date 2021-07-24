@@ -641,8 +641,9 @@ extern unsigned char rs6000_recip_bits[];
 #define TARGET_CPU_CPP_BUILTINS() \
   rs6000_cpu_cpp_builtins (pfile)
 
-/* Target CPU versions for D.  */
+/* Target hooks for D language.  */
 #define TARGET_D_CPU_VERSIONS rs6000_d_target_versions
+#define TARGET_D_REGISTER_CPU_TARGET_INFO rs6000_d_register_target_info
 
 /* This is used by rs6000_cpu_cpp_builtins to indicate the byte order
    we're compiling for.  Some configurations may need to override it.  */
@@ -665,17 +666,6 @@ extern unsigned char rs6000_recip_bits[];
   while (0)
 
 /* Target machine storage layout.  */
-
-/* Define this macro if it is advisable to hold scalars in registers
-   in a wider mode than that declared by the program.  In such cases,
-   the value is constrained to be within the bounds of the declared
-   type, but kept valid in the wider mode.  The signedness of the
-   extension may differ from that of the type.  */
-
-#define PROMOTE_MODE(MODE,UNSIGNEDP,TYPE)	\
-  if (GET_MODE_CLASS (MODE) == MODE_INT		\
-      && GET_MODE_SIZE (MODE) < (TARGET_32BIT ? 4 : 8)) \
-    (MODE) = TARGET_32BIT ? SImode : DImode;
 
 /* Define this if most significant bit is lowest numbered
    in instructions that operate on numbered bit-fields.  */
@@ -2331,7 +2321,6 @@ extern int frame_pointer_needed;
 #define RS6000_BTM_MMA		MASK_MMA	/* ISA 3.1 MMA.  */
 #define RS6000_BTM_P10		MASK_POWER10
 
-
 #define RS6000_BTM_COMMON	(RS6000_BTM_ALTIVEC			\
 				 | RS6000_BTM_VSX			\
 				 | RS6000_BTM_P8_VECTOR			\
@@ -2444,6 +2433,7 @@ enum rs6000_builtin_type_index
   RS6000_BTI_bool_V8HI,          /* __vector __bool short */
   RS6000_BTI_bool_V4SI,          /* __vector __bool int */
   RS6000_BTI_bool_V2DI,          /* __vector __bool long */
+  RS6000_BTI_bool_V1TI,          /* __vector __bool 128-bit */
   RS6000_BTI_pixel_V8HI,         /* __vector __pixel */
   RS6000_BTI_long,	         /* long_integer_type_node */
   RS6000_BTI_unsigned_long,      /* long_unsigned_type_node */
@@ -2497,6 +2487,7 @@ enum rs6000_builtin_type_index
 #define bool_V8HI_type_node	      (rs6000_builtin_types[RS6000_BTI_bool_V8HI])
 #define bool_V4SI_type_node	      (rs6000_builtin_types[RS6000_BTI_bool_V4SI])
 #define bool_V2DI_type_node	      (rs6000_builtin_types[RS6000_BTI_bool_V2DI])
+#define bool_V1TI_type_node	      (rs6000_builtin_types[RS6000_BTI_bool_V1TI])
 #define pixel_V8HI_type_node	      (rs6000_builtin_types[RS6000_BTI_pixel_V8HI])
 
 #define long_long_integer_type_internal_node  (rs6000_builtin_types[RS6000_BTI_long_long])

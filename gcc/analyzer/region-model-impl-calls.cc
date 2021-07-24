@@ -79,6 +79,17 @@ call_details::call_details (const gcall *call, region_model *model,
     }
 }
 
+/* Get any uncertainty_t associated with the region_model_context.  */
+
+uncertainty_t *
+call_details::get_uncertainty () const
+{
+  if (m_ctxt)
+    return m_ctxt->get_uncertainty ();
+  else
+    return NULL;
+}
+
 /* If the callsite has a left-hand-side region, set it to RESULT
    and return true.
    Otherwise do nothing and return false.  */
@@ -129,6 +140,24 @@ call_details::get_arg_svalue (unsigned idx) const
   return m_model->get_rvalue (arg, m_ctxt);
 }
 
+/* Attempt to get the string literal for argument IDX, or return NULL
+   otherwise.
+   For use when implementing "__analyzer_*" functions that take
+   string literals.  */
+
+const char *
+call_details::get_arg_string_literal (unsigned idx) const
+{
+  const svalue *str_arg = get_arg_svalue (idx);
+  if (const region *pointee = str_arg->maybe_get_region ())
+    if (const string_region *string_reg = pointee->dyn_cast_string_region ())
+      {
+	tree string_cst = string_reg->get_string_cst ();
+	return TREE_STRING_POINTER (string_cst);
+      }
+  return NULL;
+}
+
 /* Dump a multiline representation of this call to PP.  */
 
 void
@@ -165,6 +194,15 @@ call_details::dump (bool simple) const
   pp_flush (&pp);
 }
 
+/* Get a conjured_svalue for this call for REG.  */
+
+const svalue *
+call_details::get_or_create_conjured_svalue (const region *reg) const
+{
+  region_model_manager *mgr = m_model->get_manager ();
+  return mgr->get_or_create_conjured_svalue (reg->get_type (), m_call, reg);
+}
+
 /* Implementations of specific functions.  */
 
 /* Handle the on_call_pre part of "alloca".  */
@@ -196,6 +234,25 @@ region_model::impl_call_analyzer_describe (const gcall *call,
   bool simple = zerop (t_verbosity);
   label_text desc = sval->get_desc (simple);
   warning_at (call->location, 0, "svalue: %qs", desc.m_buffer);
+}
+
+/* Handle a call to "__analyzer_dump_capacity".
+
+   Emit a warning describing the capacity of the base region of
+   the region pointed to by the 1st argument.
+   This is for use when debugging, and may be of use in DejaGnu tests.  */
+
+void
+region_model::impl_call_analyzer_dump_capacity (const gcall *call,
+						region_model_context *ctxt)
+{
+  tree t_ptr = gimple_call_arg (call, 0);
+  const svalue *sval_ptr = get_rvalue (t_ptr, ctxt);
+  const region *reg = deref_rvalue (sval_ptr, t_ptr, ctxt);
+  const region *base_reg = reg->get_base_region ();
+  const svalue *capacity = get_capacity (base_reg);
+  label_text desc = capacity->get_desc (true);
+  warning_at (call->location, 0, "capacity: %qs", desc.m_buffer);
 }
 
 /* Handle a call to "__analyzer_eval" by evaluating the input
@@ -278,6 +335,38 @@ region_model::impl_call_error (const call_details &cd, unsigned min_args,
   return true;
 }
 
+/* Handle the on_call_pre part of "fgets" and "fgets_unlocked".  */
+
+void
+region_model::impl_call_fgets (const call_details &cd)
+{
+  /* Ideally we would bifurcate state here between the
+     error vs no error cases.  */
+  const svalue *ptr_sval = cd.get_arg_svalue (0);
+  if (const region *reg = ptr_sval->maybe_get_region ())
+    {
+      const region *base_reg = reg->get_base_region ();
+      const svalue *new_sval = cd.get_or_create_conjured_svalue (base_reg);
+      purge_state_involving (new_sval, cd.get_ctxt ());
+      set_value (base_reg, new_sval, cd.get_ctxt ());
+    }
+}
+
+/* Handle the on_call_pre part of "fread".  */
+
+void
+region_model::impl_call_fread (const call_details &cd)
+{
+  const svalue *ptr_sval = cd.get_arg_svalue (0);
+  if (const region *reg = ptr_sval->maybe_get_region ())
+    {
+      const region *base_reg = reg->get_base_region ();
+      const svalue *new_sval = cd.get_or_create_conjured_svalue (base_reg);
+      purge_state_involving (new_sval, cd.get_ctxt ());
+      set_value (base_reg, new_sval, cd.get_ctxt ());
+    }
+}
+
 /* Handle the on_call_post part of "free", after sm-handling.
 
    If the ptr points to an underlying heap region, delete the region,
@@ -297,13 +386,12 @@ void
 region_model::impl_call_free (const call_details &cd)
 {
   const svalue *ptr_sval = cd.get_arg_svalue (0);
-  if (const region_svalue *ptr_to_region_sval
-      = ptr_sval->dyn_cast_region_svalue ())
+  if (const region *freed_reg = ptr_sval->maybe_get_region ())
     {
       /* If the ptr points to an underlying heap region, delete it,
 	 poisoning pointers.  */
-      const region *freed_reg = ptr_to_region_sval->get_pointee ();
       unbind_region_and_descendents (freed_reg, POISON_KIND_FREED);
+      m_dynamic_extents.remove (freed_reg);
     }
 }
 
@@ -343,10 +431,10 @@ region_model::impl_call_memcpy (const call_details &cd)
 	return;
     }
 
-  check_for_writable_region (dest_reg, cd.get_ctxt ());
+  check_region_for_write (dest_reg, cd.get_ctxt ());
 
   /* Otherwise, mark region's contents as unknown.  */
-  mark_region_as_unknown (dest_reg);
+  mark_region_as_unknown (dest_reg, cd.get_uncertainty ());
 }
 
 /* Handle the on_call_pre part of "memset" and "__builtin_memset".  */
@@ -361,36 +449,15 @@ region_model::impl_call_memset (const call_details &cd)
   const region *dest_reg = deref_rvalue (dest_sval, cd.get_arg_tree (0),
 					  cd.get_ctxt ());
 
-  if (tree num_bytes = num_bytes_sval->maybe_get_constant ())
-    {
-      /* "memset" of zero size is a no-op.  */
-      if (zerop (num_bytes))
-	return true;
+  const svalue *fill_value_u8
+    = m_mgr->get_or_create_cast (unsigned_char_type_node, fill_value_sval);
 
-      /* Set with known amount.  */
-      byte_size_t reg_size;
-      if (dest_reg->get_byte_size (&reg_size))
-	{
-	  /* Check for an exact size match.  */
-	  if (reg_size == wi::to_offset (num_bytes))
-	    {
-	      if (tree cst = fill_value_sval->maybe_get_constant ())
-		{
-		  if (zerop (cst))
-		    {
-		      zero_fill_region (dest_reg);
-		      return true;
-		    }
-		}
-	    }
-	}
-    }
-
-  check_for_writable_region (dest_reg, cd.get_ctxt ());
-
-  /* Otherwise, mark region's contents as unknown.  */
-  mark_region_as_unknown (dest_reg);
-  return false;
+  const region *sized_dest_reg = m_mgr->get_sized_region (dest_reg,
+							  NULL_TREE,
+							  num_bytes_sval);
+  check_region_for_write (sized_dest_reg, cd.get_ctxt ());
+  fill_region (sized_dest_reg, fill_value_u8);
+  return true;
 }
 
 /* Handle the on_call_pre part of "operator new".  */
@@ -417,12 +484,10 @@ bool
 region_model::impl_call_operator_delete (const call_details &cd)
 {
   const svalue *ptr_sval = cd.get_arg_svalue (0);
-  if (const region_svalue *ptr_to_region_sval
-      = ptr_sval->dyn_cast_region_svalue ())
+  if (const region *freed_reg = ptr_sval->maybe_get_region ())
     {
       /* If the ptr points to an underlying heap region, delete it,
 	 poisoning pointers.  */
-      const region *freed_reg = ptr_to_region_sval->get_pointee ();
       unbind_region_and_descendents (freed_reg, POISON_KIND_FREED);
     }
   return false;
@@ -450,10 +515,10 @@ region_model::impl_call_strcpy (const call_details &cd)
 
   cd.maybe_set_lhs (dest_sval);
 
-  check_for_writable_region (dest_reg, cd.get_ctxt ());
+  check_region_for_write (dest_reg, cd.get_ctxt ());
 
   /* For now, just mark region's contents as unknown.  */
-  mark_region_as_unknown (dest_reg);
+  mark_region_as_unknown (dest_reg, cd.get_uncertainty ());
 }
 
 /* Handle the on_call_pre part of "strlen".

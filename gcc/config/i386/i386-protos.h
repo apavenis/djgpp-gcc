@@ -50,6 +50,8 @@ extern void ix86_reset_previous_fndecl (void);
 
 extern bool ix86_using_red_zone (void);
 
+extern rtx ix86_gen_scratch_sse_rtx (machine_mode);
+
 extern unsigned int ix86_regmode_natural_size (machine_mode);
 #ifdef RTX_CODE
 extern int standard_80387_constant_p (rtx);
@@ -111,6 +113,7 @@ extern bool ix86_use_lea_for_mov (rtx_insn *, rtx[]);
 extern bool ix86_avoid_lea_for_addr (rtx_insn *, rtx[]);
 extern void ix86_split_lea_for_addr (rtx_insn *, rtx[], machine_mode);
 extern bool ix86_lea_for_add_ok (rtx_insn *, rtx[]);
+extern int ix86_last_zero_store_uid;
 extern bool ix86_vec_interleave_v2df_operator_ok (rtx operands[3], bool high);
 extern bool ix86_dep_by_shift_count (const_rtx set_insn, const_rtx use_insn);
 extern bool ix86_agi_dependent (rtx_insn *set_insn, rtx_insn *use_insn);
@@ -207,15 +210,13 @@ extern void ix86_expand_round (rtx, rtx);
 extern void ix86_expand_rounddf_32 (rtx, rtx);
 extern void ix86_expand_round_sse4 (rtx, rtx);
 
-extern bool ix86_expand_vecmul_qihi (rtx, rtx, rtx);
 extern void ix86_expand_vecop_qihi (enum rtx_code, rtx, rtx, rtx);
-extern bool ix86_expand_vec_shift_qihi_constant (enum rtx_code, rtx, rtx, rtx);
-
 extern rtx ix86_split_stack_guard (void);
 
 extern void ix86_move_vector_high_sse_to_mmx (rtx);
 extern void ix86_split_mmx_pack (rtx[], enum rtx_code);
 extern void ix86_split_mmx_punpck (rtx[], bool);
+extern void ix86_expand_avx_vzeroupper (void);
 
 #ifdef TREE_CODE
 extern void init_cumulative_args (CUMULATIVE_ARGS *, tree, rtx, tree, int);
@@ -257,6 +258,8 @@ extern void ix86_expand_mul_widen_hilo (rtx, rtx, rtx, bool, bool);
 extern void ix86_expand_sse2_mulv4si3 (rtx, rtx, rtx);
 extern void ix86_expand_sse2_mulvxdi3 (rtx, rtx, rtx);
 extern void ix86_expand_sse2_abs (rtx, rtx);
+extern bool ix86_expand_vector_init_duplicate (bool, machine_mode, rtx,
+					       rtx);
 
 /* In i386-c.c  */
 extern void ix86_target_macros (void);
@@ -264,6 +267,8 @@ extern void ix86_register_pragmas (void);
 
 /* In i386-d.c  */
 extern void ix86_d_target_versions (void);
+extern void ix86_d_register_target_info (void);
+extern bool ix86_d_has_stdcall_convention (unsigned int *, unsigned int *);
 
 /* In winnt.c  */
 extern void i386_pe_unique_section (tree, int);
@@ -390,4 +395,3 @@ extern rtl_opt_pass *make_pass_insert_endbr_and_patchable_area
   (gcc::context *);
 extern rtl_opt_pass *make_pass_remove_partial_avx_dependency
   (gcc::context *);
-extern rtl_opt_pass *make_pass_constant_pool_broadcast (gcc::context *);

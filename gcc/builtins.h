@@ -110,8 +110,10 @@ extern void expand_builtin_update_setjmp_buf (rtx);
 extern tree mathfn_built_in (tree, enum built_in_function fn);
 extern tree mathfn_built_in (tree, combined_fn);
 extern tree mathfn_built_in_type (combined_fn);
-extern rtx builtin_strncpy_read_str (void *, HOST_WIDE_INT, scalar_int_mode);
-extern rtx builtin_memset_read_str (void *, HOST_WIDE_INT, scalar_int_mode);
+extern rtx builtin_strncpy_read_str (void *, void *, HOST_WIDE_INT,
+				     scalar_int_mode);
+extern rtx builtin_memset_read_str (void *, void *, HOST_WIDE_INT,
+				    scalar_int_mode);
 extern rtx expand_builtin_saveregs (void);
 extern tree std_build_builtin_va_list (void);
 extern tree std_fn_abi_va_list (tree);
@@ -220,6 +222,9 @@ struct access_ref
      argument to the minimum.  */
   offset_int size_remaining (offset_int * = NULL) const;
 
+/* Return true if the offset and object size are in range for SIZE.  */
+  bool offset_in_range (const offset_int &) const;
+
   /* Return true if *THIS is an access to a declared object.  */
   bool ref_declared () const
   {
@@ -259,6 +264,8 @@ struct access_ref
   /* Range of byte offsets into and sizes of the object(s).  */
   offset_int offrng[2];
   offset_int sizrng[2];
+  /* The minimum and maximum offset computed.  */
+  offset_int offmax[2];
   /* Range of the bound of the access: denotes that the access
      is at least BNDRNG[0] bytes but no more than BNDRNG[1].
      For string functions the size of the actual access is

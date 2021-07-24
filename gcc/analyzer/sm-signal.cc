@@ -81,13 +81,6 @@ public:
 		const supernode *node,
 		const gimple *stmt) const FINAL OVERRIDE;
 
-  void on_condition (sm_context *sm_ctxt,
-		     const supernode *node,
-		     const gimple *stmt,
-		     tree lhs,
-		     enum tree_code op,
-		     tree rhs) const FINAL OVERRIDE;
-
   bool can_purge_p (state_t s) const FINAL OVERRIDE;
 
   /* These states are "global", rather than per-expression.  */
@@ -238,9 +231,10 @@ public:
     FINAL OVERRIDE
   {
     emission_path->add_event
-      (new custom_event (UNKNOWN_LOCATION, NULL_TREE, 0,
-			 "later on,"
-			 " when the signal is delivered to the process"));
+      (new precanned_custom_event
+       (UNKNOWN_LOCATION, NULL_TREE, 0,
+	"later on,"
+	" when the signal is delivered to the process"));
   }
 };
 
@@ -360,20 +354,6 @@ signal_state_machine::on_stmt (sm_context *sm_ctxt,
     }
 
   return false;
-}
-
-/* Implementation of state_machine::on_condition vfunc for
-   signal_state_machine.  */
-
-void
-signal_state_machine::on_condition (sm_context *sm_ctxt ATTRIBUTE_UNUSED,
-				    const supernode *node ATTRIBUTE_UNUSED,
-				    const gimple *stmt ATTRIBUTE_UNUSED,
-				    tree lhs ATTRIBUTE_UNUSED,
-				    enum tree_code op ATTRIBUTE_UNUSED,
-				    tree rhs ATTRIBUTE_UNUSED) const
-{
-  // Empty
 }
 
 bool

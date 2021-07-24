@@ -1,3 +1,103 @@
+2021-06-16  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100796
+	PR preprocessor/96391
+	* line-map.c (linemap_compare_locations): Only use comparison with
+	LINE_MAP_MAX_LOCATION_WITH_COLS to avoid abort.
+
+2021-05-20  Christophe Lyon  <christophe.lyon@linaro.org>
+	    Torbjörn Svensson  <torbjorn.svensson@st.com>
+
+	PR c/42579
+	* include/cpplib.h (cpp_builtin_type): Add BT_FILE_NAME entry.
+	* init.c (builtin_array): Likewise.
+	* macro.c (_cpp_builtin_macro_text): Add support for BT_FILE_NAME.
+
+2021-05-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR preprocessor/100646
+	* lex.c (cpp_directive_only_process): Treat end of file as termination
+	for !is_block comments.
+
+2021-05-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR preprocessor/100392
+	* lex.c (cpp_directive_only_process): If buffer doesn't end with '\n',
+	add buffer->rlimit[0] character to the printed range and
+	CPP_INCREMENT_LINE and increment line_count.
+
+2021-05-11  Joseph Myers  <joseph@codesourcery.com>
+
+	* include/cpplib.h (struct cpp_options): Add elifdef.
+	* init.c (struct lang_flags): Add elifdef.
+	(lang_defaults): Update to include elifdef initializers.
+	(cpp_set_lang): Set elifdef for pfile based on language.
+	* directives.c (STDC2X, ELIFDEF): New macros.
+	(EXTENSION): Increase value to 3.
+	(DIRECTIVE_TABLE): Add #elifdef and #elifndef.
+	(_cpp_handle_directive): Do not treat ELIFDEF directives as
+	directives for language versions without the #elifdef feature.
+	(do_elif): Handle #elifdef and #elifndef.
+	(do_elifdef, do_elifndef): New functions.
+
+2021-05-11  Joseph Myers  <joseph@codesourcery.com>
+
+	* lex.c (cpp_avoid_paste): Do not allow pasting CPP_NUMBER with
+	CPP_CHAR.
+
+2021-05-11  Joseph Myers  <joseph@codesourcery.com>
+
+	* init.c (lang_defaults): Enable digit separators for GNUC2X and
+	STDC2X.
+
+2021-05-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/100450
+	* lex.c (cpp_avoid_paste): Handle token1 CPP_PRAGMA like CPP_NAME.
+
+2021-05-06  Joseph Myers  <joseph@codesourcery.com>
+
+	PR c++/83873
+	PR preprocessor/97604
+	* lex.c (lex_number): Reject adjacent digit separators here.  Do
+	not allow digit separators before '.' or an exponent with sign.
+	* expr.c (cpp_classify_number): Do not check for adjacent digit
+	separators here.
+
+2021-05-03  H.J. Lu  <hjl.tools@gmail.com>
+
+	PR bootstrap/99703
+	* configure: Regenerated.
+
+2021-04-29  Joseph Myers  <joseph@codesourcery.com>
+
+	PR preprocessor/82359
+	* directives.c (strtolinenum): Handle digit separators.
+
+2021-04-19  Richard Biener  <rguenther@suse.de>
+
+	PR preprocessor/100142
+	* line-map.c (linemap_position_for_loc_and_offset): Revert
+	unintended s/column_offset/column/ change.
+
+2021-04-13  Nathan Sidwell  <nathan@acm.org>
+
+	PR preprocessor/99446
+	* line-map.c (line-map.c): Do not advance to linemaps for
+	different files.
+
+2021-04-13  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* include/line-map.h (IS_MACRO_LOC): Delete.
+	* line-map.c (linemap_location_from_macro_expansion_p): Test
+	LINEMAPS_MACRO_LOWEST_LOCATION of the linemap.
+
+2021-03-02  David Malcolm  <dmalcolm@redhat.com>
+
+	PR c/99323
+	* line-map.c (rich_location::maybe_add_fixit): Reject fix-it hints
+	at column 0.
+
 2021-02-24  Nathan Sidwell  <nathan@acm.org>
 
 	PR c++/98718

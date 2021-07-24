@@ -723,6 +723,8 @@ thin_archive_support
 ld_soname_option
 ld_version_script_option
 libgcc_visibility
+ORIGINAL_DSYMUTIL_FOR_TARGET
+gcc_cv_dsymutil
 gcc_cv_otool
 gcc_cv_readelf
 gcc_cv_objdump
@@ -946,6 +948,7 @@ enable_generated_files_in_srcdir
 with_gnu_ld
 with_ld
 with_demangler_in_ld
+with_dsymutil
 with_gnu_as
 with_as
 enable_largefile
@@ -1813,6 +1816,8 @@ Optional Packages:
   --with-gnu-ld           arrange to work with GNU ld
   --with-ld               arrange to use the specified ld (full pathname)
   --with-demangler-in-ld  try to use demangler in GNU ld
+  --with-dsymutil         arrange to use the specified dsymutil (full
+                          pathname)
   --with-gnu-as           arrange to work with GNU as
   --with-as               arrange to use the specified as (full pathname)
   --with-stabs            arrange to use stabs instead of host debug format
@@ -3835,8 +3840,14 @@ fi
 
 
 case $target in
-    *darwin*) ld64_flag=yes;; # Darwin can only use a ld64-compatible linker.
-    *) ld64_flag=no;;
+    *darwin*)
+	ld64_flag=yes # Darwin can only use a ld64-compatible linker.
+	dsymutil_flag=yes # Darwin uses dsymutil to link debug.
+	;;
+    *)
+	ld64_flag=no
+	dsymutil_flag=no
+	;;
 esac
 
 # With pre-defined ld
@@ -3885,6 +3896,40 @@ else
   demangler_in_ld=yes
 fi
 
+
+# Allow the user to specify a dsymutil executable (used on Darwin only, so far)
+
+# Check whether --with-dsymutil was given.
+if test "${with_dsymutil+set}" = set; then :
+  withval=$with_dsymutil; DEFAULT_DSYMUTIL="$with_dsymutil"
+fi
+
+
+dsymutil_vers=
+if test x"${DEFAULT_DSYMUTIL+set}" = x"set"; then
+  if test ! -x "$DEFAULT_DSYMUTIL"; then
+    as_fn_error $? "cannot execute: $DEFAULT_DSYMUTIL: check --with-dsymutil or env. var. DEFAULT_DSYMUTIL" "$LINENO" 5
+  else
+    if dsymutil_vers=`$DEFAULT_DSYMUTIL -v /dev/null 2>&1`; then
+      dsymutil_flag=yes
+    fi
+  fi
+
+cat >>confdefs.h <<_ACEOF
+#define DEFAULT_DSYMUTIL "$DEFAULT_DSYMUTIL"
+_ACEOF
+
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether a default dsymutil was specified" >&5
+$as_echo_n "checking whether a default dsymutil was specified... " >&6; }
+if test x"${DEFAULT_DSYMUTIL+set}" = x"set"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes ($DEFAULT_DSYMUTIL)" >&5
+$as_echo "yes ($DEFAULT_DSYMUTIL)" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
 
 # ----------------------
 # Find default assembler
@@ -8058,6 +8103,12 @@ $as_echo "#define ENABLE_OFFLOADING 0" >>confdefs.h
 
 fi
 
+if test "x$enable_offload_defaulted" = xyes; then
+
+$as_echo "#define OFFLOAD_DEFAULTED 1" >>confdefs.h
+
+fi
+
 
 # Check whether --with-multilib-list was given.
 if test "${with_multilib_list+set}" = set; then :
@@ -9069,7 +9120,7 @@ fi
 
 for ac_header in limits.h stddef.h string.h strings.h stdlib.h time.h iconv.h \
 		 fcntl.h ftw.h unistd.h sys/file.h sys/time.h sys/mman.h \
-		 sys/resource.h sys/param.h sys/times.h sys/stat.h \
+		 sys/resource.h sys/param.h sys/times.h sys/stat.h sys/locking.h \
 		 direct.h malloc.h langinfo.h ldfcn.h locale.h wchar.h
 do :
   as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
@@ -12302,6 +12353,43 @@ $as_echo "#define HAVE_AF_INET6 1" >>confdefs.h
 
 fi
 
+# Check if _LK_LOCK is supported by _locking
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for _LK_LOCK" >&5
+$as_echo_n "checking for _LK_LOCK... " >&6; }
+if ${ac_cv_lk_lock+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+#include <io.h>
+#include <sys/locking.h>
+int
+main ()
+{
+
+  int fd;
+  return _locking (fd, _LK_LOCK, 0);
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  ac_cv_lk_lock=yes
+else
+  ac_cv_lk_lock=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lk_lock" >&5
+$as_echo "$ac_cv_lk_lock" >&6; }
+if test $ac_cv_lk_lock = yes; then
+
+$as_echo "#define HOST_HAS_LK_LOCK 1" >>confdefs.h
+
+fi
+
 # Restore CFLAGS, CXXFLAGS from before the gcc_AC_NEED_DECLARATIONS tests.
 CFLAGS="$saved_CFLAGS"
 CXXFLAGS="$saved_CXXFLAGS"
@@ -13254,8 +13342,8 @@ BUILD_NO_PIE_FLAG='$(NO_PIE_FLAG)'
 # And these apply if build != host, or we are generating coverage data
 if test x$build != x$host || test "x$coverage_flags" != x
 then
-    BUILD_CFLAGS='$(INTERNAL_CFLAGS) $(T_CFLAGS) $(CFLAGS_FOR_BUILD)'
-    BUILD_CXXFLAGS='$(INTERNAL_CFLAGS) $(T_CFLAGS) $(CXXFLAGS_FOR_BUILD)'
+    BUILD_CFLAGS='$(INTERNAL_CFLAGS) $(T_CFLAGS) $(CFLAGS-$@) $(CFLAGS_FOR_BUILD)'
+    BUILD_CXXFLAGS='$(INTERNAL_CFLAGS) $(T_CFLAGS) $(CFLAGS-$@) $(CXXFLAGS_FOR_BUILD)'
     BUILD_LDFLAGS='$(LDFLAGS_FOR_BUILD)'
 
     NO_PIE_CFLAGS_FOR_BUILD=${NO_PIE_CFLAGS_FOR_BUILD-${NO_PIE_CFLAGS}}
@@ -19392,7 +19480,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 19405 "configure"
+#line 19483 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -19498,7 +19586,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 19511 "configure"
+#line 19589 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -22237,16 +22325,6 @@ freebsd* | dragonfly*)
   esac
   ;;
 
-gnu*)
-  version_type=linux
-  need_lib_prefix=no
-  need_version=no
-  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}${major} ${libname}${shared_ext}'
-  soname_spec='${libname}${release}${shared_ext}$major'
-  shlibpath_var=LD_LIBRARY_PATH
-  hardcode_into_libs=yes
-  ;;
-
 haiku*)
   version_type=linux
   need_lib_prefix=no
@@ -22368,7 +22446,7 @@ linux*oldld* | linux*aout* | linux*coff*)
 # project, but have not yet been accepted: they are GCC-local changes
 # for the time being.  (See
 # https://lists.gnu.org/archive/html/libtool-patches/2018-05/msg00000.html)
-linux* | k*bsd*-gnu | kopensolaris*-gnu | uclinuxfdpiceabi)
+linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu* | uclinuxfdpiceabi)
   version_type=linux
   need_lib_prefix=no
   need_version=no
@@ -23406,6 +23484,71 @@ else
 $as_echo "$gcc_cv_otool" >&6; }
 fi
 
+# Figure out the dsymutil we will use.
+if ${gcc_cv_dsymutil+:} false; then :
+
+else
+
+if test -x "$DEFAULT_DSYMUTIL"; then
+    gcc_cv_dsymutil="$DEFAULT_DSYMUTIL"
+elif test -x dsymutil$build_exeext; then
+    gcc_cv_dsymutil=./dsymutil$build_exeext
+elif ( set dummy $DSYMUTIL_FOR_TARGET; test -x $2 ); then
+    gcc_cv_dsymutil=$DSYMUTIL_FOR_TARGET
+elif ( set dummy $DSYMUTIL; test -x $2 ); then
+    gcc_cv_dsymutil=$DSYMUTIL
+else
+    # Extract the first word of "$DSYMUTIL_FOR_TARGET", so it can be a program name with args.
+set dummy $DSYMUTIL_FOR_TARGET; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_gcc_cv_dsymutil+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $gcc_cv_dsymutil in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_gcc_cv_dsymutil="$gcc_cv_dsymutil" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_path_gcc_cv_dsymutil="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+gcc_cv_dsymutil=$ac_cv_path_gcc_cv_dsymutil
+if test -n "$gcc_cv_dsymutil"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_dsymutil" >&5
+$as_echo "$gcc_cv_dsymutil" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+fi
+fi
+
+ORIGINAL_DSYMUTIL_FOR_TARGET=$gcc_cv_dsymutil
+
+case "$ORIGINAL_DSYMUTIL_FOR_TARGET" in
+  ./dsymutil | ./dsymutil$build_exeext) ;;
+  *) ac_config_files="$ac_config_files dsymutil:exec-tool.in"
+ ;;
+esac
+
 # Figure out what assembler alignment features are present.
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking assembler flags" >&5
 $as_echo_n "checking assembler flags... " >&6; }
@@ -24142,9 +24285,19 @@ fi
 rm -f conftest.err conftest.i conftest.$ac_ext;;
     esac
   else
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking cross compile... guessing" >&5
+    case "${target}" in
+      aarch64*-linux-gnu*)
+	# AArch64 postdates glibc support for .init_array/.fini_array,
+	# so we don't need the preprocessor test above.
+	gcc_cv_initfini_array=yes
+	;;
+
+      *)
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking cross compile... guessing" >&5
 $as_echo_n "checking cross compile... guessing... " >&6; }
-    gcc_cv_initfini_array=no
+	gcc_cv_initfini_array=no
+	;;
+    esac
   fi
 fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_initfini_array" >&5
@@ -28866,6 +29019,33 @@ case "$target" in
     ;;
 esac
 
+# This tests if the assembler supports two registers for global_load functions
+# (like in LLVM versions <12) or one register (like in LLVM 12).
+case "$target" in
+  amdgcn-* | gcn-*)
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking assembler fix for global_load functions" >&5
+$as_echo_n "checking assembler fix for global_load functions... " >&6; }
+    gcc_cv_as_gcn_global_load_fixed=yes
+    if test x$gcc_cv_as != x; then
+      cat > conftest.s <<EOF
+	global_store_dwordx2    v[1:2], v[4:5], s[14:15]
+EOF
+      if $gcc_cv_as -triple=amdgcn--amdhsa -filetype=obj -mcpu=gfx900 -o conftest.o conftest.s > /dev/null 2>&1; then
+        gcc_cv_as_gcn_global_load_fixed=no
+      fi
+      rm -f conftest.s conftest.o conftest
+    fi
+    global_load_fixed=`if test x$gcc_cv_as_gcn_global_load_fixed = xyes; then echo 1; else echo 0; fi`
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE_GCN_ASM_GLOBAL_LOAD_FIXED $global_load_fixed
+_ACEOF
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_as_gcn_global_load_fixed" >&5
+$as_echo "$gcc_cv_as_gcn_global_load_fixed" >&6; }
+    ;;
+esac
+
 # ??? Not all targets support dwarf2 debug_line, even within a version
 # of gas.  Moreover, we need to emit a valid instruction to trigger any
 # info to the output file.  So, as supported targets are added to gas 2.11,
@@ -29075,8 +29255,8 @@ fi
   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; }
     then
-	if test x$gcc_cv_readelf != x \
-      && $gcc_cv_readelf -wi conftest.o 2>&1 \
+	if test x$gcc_cv_objdump != x \
+      && $gcc_cv_objdump -Wi conftest.o 2>&1 \
 	 | grep DW_TAG_compile_unit > /dev/null 2>&1; then
      gcc_cv_as_gdwarf_5_flag=yes;
    fi
@@ -29096,6 +29276,16 @@ $as_echo "#define HAVE_AS_GDWARF_5_DEBUG_FLAG 1" >>confdefs.h
 fi
 
 
+ case $target_os in
+   win32 | pe | cygwin* | mingw32*)
+     section_flags=\"dr\"
+     function_type=".def foo; .scl 2; .type 32; .endef"
+     function_size="";;
+   *)
+     section_flags=\"\",%progbits
+     function_type=".type foo, %function"
+     function_size=".size foo, .-foo";;
+ esac
  dwarf4_debug_info_size=0x46
  dwarf4_high_pc_form=7
  dwarf4_debug_aranges_size=0x2c
@@ -29107,16 +29297,16 @@ fi
 .Ltext0:
 	.p2align 4
 	.globl	foo
-	.type	foo, %function
+	$function_type
 foo:
 .LFB0:
 .LM1:
 	$insn
 .LM2:
 .LFE0:
-	.size	foo, .-foo
+	$function_size
 .Letext0:
-	.section	.debug_info,\"\",%progbits
+	.section	.debug_info,$section_flags
 .Ldebug_info0:
 	.4byte	$dwarf4_debug_info_size
 	.2byte	0x4
@@ -29140,7 +29330,7 @@ foo:
 	.byte	0x1
 	.byte	0x9c
 	.byte	0
-	.section	.debug_abbrev,\"\",%progbits
+	.section	.debug_abbrev,$section_flags
 .Ldebug_abbrev0:
 	.byte	0x1
 	.byte	0x11
@@ -29183,7 +29373,7 @@ foo:
 	.byte	0
 	.byte	0
 	.byte	0
-	.section	.debug_aranges,\"\",%progbits
+	.section	.debug_aranges,$section_flags
 	.4byte	$dwarf4_debug_aranges_size
 	.2byte	0x2
 	.4byte	.Ldebug_info0
@@ -29195,7 +29385,7 @@ foo:
 	.${dwarf4_addr_size}byte	.Letext0-.Ltext0
 	.${dwarf4_addr_size}byte	0
 	.${dwarf4_addr_size}byte	0
-	.section	.debug_line,\"\",%progbits
+	.section	.debug_line,$section_flags
 .Ldebug_line0:
 	.4byte	.LELT0-.LSLT0
 .LSLT0:
@@ -29249,7 +29439,7 @@ foo:
 	.byte	0x1
 	.byte	0x1
 .LELT0:
-	.section	.debug_str,\"\",%progbits
+	.section	.debug_str,$section_flags
 	.ident	\"GCC\"
 "
    dwarf4_success=no
@@ -29421,10 +29611,10 @@ fi
    conftest_s="\
 	.text
 	.globl	foo
-	.type	foo, %function
+	$function_type
 foo:
 	$insn
-	.size	foo, .-foo
+	$function_size
 	.file	1 \"foo.c\"
 "
    { $as_echo "$as_me:${as_lineno-$LINENO}: checking assembler for working --gdwarf-4/--gdwarf-5 for all sources" >&5
@@ -29442,8 +29632,8 @@ else
   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; }
     then
-	      if test x$gcc_cv_readelf != x \
-	 && $gcc_cv_readelf -w conftest.o 2>&1 \
+	      if test x$gcc_cv_objdump != x \
+	 && $gcc_cv_objdump -W conftest.o 2>&1 \
 		| grep conftest.s > /dev/null 2>&1; then
 	gcc_cv_as_working_gdwarf_n_flag=no
       else
@@ -30222,6 +30412,80 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 fi
+
+if test x"$dsymutil_flag" = x"yes"; then
+
+    # If the user specified a dsymutil path, then we will already have the
+    # version string, otherwise, pick it up.
+    if test x"$gcc_cv_dsymutil" = x; then
+        { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: dsymutil is a required tool for this system, but not found" >&5
+$as_echo "$as_me: WARNING: dsymutil is a required tool for this system, but not found" >&2;}
+        dsymutil_vers="tool unspecified"
+    elif test x"$dsymutil_vers" = x; then
+	dsymutil_vers=`$gcc_cv_dsymutil -v /dev/null 2>&1`
+    fi
+
+    dsymutil_temp=`echo $dsymutil_vers | sed 1q`
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking dsymutil version \"$dsymutil_temp\"" >&5
+$as_echo_n "checking dsymutil version \"$dsymutil_temp\"... " >&6; }
+    if echo $dsymutil_temp | grep dwarfutils- > /dev/null; then
+      dsymutil_kind=DWARFUTILS
+      dsymutil_vers=`echo $dsymutil_temp | sed 's/.*dwarfutils-\([0-9\.]*\).*/\1/'`
+    elif echo $dsymutil_temp | grep clang- > /dev/null; then
+      dsymutil_kind=CLANG
+      dsymutil_vers=`echo $dsymutil_temp | sed 's/.*clang-\([0-9\.]*\).*/\1/'`
+    elif echo $dsymutil_temp | grep 'LLVM version ' > /dev/null; then
+      dsymutil_kind=LLVM
+      dsymutil_vers=`echo $dsymutil_temp | sed 's/.*LLVM\ version\ \([0-9\.]*\).*/\1/'`
+    else
+      dsymutil_kind=UNKNOWN
+      dsymutil_vers="0.0"
+    fi
+    dsymutil_major=`expr "$dsymutil_vers" : '\([0-9]*\)'`
+    dsymutil_minor=`expr "$dsymutil_vers" : '[0-9]*\.\([0-9]*\)'`
+    dsymutil_tiny=`expr "$dsymutil_vers" : '[0-9]*\.[0-9]*\.\([0-9]*\)'`
+    if test x"${dsymutil_minor}" = x; then
+      dsymutil_minor=0
+    fi
+    if test x"${dsymutil_tiny}" = x; then
+      dsymutil_tiny=0
+    fi
+
+cat >>confdefs.h <<_ACEOF
+#define DSYMUTIL_VERSION $dsymutil_kind,${dsymutil_major},${dsymutil_minor},${dsymutil_tiny}
+_ACEOF
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: $dsymutil_vers : $dsymutil_kind ${dsymutil_major} ${dsymutil_minor} ${dsymutil_tiny} " >&5
+$as_echo "$dsymutil_vers : $dsymutil_kind ${dsymutil_major} ${dsymutil_minor} ${dsymutil_tiny} " >&6; }
+fi
+
+case $target_os in
+  win32 | pe | cygwin* | mingw32*)
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking broken PE linker dwarf5 support" >&5
+$as_echo_n "checking broken PE linker dwarf5 support... " >&6; }
+    gcc_cv_ld_broken_pe_dwarf5=yes
+    if test $in_tree_ld = yes ; then
+      if grep -q '\.debug_loclists.*BLOCK.*__section_alignment__.*NOLOAD.*:' \
+	   $gcc_cv_ld_gld_srcdir/scripttempl/pe*.sc \
+	 && grep -q '\.debug_rnglists.*BLOCK.*__section_alignment__.*NOLOAD.*:' \
+	      $gcc_cv_ld_gld_srcdir/scripttempl/pe*.sc; then
+	gcc_cv_ld_broken_pe_dwarf5=no
+      fi
+    else
+      if $gcc_cv_ld --verbose 2>&1 | grep -q '\.debug_loclists.*BLOCK.*__section_alignment__.*NOLOAD.*:' \
+	 && $gcc_cv_ld --verbose 2>&1 | grep -q '\.debug_rnglists.*BLOCK.*__section_alignment__.*NOLOAD.*:'; then
+	gcc_cv_ld_broken_pe_dwarf5=no
+      fi
+    fi
+    if test x$gcc_cv_ld_broken_pe_dwarf5 = xyes; then
+
+$as_echo "#define HAVE_LD_BROKEN_PE_DWARF5 1" >>confdefs.h
+
+    fi
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_ld_broken_pe_dwarf5" >&5
+$as_echo "$gcc_cv_ld_broken_pe_dwarf5" >&6; }
+    ;;
+esac
 
 # --------
 # UNSORTED
@@ -31951,6 +32215,34 @@ else
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
+int
+main ()
+{
+  asm ("endbr32");
+  return 0;
+}
+
+_ACEOF
+if ac_fn_cxx_try_run "$LINENO"; then :
+  have_multi_byte_nop=yes
+else
+  have_multi_byte_nop=no
+fi
+rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
+  conftest.$ac_objext conftest.beam conftest.$ac_ext
+fi
+
+    have_cet=no
+    if test x$have_multi_byte_nop = xyes; then
+      if test "$cross_compiling" = yes; then :
+  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error $? "cannot run test program while cross compiling
+See \`config.log' for more details" "$LINENO" 5; }
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
 static void
 foo (void)
 {
@@ -31987,6 +32279,7 @@ rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
   conftest.$ac_objext conftest.beam conftest.$ac_ext
 fi
 
+    fi
     if test x$enable_cet = xno -a x$have_cet = xyes; then
       as_fn_error $? "Intel CET must be enabled on Intel CET enabled host" "$LINENO" 5
     fi
@@ -32093,7 +32386,8 @@ case $target in
       # cross build. are target headers available?
       # carefully coerce the build-system compiler to use target headers
       saved_CXXFLAGS="$CXXFLAGS"
-      CROSS_TEST_CXXFLAGS="-nostdinc ${XGCC_FLAGS_FOR_TARGET//-B/-idirafter/}"
+      fixed_XGCC_FLAGS_FOR_TARGET=`echo "$XGCC_FLAGS_FOR_TARGET" | sed 's/-B/-idirafter/g'`
+      CROSS_TEST_CXXFLAGS="-nostdinc $fixed_XGCC_FLAGS_FOR_TARGET"
       CXXFLAGS="$CROSS_TEST_CXXFLAGS"
       cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -32876,6 +33170,7 @@ do
     "as") CONFIG_FILES="$CONFIG_FILES as:exec-tool.in" ;;
     "collect-ld") CONFIG_FILES="$CONFIG_FILES collect-ld:exec-tool.in" ;;
     "nm") CONFIG_FILES="$CONFIG_FILES nm:exec-tool.in" ;;
+    "dsymutil") CONFIG_FILES="$CONFIG_FILES dsymutil:exec-tool.in" ;;
     "clearcap.map") CONFIG_LINKS="$CONFIG_LINKS clearcap.map:${srcdir}/config/$clearcap_map" ;;
     "$all_outputs") CONFIG_FILES="$CONFIG_FILES $all_outputs" ;;
     "default") CONFIG_COMMANDS="$CONFIG_COMMANDS default" ;;
@@ -33510,6 +33805,7 @@ $as_echo "$as_me: executing $ac_file commands" >&6;}
     "as":F) chmod +x as ;;
     "collect-ld":F) chmod +x collect-ld ;;
     "nm":F) chmod +x nm ;;
+    "dsymutil":F) chmod +x dsymutil ;;
     "default":C)
 case ${CONFIG_HEADERS} in
   *auto-host.h:config.in*)

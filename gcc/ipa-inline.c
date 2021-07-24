@@ -283,6 +283,9 @@ sanitize_attrs_match_for_inline_p (const_tree caller, const_tree callee)
 	!= sanitize_flags_p (codes[i], callee))
       return false;
 
+  if (sanitize_coverage_p (caller) != sanitize_coverage_p (callee))
+    return false;
+
   return true;
 }
 
@@ -1771,7 +1774,7 @@ compute_max_insns (cgraph_node *node, int insns)
 /* Compute badness of all edges in NEW_EDGES and add them to the HEAP.  */
 
 static void
-add_new_edges_to_heap (edge_heap_t *heap, vec<cgraph_edge *> new_edges)
+add_new_edges_to_heap (edge_heap_t *heap, vec<cgraph_edge *> &new_edges)
 {
   while (new_edges.length () > 0)
     {

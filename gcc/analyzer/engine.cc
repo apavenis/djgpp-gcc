@@ -64,6 +64,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "analyzer/bar-chart.h"
 #include <zlib.h>
 #include "plugin.h"
+#include "target.h"
 
 /* For an overview, see gcc/doc/analyzer.texi.  */
 
@@ -75,9 +76,10 @@ namespace ana {
 
 impl_region_model_context::
 impl_region_model_context (exploded_graph &eg,
-			   const exploded_node *enode_for_diag,
+			   exploded_node *enode_for_diag,
 			   const program_state *old_state,
 			   program_state *new_state,
+			   uncertainty_t *uncertainty,
 			   const gimple *stmt,
 			   stmt_finder *stmt_finder)
 : m_eg (&eg), m_logger (eg.get_logger ()),
@@ -86,40 +88,56 @@ impl_region_model_context (exploded_graph &eg,
   m_new_state (new_state),
   m_stmt (stmt),
   m_stmt_finder (stmt_finder),
-  m_ext_state (eg.get_ext_state ())
+  m_ext_state (eg.get_ext_state ()),
+  m_uncertainty (uncertainty)
 {
 }
 
 impl_region_model_context::
 impl_region_model_context (program_state *state,
 			   const extrinsic_state &ext_state,
+			   uncertainty_t *uncertainty,
 			   logger *logger)
 : m_eg (NULL), m_logger (logger), m_enode_for_diag (NULL),
   m_old_state (NULL),
   m_new_state (state),
   m_stmt (NULL),
   m_stmt_finder (NULL),
-  m_ext_state (ext_state)
+  m_ext_state (ext_state),
+  m_uncertainty (uncertainty)
 {
 }
 
-void
+bool
 impl_region_model_context::warn (pending_diagnostic *d)
 {
   LOG_FUNC (get_logger ());
+  if (m_stmt == NULL && m_stmt_finder == NULL)
+    {
+      if (get_logger ())
+	get_logger ()->log ("rejecting diagnostic: no stmt");
+      delete d;
+      return false;
+    }
   if (m_eg)
-    m_eg->get_diagnostic_manager ().add_diagnostic
-      (m_enode_for_diag, m_enode_for_diag->get_supernode (),
-       m_stmt, m_stmt_finder, d);
+    {
+      m_eg->get_diagnostic_manager ().add_diagnostic
+	(m_enode_for_diag, m_enode_for_diag->get_supernode (),
+	 m_stmt, m_stmt_finder, d);
+      return true;
+    }
+  else
+    {
+      delete d;
+      return false;
+    }
 }
 
 void
 impl_region_model_context::on_svalue_leak (const svalue *sval)
 
 {
-  int sm_idx;
-  sm_state_map *smap;
-  FOR_EACH_VEC_ELT (m_new_state->m_checker_states, sm_idx, smap)
+  for (sm_state_map *smap : m_new_state->m_checker_states)
     smap->on_svalue_leak (sval, this);
 }
 
@@ -128,9 +146,7 @@ impl_region_model_context::
 on_liveness_change (const svalue_set &live_svalues,
 		    const region_model *model)
 {
-  int sm_idx;
-  sm_state_map *smap;
-  FOR_EACH_VEC_ELT (m_new_state->m_checker_states, sm_idx, smap)
+  for (sm_state_map *smap : m_new_state->m_checker_states)
     smap->on_liveness_change (live_svalues, model, this);
 }
 
@@ -138,9 +154,7 @@ void
 impl_region_model_context::on_unknown_change (const svalue *sval,
 					      bool is_mutable)
 {
-  int sm_idx;
-  sm_state_map *smap;
-  FOR_EACH_VEC_ELT (m_new_state->m_checker_states, sm_idx, smap)
+  for (sm_state_map *smap : m_new_state->m_checker_states)
     smap->on_unknown_change (sval, is_mutable, m_ext_state);
 }
 
@@ -148,6 +162,25 @@ void
 impl_region_model_context::on_escaped_function (tree fndecl)
 {
   m_eg->on_escaped_function (fndecl);
+}
+
+uncertainty_t *
+impl_region_model_context::get_uncertainty ()
+{
+  return m_uncertainty;
+}
+
+/* Purge state involving SVAL.  The region_model has already been purged,
+   so we only need to purge other state in the program_state:
+   the sm-state.  */
+
+void
+impl_region_model_context::purge_state_involving (const svalue *sval)
+{
+  int i;
+  sm_state_map *smap;
+  FOR_EACH_VEC_ELT (m_new_state->m_checker_states, i, smap)
+    smap->purge_state_involving (sval, m_ext_state);
 }
 
 /* struct setjmp_record.  */
@@ -199,7 +232,7 @@ public:
   impl_sm_context (exploded_graph &eg,
 		   int sm_idx,
 		   const state_machine &sm,
-		   const exploded_node *enode_for_diag,
+		   exploded_node *enode_for_diag,
 		   const program_state *old_state,
 		   program_state *new_state,
 		   const sm_state_map *old_smap,
@@ -220,26 +253,35 @@ public:
   {
     impl_region_model_context old_ctxt
       (m_eg, m_enode_for_diag, NULL, NULL/*m_enode->get_state ()*/,
-       call);
+       NULL, call);
     region_model *model = m_new_state->m_region_model;
     return model->get_fndecl_for_call (call, &old_ctxt);
   }
 
-  state_machine::state_t get_state (const gimple *stmt,
+  state_machine::state_t get_state (const gimple *stmt ATTRIBUTE_UNUSED,
 				    tree var)
   {
     logger * const logger = get_logger ();
     LOG_FUNC (logger);
-    impl_region_model_context old_ctxt
-      (m_eg, m_enode_for_diag, NULL, NULL/*m_enode->get_state ()*/,
-       stmt);
+    /* Use NULL ctxt on this get_rvalue call to avoid triggering
+       uninitialized value warnings.  */
     const svalue *var_old_sval
-      = m_old_state->m_region_model->get_rvalue (var, &old_ctxt);
+      = m_old_state->m_region_model->get_rvalue (var, NULL);
 
     state_machine::state_t current
       = m_old_smap->get_state (var_old_sval, m_eg.get_ext_state ());
     return current;
   }
+  state_machine::state_t get_state (const gimple *stmt ATTRIBUTE_UNUSED,
+				    const svalue *sval)
+  {
+    logger * const logger = get_logger ();
+    LOG_FUNC (logger);
+    state_machine::state_t current
+      = m_old_smap->get_state (sval, m_eg.get_ext_state ());
+    return current;
+  }
+
 
   void set_next_state (const gimple *stmt,
 		       tree var,
@@ -248,22 +290,18 @@ public:
   {
     logger * const logger = get_logger ();
     LOG_FUNC (logger);
-    impl_region_model_context old_ctxt
-      (m_eg, m_enode_for_diag, NULL, NULL/*m_enode->get_state ()*/,
-       stmt);
-    const svalue *var_old_sval
-      = m_old_state->m_region_model->get_rvalue (var, &old_ctxt);
-
     impl_region_model_context new_ctxt (m_eg, m_enode_for_diag,
 					m_old_state, m_new_state,
+					NULL,
 					stmt);
     const svalue *var_new_sval
       = m_new_state->m_region_model->get_rvalue (var, &new_ctxt);
     const svalue *origin_new_sval
       = m_new_state->m_region_model->get_rvalue (origin, &new_ctxt);
 
+    /* We use the new sval here to avoid issues with uninitialized values.  */
     state_machine::state_t current
-      = m_old_smap->get_state (var_old_sval, m_eg.get_ext_state ());
+      = m_old_smap->get_state (var_new_sval, m_eg.get_ext_state ());
     if (logger)
       logger->log ("%s: state transition of %qE: %s -> %s",
 		   m_sm.get_name (),
@@ -274,13 +312,48 @@ public:
 			   to, origin_new_sval, m_eg.get_ext_state ());
   }
 
+  void set_next_state (const gimple *stmt,
+		       const svalue *sval,
+		       state_machine::state_t to,
+		       tree origin)
+  {
+    logger * const logger = get_logger ();
+    LOG_FUNC (logger);
+    impl_region_model_context old_ctxt
+      (m_eg, m_enode_for_diag, NULL, NULL/*m_enode->get_state ()*/,
+       NULL, stmt);
+
+    impl_region_model_context new_ctxt (m_eg, m_enode_for_diag,
+					m_old_state, m_new_state,
+					NULL,
+					stmt);
+    const svalue *origin_new_sval
+      = m_new_state->m_region_model->get_rvalue (origin, &new_ctxt);
+
+    state_machine::state_t current
+      = m_old_smap->get_state (sval, m_eg.get_ext_state ());
+    if (logger)
+      {
+	logger->start_log_line ();
+	logger->log_partial ("%s: state transition of ",
+			     m_sm.get_name ());
+	sval->dump_to_pp (logger->get_printer (), true);
+	logger->log_partial (": %s -> %s",
+			     current->get_name (),
+			     to->get_name ());
+	logger->end_log_line ();
+      }
+    m_new_smap->set_state (m_new_state->m_region_model, sval,
+			   to, origin_new_sval, m_eg.get_ext_state ());
+  }
+
   void warn (const supernode *snode, const gimple *stmt,
 	     tree var, pending_diagnostic *d) FINAL OVERRIDE
   {
     LOG_FUNC (get_logger ());
     gcc_assert (d); // take ownership
     impl_region_model_context old_ctxt
-      (m_eg, m_enode_for_diag, m_old_state, m_new_state, NULL);
+      (m_eg, m_enode_for_diag, m_old_state, m_new_state, NULL, NULL);
 
     const svalue *var_old_sval
       = m_old_state->m_region_model->get_rvalue (var, &old_ctxt);
@@ -317,6 +390,11 @@ public:
       return expr;
   }
 
+  tree get_diagnostic_tree (const svalue *sval) FINAL OVERRIDE
+  {
+    return m_new_state->m_region_model->get_representative_tree (sval);
+  }
+
   state_machine::state_t get_global_state () const FINAL OVERRIDE
   {
     return m_old_state->m_checker_states[m_sm_idx]->get_global_state ();
@@ -340,7 +418,7 @@ public:
     if (!assign_stmt)
      return NULL_TREE;
     impl_region_model_context old_ctxt
-      (m_eg, m_enode_for_diag, m_old_state, m_new_state, stmt);
+      (m_eg, m_enode_for_diag, m_old_state, m_new_state, NULL, stmt);
     if (const svalue *sval
 	= m_new_state->m_region_model->get_gassign_result (assign_stmt,
 							    &old_ctxt))
@@ -352,7 +430,7 @@ public:
 
   log_user m_logger;
   exploded_graph &m_eg;
-  const exploded_node *m_enode_for_diag;
+  exploded_node *m_enode_for_diag;
   const program_state *m_old_state;
   program_state *m_new_state;
   const sm_state_map *m_old_smap;
@@ -471,9 +549,22 @@ readability (const_tree expr)
     case SSA_NAME:
       {
 	if (tree var = SSA_NAME_VAR (expr))
-	  /* Slightly favor the underlying var over the SSA name to
-	     avoid having them compare equal.  */
-	  return readability (var) - 1;
+	  {
+	    if (DECL_ARTIFICIAL (var))
+	      {
+		/* If we have an SSA name for an artificial var,
+		   only use it if it has a debug expr associated with
+		   it that fixup_tree_for_diagnostic can use.  */
+		if (VAR_P (var) && DECL_HAS_DEBUG_EXPR_P (var))
+		  return readability (DECL_DEBUG_EXPR (var)) - 1;
+	      }
+	    else
+	      {
+		/* Slightly favor the underlying var over the SSA name to
+		   avoid having them compare equal.  */
+		return readability (var) - 1;
+	      }
+	  }
 	/* Avoid printing '<unknown>' for SSA names for temporaries.  */
 	return -1;
       }
@@ -634,12 +725,13 @@ impl_region_model_context::on_state_leak (const state_machine &sm,
 	}
     }
 
-  pending_diagnostic *pd = sm.on_leak (leaked_tree);
+  tree leaked_tree_for_diag = fixup_tree_for_diagnostic (leaked_tree);
+  pending_diagnostic *pd = sm.on_leak (leaked_tree_for_diag);
   if (pd)
     m_eg->get_diagnostic_manager ().add_diagnostic
       (&sm, m_enode_for_diag, m_enode_for_diag->get_supernode (),
        m_stmt, &stmt_finder,
-       leaked_tree, sval, state, pd);
+       leaked_tree_for_diag, sval, state, pd);
 }
 
 /* Implementation of region_model_context::on_condition vfunc.
@@ -647,7 +739,9 @@ impl_region_model_context::on_state_leak (const state_machine &sm,
    state transitions.  */
 
 void
-impl_region_model_context::on_condition (tree lhs, enum tree_code op, tree rhs)
+impl_region_model_context::on_condition (const svalue *lhs,
+					 enum tree_code op,
+					 const svalue *rhs)
 {
   int sm_idx;
   sm_state_map *smap;
@@ -946,46 +1040,57 @@ exploded_node::dump_dot (graphviz_out *gv, const dump_args_t &args) const
       state.dump_to_pp (ext_state, false, true, pp);
       pp_newline (pp);
 
-      /* Show any stmts that were processed within this enode,
-	 and their index within the supernode.  */
-      if (m_num_processed_stmts > 0)
-	{
-	  const program_point &point = get_point ();
-	  gcc_assert (point.get_kind () == PK_BEFORE_STMT);
-	  const supernode *snode = get_supernode ();
-	  const unsigned int point_stmt_idx = point.get_stmt_idx ();
-
-	  pp_printf (pp, "stmts: %i", m_num_processed_stmts);
-	  pp_newline (pp);
-	  for (unsigned i = 0; i < m_num_processed_stmts; i++)
-	    {
-	      const unsigned int idx_within_snode = point_stmt_idx + i;
-	      const gimple *stmt = snode->m_stmts[idx_within_snode];
-	      pp_printf (pp, "  %i: ", idx_within_snode);
-	      pp_gimple_stmt_1 (pp, stmt, 0, (dump_flags_t)0);
-	      pp_newline (pp);
-	    }
-	}
+      dump_processed_stmts (pp);
     }
 
-  /* Dump any saved_diagnostics at this enode.  */
-  {
-    const diagnostic_manager &dm = args.m_eg.get_diagnostic_manager ();
-    for (unsigned i = 0; i < dm.get_num_diagnostics (); i++)
-      {
-	const saved_diagnostic *sd = dm.get_saved_diagnostic (i);
-	if (sd->m_enode == this)
-	  {
-	    pp_printf (pp, "DIAGNOSTIC: %s", sd->m_d->get_kind ());
-	    pp_newline (pp);
-	  }
-      }
-  }
+  dump_saved_diagnostics (pp);
+
+  args.dump_extra_info (this, pp);
 
   pp_write_text_as_dot_label_to_stream (pp, /*for_record=*/true);
 
   pp_string (pp, "\"];\n\n");
   pp_flush (pp);
+}
+
+/* Show any stmts that were processed within this enode,
+   and their index within the supernode.  */
+void
+exploded_node::dump_processed_stmts (pretty_printer *pp) const
+{
+  if (m_num_processed_stmts > 0)
+    {
+      const program_point &point = get_point ();
+      gcc_assert (point.get_kind () == PK_BEFORE_STMT);
+      const supernode *snode = get_supernode ();
+      const unsigned int point_stmt_idx = point.get_stmt_idx ();
+
+      pp_printf (pp, "stmts: %i", m_num_processed_stmts);
+      pp_newline (pp);
+      for (unsigned i = 0; i < m_num_processed_stmts; i++)
+	{
+	  const unsigned int idx_within_snode = point_stmt_idx + i;
+	  const gimple *stmt = snode->m_stmts[idx_within_snode];
+	  pp_printf (pp, "  %i: ", idx_within_snode);
+	  pp_gimple_stmt_1 (pp, stmt, 0, (dump_flags_t)0);
+	  pp_newline (pp);
+	}
+    }
+}
+
+/* Dump any saved_diagnostics at this enode to PP.  */
+
+void
+exploded_node::dump_saved_diagnostics (pretty_printer *pp) const
+{
+  unsigned i;
+  const saved_diagnostic *sd;
+  FOR_EACH_VEC_ELT (m_saved_diagnostics, i, sd)
+    {
+      pp_printf (pp, "DIAGNOSTIC: %s (sd: %i)",
+		 sd->m_d->get_kind (), sd->get_index ());
+      pp_newline (pp);
+    }
 }
 
 /* Dump this to PP in a form suitable for use as an id in .dot output.  */
@@ -1077,26 +1182,6 @@ fndecl_has_gimple_body_p (tree fndecl)
 
 namespace ana {
 
-/* A pending_diagnostic subclass for implementing "__analyzer_dump_path".  */
-
-class dump_path_diagnostic
-  : public pending_diagnostic_subclass<dump_path_diagnostic>
-{
-public:
-  bool emit (rich_location *richloc) FINAL OVERRIDE
-  {
-    inform (richloc, "path");
-    return true;
-  }
-
-  const char *get_kind () const FINAL OVERRIDE { return "dump_path_diagnostic"; }
-
-  bool operator== (const dump_path_diagnostic &) const
-  {
-    return true;
-  }
-};
-
 /* Modify STATE in place, applying the effects of the stmt at this node's
    point.  */
 
@@ -1104,7 +1189,8 @@ exploded_node::on_stmt_flags
 exploded_node::on_stmt (exploded_graph &eg,
 			const supernode *snode,
 			const gimple *stmt,
-			program_state *state) const
+			program_state *state,
+			uncertainty_t *uncertainty)
 {
   logger *logger = eg.get_logger ();
   LOG_SCOPE (logger);
@@ -1128,98 +1214,18 @@ exploded_node::on_stmt (exploded_graph &eg,
   const program_state old_state (*state);
 
   impl_region_model_context ctxt (eg, this,
-				  &old_state, state,
+				  &old_state, state, uncertainty,
 				  stmt);
 
   bool unknown_side_effects = false;
   bool terminate_path = false;
 
-  switch (gimple_code (stmt))
-    {
-    default:
-      /* No-op for now.  */
-      break;
-
-    case GIMPLE_ASSIGN:
-      {
-	const gassign *assign = as_a <const gassign *> (stmt);
-	state->m_region_model->on_assignment (assign, &ctxt);
-      }
-      break;
-
-    case GIMPLE_ASM:
-      /* No-op for now.  */
-      break;
-
-    case GIMPLE_CALL:
-      {
-	/* Track whether we have a gcall to a function that's not recognized by
-	   anything, for which we don't have a function body, or for which we
-	   don't know the fndecl.  */
-	const gcall *call = as_a <const gcall *> (stmt);
-
-	/* Debugging/test support.  */
-	if (is_special_named_call_p (call, "__analyzer_describe", 2))
-	  state->m_region_model->impl_call_analyzer_describe (call, &ctxt);
-	else if (is_special_named_call_p (call, "__analyzer_dump", 0))
-	  {
-	    /* Handle the builtin "__analyzer_dump" by dumping state
-	       to stderr.  */
-	    state->dump (eg.get_ext_state (), true);
-	  }
-	else if (is_special_named_call_p (call, "__analyzer_dump_path", 0))
-	  {
-	    /* Handle the builtin "__analyzer_dump_path" by queuing a
-	       diagnostic at this exploded_node.  */
-	    ctxt.warn (new dump_path_diagnostic ());
-	  }
-	else if (is_special_named_call_p (call, "__analyzer_dump_region_model",
-					  0))
-	  {
-	    /* Handle the builtin "__analyzer_dump_region_model" by dumping
-	       the region model's state to stderr.  */
-	    state->m_region_model->dump (false);
-	  }
-	else if (is_special_named_call_p (call, "__analyzer_eval", 1))
-	  state->m_region_model->impl_call_analyzer_eval (call, &ctxt);
-	else if (is_special_named_call_p (call, "__analyzer_break", 0))
-	  {
-	    /* Handle the builtin "__analyzer_break" by triggering a
-	       breakpoint.  */
-	    /* TODO: is there a good cross-platform way to do this?  */
-	    raise (SIGINT);
-	  }
-	else if (is_special_named_call_p (call,
-					  "__analyzer_dump_exploded_nodes",
-					  1))
-	  {
-	    /* This is handled elsewhere.  */
-	  }
-	else if (is_setjmp_call_p (call))
-	  state->m_region_model->on_setjmp (call, this, &ctxt);
-	else if (is_longjmp_call_p (call))
-	  {
-	    on_longjmp (eg, call, state, &ctxt);
-	    return on_stmt_flags::terminate_path ();
-	  }
-	else
-	  unknown_side_effects
-	    = state->m_region_model->on_call_pre (call, &ctxt, &terminate_path);
-      }
-      break;
-
-    case GIMPLE_RETURN:
-      {
-	const greturn *return_ = as_a <const greturn *> (stmt);
-	state->m_region_model->on_return (return_, &ctxt);
-      }
-      break;
-    }
+  on_stmt_pre (eg, stmt, state, &terminate_path,
+	       &unknown_side_effects, &ctxt);
 
   if (terminate_path)
     return on_stmt_flags::terminate_path ();
 
-  bool any_sm_changes = false;
   int sm_idx;
   sm_state_map *smap;
   FOR_EACH_VEC_ELT (old_state.m_checker_states, sm_idx, smap)
@@ -1230,17 +1236,73 @@ exploded_node::on_stmt (exploded_graph &eg,
       sm_state_map *new_smap = state->m_checker_states[sm_idx];
       impl_sm_context sm_ctxt (eg, sm_idx, sm, this, &old_state, state,
 			       old_smap, new_smap);
+
       /* Allow the state_machine to handle the stmt.  */
       if (sm.on_stmt (&sm_ctxt, snode, stmt))
 	unknown_side_effects = false;
-      if (*old_smap != *new_smap)
-	any_sm_changes = true;
     }
 
-  if (const gcall *call = dyn_cast <const gcall *> (stmt))
-    state->m_region_model->on_call_post (call, unknown_side_effects, &ctxt);
+  on_stmt_post (stmt, state, unknown_side_effects, &ctxt);
 
-  return on_stmt_flags (any_sm_changes);
+  return on_stmt_flags ();
+}
+
+/* Handle the pre-sm-state part of STMT, modifying STATE in-place.
+   Write true to *OUT_TERMINATE_PATH if the path should be terminated.
+   Write true to *OUT_UNKNOWN_SIDE_EFFECTS if the stmt has unknown
+   side effects.  */
+
+void
+exploded_node::on_stmt_pre (exploded_graph &eg,
+			    const gimple *stmt,
+			    program_state *state,
+			    bool *out_terminate_path,
+			    bool *out_unknown_side_effects,
+			    region_model_context *ctxt)
+{
+  /* Handle special-case calls that require the full program_state.  */
+  if (const gcall *call = dyn_cast <const gcall *> (stmt))
+    {
+      if (is_special_named_call_p (call, "__analyzer_dump", 0))
+	{
+	  /* Handle the builtin "__analyzer_dump" by dumping state
+	     to stderr.  */
+	  state->dump (eg.get_ext_state (), true);
+	  return;
+	}
+      else if (is_special_named_call_p (call, "__analyzer_dump_state", 2))
+	state->impl_call_analyzer_dump_state (call, eg.get_ext_state (),
+					      ctxt);
+      else if (is_setjmp_call_p (call))
+	{
+	  state->m_region_model->on_setjmp (call, this, ctxt);
+	  return;
+	}
+      else if (is_longjmp_call_p (call))
+	{
+	  on_longjmp (eg, call, state, ctxt);
+	  *out_terminate_path = true;
+	  return;
+	}
+    }
+
+  /* Otherwise, defer to m_region_model.  */
+  state->m_region_model->on_stmt_pre (stmt,
+				      out_terminate_path,
+				      out_unknown_side_effects,
+				      ctxt);
+}
+
+/* Handle the post-sm-state part of STMT, modifying STATE in-place.  */
+
+void
+exploded_node::on_stmt_post (const gimple *stmt,
+			     program_state *state,
+			     bool unknown_side_effects,
+			     region_model_context *ctxt)
+{
+  if (const gcall *call = dyn_cast <const gcall *> (stmt))
+    state->m_region_model->on_call_post (call, unknown_side_effects, ctxt);
 }
 
 /* Consider the effect of following superedge SUCC from this node.
@@ -1263,14 +1325,15 @@ bool
 exploded_node::on_edge (exploded_graph &eg,
 			const superedge *succ,
 			program_point *next_point,
-			program_state *next_state) const
+			program_state *next_state,
+			uncertainty_t *uncertainty)
 {
   LOG_FUNC (eg.get_logger ());
 
   if (!next_point->on_edge (eg, succ))
     return false;
 
-  if (!next_state->on_edge (eg, *this, succ))
+  if (!next_state->on_edge (eg, this, succ, uncertainty))
     return false;
 
   return true;
@@ -1306,7 +1369,7 @@ valid_longjmp_stack_p (const program_point &longjmp_point,
    where the enclosing function of the "setjmp" has returned (and thus
    the stack frame no longer exists).  */
 
-class stale_jmp_buf : public pending_diagnostic_subclass<dump_path_diagnostic>
+class stale_jmp_buf : public pending_diagnostic_subclass<stale_jmp_buf>
 {
 public:
   stale_jmp_buf (const gcall *setjmp_call, const gcall *longjmp_call,
@@ -1351,7 +1414,7 @@ public:
       {
 	/* Compare with diagnostic_manager::add_events_for_superedge.  */
 	const int src_stack_depth = src_point.get_stack_depth ();
-	m_stack_pop_event = new custom_event
+	m_stack_pop_event = new precanned_custom_event
 	  (src_point.get_location (),
 	   src_point.get_fndecl (),
 	   src_stack_depth,
@@ -1395,7 +1458,7 @@ void
 exploded_node::on_longjmp (exploded_graph &eg,
 			   const gcall *longjmp_call,
 			   program_state *new_state,
-			   region_model_context *ctxt) const
+			   region_model_context *ctxt)
 {
   tree buf_ptr = gimple_call_arg (longjmp_call, 0);
   gcc_assert (POINTER_TYPE_P (TREE_TYPE (buf_ptr)));
@@ -1405,7 +1468,8 @@ exploded_node::on_longjmp (exploded_graph &eg,
   const region *buf = new_region_model->deref_rvalue (buf_ptr_sval, buf_ptr,
 						       ctxt);
 
-  const svalue *buf_content_sval = new_region_model->get_store_value (buf);
+  const svalue *buf_content_sval
+    = new_region_model->get_store_value (buf, ctxt);
   const setjmp_svalue *setjmp_sval
     = buf_content_sval->dyn_cast_setjmp_svalue ();
   if (!setjmp_sval)
@@ -1504,7 +1568,7 @@ exploded_node::on_longjmp (exploded_graph &eg,
    leaks.  */
 
 void
-exploded_node::detect_leaks (exploded_graph &eg) const
+exploded_node::detect_leaks (exploded_graph &eg)
 {
   LOG_FUNC_1 (eg.get_logger (), "EN: %i", m_index);
 
@@ -1526,8 +1590,9 @@ exploded_node::detect_leaks (exploded_graph &eg) const
 
   gcc_assert (new_state.m_region_model);
 
+  uncertainty_t uncertainty;
   impl_region_model_context ctxt (eg, this,
-				  &old_state, &new_state,
+				  &old_state, &new_state, &uncertainty,
 				  get_stmt ());
   const svalue *result = NULL;
   new_state.m_region_model->pop_frame (NULL, &result, &ctxt);
@@ -1639,6 +1704,18 @@ exploded_edge::dump_dot (graphviz_out *gv, const dump_args_t &) const
 {
   pretty_printer *pp = gv->get_pp ();
 
+  m_src->dump_dot_id (pp);
+  pp_string (pp, " -> ");
+  m_dest->dump_dot_id (pp);
+  dump_dot_label (pp);
+}
+
+/* Second half of exploded_edge::dump_dot.  This is split out
+   for use by trimmed_graph::dump_dot and base_feasible_edge::dump_dot.  */
+
+void
+exploded_edge::dump_dot_label (pretty_printer *pp) const
+{
   const char *style = "\"solid,bold\"";
   const char *color = "black";
   int weight = 10;
@@ -1669,9 +1746,6 @@ exploded_edge::dump_dot (graphviz_out *gv, const dump_args_t &) const
       style = "\"dotted\"";
     }
 
-  m_src->dump_dot_id (pp);
-  pp_string (pp, " -> ");
-  m_dest->dump_dot_id (pp);
   pp_printf (pp,
 	     (" [style=%s, color=%s, weight=%d, constraint=%s,"
 	      " headlabel=\""),
@@ -1944,7 +2018,25 @@ worklist::key_t::cmp (const worklist::key_t &ka, const worklist::key_t &kb)
 	return cmp;
     }
 
-  /* First, order by SCC.  */
+  /* Sort by callstring, so that nodes with deeper call strings are processed
+     before those with shallower call strings.
+     If we have
+         splitting BB
+             /  \
+            /    \
+       fn call   no fn call
+            \    /
+             \  /
+            join BB
+     then we want the path inside the function call to be fully explored up
+     to the return to the join BB before we explore on the "no fn call" path,
+     so that both enodes at the join BB reach the front of the worklist at
+     the same time and thus have a chance of being merged.  */
+  int cs_cmp = call_string::cmp (call_string_a, call_string_b);
+  if (cs_cmp)
+    return cs_cmp;
+
+  /* Order by SCC.  */
   int scc_id_a = ka.get_scc_id (ka.m_enode);
   int scc_id_b = kb.get_scc_id (kb.m_enode);
   if (scc_id_a != scc_id_b)
@@ -1972,11 +2064,6 @@ worklist::key_t::cmp (const worklist::key_t &ka, const worklist::key_t &kb)
     return snode_a->m_index - snode_b->m_index;
 
   gcc_assert (snode_a == snode_b);
-
-  /* The points might vary by callstring; try sorting by callstring.  */
-  int cs_cmp = call_string::cmp (call_string_a, call_string_b);
-  if (cs_cmp)
-    return cs_cmp;
 
   /* Order within supernode via program point.  */
   int within_snode_cmp
@@ -2114,7 +2201,7 @@ exploded_graph::add_function_entry (function *fun)
 exploded_node *
 exploded_graph::get_or_create_node (const program_point &point,
 				    const program_state &state,
-				    const exploded_node *enode_for_diag)
+				    exploded_node *enode_for_diag)
 {
   logger * const logger = get_logger ();
   LOG_FUNC (logger);
@@ -2149,8 +2236,9 @@ exploded_graph::get_or_create_node (const program_point &point,
 
   /* Prune state to try to improve the chances of a cache hit,
      avoiding generating redundant nodes.  */
+  uncertainty_t uncertainty;
   program_state pruned_state
-    = state.prune_for_point (*this, point, enode_for_diag);
+    = state.prune_for_point (*this, point, enode_for_diag, &uncertainty);
 
   pruned_state.validate (get_ext_state ());
 
@@ -2207,6 +2295,7 @@ exploded_graph::get_or_create_node (const program_point &point,
 	  if (pruned_state.can_merge_with_p (existing_state, point,
 					     &merged_state))
 	    {
+	      merged_state.validate (m_ext_state);
 	      if (logger)
 		logger->log ("merging new state with that of EN: %i",
 			     existing_enode->m_index);
@@ -2726,17 +2815,21 @@ maybe_process_run_of_before_supernode_enodes (exploded_node *enode)
       items.quick_push (it);
       const program_state &state = iter_enode->get_state ();
       program_state *next_state = &it->m_processed_state;
+      next_state->validate (m_ext_state);
       const program_point &iter_point = iter_enode->get_point ();
       if (const superedge *iter_sedge = iter_point.get_from_edge ())
 	{
+	  uncertainty_t uncertainty;
 	  impl_region_model_context ctxt (*this, iter_enode,
-					  &state, next_state, NULL);
+					  &state, next_state,
+					  &uncertainty, NULL);
 	  const cfg_superedge *last_cfg_superedge
 	    = iter_sedge->dyn_cast_cfg_superedge ();
 	  if (last_cfg_superedge)
 	    next_state->m_region_model->update_for_phis
 	      (snode, last_cfg_superedge, &ctxt);
 	}
+      next_state->validate (m_ext_state);
     }
 
   /* Attempt to partition the items into a set of merged states.
@@ -2753,10 +2846,12 @@ maybe_process_run_of_before_supernode_enodes (exploded_node *enode)
       unsigned iter_merger_idx;
       FOR_EACH_VEC_ELT (merged_states, iter_merger_idx, merged_state)
 	{
+	  merged_state->validate (m_ext_state);
 	  program_state merge (m_ext_state);
 	  if (it_state.can_merge_with_p (*merged_state, next_point, &merge))
 	    {
 	      *merged_state = merge;
+	      merged_state->validate (m_ext_state);
 	      it->m_merger_idx = iter_merger_idx;
 	      if (logger)
 		logger->log ("reusing merger state %i for item %i (EN: %i)",
@@ -2855,6 +2950,36 @@ stmt_requires_new_enode_p (const gimple *stmt,
   return false;
 }
 
+/* Return true if OLD_STATE and NEW_STATE are sufficiently different that
+   we should split enodes and create an exploded_edge separating them
+   (which makes it easier to identify state changes of intereset when
+   constructing checker_paths).  */
+
+static bool
+state_change_requires_new_enode_p (const program_state &old_state,
+				   const program_state &new_state)
+{
+  /* Changes in dynamic extents signify creations of heap/alloca regions
+     and resizings of heap regions; likely to be of interest in
+     diagnostic paths.  */
+  if (old_state.m_region_model->get_dynamic_extents ()
+      != new_state.m_region_model->get_dynamic_extents ())
+    return true;
+
+  /* Changes in sm-state are of interest.  */
+  int sm_idx;
+  sm_state_map *smap;
+  FOR_EACH_VEC_ELT (old_state.m_checker_states, sm_idx, smap)
+    {
+      const sm_state_map *old_smap = old_state.m_checker_states[sm_idx];
+      const sm_state_map *new_smap = new_state.m_checker_states[sm_idx];
+      if (*old_smap != *new_smap)
+	return true;
+    }
+
+  return false;
+}
+
 /* The core of exploded_graph::process_worklist (the main analysis loop),
    handling one node in the worklist.
 
@@ -2904,11 +3029,13 @@ exploded_graph::process_node (exploded_node *node)
     case PK_BEFORE_SUPERNODE:
       {
 	program_state next_state (state);
+	uncertainty_t uncertainty;
 
 	if (point.get_from_edge ())
 	  {
 	    impl_region_model_context ctxt (*this, node,
-					    &state, &next_state, NULL);
+					    &state, &next_state,
+					    &uncertainty, NULL);
 	    const cfg_superedge *last_cfg_superedge
 	      = point.get_from_edge ()->dyn_cast_cfg_superedge ();
 	    if (last_cfg_superedge)
@@ -2946,6 +3073,7 @@ exploded_graph::process_node (exploded_node *node)
 	   the sm-state-change occurs on an edge where the src enode has
 	   exactly one stmt, the one that caused the change. */
 	program_state next_state (state);
+	uncertainty_t uncertainty;
 	const supernode *snode = point.get_supernode ();
 	unsigned stmt_idx;
 	const gimple *prev_stmt = NULL;
@@ -2967,7 +3095,7 @@ exploded_graph::process_node (exploded_node *node)
 
 	    /* Process the stmt.  */
 	    exploded_node::on_stmt_flags flags
-	      = node->on_stmt (*this, snode, stmt, &next_state);
+	      = node->on_stmt (*this, snode, stmt, &next_state, &uncertainty);
 	    node->m_num_processed_stmts++;
 
 	    /* If flags.m_terminate_path, stop analyzing; any nodes/edges
@@ -2978,7 +3106,8 @@ exploded_graph::process_node (exploded_node *node)
 	    if (next_state.m_region_model)
 	      {
 		impl_region_model_context ctxt (*this, node,
-						&old_state, &next_state, stmt);
+						&old_state, &next_state,
+						&uncertainty, stmt);
 		program_state::detect_leaks (old_state, next_state, NULL,
 					     get_ext_state (), &ctxt);
 	      }
@@ -2990,9 +3119,11 @@ exploded_graph::process_node (exploded_node *node)
 					       point.get_call_string ())
 		 : program_point::after_supernode (point.get_supernode (),
 						   point.get_call_string ()));
-	    next_state = next_state.prune_for_point (*this, next_point, node);
+	    next_state = next_state.prune_for_point (*this, next_point, node,
+						     &uncertainty);
 
-	    if (flags.m_sm_changes || flag_analyzer_fine_grained)
+	    if (flag_analyzer_fine_grained
+		|| state_change_requires_new_enode_p (old_state, next_state))
 	      {
 		program_point split_point
 		  = program_point::before_stmt (point.get_supernode (),
@@ -3082,15 +3213,15 @@ exploded_graph::process_node (exploded_node *node)
 	      = program_point::before_supernode (succ->m_dest, succ,
 						 point.get_call_string ());
 	    program_state next_state (state);
-
-	    if (!node->on_edge (*this, succ, &next_point, &next_state))
+	    uncertainty_t uncertainty;
+	    if (!node->on_edge (*this, succ, &next_point, &next_state,
+				&uncertainty))
 	      {
 		if (logger)
 		  logger->log ("skipping impossible edge to SN: %i",
 			       succ->m_dest->m_index);
 		continue;
 	      }
-
 	    exploded_node *next = get_or_create_node (next_point, next_state,
 						      node);
 	    if (next)
@@ -3352,6 +3483,10 @@ exploded_graph::to_json () const
   return egraph_obj;
 }
 
+/* class exploded_path.  */
+
+/* Copy ctor.  */
+
 exploded_path::exploded_path (const exploded_path &other)
 : m_edges (other.m_edges.length ())
 {
@@ -3404,11 +3539,10 @@ exploded_path::feasible_p (logger *logger, feasibility_problem **out,
 {
   LOG_SCOPE (logger);
 
-  auto_sbitmap snodes_visited (eg->get_supergraph ().m_nodes.length ());
-  bitmap_clear (snodes_visited);
+  feasibility_state state (eng->get_model_manager (),
+			   eg->get_supergraph ());
 
-  /* Traverse the path, updating this model.  */
-  region_model model (eng->get_model_manager ());
+  /* Traverse the path, updating this state.  */
   for (unsigned edge_idx = 0; edge_idx < m_edges.length (); edge_idx++)
     {
       const exploded_edge *eedge = m_edges[edge_idx];
@@ -3417,106 +3551,23 @@ exploded_path::feasible_p (logger *logger, feasibility_problem **out,
 		     edge_idx,
 		     eedge->m_src->m_index,
 		     eedge->m_dest->m_index);
-      const exploded_node &src_enode = *eedge->m_src;
-      const program_point &src_point = src_enode.get_point ();
-      if (logger)
+
+      rejected_constraint *rc = NULL;
+      if (!state.maybe_update_for_edge (logger, eedge, &rc))
 	{
-	  logger->start_log_line ();
-	  src_point.print (logger->get_printer (), format (false));
-	  logger->end_log_line ();
-	}
-
-      /* Update state for the stmts that were processed in each enode.  */
-      for (unsigned stmt_idx = 0; stmt_idx < src_enode.m_num_processed_stmts;
-	   stmt_idx++)
-	{
-	  const gimple *stmt = src_enode.get_processed_stmt (stmt_idx);
-
-	  /* Update cfun and input_location in case of ICE: make it easier to
-	     track down which source construct we're failing to handle.  */
-	  auto_cfun sentinel (src_point.get_function ());
-	  input_location = stmt->location;
-
-	  if (const gassign *assign = dyn_cast <const gassign *> (stmt))
-	    model.on_assignment (assign, NULL);
-	  else if (const greturn *return_ = dyn_cast <const greturn *> (stmt))
-	    model.on_return (return_, NULL);
-	}
-
-      const superedge *sedge = eedge->m_sedge;
-      if (sedge)
-	{
-	  if (logger)
-	    logger->log ("  sedge: SN:%i -> SN:%i %s",
-			 sedge->m_src->m_index,
-			 sedge->m_dest->m_index,
-			 sedge->get_description (false));
-
-	  const gimple *last_stmt = src_point.get_supernode ()->get_last_stmt ();
-	  rejected_constraint *rc = NULL;
-	  if (!model.maybe_update_for_edge (*sedge, last_stmt, NULL, &rc))
+	  gcc_assert (rc);
+	  if (out)
 	    {
-	      if (logger)
-		{
-		  logger->log ("rejecting due to region model");
-		  model.dump_to_pp (logger->get_printer (), true, false);
-		}
-	      if (out)
-		*out = new feasibility_problem (edge_idx, *eedge,
-						last_stmt, rc);
-	      else
-		delete rc;
-	      return false;
+	      const exploded_node &src_enode = *eedge->m_src;
+	      const program_point &src_point = src_enode.get_point ();
+	      const gimple *last_stmt
+		= src_point.get_supernode ()->get_last_stmt ();
+	      *out = new feasibility_problem (edge_idx, *eedge,
+					      last_stmt, rc);
 	    }
-	}
-      else
-	{
-	  /* Special-case the initial eedge from the origin node to the
-	     initial function by pushing a frame for it.  */
-	  if (edge_idx == 0)
-	    {
-	      gcc_assert (eedge->m_src->m_index == 0);
-	      gcc_assert (src_point.get_kind () == PK_ORIGIN);
-	      gcc_assert (eedge->m_dest->get_point ().get_kind ()
-			  == PK_BEFORE_SUPERNODE);
-	      function *fun = eedge->m_dest->get_function ();
-	      gcc_assert (fun);
-	      model.push_frame (fun, NULL, NULL);
-	      if (logger)
-		logger->log ("  pushing frame for %qD", fun->decl);
-	    }
-	  else if (eedge->m_custom_info)
-	    {
-	      eedge->m_custom_info->update_model (&model, *eedge);
-	    }
-	}
-
-      /* Handle phi nodes on an edge leaving a PK_BEFORE_SUPERNODE (to
-	 a PK_BEFORE_STMT, or a PK_AFTER_SUPERNODE if no stmts).
-	 This will typically not be associated with a superedge.  */
-      if (src_point.get_from_edge ())
-	{
-	  const cfg_superedge *last_cfg_superedge
-	    = src_point.get_from_edge ()->dyn_cast_cfg_superedge ();
-	  const exploded_node &dst_enode = *eedge->m_dest;
-	  const unsigned dst_snode_idx = dst_enode.get_supernode ()->m_index;
-	  if (last_cfg_superedge)
-	    {
-	      if (logger)
-		logger->log ("  update for phis");
-	      model.update_for_phis (src_enode.get_supernode (),
-				     last_cfg_superedge,
-				     NULL);
-	      /* If we've entering an snode that we've already visited on this
-		 epath, then we need do fix things up for loops; see the
-		 comment for store::loop_replay_fixup.
-		 Perhaps we should probably also verify the callstring,
-		 and track program_points,  but hopefully doing it by supernode
-		 is good enough.  */
-	      if (bitmap_bit_p (snodes_visited, dst_snode_idx))
-		model.loop_replay_fixup (dst_enode.get_state ().m_region_model);
-	    }
-	  bitmap_set_bit (snodes_visited, dst_snode_idx);
+	  else
+	    delete rc;
+	  return false;
 	}
 
       if (logger)
@@ -3526,7 +3577,7 @@ exploded_path::feasible_p (logger *logger, feasibility_problem **out,
 		       eedge->m_src->m_index,
 		       eedge->m_dest->m_index);
 	  logger->start_log_line ();
-	  model.dump_to_pp (logger->get_printer (), true, false);
+	  state.get_model ().dump_to_pp (logger->get_printer (), true, false);
 	  logger->end_log_line ();
 	}
     }
@@ -3534,10 +3585,12 @@ exploded_path::feasible_p (logger *logger, feasibility_problem **out,
   return true;
 }
 
-/* Dump this path in multiline form to PP.  */
+/* Dump this path in multiline form to PP.
+   If EXT_STATE is non-NULL, then show the nodes.  */
 
 void
-exploded_path::dump_to_pp (pretty_printer *pp) const
+exploded_path::dump_to_pp (pretty_printer *pp,
+			   const extrinsic_state *ext_state) const
 {
   for (unsigned i = 0; i < m_edges.length (); i++)
     {
@@ -3547,28 +3600,48 @@ exploded_path::dump_to_pp (pretty_printer *pp) const
 		 eedge->m_src->m_index,
 		 eedge->m_dest->m_index);
       pp_newline (pp);
+
+      if (ext_state)
+	eedge->m_dest->dump_to_pp (pp, *ext_state);
     }
 }
 
 /* Dump this path in multiline form to FP.  */
 
 void
-exploded_path::dump (FILE *fp) const
+exploded_path::dump (FILE *fp, const extrinsic_state *ext_state) const
 {
   pretty_printer pp;
   pp_format_decoder (&pp) = default_tree_printer;
   pp_show_color (&pp) = pp_show_color (global_dc->printer);
   pp.buffer->stream = fp;
-  dump_to_pp (&pp);
+  dump_to_pp (&pp, ext_state);
   pp_flush (&pp);
 }
 
 /* Dump this path in multiline form to stderr.  */
 
 DEBUG_FUNCTION void
-exploded_path::dump () const
+exploded_path::dump (const extrinsic_state *ext_state) const
 {
-  dump (stderr);
+  dump (stderr, ext_state);
+}
+
+/* Dump this path verbosely to FILENAME.  */
+
+void
+exploded_path::dump_to_file (const char *filename,
+			     const extrinsic_state &ext_state) const
+{
+  FILE *fp = fopen (filename, "w");
+  if (!fp)
+    return;
+  pretty_printer pp;
+  pp_format_decoder (&pp) = default_tree_printer;
+  pp.buffer->stream = fp;
+  dump_to_pp (&pp, &ext_state);
+  pp_flush (&pp);
+  fclose (fp);
 }
 
 /* class feasibility_problem.  */
@@ -3585,6 +3658,146 @@ feasibility_problem::dump_to_pp (pretty_printer *pp) const
       pp_string (pp, "; rmodel: ");
       m_rc->m_model.dump_to_pp (pp, true, false);
     }
+}
+
+/* class feasibility_state.  */
+
+/* Ctor for feasibility_state, at the beginning of a path.  */
+
+feasibility_state::feasibility_state (region_model_manager *manager,
+				      const supergraph &sg)
+: m_model (manager),
+  m_snodes_visited (sg.m_nodes.length ())
+{
+  bitmap_clear (m_snodes_visited);
+}
+
+/* Copy ctor for feasibility_state, for extending a path.  */
+
+feasibility_state::feasibility_state (const feasibility_state &other)
+: m_model (other.m_model),
+  m_snodes_visited (const_sbitmap (other.m_snodes_visited)->n_bits)
+{
+  bitmap_copy (m_snodes_visited, other.m_snodes_visited);
+}
+
+/* The heart of feasibility-checking.
+
+   Attempt to update this state in-place based on traversing EEDGE
+   in a path.
+   Update the model for the stmts in the src enode.
+   Attempt to add constraints for EEDGE.
+
+   If feasible, return true.
+   Otherwise, return false and write to *OUT_RC.  */
+
+bool
+feasibility_state::maybe_update_for_edge (logger *logger,
+					  const exploded_edge *eedge,
+					  rejected_constraint **out_rc)
+{
+  const exploded_node &src_enode = *eedge->m_src;
+  const program_point &src_point = src_enode.get_point ();
+  if (logger)
+    {
+      logger->start_log_line ();
+      src_point.print (logger->get_printer (), format (false));
+      logger->end_log_line ();
+    }
+
+  /* Update state for the stmts that were processed in each enode.  */
+  for (unsigned stmt_idx = 0; stmt_idx < src_enode.m_num_processed_stmts;
+       stmt_idx++)
+    {
+      const gimple *stmt = src_enode.get_processed_stmt (stmt_idx);
+
+      /* Update cfun and input_location in case of ICE: make it easier to
+	 track down which source construct we're failing to handle.  */
+      auto_cfun sentinel (src_point.get_function ());
+      input_location = stmt->location;
+
+      if (const gassign *assign = dyn_cast <const gassign *> (stmt))
+	m_model.on_assignment (assign, NULL);
+      else if (const gcall *call = dyn_cast <const gcall *> (stmt))
+	{
+	  bool terminate_path;
+	  bool unknown_side_effects
+	    = m_model.on_call_pre (call, NULL, &terminate_path);
+	  m_model.on_call_post (call, unknown_side_effects, NULL);
+	}
+      else if (const greturn *return_ = dyn_cast <const greturn *> (stmt))
+	m_model.on_return (return_, NULL);
+    }
+
+  const superedge *sedge = eedge->m_sedge;
+  if (sedge)
+    {
+      if (logger)
+	logger->log ("  sedge: SN:%i -> SN:%i %s",
+		     sedge->m_src->m_index,
+		     sedge->m_dest->m_index,
+		     sedge->get_description (false));
+
+      const gimple *last_stmt = src_point.get_supernode ()->get_last_stmt ();
+      if (!m_model.maybe_update_for_edge (*sedge, last_stmt, NULL, out_rc))
+	{
+	  if (logger)
+	    {
+	      logger->log ("rejecting due to region model");
+	      m_model.dump_to_pp (logger->get_printer (), true, false);
+	    }
+	  return false;
+	}
+    }
+  else
+    {
+      /* Special-case the initial eedge from the origin node to the
+	 initial function by pushing a frame for it.  */
+      if (src_point.get_kind () == PK_ORIGIN)
+	{
+	  gcc_assert (eedge->m_src->m_index == 0);
+	  gcc_assert (eedge->m_dest->get_point ().get_kind ()
+		      == PK_BEFORE_SUPERNODE);
+	  function *fun = eedge->m_dest->get_function ();
+	  gcc_assert (fun);
+	  m_model.push_frame (fun, NULL, NULL);
+	  if (logger)
+	    logger->log ("  pushing frame for %qD", fun->decl);
+	}
+      else if (eedge->m_custom_info)
+	{
+	  eedge->m_custom_info->update_model (&m_model, *eedge);
+	}
+    }
+
+  /* Handle phi nodes on an edge leaving a PK_BEFORE_SUPERNODE (to
+     a PK_BEFORE_STMT, or a PK_AFTER_SUPERNODE if no stmts).
+     This will typically not be associated with a superedge.  */
+  if (src_point.get_from_edge ())
+    {
+      const cfg_superedge *last_cfg_superedge
+	= src_point.get_from_edge ()->dyn_cast_cfg_superedge ();
+      const exploded_node &dst_enode = *eedge->m_dest;
+      const unsigned dst_snode_idx = dst_enode.get_supernode ()->m_index;
+      if (last_cfg_superedge)
+	{
+	  if (logger)
+	    logger->log ("  update for phis");
+	  m_model.update_for_phis (src_enode.get_supernode (),
+				  last_cfg_superedge,
+				  NULL);
+	  /* If we've entering an snode that we've already visited on this
+	     epath, then we need do fix things up for loops; see the
+	     comment for store::loop_replay_fixup.
+	     Perhaps we should probably also verify the callstring,
+	     and track program_points,  but hopefully doing it by supernode
+	     is good enough.  */
+	  if (bitmap_bit_p (m_snodes_visited, dst_snode_idx))
+	    m_model.loop_replay_fixup (dst_enode.get_state ().m_region_model);
+	}
+      bitmap_set_bit (m_snodes_visited, dst_snode_idx);
+    }
+  return true;
 }
 
 /* A family of cluster subclasses for use when generating .dot output for
@@ -4562,16 +4775,13 @@ private:
 	break;
       }
     gv->end_tdtr ();
+
     /* Dump any saved_diagnostics at this enode.  */
-    {
-      const diagnostic_manager &dm = m_eg.get_diagnostic_manager ();
-      for (unsigned i = 0; i < dm.get_num_diagnostics (); i++)
-	{
-	  const saved_diagnostic *sd = dm.get_saved_diagnostic (i);
-	  if (sd->m_enode == enode)
-	    print_saved_diagnostic (gv, sd);
-	}
-    }
+    for (unsigned i = 0; i < enode->get_num_diagnostics (); i++)
+      {
+	const saved_diagnostic *sd = enode->get_saved_diagnostic (i);
+	print_saved_diagnostic (gv, sd);
+      }
     pp_printf (pp, "</TABLE>");
     pp_printf (pp, "</TD>");
   }
@@ -4689,6 +4899,13 @@ void
 impl_run_checkers (logger *logger)
 {
   LOG_SCOPE (logger);
+
+  if (logger)
+    {
+      logger->log ("BITS_BIG_ENDIAN: %i", BITS_BIG_ENDIAN ? 1 : 0);
+      logger->log ("BYTES_BIG_ENDIAN: %i", BYTES_BIG_ENDIAN ? 1 : 0);
+      logger->log ("WORDS_BIG_ENDIAN: %i", WORDS_BIG_ENDIAN ? 1 : 0);
+    }
 
   /* If using LTO, ensure that the cgraph nodes have function bodies.  */
   cgraph_node *node;

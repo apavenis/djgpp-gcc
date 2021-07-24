@@ -224,7 +224,7 @@
 ;; problems because small constants get converted into adds.
 (define_insn "*arm_movsi_vfp"
   [(set (match_operand:SI 0 "nonimmediate_operand" "=rk,r,r,r,rk,m ,*t,r,*t,*t, *Uv")
-      (match_operand:SI 1 "general_operand"	   "rk, I,K,j,mi,rk,r,*t,*t,*Uvi,*t"))]
+      (match_operand:SI 1 "general_operand"	   "rk, I,K,j,mi,rk,r,t,*t,*Uvi,*t"))]
   "TARGET_ARM && TARGET_HARD_FLOAT
    && (   s_register_operand (operands[0], SImode)
        || s_register_operand (operands[1], SImode))"
@@ -2129,7 +2129,7 @@
    && !arm_const_double_rtx (operands[1])
    && !(TARGET_VFP_DOUBLE && vfp3_const_double_rtx (operands[1]))"
   "#"
-  ""
+  "&& 1"
   [(const_int 0)]
 {
   long buf[2];
@@ -2154,7 +2154,7 @@
    && TARGET_VFP_BASE
    && !vfp3_const_double_rtx (operands[1])"
   "#"
-  ""
+  "&& 1"
   [(const_int 0)]
 {
   long buf;

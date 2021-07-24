@@ -177,7 +177,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     : public iterator<output_iterator_tag, void, void, void, void>
     {
     public:
-      //@{
+      ///@{
       /// Public typedef
 #if __cplusplus > 201703L
       using difference_type = ptrdiff_t;
@@ -185,18 +185,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       typedef _CharT                         char_type;
       typedef _Traits                        traits_type;
       typedef basic_ostream<_CharT, _Traits> ostream_type;
-      //@}
+      ///@}
 
     private:
       ostream_type*	_M_stream;
       const _CharT*	_M_string;
 
     public:
-#if __cplusplus > 201703L
-      constexpr ostream_iterator() noexcept
-      : _M_stream(nullptr), _M_string(nullptr) { }
-#endif
-
       /// Construct from an ostream.
       ostream_iterator(ostream_type& __s)
       : _M_stream(std::__addressof(__s)), _M_string(0) {}
@@ -249,7 +244,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       { return *this; }
     };
 
-  // @} group iterators
+  /// @} group iterators
 
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace

@@ -90,6 +90,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "attribs.h"
 #include "asan.h"
 #include "emit-rtl.h"
+#include "gimple.h"
+#include "cfgloop.h"
+#include "tree-vectorizer.h"
 
 bool
 default_legitimate_address_p (machine_mode mode ATTRIBUTE_UNUSED,
@@ -767,6 +770,18 @@ hook_void_CUMULATIVE_ARGS_tree (cumulative_args_t ca ATTRIBUTE_UNUSED,
 {
 }
 
+/* Default implementation of TARGET_PUSH_ARGUMENT.  */
+
+bool
+default_push_argument (unsigned int)
+{
+#ifdef PUSH_ROUNDING
+  return !ACCUMULATE_OUTGOING_ARGS;
+#else
+  return false;
+#endif
+}
+
 void
 default_function_arg_advance (cumulative_args_t, const function_arg_info &)
 {
@@ -1001,6 +1016,13 @@ default_zero_call_used_regs (HARD_REG_SET need_zeroed_hardregs)
 {
   gcc_assert (!hard_reg_set_empty_p (need_zeroed_hardregs));
 
+  HARD_REG_SET failed;
+  CLEAR_HARD_REG_SET (failed);
+  bool progress = false;
+
+  /* First, try to zero each register in need_zeroed_hardregs by
+     loading a zero into it, taking note of any failures in
+     FAILED.  */
   for (unsigned int regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
     if (TEST_HARD_REG_BIT (need_zeroed_hardregs, regno))
       {
@@ -1010,16 +1032,88 @@ default_zero_call_used_regs (HARD_REG_SET need_zeroed_hardregs)
 	rtx_insn *insn = emit_move_insn (regno_reg_rtx[regno], zero);
 	if (!valid_insn_p (insn))
 	  {
-	    static bool issued_error;
-	    if (!issued_error)
-	      {
-		issued_error = true;
-		sorry ("%qs not supported on this target",
-			"-fzero-call-used-regs");
-	      }
+	    SET_HARD_REG_BIT (failed, regno);
 	    delete_insns_since (last_insn);
 	  }
+	else
+	  progress = true;
       }
+
+  /* Now retry with copies from zeroed registers, as long as we've
+     made some PROGRESS, and registers remain to be zeroed in
+     FAILED.  */
+  while (progress && !hard_reg_set_empty_p (failed))
+    {
+      HARD_REG_SET retrying = failed;
+
+      CLEAR_HARD_REG_SET (failed);
+      progress = false;
+
+      for (unsigned int regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
+	if (TEST_HARD_REG_BIT (retrying, regno))
+	  {
+	    machine_mode mode = GET_MODE (regno_reg_rtx[regno]);
+	    bool success = false;
+	    /* Look for a source.  */
+	    for (unsigned int src = 0; src < FIRST_PSEUDO_REGISTER; src++)
+	      {
+		/* If SRC hasn't been zeroed (yet?), skip it.  */
+		if (! TEST_HARD_REG_BIT (need_zeroed_hardregs, src))
+		  continue;
+		if (TEST_HARD_REG_BIT (retrying, src))
+		  continue;
+
+		/* Check that SRC can hold MODE, and that any other
+		   registers needed to hold MODE in SRC have also been
+		   zeroed.  */
+		if (!targetm.hard_regno_mode_ok (src, mode))
+		  continue;
+		unsigned n = targetm.hard_regno_nregs (src, mode);
+		bool ok = true;
+		for (unsigned i = 1; ok && i < n; i++)
+		  ok = (TEST_HARD_REG_BIT (need_zeroed_hardregs, src + i)
+			&& !TEST_HARD_REG_BIT (retrying, src + i));
+		if (!ok)
+		  continue;
+
+		/* SRC is usable, try to copy from it.  */
+		rtx_insn *last_insn = get_last_insn ();
+		rtx zsrc = gen_rtx_REG (mode, src);
+		rtx_insn *insn = emit_move_insn (regno_reg_rtx[regno], zsrc);
+		if (!valid_insn_p (insn))
+		  /* It didn't work, remove any inserts.  We'll look
+		     for another SRC.  */
+		  delete_insns_since (last_insn);
+		else
+		  {
+		    /* We're done for REGNO.  */
+		    success = true;
+		    break;
+		  }
+	      }
+
+	    /* If nothing worked for REGNO this round, marked it to be
+	       retried if we get another round.  */
+	    if (!success)
+	      SET_HARD_REG_BIT (failed, regno);
+	    else
+	      /* Take note so as to enable another round if needed.  */
+	      progress = true;
+	  }
+    }
+
+  /* If any register remained, report it.  */
+  if (!progress)
+    {
+      static bool issued_error;
+      if (!issued_error)
+	{
+	  issued_error = true;
+	  sorry ("%qs not supported on this target",
+		 "-fzero-call-used-regs");
+	}
+    }
+
   return need_zeroed_hardregs;
 }
 
@@ -1373,7 +1467,8 @@ default_empty_mask_is_expensive (unsigned ifn)
    array of three unsigned ints, set it to zero, and return its address.  */
 
 void *
-default_init_cost (class loop *loop_info ATTRIBUTE_UNUSED)
+default_init_cost (class loop *loop_info ATTRIBUTE_UNUSED,
+		   bool costing_for_scalar ATTRIBUTE_UNUSED)
 {
   unsigned *cost = XNEWVEC (unsigned, 3);
   cost[vect_prologue] = cost[vect_body] = cost[vect_epilogue] = 0;
@@ -1400,7 +1495,11 @@ default_add_stmt_cost (class vec_info *vinfo, void *data, int count,
       arbitrary and could potentially be improved with analysis.  */
   if (where == vect_body && stmt_info
       && stmt_in_inner_loop_p (vinfo, stmt_info))
-    count *= 50;  /* FIXME.  */
+    {
+      loop_vec_info loop_vinfo = dyn_cast<loop_vec_info> (vinfo);
+      gcc_assert (loop_vinfo);
+      count *= LOOP_VINFO_INNER_LOOP_COST_FACTOR (loop_vinfo);
+    }
 
   retval = (unsigned) (count * stmt_cost);
   cost[where] += retval;
@@ -1832,17 +1931,15 @@ default_compare_by_pieces_branch_ratio (machine_mode)
   return 1;
 }
 
-/* Write PATCH_AREA_SIZE NOPs into the asm outfile FILE around a function
-   entry.  If RECORD_P is true and the target supports named sections,
-   the location of the NOPs will be recorded in a special object section
-   called "__patchable_function_entries".  This routine may be called
-   twice per function to put NOPs before and after the function
-   entry.  */
+/* Helper for default_print_patchable_function_entry and other
+   print_patchable_function_entry hook implementations.  */
 
 void
-default_print_patchable_function_entry (FILE *file,
-					unsigned HOST_WIDE_INT patch_area_size,
-					bool record_p)
+default_print_patchable_function_entry_1 (FILE *file,
+					  unsigned HOST_WIDE_INT
+					  patch_area_size,
+					  bool record_p,
+					  unsigned int flags)
 {
   const char *nop_templ = 0;
   int code_num;
@@ -1864,9 +1961,6 @@ default_print_patchable_function_entry (FILE *file,
       patch_area_number++;
       ASM_GENERATE_INTERNAL_LABEL (buf, "LPFE", patch_area_number);
 
-      unsigned int flags = SECTION_WRITE | SECTION_RELRO;
-      if (HAVE_GAS_SECTION_LINK_ORDER)
-	flags |= SECTION_LINK_ORDER;
       switch_to_section (get_section ("__patchable_function_entries",
 				      flags, current_function_decl));
       assemble_align (POINTER_SIZE);
@@ -1881,6 +1975,25 @@ default_print_patchable_function_entry (FILE *file,
   unsigned i;
   for (i = 0; i < patch_area_size; ++i)
     output_asm_insn (nop_templ, NULL);
+}
+
+/* Write PATCH_AREA_SIZE NOPs into the asm outfile FILE around a function
+   entry.  If RECORD_P is true and the target supports named sections,
+   the location of the NOPs will be recorded in a special object section
+   called "__patchable_function_entries".  This routine may be called
+   twice per function to put NOPs before and after the function
+   entry.  */
+
+void
+default_print_patchable_function_entry (FILE *file,
+					unsigned HOST_WIDE_INT patch_area_size,
+					bool record_p)
+{
+  unsigned int flags = SECTION_WRITE | SECTION_RELRO;
+  if (HAVE_GAS_SECTION_LINK_ORDER)
+    flags |= SECTION_LINK_ORDER;
+  default_print_patchable_function_entry_1 (file, patch_area_size, record_p,
+					    flags);
 }
 
 bool
@@ -1961,7 +2074,7 @@ default_debug_unwind_info (void)
 
   /* Otherwise, only turn it on if dwarf2 debugging is enabled.  */
 #ifdef DWARF2_DEBUGGING_INFO
-  if (write_symbols == DWARF2_DEBUG || write_symbols == VMS_AND_DWARF2_DEBUG)
+  if (dwarf_debuginfo_p ())
     return UI_DWARF2;
 #endif
 

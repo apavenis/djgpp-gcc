@@ -240,8 +240,6 @@ extern GTY(()) int darwin_ms_struct;
     DARWIN_NOCOMPACT_UNWIND \
     "}}}}}}} %<pie %<no-pie %<rdynamic %<X "
 
-#define DSYMUTIL "\ndsymutil"
-
 /* Spec that controls whether the debug linker is run automatically for
    a link step.  This needs to be done if there is a source file on the
    command line which will result in a temporary object (and debug is
@@ -250,10 +248,10 @@ extern GTY(()) int darwin_ms_struct;
 #define DSYMUTIL_SPEC \
    "%{!fdump=*:%{!fsyntax-only:%{!c:%{!M:%{!MM:%{!E:%{!S:\
     %{v} \
-    %{g*:%{!gstabs*:%{%:debug-level-gt(0): -idsym}}}\
+    %{g*:%{!gctf:%{!gbtf:%{!gstabs*:%{%:debug-level-gt(0): -idsym}}}}}\
     %{.c|.cc|.C|.cpp|.cp|.c++|.cxx|.CPP|.m|.mm|.s|.f|.f90|\
       .f95|.f03|.f77|.for|.F|.F90|.F95|.F03: \
-    %{g*:%{!gstabs*:%{%:debug-level-gt(0): -dsym}}}}}}}}}}}"
+    %{g*:%{!gctf:%{!gbtf:%{!gstabs*:%{%:debug-level-gt(0): -dsym}}}}}}}}}}}}}"
 
 #define LINK_COMMAND_SPEC LINK_COMMAND_SPEC_A DSYMUTIL_SPEC
 
@@ -613,6 +611,11 @@ extern GTY(()) int darwin_ms_struct;
 
 /* Make an EH (personality or LDSA) symbol indirect as needed.  */
 #define TARGET_ASM_MAKE_EH_SYMBOL_INDIRECT darwin_make_eh_symbol_indirect
+
+/* Some of Darwin's unwinders need current frame address state to be reset
+   after a DW_CFA_restore_state recovers the register values.  */
+#undef TARGET_ASM_SHOULD_RESTORE_CFA_STATE
+#define TARGET_ASM_SHOULD_RESTORE_CFA_STATE darwin_should_restore_cfa_state
 
 /* Our profiling scheme doesn't LP labels and counter words.  */
 
@@ -1109,5 +1112,11 @@ extern void darwin_driver_init (unsigned int *,struct cl_decoded_option **);
 #  define LD64_VERSION DEF_LD64
 # endif
 #endif
+
+/* CTF and BTF support.  */
+#undef CTF_INFO_SECTION_NAME
+#define CTF_INFO_SECTION_NAME "__CTF_BTF,__ctf,regular,debug"
+#undef BTF_INFO_SECTION_NAME
+#define BTF_INFO_SECTION_NAME "__CTF_BTF,__btf,regular,debug"
 
 #endif /* CONFIG_DARWIN_H */

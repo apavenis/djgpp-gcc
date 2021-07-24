@@ -319,6 +319,9 @@ public:
   /* Return node that alias is aliasing.  */
   inline symtab_node *get_alias_target (void);
 
+  /* Return DECL that alias is aliasing.  */
+  inline tree get_alias_target_tree ();
+
   /* Set section for symbol and its aliases.  */
   void set_section (const char *section);
 
@@ -946,7 +949,7 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
   /* Create callgraph node clone with new declaration.  The actual body will be
      copied later at compilation stage.  The name of the new clone will be
      constructed from the name of the original node, SUFFIX and NUM_SUFFIX.  */
-  cgraph_node *create_virtual_clone (vec<cgraph_edge *> redirect_callers,
+  cgraph_node *create_virtual_clone (const vec<cgraph_edge *> &redirect_callers,
 				     vec<ipa_replace_map *, va_gc> *tree_map,
 				     ipa_param_adjustments *param_adjustments,
 				     const char * suffix, unsigned num_suffix);
@@ -1136,7 +1139,7 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
 
   /* Collect all callers of cgraph_node and its aliases that are known to lead
      to NODE (i.e. are not overwritable) and that are not thunks.  */
-  vec<cgraph_edge *> collect_callers (void);
+  auto_vec<cgraph_edge *> collect_callers (void);
 
   /* Remove all callers from the node.  */
   void remove_callers (void);
@@ -2663,6 +2666,17 @@ symtab_node::get_alias_target (void)
   iterate_reference (0, ref);
   gcc_checking_assert (ref->use == IPA_REF_ALIAS);
   return ref->referred;
+}
+
+/* Return the DECL (or identifier) that alias is aliasing.  Unlike the above,
+   this works whether or not the alias has been analyzed already.  */
+
+inline tree
+symtab_node::get_alias_target_tree ()
+{
+  if (alias_target)
+    return alias_target;
+  return get_alias_target ()->decl;
 }
 
 /* Return next reachable static symbol with initializer after the node.  */

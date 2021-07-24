@@ -469,10 +469,7 @@ vec_info::vec_info (vec_info::vec_kind kind_in, void *target_cost_data_in,
 
 vec_info::~vec_info ()
 {
-  slp_instance instance;
-  unsigned int i;
-
-  FOR_EACH_VEC_ELT (slp_instances, i, instance)
+  for (slp_instance &instance : slp_instances)
     vect_free_slp_instance (instance);
 
   destroy_cost_data (target_cost_data);
@@ -697,6 +694,8 @@ vec_info::new_stmt_vec_info (gimple *stmt)
   STMT_VINFO_SLP_VECT_ONLY (res) = false;
   STMT_VINFO_SLP_VECT_ONLY_PATTERN (res) = false;
   STMT_VINFO_VEC_STMTS (res) = vNULL;
+  res->reduc_initial_values = vNULL;
+  res->reduc_scalar_results = vNULL;
 
   if (is_a <loop_vec_info> (this)
       && gimple_code (stmt) == GIMPLE_PHI
@@ -739,9 +738,7 @@ vec_info::set_vinfo_for_stmt (gimple *stmt, stmt_vec_info info, bool check_ro)
 void
 vec_info::free_stmt_vec_infos (void)
 {
-  unsigned int i;
-  stmt_vec_info info;
-  FOR_EACH_VEC_ELT (stmt_vec_infos, i, info)
+  for (stmt_vec_info &info : stmt_vec_infos)
     if (info != NULL)
       free_stmt_vec_info (info);
   stmt_vec_infos.release ();
@@ -760,6 +757,8 @@ vec_info::free_stmt_vec_info (stmt_vec_info stmt_info)
 	release_ssa_name (lhs);
     }
 
+  stmt_info->reduc_initial_values.release ();
+  stmt_info->reduc_scalar_results.release ();
   STMT_VINFO_SIMD_CLONE_INFO (stmt_info).release ();
   STMT_VINFO_VEC_STMTS (stmt_info).release ();
   free (stmt_info);

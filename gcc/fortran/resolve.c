@@ -3994,7 +3994,8 @@ static bool
 resolve_operator (gfc_expr *e)
 {
   gfc_expr *op1, *op2;
-  char msg[200];
+  /* One error uses 3 names; additional space for wording (also via gettext). */
+  char msg[3*GFC_MAX_SYMBOL_LEN + 1 + 50];
   bool dual_locus_error;
   bool t = true;
 
@@ -4047,7 +4048,8 @@ resolve_operator (gfc_expr *e)
   if ((op1 && op1->expr_type == EXPR_NULL)
       || (op2 && op2->expr_type == EXPR_NULL))
     {
-      sprintf (msg, _("Invalid context for NULL() pointer at %%L"));
+      snprintf (msg, sizeof (msg),
+		_("Invalid context for NULL() pointer at %%L"));
       goto bad_op;
     }
 
@@ -4063,8 +4065,9 @@ resolve_operator (gfc_expr *e)
 	  break;
 	}
 
-      sprintf (msg, _("Operand of unary numeric operator %%<%s%%> at %%L is %s"),
-	       gfc_op2string (e->value.op.op), gfc_typename (e));
+      snprintf (msg, sizeof (msg),
+		_("Operand of unary numeric operator %%<%s%%> at %%L is %s"),
+		gfc_op2string (e->value.op.op), gfc_typename (e));
       goto bad_op;
 
     case INTRINSIC_PLUS:
@@ -4079,14 +4082,14 @@ resolve_operator (gfc_expr *e)
 	}
 
       if (op1->ts.type == BT_DERIVED || op2->ts.type == BT_DERIVED)
-	sprintf (msg,
-	       _("Unexpected derived-type entities in binary intrinsic "
-		 "numeric operator %%<%s%%> at %%L"),
+	snprintf (msg, sizeof (msg),
+		  _("Unexpected derived-type entities in binary intrinsic "
+		  "numeric operator %%<%s%%> at %%L"),
 	       gfc_op2string (e->value.op.op));
       else
-      	sprintf (msg,
-	       _("Operands of binary numeric operator %%<%s%%> at %%L are %s/%s"),
-	       gfc_op2string (e->value.op.op), gfc_typename (op1),
+	snprintf (msg, sizeof(msg),
+		  _("Operands of binary numeric operator %%<%s%%> at %%L are %s/%s"),
+		  gfc_op2string (e->value.op.op), gfc_typename (op1),
 	       gfc_typename (op2));
       goto bad_op;
 
@@ -4099,9 +4102,9 @@ resolve_operator (gfc_expr *e)
 	  break;
 	}
 
-      sprintf (msg,
-	       _("Operands of string concatenation operator at %%L are %s/%s"),
-	       gfc_typename (op1), gfc_typename (op2));
+      snprintf (msg, sizeof (msg),
+		_("Operands of string concatenation operator at %%L are %s/%s"),
+		gfc_typename (op1), gfc_typename (op2));
       goto bad_op;
 
     case INTRINSIC_AND:
@@ -4142,9 +4145,10 @@ resolve_operator (gfc_expr *e)
 	  goto simplify_op;
 	}
 
-      sprintf (msg, _("Operands of logical operator %%<%s%%> at %%L are %s/%s"),
-	       gfc_op2string (e->value.op.op), gfc_typename (op1),
-	       gfc_typename (op2));
+      snprintf (msg, sizeof (msg),
+		_("Operands of logical operator %%<%s%%> at %%L are %s/%s"),
+		gfc_op2string (e->value.op.op), gfc_typename (op1),
+		gfc_typename (op2));
 
       goto bad_op;
 
@@ -4165,8 +4169,8 @@ resolve_operator (gfc_expr *e)
 	  break;
 	}
 
-      sprintf (msg, _("Operand of .not. operator at %%L is %s"),
-		      gfc_typename (op1));
+      snprintf (msg, sizeof (msg), _("Operand of .not. operator at %%L is %s"),
+		gfc_typename (op1));
       goto bad_op;
 
     case INTRINSIC_GT:
@@ -4276,16 +4280,16 @@ resolve_operator (gfc_expr *e)
 	}
 
       if (op1->ts.type == BT_LOGICAL && op2->ts.type == BT_LOGICAL)
-	sprintf (msg,
-		 _("Logicals at %%L must be compared with %s instead of %s"),
-		 (e->value.op.op == INTRINSIC_EQ
-		  || e->value.op.op == INTRINSIC_EQ_OS)
-		 ? ".eqv." : ".neqv.", gfc_op2string (e->value.op.op));
+	snprintf (msg, sizeof (msg),
+		  _("Logicals at %%L must be compared with %s instead of %s"),
+		  (e->value.op.op == INTRINSIC_EQ
+		   || e->value.op.op == INTRINSIC_EQ_OS)
+		  ? ".eqv." : ".neqv.", gfc_op2string (e->value.op.op));
       else
-	sprintf (msg,
-		 _("Operands of comparison operator %%<%s%%> at %%L are %s/%s"),
-		 gfc_op2string (e->value.op.op), gfc_typename (op1),
-		 gfc_typename (op2));
+	snprintf (msg, sizeof (msg),
+		  _("Operands of comparison operator %%<%s%%> at %%L are %s/%s"),
+		  gfc_op2string (e->value.op.op), gfc_typename (op1),
+		  gfc_typename (op2));
 
       goto bad_op;
 
@@ -4296,19 +4300,23 @@ resolve_operator (gfc_expr *e)
 	  const char *guessed;
 	  guessed = lookup_uop_fuzzy (name, e->value.op.uop->ns->uop_root);
 	  if (guessed)
-	    sprintf (msg, _("Unknown operator %%<%s%%> at %%L; did you mean '%s'?"),
-		name, guessed);
+	    snprintf (msg, sizeof (msg),
+		      _("Unknown operator %%<%s%%> at %%L; did you mean '%s'?"),
+		      name, guessed);
 	  else
-	    sprintf (msg, _("Unknown operator %%<%s%%> at %%L"), name);
+	    snprintf (msg, sizeof (msg), _("Unknown operator %%<%s%%> at %%L"),
+		      name);
 	}
       else if (op2 == NULL)
-	sprintf (msg, _("Operand of user operator %%<%s%%> at %%L is %s"),
-		 e->value.op.uop->name, gfc_typename (op1));
+	snprintf (msg, sizeof (msg),
+		  _("Operand of user operator %%<%s%%> at %%L is %s"),
+		  e->value.op.uop->name, gfc_typename (op1));
       else
 	{
-	  sprintf (msg, _("Operands of user operator %%<%s%%> at %%L are %s/%s"),
-		   e->value.op.uop->name, gfc_typename (op1),
-		   gfc_typename (op2));
+	  snprintf (msg, sizeof (msg),
+		    _("Operands of user operator %%<%s%%> at %%L are %s/%s"),
+		    e->value.op.uop->name, gfc_typename (op1),
+		    gfc_typename (op2));
 	  e->value.op.uop->op->sym->attr.referenced = 1;
 	}
 
@@ -4391,8 +4399,8 @@ resolve_operator (gfc_expr *e)
 
 	      /* Try user-defined operators, and otherwise throw an error.  */
 	      dual_locus_error = true;
-	      sprintf (msg,
-		       _("Inconsistent ranks for operator at %%L and %%L"));
+	      snprintf (msg, sizeof (msg),
+			_("Inconsistent ranks for operator at %%L and %%L"));
 	      goto bad_op;
 	    }
 	}
@@ -5701,7 +5709,6 @@ resolve_variable (gfc_expr *e)
 	     part_ref.  */
 	  gfc_ref *ref = gfc_get_ref ();
 	  ref->type = REF_ARRAY;
-	  ref->u.ar = *gfc_get_array_ref();
 	  ref->u.ar.type = AR_FULL;
 	  if (sym->as)
 	    {
@@ -9246,7 +9253,7 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
   gfc_code *class_is = NULL, *default_case = NULL;
   gfc_case *c;
   gfc_symtree *st;
-  char name[GFC_MAX_SYMBOL_LEN];
+  char name[GFC_MAX_SYMBOL_LEN + 12 + 1];
   gfc_namespace *ns;
   int error = 0;
   int rank = 0;
@@ -10789,11 +10796,18 @@ gfc_resolve_blocks (gfc_code *b, gfc_namespace *ns)
 	case EXEC_OMP_DISTRIBUTE_SIMD:
 	case EXEC_OMP_DO:
 	case EXEC_OMP_DO_SIMD:
+	case EXEC_OMP_LOOP:
 	case EXEC_OMP_MASTER:
+	case EXEC_OMP_MASTER_TASKLOOP:
+	case EXEC_OMP_MASTER_TASKLOOP_SIMD:
 	case EXEC_OMP_ORDERED:
 	case EXEC_OMP_PARALLEL:
 	case EXEC_OMP_PARALLEL_DO:
 	case EXEC_OMP_PARALLEL_DO_SIMD:
+	case EXEC_OMP_PARALLEL_LOOP:
+	case EXEC_OMP_PARALLEL_MASTER:
+	case EXEC_OMP_PARALLEL_MASTER_TASKLOOP:
+	case EXEC_OMP_PARALLEL_MASTER_TASKLOOP_SIMD:
 	case EXEC_OMP_PARALLEL_SECTIONS:
 	case EXEC_OMP_PARALLEL_WORKSHARE:
 	case EXEC_OMP_SECTIONS:
@@ -10806,12 +10820,14 @@ gfc_resolve_blocks (gfc_code *b, gfc_namespace *ns)
 	case EXEC_OMP_TARGET_PARALLEL:
 	case EXEC_OMP_TARGET_PARALLEL_DO:
 	case EXEC_OMP_TARGET_PARALLEL_DO_SIMD:
+	case EXEC_OMP_TARGET_PARALLEL_LOOP:
 	case EXEC_OMP_TARGET_SIMD:
 	case EXEC_OMP_TARGET_TEAMS:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_SIMD:
+	case EXEC_OMP_TARGET_TEAMS_LOOP:
 	case EXEC_OMP_TARGET_UPDATE:
 	case EXEC_OMP_TASK:
 	case EXEC_OMP_TASKGROUP:
@@ -10823,6 +10839,7 @@ gfc_resolve_blocks (gfc_code *b, gfc_namespace *ns)
 	case EXEC_OMP_TEAMS_DISTRIBUTE:
 	case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO:
 	case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
+	case EXEC_OMP_TEAMS_LOOP:
 	case EXEC_OMP_TEAMS_DISTRIBUTE_SIMD:
 	case EXEC_OMP_WORKSHARE:
 	  break;
@@ -11755,6 +11772,9 @@ gfc_resolve_code (gfc_code *code, gfc_namespace *ns)
 	    case EXEC_OMP_PARALLEL:
 	    case EXEC_OMP_PARALLEL_DO:
 	    case EXEC_OMP_PARALLEL_DO_SIMD:
+	    case EXEC_OMP_PARALLEL_MASTER:
+	    case EXEC_OMP_PARALLEL_MASTER_TASKLOOP:
+	    case EXEC_OMP_PARALLEL_MASTER_TASKLOOP_SIMD:
 	    case EXEC_OMP_PARALLEL_SECTIONS:
 	    case EXEC_OMP_TARGET_PARALLEL:
 	    case EXEC_OMP_TARGET_PARALLEL_DO:
@@ -11930,6 +11950,12 @@ start:
 
 	  if (resolve_ordinary_assign (code, ns))
 	    {
+	      if (omp_workshare_flag)
+		{
+		  gfc_error ("Expected intrinsic assignment in OMP WORKSHARE "
+			     "at %L", &code->loc);
+		  break;
+		}
 	      if (code->op == EXEC_COMPCALL)
 		goto compcall;
 	      else
@@ -11991,6 +12017,7 @@ start:
 	    /* Assigning a class object always is a regular assign.  */
 	    if (code->expr2->ts.type == BT_CLASS
 		&& code->expr1->ts.type == BT_CLASS
+		&& CLASS_DATA (code->expr2)
 		&& !CLASS_DATA (code->expr2)->attr.dimension
 		&& !(gfc_expr_attr (code->expr1).proc_pointer
 		     && code->expr2->expr_type == EXPR_VARIABLE
@@ -12189,13 +12216,17 @@ start:
 	case EXEC_OMP_CANCELLATION_POINT:
 	case EXEC_OMP_CRITICAL:
 	case EXEC_OMP_FLUSH:
+	case EXEC_OMP_DEPOBJ:
 	case EXEC_OMP_DISTRIBUTE:
 	case EXEC_OMP_DISTRIBUTE_PARALLEL_DO:
 	case EXEC_OMP_DISTRIBUTE_PARALLEL_DO_SIMD:
 	case EXEC_OMP_DISTRIBUTE_SIMD:
 	case EXEC_OMP_DO:
 	case EXEC_OMP_DO_SIMD:
+	case EXEC_OMP_LOOP:
 	case EXEC_OMP_MASTER:
+	case EXEC_OMP_MASTER_TASKLOOP:
+	case EXEC_OMP_MASTER_TASKLOOP_SIMD:
 	case EXEC_OMP_ORDERED:
 	case EXEC_OMP_SCAN:
 	case EXEC_OMP_SECTIONS:
@@ -12208,12 +12239,14 @@ start:
 	case EXEC_OMP_TARGET_PARALLEL:
 	case EXEC_OMP_TARGET_PARALLEL_DO:
 	case EXEC_OMP_TARGET_PARALLEL_DO_SIMD:
+	case EXEC_OMP_TARGET_PARALLEL_LOOP:
 	case EXEC_OMP_TARGET_SIMD:
 	case EXEC_OMP_TARGET_TEAMS:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
 	case EXEC_OMP_TARGET_TEAMS_DISTRIBUTE_SIMD:
+	case EXEC_OMP_TARGET_TEAMS_LOOP:
 	case EXEC_OMP_TARGET_UPDATE:
 	case EXEC_OMP_TASK:
 	case EXEC_OMP_TASKGROUP:
@@ -12226,6 +12259,7 @@ start:
 	case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO:
 	case EXEC_OMP_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD:
 	case EXEC_OMP_TEAMS_DISTRIBUTE_SIMD:
+	case EXEC_OMP_TEAMS_LOOP:
 	case EXEC_OMP_WORKSHARE:
 	  gfc_resolve_omp_directive (code, ns);
 	  break;
@@ -12233,6 +12267,10 @@ start:
 	case EXEC_OMP_PARALLEL:
 	case EXEC_OMP_PARALLEL_DO:
 	case EXEC_OMP_PARALLEL_DO_SIMD:
+	case EXEC_OMP_PARALLEL_LOOP:
+	case EXEC_OMP_PARALLEL_MASTER:
+	case EXEC_OMP_PARALLEL_MASTER_TASKLOOP:
+	case EXEC_OMP_PARALLEL_MASTER_TASKLOOP_SIMD:
 	case EXEC_OMP_PARALLEL_SECTIONS:
 	case EXEC_OMP_PARALLEL_WORKSHARE:
 	  omp_workshare_save = omp_workshare_flag;
@@ -16024,12 +16062,13 @@ resolve_symbol (gfc_symbol *sym)
     }
 
   /* Check threadprivate restrictions.  */
-  if (sym->attr.threadprivate && !sym->attr.save
+  if (sym->attr.threadprivate
+      && !(sym->attr.save || sym->attr.data || sym->attr.in_common)
       && !(sym->ns->save_all && !sym->attr.automatic)
-      && (!sym->attr.in_common
-	  && sym->module == NULL
-	  && (sym->ns->proc_name == NULL
-	      || sym->ns->proc_name->attr.flavor != FL_MODULE)))
+      && sym->module == NULL
+      && (sym->ns->proc_name == NULL
+	  || (sym->ns->proc_name->attr.flavor != FL_MODULE
+	      && !sym->ns->proc_name->attr.is_main_program)))
     gfc_error ("Threadprivate at %L isn't SAVEd", &sym->declared_at);
 
   /* Check omp declare target restrictions.  */
@@ -16040,7 +16079,8 @@ resolve_symbol (gfc_symbol *sym)
       && (!sym->attr.in_common
 	  && sym->module == NULL
 	  && (sym->ns->proc_name == NULL
-	      || sym->ns->proc_name->attr.flavor != FL_MODULE)))
+	      || (sym->ns->proc_name->attr.flavor != FL_MODULE
+		  && !sym->ns->proc_name->attr.is_main_program))))
     gfc_error ("!$OMP DECLARE TARGET variable %qs at %L isn't SAVEd",
 	       sym->name, &sym->declared_at);
 

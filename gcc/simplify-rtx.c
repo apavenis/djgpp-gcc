@@ -36,6 +36,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "selftest.h"
 #include "selftest-rtl.h"
 #include "rtx-vector-builder.h"
+#include "rtlanal.h"
 
 /* Simplification and canonicalization of RTL.  */
 
@@ -2294,6 +2295,53 @@ comparison_code_valid_for_mode (enum rtx_code code, enum machine_mode mode)
 	gcc_unreachable ();
     }
 }
+
+/* Canonicalize RES, a scalar const0_rtx/const_true_rtx to the right
+   false/true value of comparison with MODE where comparison operands
+   have CMP_MODE.  */
+
+static rtx
+relational_result (machine_mode mode, machine_mode cmp_mode, rtx res)
+{
+  if (SCALAR_FLOAT_MODE_P (mode))
+    {
+      if (res == const0_rtx)
+        return CONST0_RTX (mode);
+#ifdef FLOAT_STORE_FLAG_VALUE
+      REAL_VALUE_TYPE val = FLOAT_STORE_FLAG_VALUE (mode);
+      return const_double_from_real_value (val, mode);
+#else
+      return NULL_RTX;
+#endif
+    }
+  if (VECTOR_MODE_P (mode))
+    {
+      if (res == const0_rtx)
+	return CONST0_RTX (mode);
+#ifdef VECTOR_STORE_FLAG_VALUE
+      rtx val = VECTOR_STORE_FLAG_VALUE (mode);
+      if (val == NULL_RTX)
+	return NULL_RTX;
+      if (val == const1_rtx)
+	return CONST1_RTX (mode);
+
+      return gen_const_vec_duplicate (mode, val);
+#else
+      return NULL_RTX;
+#endif
+    }
+  /* For vector comparison with scalar int result, it is unknown
+     if the target means here a comparison into an integral bitmask,
+     or comparison where all comparisons true mean const_true_rtx
+     whole result, or where any comparisons true mean const_true_rtx
+     whole result.  For const0_rtx all the cases are the same.  */
+  if (VECTOR_MODE_P (cmp_mode)
+      && SCALAR_INT_MODE_P (mode)
+      && res == const_true_rtx)
+    return NULL_RTX;
+
+  return res;
+}
 				       
 /* Simplify a logical operation CODE with result mode MODE, operating on OP0
    and OP1, which should be both relational operations.  Return 0 if no such
@@ -2329,7 +2377,7 @@ simplify_context::simplify_logical_relational_operation (rtx_code code,
   int mask = mask0 | mask1;
 
   if (mask == 15)
-    return const_true_rtx;
+    return relational_result (mode, GET_MODE (op0), const_true_rtx);
 
   code = mask_to_comparison (mask);
 
@@ -2713,15 +2761,12 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	  rtx xop00 = XEXP (op0, 0);
 	  rtx xop10 = XEXP (op1, 0);
 
-	  if (GET_CODE (xop00) == CC0 && GET_CODE (xop10) == CC0)
-	      return xop00;
-
-	    if (REG_P (xop00) && REG_P (xop10)
-		&& REGNO (xop00) == REGNO (xop10)
-		&& GET_MODE (xop00) == mode
-		&& GET_MODE (xop10) == mode
-		&& GET_MODE_CLASS (mode) == MODE_CC)
-	      return xop00;
+	  if (REG_P (xop00) && REG_P (xop10)
+	      && REGNO (xop00) == REGNO (xop10)
+	      && GET_MODE (xop00) == mode
+	      && GET_MODE (xop10) == mode
+	      && GET_MODE_CLASS (mode) == MODE_CC)
+	    return xop00;
 	}
       break;
 
@@ -4157,6 +4202,15 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 		return trueop0;
 	    }
 
+	  /* If we select a low-part subreg, return that.  */
+	  if (vec_series_lowpart_p (mode, GET_MODE (trueop0), trueop1))
+	    {
+	      rtx new_rtx = lowpart_subreg (mode, trueop0,
+					    GET_MODE (trueop0));
+	      if (new_rtx != NULL_RTX)
+		return new_rtx;
+	    }
+
 	  /* If we build {a,b} then permute it, build the result directly.  */
 	  if (XVECLEN (trueop1, 0) == 2
 	      && CONST_INT_P (XVECEXP (trueop1, 0, 0))
@@ -5318,51 +5372,7 @@ simplify_context::simplify_relational_operation (rtx_code code,
 
   tem = simplify_const_relational_operation (code, cmp_mode, op0, op1);
   if (tem)
-    {
-      if (SCALAR_FLOAT_MODE_P (mode))
-	{
-          if (tem == const0_rtx)
-            return CONST0_RTX (mode);
-#ifdef FLOAT_STORE_FLAG_VALUE
-	  {
-	    REAL_VALUE_TYPE val;
-	    val = FLOAT_STORE_FLAG_VALUE (mode);
-	    return const_double_from_real_value (val, mode);
-	  }
-#else
-	  return NULL_RTX;
-#endif
-	}
-      if (VECTOR_MODE_P (mode))
-	{
-	  if (tem == const0_rtx)
-	    return CONST0_RTX (mode);
-#ifdef VECTOR_STORE_FLAG_VALUE
-	  {
-	    rtx val = VECTOR_STORE_FLAG_VALUE (mode);
-	    if (val == NULL_RTX)
-	      return NULL_RTX;
-	    if (val == const1_rtx)
-	      return CONST1_RTX (mode);
-
-	    return gen_const_vec_duplicate (mode, val);
-	  }
-#else
-	  return NULL_RTX;
-#endif
-	}
-      /* For vector comparison with scalar int result, it is unknown
-	 if the target means here a comparison into an integral bitmask,
-	 or comparison where all comparisons true mean const_true_rtx
-	 whole result, or where any comparisons true mean const_true_rtx
-	 whole result.  For const0_rtx all the cases are the same.  */
-      if (VECTOR_MODE_P (cmp_mode)
-	  && SCALAR_INT_MODE_P (mode)
-	  && tem == const_true_rtx)
-	return NULL_RTX;
-
-      return tem;
-    }
+    return relational_result (mode, cmp_mode, tem);
 
   /* For the following tests, ensure const0_rtx is op1.  */
   if (swap_commutative_operands_p (op0, op1)
@@ -5374,8 +5384,7 @@ simplify_context::simplify_relational_operation (rtx_code code,
     return simplify_gen_relational (code, mode, VOIDmode,
 				    XEXP (op0, 0), XEXP (op0, 1));
 
-  if (GET_MODE_CLASS (cmp_mode) == MODE_CC
-      || CC0_P (op0))
+  if (GET_MODE_CLASS (cmp_mode) == MODE_CC)
     return NULL_RTX;
 
   trueop0 = avoid_constant_pool_reference (op0);
@@ -5742,7 +5751,7 @@ simplify_const_relational_operation (enum rtx_code code,
 
   /* We can't simplify MODE_CC values since we don't know what the
      actual comparison is.  */
-  if (GET_MODE_CLASS (GET_MODE (op0)) == MODE_CC || CC0_P (op0))
+  if (GET_MODE_CLASS (GET_MODE (op0)) == MODE_CC)
     return 0;
 
   /* Make sure the constant is second.  */
@@ -6743,7 +6752,7 @@ native_encode_rtx (machine_mode mode, rtx x, vec<target_unit> &bytes,
    Return the vector on success, otherwise return NULL_RTX.  */
 
 rtx
-native_decode_vector_rtx (machine_mode mode, vec<target_unit> bytes,
+native_decode_vector_rtx (machine_mode mode, const vec<target_unit> &bytes,
 			  unsigned int first_byte, unsigned int npatterns,
 			  unsigned int nelts_per_pattern)
 {
@@ -6788,7 +6797,7 @@ native_decode_vector_rtx (machine_mode mode, vec<target_unit> bytes,
    Return the rtx on success, otherwise return NULL_RTX.  */
 
 rtx
-native_decode_rtx (machine_mode mode, vec<target_unit> bytes,
+native_decode_rtx (machine_mode mode, const vec<target_unit> &bytes,
 		   unsigned int first_byte)
 {
   if (VECTOR_MODE_P (mode))
@@ -7035,12 +7044,19 @@ simplify_immed_subreg (fixed_size_mode outermode, rtx x,
       while (buffer.length () < buffer_bytes)
 	buffer.quick_push (filler);
     }
-  else
+  else if (!native_encode_rtx (innermode, x, buffer, first_byte, inner_bytes))
+    return NULL_RTX;
+  rtx ret = native_decode_rtx (outermode, buffer, 0);
+  if (ret && MODE_COMPOSITE_P (outermode))
     {
-      if (!native_encode_rtx (innermode, x, buffer, first_byte, inner_bytes))
+      auto_vec<target_unit, 128> buffer2 (buffer_bytes);
+      if (!native_encode_rtx (outermode, ret, buffer2, 0, buffer_bytes))
 	return NULL_RTX;
-      }
-  return native_decode_rtx (outermode, buffer, 0);
+      for (unsigned int i = 0; i < buffer_bytes; ++i)
+	if (buffer[i] != buffer2[i])
+	  return NULL_RTX;
+    }
+  return ret;
 }
 
 /* Simplify SUBREG:OUTERMODE(OP:INNERMODE, BYTE)
@@ -7210,6 +7226,7 @@ simplify_context::simplify_subreg (machine_mode outermode, rtx op,
          have instruction to move the whole thing.  */
       && (! MEM_VOLATILE_P (op)
 	  || ! have_insn_for (SET, innermode))
+      && !(STRICT_ALIGNMENT && MEM_ALIGN (op) < GET_MODE_ALIGNMENT (outermode))
       && known_le (outersize, innersize))
     return adjust_address_nv (op, outermode, byte);
 
@@ -7334,6 +7351,13 @@ simplify_context::simplify_gen_subreg (machine_mode outermode, rtx op,
   if (GET_CODE (op) == SUBREG
       || GET_CODE (op) == CONCAT
       || GET_MODE (op) == VOIDmode)
+    return NULL_RTX;
+
+  if (MODE_COMPOSITE_P (outermode)
+      && (CONST_SCALAR_INT_P (op)
+	  || CONST_DOUBLE_AS_FLOAT_P (op)
+	  || CONST_FIXED_P (op)
+	  || GET_CODE (op) == CONST_VECTOR))
     return NULL_RTX;
 
   if (validate_subreg (outermode, innermode, op, byte))

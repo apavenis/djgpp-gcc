@@ -2600,9 +2600,11 @@ diagnostic_show_locus (diagnostic_context * context,
     return;
 
   /* Don't print the same source location twice in a row, unless we have
-     fix-it hints.  */
+     fix-it hints, or multiple locations, or a label.  */
   if (loc == context->last_location
-      && richloc->get_num_fixit_hints () == 0)
+      && richloc->get_num_fixit_hints () == 0
+      && richloc->get_num_locations () == 1
+      && richloc->get_range (0)->m_label == NULL)
     return;
 
   context->last_location = loc;
@@ -3288,14 +3290,14 @@ test_one_liner_many_fixits_2 ()
   rich_location richloc (line_table, equals);
   for (int i = 0; i < 19; i++)
     {
-      location_t loc = linemap_position_for_column (line_table, i * 2);
+      location_t loc = linemap_position_for_column (line_table, (i * 2) + 1);
       richloc.add_fixit_insert_before (loc, "a");
     }
   ASSERT_EQ (19, richloc.get_num_fixit_hints ());
   diagnostic_show_locus (&dc, &richloc, DK_ERROR);
   ASSERT_STREQ (" foo = bar.field;\n"
 		"     ^\n"
-		"a a a a a a a a a a a a a a a a a a a\n",
+		" a a a a a a a a a a a a a a a a a a a\n",
 		pp_formatted_text (dc.printer));
 }
 

@@ -50,6 +50,10 @@
 #undef HAVE_SYS_MMAN_H
 #endif // __DJGPP__
 
+#if HAVE_SYS_MMAN_H
+#include <sys/mman.h>
+#endif
+
 #if __CHAR_BIT__ == 8
 typedef unsigned gcov_unsigned_t __attribute__ ((mode (SI)));
 typedef unsigned gcov_position_t __attribute__ ((mode (SI)));
@@ -88,6 +92,12 @@ typedef unsigned gcov_type_unsigned __attribute__ ((mode (QI)));
 #define GCOV_LOCKED 1
 #else
 #define GCOV_LOCKED 0
+#endif
+
+#if defined (__MSVCRT__)
+#define GCOV_LOCKED_WITH_LOCKING 1
+#else
+#define GCOV_LOCKED_WITH_LOCKING 0
 #endif
 
 #ifndef GCOV_SUPPORTS_ATOMIC
@@ -134,10 +144,17 @@ typedef unsigned gcov_type_unsigned __attribute__ ((mode (QI)));
 typedef unsigned gcov_unsigned_t;
 typedef unsigned gcov_position_t;
 /* gcov_type is typedef'd elsewhere for the compiler */
+
 #if defined (HOST_HAS_F_SETLKW)
 #define GCOV_LOCKED 1
 #else
 #define GCOV_LOCKED 0
+#endif
+
+#if defined (HOST_HAS_LK_LOCK)
+#define GCOV_LOCKED_WITH_LOCKING 1
+#else
+#define GCOV_LOCKED_WITH_LOCKING 0
 #endif
 
 /* Some Macros specific to gcov-tool.  */
@@ -171,6 +188,16 @@ extern struct gcov_info *gcov_list;
 #define ATTRIBUTE_HIDDEN  __attribute__ ((__visibility__ ("hidden")))
 #else
 #define ATTRIBUTE_HIDDEN
+#endif
+
+#if HAVE_SYS_MMAN_H
+#ifndef MAP_FAILED
+#define MAP_FAILED ((void *)-1)
+#endif
+
+#if !defined (MAP_ANONYMOUS) && defined (MAP_ANON)
+#define MAP_ANONYMOUS MAP_ANON
+#endif
 #endif
 
 #include "gcov-io.h"
@@ -255,8 +282,9 @@ struct indirect_call_tuple
   
 /* Exactly one of these will be active in the process.  */
 extern struct gcov_master __gcov_master;
-extern struct gcov_kvp __gcov_kvp_pool[GCOV_PREALLOCATED_KVP];
-extern unsigned __gcov_kvp_pool_index;
+extern struct gcov_kvp *__gcov_kvp_dynamic_pool;
+extern unsigned __gcov_kvp_dynamic_pool_index;
+extern unsigned __gcov_kvp_dynamic_pool_size;
 
 /* Dump a set of gcov objects.  */
 extern void __gcov_dump_one (struct gcov_root *) ATTRIBUTE_HIDDEN;
@@ -409,31 +437,61 @@ gcov_counter_add (gcov_type *counter, gcov_type value,
     *counter += value;
 }
 
+#if HAVE_SYS_MMAN_H
+
+/* Allocate LENGTH with mmap function.  */
+
+static inline void *
+malloc_mmap (size_t length)
+{
+  return mmap (NULL, length, PROT_READ | PROT_WRITE,
+	       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+}
+
+#endif
+
 /* Allocate gcov_kvp from statically pre-allocated pool,
    or use heap otherwise.  */
 
 static inline struct gcov_kvp *
 allocate_gcov_kvp (void)
 {
+#define MMAP_CHUNK_SIZE	(128 * 1024)
   struct gcov_kvp *new_node = NULL;
+  unsigned kvp_sizeof = sizeof(struct gcov_kvp);
 
-#if !defined(IN_GCOV_TOOL) && !defined(L_gcov_merge_topn)
-  if (__gcov_kvp_pool_index < GCOV_PREALLOCATED_KVP)
+  /* Try mmaped pool if available.  */
+#if !defined(IN_GCOV_TOOL) && !defined(L_gcov_merge_topn) && HAVE_SYS_MMAN_H
+  if (__gcov_kvp_dynamic_pool == NULL
+      || __gcov_kvp_dynamic_pool_index >= __gcov_kvp_dynamic_pool_size)
+    {
+      void *ptr = malloc_mmap (MMAP_CHUNK_SIZE);
+      if (ptr != MAP_FAILED)
+	{
+	  __gcov_kvp_dynamic_pool = ptr;
+	  __gcov_kvp_dynamic_pool_size = MMAP_CHUNK_SIZE / kvp_sizeof;
+	  __gcov_kvp_dynamic_pool_index = 0;
+	}
+    }
+
+  if (__gcov_kvp_dynamic_pool != NULL)
     {
       unsigned index;
 #if GCOV_SUPPORTS_ATOMIC
       index
-	= __atomic_fetch_add (&__gcov_kvp_pool_index, 1, __ATOMIC_RELAXED);
+	= __atomic_fetch_add (&__gcov_kvp_dynamic_pool_index, 1,
+			      __ATOMIC_RELAXED);
 #else
-      index = __gcov_kvp_pool_index++;
+      index = __gcov_kvp_dynamic_pool_index++;
 #endif
-      if (index < GCOV_PREALLOCATED_KVP)
-	new_node = &__gcov_kvp_pool[index];
+      if (index < __gcov_kvp_dynamic_pool_size)
+	new_node = __gcov_kvp_dynamic_pool + index;
     }
 #endif
 
+  /* Fallback to malloc.  */
   if (new_node == NULL)
-    new_node = (struct gcov_kvp *)xcalloc (1, sizeof (struct gcov_kvp));
+    new_node = (struct gcov_kvp *)xcalloc (1, kvp_sizeof);
 
   return new_node;
 }

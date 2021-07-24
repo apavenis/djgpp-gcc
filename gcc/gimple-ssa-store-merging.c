@@ -313,7 +313,7 @@ verify_symbolic_number_p (struct symbolic_number *n, gimple *stmt)
 {
   tree lhs_type;
 
-  lhs_type = gimple_expr_type (stmt);
+  lhs_type = TREE_TYPE (gimple_get_lhs (stmt));
 
   if (TREE_CODE (lhs_type) != INTEGER_TYPE
       && TREE_CODE (lhs_type) != ENUMERAL_TYPE)
@@ -333,7 +333,7 @@ init_symbolic_number (struct symbolic_number *n, tree src)
 {
   int size;
 
-  if (! INTEGRAL_TYPE_P (TREE_TYPE (src)))
+  if (!INTEGRAL_TYPE_P (TREE_TYPE (src)) && !POINTER_TYPE_P (TREE_TYPE (src)))
     return false;
 
   n->base_addr = n->offset = n->alias_set = n->vuse = NULL_TREE;
@@ -702,7 +702,7 @@ find_bswap_or_nop_1 (gimple *stmt, struct symbolic_number *n, int limit)
 	    int i, type_size, old_type_size;
 	    tree type;
 
-	    type = gimple_expr_type (stmt);
+	    type = TREE_TYPE (gimple_assign_lhs (stmt));
 	    type_size = TYPE_PRECISION (type);
 	    if (type_size % BITS_PER_UNIT != 0)
 	      return NULL;
@@ -851,7 +851,7 @@ find_bswap_or_nop_finalize (struct symbolic_number *n, uint64_t *cmpxchg,
 gimple *
 find_bswap_or_nop (gimple *stmt, struct symbolic_number *n, bool *bswap)
 {
-  tree type_size = TYPE_SIZE_UNIT (gimple_expr_type (stmt));
+  tree type_size = TYPE_SIZE_UNIT (TREE_TYPE (gimple_get_lhs (stmt)));
   if (!tree_fits_uhwi_p (type_size))
     return NULL;
 
@@ -985,10 +985,19 @@ public:
 static tree
 bswap_view_convert (gimple_stmt_iterator *gsi, tree type, tree val)
 {
-  gcc_assert (INTEGRAL_TYPE_P (TREE_TYPE (val)));
+  gcc_assert (INTEGRAL_TYPE_P (TREE_TYPE (val))
+	      || POINTER_TYPE_P (TREE_TYPE (val)));
   if (TYPE_SIZE (type) != TYPE_SIZE (TREE_TYPE (val)))
     {
       HOST_WIDE_INT prec = TREE_INT_CST_LOW (TYPE_SIZE (type));
+      if (POINTER_TYPE_P (TREE_TYPE (val)))
+	{
+	  gimple *g
+	    = gimple_build_assign (make_ssa_name (pointer_sized_int_node),
+				   NOP_EXPR, val);
+	  gsi_insert_before (gsi, g, GSI_SAME_STMT);
+	  val = gimple_assign_lhs (g);
+	}
       tree itype = build_nonstandard_integer_type (prec, 1);
       gimple *g = gimple_build_assign (make_ssa_name (itype), NOP_EXPR, val);
       gsi_insert_before (gsi, g, GSI_SAME_STMT);
@@ -1586,17 +1595,9 @@ store_immediate_info::store_immediate_info (unsigned HOST_WIDE_INT bs,
   : bitsize (bs), bitpos (bp), bitregion_start (brs), bitregion_end (bre),
     stmt (st), order (ord), rhs_code (rhscode), n (nr),
     ins_stmt (ins_stmtp), bit_not_p (bitnotp), ops_swapped_p (false),
-    lp_nr (nr2)
-#if __cplusplus >= 201103L
-    , ops { op0r, op1r }
+    lp_nr (nr2), ops { op0r, op1r }
 {
 }
-#else
-{
-  ops[0] = op0r;
-  ops[1] = op1r;
-}
-#endif
 
 /* Struct representing a group of stores to contiguous memory locations.
    These are produced by the second phase (coalescing) and consumed in the
@@ -2540,8 +2541,6 @@ compatible_load_p (merged_store_group *merged_store,
      clobbers those loads.  */
   gimple *first = merged_store->first_stmt;
   gimple *last = merged_store->last_stmt;
-  unsigned int i;
-  store_immediate_info *infoc;
   /* The stores are sorted by increasing store bitpos, so if info->stmt store
      comes before the so far first load, we'll be changing
      merged_store->first_stmt.  In that case we need to give up if
@@ -2549,7 +2548,7 @@ compatible_load_p (merged_store_group *merged_store,
      range.  */
   if (info->order < merged_store->first_order)
     {
-      FOR_EACH_VEC_ELT (merged_store->stores, i, infoc)
+      for (store_immediate_info *infoc : merged_store->stores)
 	if (stmts_may_clobber_ref_p (info->stmt, first, infoc->ops[idx].val))
 	  return false;
       first = info->stmt;
@@ -2559,7 +2558,7 @@ compatible_load_p (merged_store_group *merged_store,
      processed loads.  */
   else if (info->order > merged_store->last_order)
     {
-      FOR_EACH_VEC_ELT (merged_store->stores, i, infoc)
+      for (store_immediate_info *infoc : merged_store->stores)
 	if (stmts_may_clobber_ref_p (last, info->stmt, infoc->ops[idx].val))
 	  return false;
       last = info->stmt;
@@ -2655,7 +2654,8 @@ gather_bswap_load_refs (vec<tree> *refs, tree val)
    go after the = _5 store and thus change behavior.  */
 
 static bool
-check_no_overlap (vec<store_immediate_info *> m_store_info, unsigned int i,
+check_no_overlap (const vec<store_immediate_info *> &m_store_info,
+		  unsigned int i,
 		  bool all_integer_cst_p, unsigned int first_order,
 		  unsigned int last_order, unsigned HOST_WIDE_INT start,
 		  unsigned HOST_WIDE_INT end, unsigned int first_earlier,
@@ -2883,9 +2883,7 @@ imm_store_chain_info::try_coalesce_bswap (merged_store_group *merged_store,
 	gather_bswap_load_refs (&refs,
 				gimple_assign_rhs1 (m_store_info[i]->stmt));
 
-      unsigned int i;
-      tree ref;
-      FOR_EACH_VEC_ELT (refs, i, ref)
+      for (tree ref : refs)
 	if (stmts_may_clobber_ref_p (first_stmt, last_stmt, ref))
 	  return false;
       n.vuse = NULL_TREE;
@@ -3198,9 +3196,7 @@ imm_store_chain_info::coalesce_immediate_stores ()
 		}
 	      else if (infof->rhs_code == MEM_REF && info->rhs_code != MEM_REF)
 		{
-		  store_immediate_info *infoj;
-		  unsigned int j;
-		  FOR_EACH_VEC_ELT (merged_store->stores, j, infoj)
+		  for (store_immediate_info *infoj : merged_store->stores)
 		    {
 		      infoj->rhs_code = BIT_INSERT_EXPR;
 		      infoj->ops[0].val = gimple_assign_rhs1 (infoj->stmt);
@@ -3322,10 +3318,7 @@ get_alias_type_for_stmts (vec<gimple *> &stmts, bool is_load,
 static location_t
 get_location_for_stmts (vec<gimple *> &stmts)
 {
-  gimple *stmt;
-  unsigned int i;
-
-  FOR_EACH_VEC_ELT (stmts, i, stmt)
+  for (gimple *stmt : stmts)
     if (gimple_has_location (stmt))
       return gimple_location (stmt);
 
@@ -4347,10 +4340,12 @@ imm_store_chain_info::output_merged_store (merged_store_group *group)
 		      MR_DEPENDENCE_BASE (ops[j]) = base;
 		    }
 		  if (!integer_zerop (mask))
-		    /* The load might load some bits (that will be masked off
-		       later on) uninitialized, avoid -W*uninitialized
-		       warnings in that case.  */
-		    TREE_NO_WARNING (ops[j]) = 1;
+		    {
+		      /* The load might load some bits (that will be masked
+			 off later on) uninitialized, avoid -W*uninitialized
+			 warnings in that case.  */
+		      suppress_warning (ops[j], OPT_Wuninitialized);
+		    }
 
 		  stmt = gimple_build_assign (make_ssa_name (dest_type), ops[j]);
 		  gimple_set_location (stmt, load_loc);
@@ -4532,7 +4527,7 @@ imm_store_chain_info::output_merged_store (merged_store_group *group)
 		 provably uninitialized (no stores at all yet or previous
 		 store a CLOBBER) we'd optimize away the load and replace
 		 it e.g. with 0.  */
-	      TREE_NO_WARNING (load_src) = 1;
+	      suppress_warning (load_src, OPT_Wuninitialized);
 	      stmt = gimple_build_assign (tem, load_src);
 	      gimple_set_location (stmt, loc);
 	      gimple_set_vuse (stmt, new_vuse);

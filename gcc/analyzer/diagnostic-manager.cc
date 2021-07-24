@@ -57,12 +57,16 @@ along with GCC; see the file COPYING3.  If not see
 #include "analyzer/supergraph.h"
 #include "analyzer/program-state.h"
 #include "analyzer/exploded-graph.h"
+#include "analyzer/trimmed-graph.h"
+#include "analyzer/feasible-graph.h"
 #include "analyzer/checker-path.h"
 #include "analyzer/reachability.h"
 
 #if ENABLE_ANALYZER
 
 namespace ana {
+
+class feasible_worklist;
 
 /* State for finding the shortest feasible exploded_path for a
    saved_diagnostic.
@@ -73,19 +77,44 @@ class epath_finder
 public:
   epath_finder (const exploded_graph &eg)
   : m_eg (eg),
-    m_sep (eg, eg.get_origin ())
+    m_sep (NULL)
   {
+    /* This is shared by all diagnostics, but only needed if
+       !flag_analyzer_feasibility.  */
+    if (!flag_analyzer_feasibility)
+      m_sep = new shortest_exploded_paths (eg, eg.get_origin (),
+					   SPS_FROM_GIVEN_ORIGIN);
   }
+
+  ~epath_finder () { delete m_sep; }
 
   logger *get_logger () const { return m_eg.get_logger (); }
 
-  exploded_path *get_best_epath (const exploded_node *enode,
-				 const char *desc,
+  exploded_path *get_best_epath (const exploded_node *target_enode,
+				 const char *desc, unsigned diag_idx,
 				 feasibility_problem **out_problem);
 
 private:
+  DISABLE_COPY_AND_ASSIGN(epath_finder);
+
+  exploded_path *explore_feasible_paths (const exploded_node *target_enode,
+					 const char *desc, unsigned diag_idx);
+  bool process_worklist_item (feasible_worklist *worklist,
+			      const trimmed_graph &tg,
+			      feasible_graph *fg,
+			      const exploded_node *target_enode,
+			      unsigned diag_idx,
+			      exploded_path **out_best_path) const;
+  void dump_trimmed_graph (const exploded_node *target_enode,
+			   const char *desc, unsigned diag_idx,
+			   const trimmed_graph &tg,
+			   const shortest_paths<eg_traits, exploded_path> &sep);
+  void dump_feasible_graph (const exploded_node *target_enode,
+			    const char *desc, unsigned diag_idx,
+			    const feasible_graph &fg);
+
   const exploded_graph &m_eg;
-  shortest_exploded_paths m_sep;
+  shortest_exploded_paths *m_sep;
 };
 
 /* class epath_finder.  */
@@ -100,13 +129,13 @@ private:
    If flag_analyzer_feasibility is false, then simply return the
    shortest path.
 
-   Use DESC when logging.
+   Use DESC and DIAG_IDX when logging.
 
-   Write any feasiblity_problem to *OUT_PROBLEM.  */
+   Write any feasibility_problem to *OUT_PROBLEM.  */
 
 exploded_path *
 epath_finder::get_best_epath (const exploded_node *enode,
-			      const char *desc,
+			      const char *desc, unsigned diag_idx,
 			      feasibility_problem **out_problem)
 {
   logger *logger = get_logger ();
@@ -114,52 +143,467 @@ epath_finder::get_best_epath (const exploded_node *enode,
 
   unsigned snode_idx = enode->get_supernode ()->m_index;
   if (logger)
-    logger->log ("considering %qs at EN: %i, SN: %i",
-		 desc, enode->m_index, snode_idx);
+    logger->log ("considering %qs at EN: %i, SN: %i (sd: %i)",
+		 desc, enode->m_index, snode_idx, diag_idx);
 
   /* State-merging means that not every path in the egraph corresponds
      to a feasible one w.r.t. states.
 
      We want to find the shortest feasible path from the origin to ENODE
-     in the egraph.
+     in the egraph.  */
 
-     As a crude approximation to this, we find the shortest path, and
-     determine if it is feasible.  This could introduce false negatives,
-     as there could be longer feasible paths within the egraph.
-     (PR analyzer/96374).  */
-
-  exploded_path *epath = new exploded_path (m_sep.get_shortest_path (enode));
-  if (epath->feasible_p (logger, out_problem, m_eg.get_engine (), &m_eg))
+  if (flag_analyzer_feasibility)
     {
+      /* Attempt to find the shortest feasible path using feasible_graph.  */
       if (logger)
-	logger->log ("accepting %qs at EN: %i, SN: %i with feasible path",
-		     desc, enode->m_index,
-		     snode_idx);
-    }
-  else
-    {
-      if (flag_analyzer_feasibility)
+	logger->log ("trying to find shortest feasible path");
+      if (exploded_path *epath = explore_feasible_paths (enode, desc, diag_idx))
 	{
 	  if (logger)
-	    logger->log ("rejecting %qs at EN: %i, SN: %i"
-			 " due to infeasible path",
-			 desc, enode->m_index,
-			 snode_idx);
-	  delete epath;
-	  return NULL;
+	    logger->log ("accepting %qs at EN: %i, SN: %i (sd: %i)"
+			 " with feasible path (length: %i)",
+			 desc, enode->m_index, snode_idx, diag_idx,
+			 epath->length ());
+	  return epath;
 	}
       else
 	{
 	  if (logger)
-	    logger->log ("accepting %qs at EN: %i, SN: %i"
+	    logger->log ("rejecting %qs at EN: %i, SN: %i (sd: %i)"
+			 " due to not finding feasible path",
+			 desc, enode->m_index, snode_idx, diag_idx);
+	  return NULL;
+	}
+    }
+  else
+    {
+      /* As a crude approximation to shortest feasible path, simply find
+	 the shortest path, and note whether it is feasible.
+	 There could be longer feasible paths within the egraph, so this
+	 approach would lead to diagnostics being falsely rejected
+	 (PR analyzer/96374).  */
+      if (logger)
+	logger->log ("trying to find shortest path ignoring feasibility");
+      gcc_assert (m_sep);
+      exploded_path *epath
+	= new exploded_path (m_sep->get_shortest_path (enode));
+      if (epath->feasible_p (logger, out_problem, m_eg.get_engine (), &m_eg))
+	{
+	  if (logger)
+	    logger->log ("accepting %qs at EN: %i, SN: %i (sn: %i)"
+			 " with feasible path (length: %i)",
+			 desc, enode->m_index, snode_idx, diag_idx,
+			 epath->length ());
+	}
+      else
+	{
+	  if (logger)
+	    logger->log ("accepting %qs at EN: %i, SN: %i (sn: %i) (length: %i)"
 			 " despite infeasible path (due to %qs)",
-			 desc, enode->m_index,
-			 snode_idx,
+			 desc, enode->m_index, snode_idx, diag_idx,
+			 epath->length (),
 			 "-fno-analyzer-feasibility");
+	}
+      return epath;
+    }
+}
+
+/* A class for managing the worklist of feasible_nodes in
+   epath_finder::explore_feasible_paths, prioritizing them
+   so that shorter paths appear earlier in the queue.  */
+
+class feasible_worklist
+{
+public:
+  feasible_worklist (const shortest_paths<eg_traits, exploded_path> &sep)
+  : m_queue (key_t (*this, NULL)),
+    m_sep (sep)
+  {
+  }
+
+  feasible_node *take_next () { return m_queue.extract_min (); }
+
+  void add_node (feasible_node *fnode)
+  {
+    m_queue.insert (key_t (*this, fnode), fnode);
+  }
+
+private:
+  struct key_t
+  {
+    key_t (const feasible_worklist &w, feasible_node *fnode)
+    : m_worklist (w), m_fnode (fnode)
+    {}
+
+    bool operator< (const key_t &other) const
+    {
+      return cmp (*this, other) < 0;
+    }
+
+    bool operator== (const key_t &other) const
+    {
+      return cmp (*this, other) == 0;
+    }
+
+    bool operator> (const key_t &other) const
+    {
+      return !(*this == other || *this < other);
+    }
+
+  private:
+    static int cmp (const key_t &ka, const key_t &kb)
+    {
+      /* Choose the node for which if the remaining path were feasible,
+	 it would be the shortest path (summing the length of the
+	 known-feasible path so far with that of the remaining
+	 possibly-feasible path).  */
+      int ca = ka.m_worklist.get_estimated_cost (ka.m_fnode);
+      int cb = kb.m_worklist.get_estimated_cost (kb.m_fnode);
+      return ca - cb;
+    }
+
+    const feasible_worklist &m_worklist;
+    feasible_node *m_fnode;
+  };
+
+  /* Get the estimated length of a path involving FNODE from
+     the origin to the target enode.
+     Sum the length of the known-feasible path so far with
+     that of the remaining possibly-feasible path.  */
+
+  int get_estimated_cost (const feasible_node *fnode) const
+  {
+    unsigned length_so_far = fnode->get_path_length ();
+    int shortest_remaining_path
+      = m_sep.get_shortest_distance (fnode->get_inner_node ());
+
+    gcc_assert (shortest_remaining_path >= 0);
+    /* This should be true since we're only exploring nodes within
+       the trimmed graph (and we anticipate it being much smaller
+       than this, and thus not overflowing the sum).  */
+    gcc_assert (shortest_remaining_path < INT_MAX);
+
+    return length_so_far + shortest_remaining_path;
+  }
+
+  /* Priority queue, backed by a fibonacci_heap.  */
+  typedef fibonacci_heap<key_t, feasible_node> queue_t;
+  queue_t m_queue;
+  const shortest_paths<eg_traits, exploded_path> &m_sep;
+};
+
+/* When we're building the exploded graph we want to simplify
+   overly-complicated symbolic values down to "UNKNOWN" to try to avoid
+   state explosions and unbounded chains of exploration.
+
+   However, when we're building the feasibility graph for a diagnostic
+   (actually a tree), we don't want UNKNOWN values, as conditions on them
+   are also unknown: we don't want to have a contradiction such as a path
+   where (VAL != 0) and then (VAL == 0) along the same path.
+
+   Hence this is an RAII class for temporarily disabling complexity-checking
+   in the region_model_manager, for use within
+   epath_finder::explore_feasible_paths.  */
+
+class auto_disable_complexity_checks
+{
+public:
+  auto_disable_complexity_checks (region_model_manager *mgr) : m_mgr (mgr)
+  {
+    m_mgr->disable_complexity_check ();
+  }
+  ~auto_disable_complexity_checks ()
+  {
+    m_mgr->enable_complexity_check ();
+  }
+private:
+  region_model_manager *m_mgr;
+};
+
+/* Attempt to find the shortest feasible path from the origin to
+   TARGET_ENODE by iteratively building a feasible_graph, in which
+   every path to a feasible_node is feasible by construction.
+
+   We effectively explore the tree of feasible paths in order of shortest
+   path until we either find a feasible path to TARGET_ENODE, or hit
+   a limit and give up.
+
+   Preliminaries:
+   - Find the shortest path from each node to the TARGET_ENODE (without
+   checking feasibility), so that we can prioritize our worklist.
+   - Construct a trimmed_graph: the subset of nodes/edges that
+   are on a path that eventually reaches TARGET_ENODE.  We will only need
+   to consider these when considering the shortest feasible path.
+
+   Build a feasible_graph, in which every path to a feasible_node
+   is feasible by construction.
+   We use a worklist to flatten the exploration into an iteration.
+   Starting at the origin, find feasible out-edges within the trimmed graph.
+   At each stage, choose the node for which if the remaining path were feasible,
+   it would be the shortest path (summing the length of the known-feasible path
+   so far with that of the remaining possibly-feasible path).
+   This way, the first feasible path we find to TARGET_ENODE is the shortest.
+   We start by trying the shortest possible path, but if that fails,
+   we explore progressively longer paths, eventually trying iterations through
+   loops.  The exploration is captured in the feasible_graph, which can be
+   dumped as a .dot file to visualize the exploration.  The indices of the
+   feasible_nodes show the order in which they were created.
+
+   This is something of a brute-force approach, but the trimmed_graph
+   hopefully keeps the complexity manageable.
+
+   Terminate with failure when the number of infeasible edges exceeds
+   a threshold (--param=analyzer-max-infeasible-edges=).
+   This is guaranteed to eventually lead to terminatation, as
+   we can't keep creating feasible nodes without eventually
+   either reaching an infeasible edge, or reaching the
+   TARGET_ENODE.  Specifically, there can't be a cycle of
+   feasible edges that doesn't reach the target_enode without
+   an out-edge that either fails feasibility or gets closer
+   to the TARGET_ENODE: on each iteration we are either:
+   - effectively getting closer to the TARGET_ENODE (which can't
+     continue forever without reaching the target), or
+   - getting monotonically closer to the termination threshold.  */
+
+exploded_path *
+epath_finder::explore_feasible_paths (const exploded_node *target_enode,
+				      const char *desc, unsigned diag_idx)
+{
+  logger *logger = get_logger ();
+  LOG_SCOPE (logger);
+
+  region_model_manager *mgr = m_eg.get_engine ()->get_model_manager ();
+
+  /* Determine the shortest path to TARGET_ENODE from each node in
+     the exploded graph.  */
+  shortest_paths<eg_traits, exploded_path> sep
+    (m_eg, target_enode, SPS_TO_GIVEN_TARGET);
+
+  /* Construct a trimmed_graph: the subset of nodes/edges that
+     are on a path that eventually reaches TARGET_ENODE.
+     We only need to consider these when considering the shortest
+     feasible path.  */
+  trimmed_graph tg (m_eg, target_enode);
+
+  if (flag_dump_analyzer_feasibility)
+    dump_trimmed_graph (target_enode, desc, diag_idx, tg, sep);
+
+  feasible_graph fg;
+  feasible_worklist worklist (sep);
+
+  /* Populate the worklist with the origin node.  */
+  {
+    feasibility_state init_state (mgr, m_eg.get_supergraph ());
+    feasible_node *origin = fg.add_node (m_eg.get_origin (), init_state, 0);
+    worklist.add_node (origin);
+  }
+
+  /* Iteratively explore the tree of feasible paths in order of shortest
+     path until we either find a feasible path to TARGET_ENODE, or hit
+     a limit.  */
+
+  /* Set this if we find a feasible path to TARGET_ENODE.  */
+  exploded_path *best_path = NULL;
+
+  {
+    auto_disable_complexity_checks sentinel (mgr);
+
+    while (process_worklist_item (&worklist, tg, &fg, target_enode, diag_idx,
+				  &best_path))
+      {
+	/* Empty; the work is done within process_worklist_item.  */
+      }
+  }
+
+  if (logger)
+    {
+      logger->log ("tg for sd: %i:", diag_idx);
+      logger->inc_indent ();
+      tg.log_stats (logger);
+      logger->dec_indent ();
+
+      logger->log ("fg for sd: %i:", diag_idx);
+      logger->inc_indent ();
+      fg.log_stats (logger);
+      logger->dec_indent ();
+    }
+
+  /* Dump the feasible_graph.  */
+  if (flag_dump_analyzer_feasibility)
+    dump_feasible_graph (target_enode, desc, diag_idx, fg);
+
+  return best_path;
+}
+
+/* Process the next item in WORKLIST, potentially adding new items
+   based on feasible out-edges, and extending FG accordingly.
+   Use TG to ignore out-edges that don't lead to TARGET_ENODE.
+   Return true if the worklist processing should continue.
+   Return false if the processing of the worklist should stop
+   (either due to reaching TARGET_ENODE, or hitting a limit).
+   Write to *OUT_BEST_PATH if stopping due to finding a feasible path
+   to TARGET_ENODE.  */
+
+bool
+epath_finder::process_worklist_item (feasible_worklist *worklist,
+				     const trimmed_graph &tg,
+				     feasible_graph *fg,
+				     const exploded_node *target_enode,
+				     unsigned diag_idx,
+				     exploded_path **out_best_path) const
+{
+  logger *logger = get_logger ();
+
+  feasible_node *fnode = worklist->take_next ();
+  if (!fnode)
+    {
+      if (logger)
+	logger->log ("drained worklist for sd: %i"
+		     " without finding feasible path",
+		     diag_idx);
+      return false;
+    }
+
+  log_scope s (logger, "fg worklist item",
+	       "considering FN: %i (EN: %i) for sd: %i",
+	       fnode->get_index (), fnode->get_inner_node ()->m_index,
+	       diag_idx);
+
+  /* Iterate through all out-edges from this item.  */
+  unsigned i;
+  exploded_edge *succ_eedge;
+  FOR_EACH_VEC_ELT (fnode->get_inner_node ()->m_succs, i, succ_eedge)
+    {
+      log_scope s (logger, "edge", "considering edge: EN:%i -> EN:%i",
+		   succ_eedge->m_src->m_index,
+		   succ_eedge->m_dest->m_index);
+      /* Reject edges that aren't in the trimmed graph.  */
+      if (!tg.contains_p (succ_eedge))
+	{
+	  if (logger)
+	    logger->log ("rejecting: not in trimmed graph");
+	  continue;
+	}
+
+      feasibility_state succ_state (fnode->get_state ());
+      rejected_constraint *rc = NULL;
+      if (succ_state.maybe_update_for_edge (logger, succ_eedge, &rc))
+	{
+	  gcc_assert (rc == NULL);
+	  feasible_node *succ_fnode
+	    = fg->add_node (succ_eedge->m_dest,
+			    succ_state,
+			    fnode->get_path_length () + 1);
+	  if (logger)
+	    logger->log ("accepting as FN: %i", succ_fnode->get_index ());
+	  fg->add_edge (new feasible_edge (fnode, succ_fnode, succ_eedge));
+
+	  /* Have we reached TARGET_ENODE?  */
+	  if (succ_fnode->get_inner_node () == target_enode)
+	    {
+	      if (logger)
+		logger->log ("success: got feasible path to EN: %i (sd: %i)"
+			     " (length: %i)",
+			     target_enode->m_index, diag_idx,
+			     succ_fnode->get_path_length ());
+	      *out_best_path = fg->make_epath (succ_fnode);
+	      /* Success: stop the worklist iteration.  */
+	      return false;
+	    }
+	  else
+	    worklist->add_node (succ_fnode);
+	}
+      else
+	{
+	  if (logger)
+	    logger->log ("infeasible");
+	  gcc_assert (rc);
+	  fg->add_feasibility_problem (fnode,
+				       succ_eedge,
+				       *rc);
+	  delete rc;
+
+	  /* Give up if there have been too many infeasible edges.  */
+	  if (fg->get_num_infeasible ()
+	      > (unsigned)param_analyzer_max_infeasible_edges)
+	    {
+	      if (logger)
+		logger->log ("too many infeasible edges (%i); giving up",
+			     fg->get_num_infeasible ());
+	      return false;
+	    }
 	}
     }
 
-  return epath;
+  /* Continue the worklist iteration.  */
+  return true;
+}
+
+/* Helper class for epath_finder::dump_trimmed_graph
+   to dump extra per-node information.
+   Use SEP to add the length of the shortest path from each
+   node to the target node to each node's dump.  */
+
+class dump_eg_with_shortest_path : public eg_traits::dump_args_t
+{
+public:
+  dump_eg_with_shortest_path
+    (const exploded_graph &eg,
+     const shortest_paths<eg_traits, exploded_path> &sep)
+  : dump_args_t (eg),
+    m_sep (sep)
+  {
+  }
+
+  void dump_extra_info (const exploded_node *enode,
+			pretty_printer *pp) const FINAL OVERRIDE
+  {
+    pp_printf (pp, "sp: %i", m_sep.get_shortest_path (enode).length ());
+    pp_newline (pp);
+  }
+
+private:
+  const shortest_paths<eg_traits, exploded_path> &m_sep;
+};
+
+/* Dump TG to "BASE_NAME.DESC.DIAG_IDX.to-enN.tg.dot",
+   annotating each node with the length of the shortest path
+   from that node to TARGET_ENODE (using SEP).  */
+
+void
+epath_finder::
+dump_trimmed_graph (const exploded_node *target_enode,
+		    const char *desc, unsigned diag_idx,
+		    const trimmed_graph &tg,
+		    const shortest_paths<eg_traits, exploded_path> &sep)
+{
+  auto_timevar tv (TV_ANALYZER_DUMP);
+  dump_eg_with_shortest_path inner_args (m_eg, sep);
+  trimmed_graph::dump_args_t args (inner_args);
+  pretty_printer pp;
+  pp_printf (&pp, "%s.%s.%i.to-en%i.tg.dot",
+	     dump_base_name, desc, diag_idx, target_enode->m_index);
+  char *filename = xstrdup (pp_formatted_text (&pp));
+  tg.dump_dot (filename, NULL, args);
+  free (filename);
+}
+
+/* Dump FG to "BASE_NAME.DESC.DIAG_IDX.to-enN.fg.dot".  */
+
+void
+epath_finder::dump_feasible_graph (const exploded_node *target_enode,
+				   const char *desc, unsigned diag_idx,
+				   const feasible_graph &fg)
+{
+  auto_timevar tv (TV_ANALYZER_DUMP);
+  exploded_graph::dump_args_t inner_args (m_eg);
+  feasible_graph::dump_args_t args (inner_args);
+  pretty_printer pp;
+  pp_printf (&pp, "%s.%s.%i.to-en%i.fg.dot",
+	     dump_base_name, desc, diag_idx, target_enode->m_index);
+  char *filename = xstrdup (pp_formatted_text (&pp));
+  fg.dump_dot (filename, NULL, args);
+  free (filename);
 }
 
 /* class saved_diagnostic.  */
@@ -174,13 +618,15 @@ saved_diagnostic::saved_diagnostic (const state_machine *sm,
 				    tree var,
 				    const svalue *sval,
 				    state_machine::state_t state,
-				    pending_diagnostic *d)
+				    pending_diagnostic *d,
+				    unsigned idx)
 : m_sm (sm), m_enode (enode), m_snode (snode), m_stmt (stmt),
  /* stmt_finder could be on-stack; we want our own copy that can
     outlive that.  */
   m_stmt_finder (stmt_finder ? stmt_finder->clone () : NULL),
   m_var (var), m_sval (sval), m_state (state),
   m_d (d), m_trailing_eedge (NULL),
+  m_idx (idx),
   m_best_epath (NULL), m_problem (NULL)
 {
   gcc_assert (m_stmt || m_stmt_finder);
@@ -221,7 +667,8 @@ saved_diagnostic::operator== (const saved_diagnostic &other) const
     "sval": optional str,
     "state": optional str,
     "path_length": optional int,
-    "pending_diagnostic": str}.  */
+    "pending_diagnostic": str,
+    "idx": int}.  */
 
 json::object *
 saved_diagnostic::to_json () const
@@ -239,6 +686,7 @@ saved_diagnostic::to_json () const
   if (m_best_epath)
     sd_obj->set ("path_length", new json::integer_number (get_epath_length ()));
   sd_obj->set ("pending_diagnostic", new json::string (m_d->get_kind ()));
+  sd_obj->set ("idx", new json::integer_number (m_idx));
 
   /* We're not yet JSONifying the following fields:
      const gimple *m_stmt;
@@ -267,15 +715,12 @@ saved_diagnostic::calc_best_epath (epath_finder *pf)
   delete m_problem;
   m_problem = NULL;
 
-  m_best_epath = pf->get_best_epath (m_enode, m_d->get_kind (),
+  m_best_epath = pf->get_best_epath (m_enode, m_d->get_kind (), m_idx,
 				     &m_problem);
 
   /* Handle failure to find a feasible path.  */
   if (m_best_epath == NULL)
-    {
-      gcc_assert (m_problem);
-      return false;
-    }
+    return false;
 
   gcc_assert (m_best_epath);
   if (m_stmt == NULL)
@@ -308,6 +753,18 @@ saved_diagnostic::add_duplicate (saved_diagnostic *other)
   m_duplicates.splice (other->m_duplicates);
   other->m_duplicates.truncate (0);
   m_duplicates.safe_push (other);
+}
+
+/* Return true if this diagnostic supercedes OTHER, and that OTHER should
+   therefore not be emitted.  */
+
+bool
+saved_diagnostic::supercedes_p (const saved_diagnostic &other) const
+{
+  /* They should be at the same stmt.  */
+  if (m_stmt != other.m_stmt)
+    return false;
+  return m_d->supercedes_p (*other.m_d);
 }
 
 /* State for building a checker_path from a particular exploded_path.
@@ -379,7 +836,7 @@ diagnostic_manager::diagnostic_manager (logger *logger, engine *eng,
 
 void
 diagnostic_manager::add_diagnostic (const state_machine *sm,
-				    const exploded_node *enode,
+				    exploded_node *enode,
 				    const supernode *snode, const gimple *stmt,
 				    stmt_finder *finder,
 				    tree var,
@@ -395,18 +852,19 @@ diagnostic_manager::add_diagnostic (const state_machine *sm,
 
   saved_diagnostic *sd
     = new saved_diagnostic (sm, enode, snode, stmt, finder, var, sval,
-			    state, d);
+			    state, d, m_saved_diagnostics.length ());
   m_saved_diagnostics.safe_push (sd);
+  enode->add_diagnostic (sd);
   if (get_logger ())
-    log ("adding saved diagnostic %i at SN %i: %qs",
-	 m_saved_diagnostics.length () - 1,
-	 snode->m_index, d->get_kind ());
+    log ("adding saved diagnostic %i at SN %i to EN %i: %qs",
+	 sd->get_index (),
+	 snode->m_index, enode->m_index, d->get_kind ());
 }
 
 /* Queue pending_diagnostic D at ENODE for later emission.  */
 
 void
-diagnostic_manager::add_diagnostic (const exploded_node *enode,
+diagnostic_manager::add_diagnostic (exploded_node *enode,
 				    const supernode *snode, const gimple *stmt,
 				    stmt_finder *finder,
 				    pending_diagnostic *d)
@@ -545,8 +1003,6 @@ public:
 class dedupe_winners
 {
 public:
-  dedupe_winners (engine *eng) : m_engine (eng) {}
-
   ~dedupe_winners ()
   {
     /* Delete all keys, but not the saved_diagnostics.  */
@@ -610,6 +1066,38 @@ public:
       }
   }
 
+  /* Handle interactions between the dedupe winners, so that some
+     diagnostics can supercede others (of different kinds).
+
+     We want use-after-free to supercede use-of-unitialized-value,
+     so that if we have these at the same stmt, we don't emit
+     a use-of-uninitialized, just the use-after-free.  */
+
+  void handle_interactions (diagnostic_manager *dm)
+  {
+    LOG_SCOPE (dm->get_logger ());
+    auto_vec<const dedupe_key *> superceded;
+    for (auto outer : m_map)
+      {
+	const saved_diagnostic *outer_sd = outer.second;
+	for (auto inner : m_map)
+	  {
+	    const saved_diagnostic *inner_sd = inner.second;
+	    if (inner_sd->supercedes_p (*outer_sd))
+	      {
+		superceded.safe_push (outer.first);
+		if (dm->get_logger ())
+		  dm->log ("sd[%i] \"%s\" superceded by sd[%i] \"%s\"",
+			   outer_sd->get_index (), outer_sd->m_d->get_kind (),
+			   inner_sd->get_index (), inner_sd->m_d->get_kind ());
+		break;
+	      }
+	  }
+      }
+    for (auto iter : superceded)
+      m_map.remove (iter);
+  }
+
  /* Emit the simplest diagnostic within each set.  */
 
   void emit_best (diagnostic_manager *dm,
@@ -642,8 +1130,6 @@ public:
   }
 
 private:
-  engine *m_engine;
-
   /* This maps from each dedupe_key to a current best saved_diagnostic.  */
 
   typedef hash_map<const dedupe_key *, saved_diagnostic *,
@@ -679,12 +1165,14 @@ diagnostic_manager::emit_saved_diagnostics (const exploded_graph &eg)
      instance.  This partitions the saved diagnostics by dedupe_key,
      generating exploded_paths for them, and retaining the best one in each
      partition.  */
-  dedupe_winners best_candidates (eg.get_engine ());
+  dedupe_winners best_candidates;
 
   int i;
   saved_diagnostic *sd;
   FOR_EACH_VEC_ELT (m_saved_diagnostics, i, sd)
     best_candidates.add (get_logger (), &pf, sd);
+
+  best_candidates.handle_interactions (this);
 
   /* For each dedupe-key, call emit_saved_diagnostic on the "best"
      saved_diagnostic.  */
@@ -755,6 +1243,17 @@ diagnostic_manager::emit_saved_diagnostic (const exploded_graph &eg,
 	inform_n (loc, num_dupes,
 		  "%i duplicate", "%i duplicates",
 		  num_dupes);
+      if (flag_dump_analyzer_exploded_paths)
+	{
+	  auto_timevar tv (TV_ANALYZER_DUMP);
+	  pretty_printer pp;
+	  pp_printf (&pp, "%s.%i.%s.epath.txt",
+		     dump_base_name, sd.get_index (), sd.m_d->get_kind ());
+	  char *filename = xstrdup (pp_formatted_text (&pp));
+	  epath->dump_to_file (filename, eg.get_ext_state ());
+	  inform (loc, "exploded path written to %qs", filename);
+	  free (filename);
+	}
     }
   delete pp;
 }
@@ -968,6 +1467,14 @@ struct null_assignment_sm_context : public sm_context
     return current;
   }
 
+  state_machine::state_t get_state (const gimple *stmt ATTRIBUTE_UNUSED,
+				    const svalue *sval) FINAL OVERRIDE
+  {
+    const sm_state_map *old_smap = m_old_state->m_checker_states[m_sm_idx];
+    state_machine::state_t current = old_smap->get_state (sval, m_ext_state);
+    return current;
+  }
+
   void set_next_state (const gimple *stmt,
 		       tree var,
 		       state_machine::state_t to,
@@ -992,6 +1499,28 @@ struct null_assignment_sm_context : public sm_context
 							*m_new_state));
   }
 
+  void set_next_state (const gimple *stmt,
+		       const svalue *sval,
+		       state_machine::state_t to,
+		       tree origin ATTRIBUTE_UNUSED) FINAL OVERRIDE
+  {
+    state_machine::state_t from = get_state (stmt, sval);
+    if (from != m_sm.get_start_state ())
+      return;
+
+    const supernode *supernode = m_point->get_supernode ();
+    int stack_depth = m_point->get_stack_depth ();
+
+    m_emission_path->add_event (new state_change_event (supernode,
+							m_stmt,
+							stack_depth,
+							m_sm,
+							sval,
+							from, to,
+							NULL,
+							*m_new_state));
+  }
+
   void warn (const supernode *, const gimple *,
 	     tree, pending_diagnostic *d) FINAL OVERRIDE
   {
@@ -1001,6 +1530,11 @@ struct null_assignment_sm_context : public sm_context
   tree get_diagnostic_tree (tree expr) FINAL OVERRIDE
   {
     return expr;
+  }
+
+  tree get_diagnostic_tree (const svalue *sval) FINAL OVERRIDE
+  {
+    return m_new_state->m_region_model->get_representative_tree (sval);
   }
 
   state_machine::state_t get_global_state () const FINAL OVERRIDE
@@ -1178,7 +1712,7 @@ diagnostic_manager::add_events_for_eedge (const path_builder &pb,
 		 "this path would have been rejected as infeasible"
 		 " at this edge: ");
       pb.get_feasibility_problem ()->dump_to_pp (&pp);
-      emission_path->add_event (new custom_event
+      emission_path->add_event (new precanned_custom_event
 				(dst_point.get_location (),
 				 dst_point.get_fndecl (),
 				 dst_stack_depth,
@@ -1672,7 +2206,7 @@ diagnostic_manager::prune_interproc_events (checker_path *path) const
   do
     {
       changed = false;
-      int idx = path->num_events () - 1;
+      int idx = (signed)path->num_events () - 1;
       while (idx >= 0)
 	{
 	  /* Prune [..., call, function-entry, return, ...] triples.  */
@@ -1791,7 +2325,9 @@ diagnostic_manager::consolidate_conditions (checker_path *path) const
   if (flag_analyzer_verbose_edges)
     return;
 
-  for (unsigned start_idx = 0; start_idx < path->num_events () - 1; start_idx++)
+  for (int start_idx = 0;
+       start_idx < (signed)path->num_events () - 1;
+       start_idx++)
     {
       if (path->cfg_edge_pair_at_p (start_idx))
 	{
@@ -1822,7 +2358,7 @@ diagnostic_manager::consolidate_conditions (checker_path *path) const
 	       [start_idx, next_idx)
 	     where all apart from the final event are on the same line,
 	     and all are either TRUE or FALSE edges, matching the initial.  */
-	  unsigned next_idx = start_idx + 2;
+	  int next_idx = start_idx + 2;
 	  while (path->cfg_edge_pair_at_p (next_idx)
 		 && same_line_as_p (start_exp_loc, path, next_idx))
 	    {

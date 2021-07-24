@@ -710,9 +710,11 @@ find_tail_calls (basic_block bb, struct tailcall **ret)
   ret_var = gimple_return_retval (as_a <greturn *> (stmt));
 
   /* We may proceed if there either is no return value, or the return value
-     is identical to the call's return.  */
+     is identical to the call's return or if the return decl is an empty type
+     variable and the call's return was not assigned. */
   if (ret_var
-      && (ret_var != ass_var))
+      && (ret_var != ass_var
+	  && !(is_empty_type (TREE_TYPE (ret_var)) && !ass_var)))
     return;
 
   /* If this is not a tail recursive call, we cannot handle addends or
@@ -1077,8 +1079,7 @@ create_tailcall_accumulator (const char *label, basic_block bb, tree init)
   gphi *phi;
 
   phi = create_phi_node (tmp, bb);
-  /* RET_TYPE can be a float when -ffast-maths is enabled.  */
-  add_phi_arg (phi, fold_convert (ret_type, init), single_pred_edge (bb),
+  add_phi_arg (phi, init, single_pred_edge (bb),
 	       UNKNOWN_LOCATION);
   return PHI_RESULT (phi);
 }
@@ -1155,14 +1156,17 @@ tree_optimize_tail_calls_1 (bool opt_tailcalls)
 	      }
 	  phis_constructed = true;
 	}
+      tree ret_type = TREE_TYPE (DECL_RESULT (current_function_decl));
+      if (POINTER_TYPE_P (ret_type))
+	ret_type = sizetype;
 
       if (act->add && !a_acc)
 	a_acc = create_tailcall_accumulator ("add_acc", first,
-					     integer_zero_node);
+					     build_zero_cst (ret_type));
 
       if (act->mult && !m_acc)
 	m_acc = create_tailcall_accumulator ("mult_acc", first,
-					     integer_one_node);
+					     build_one_cst (ret_type));
     }
 
   if (a_acc || m_acc)

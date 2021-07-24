@@ -36,10 +36,19 @@ void __gcov_init (struct gcov_info *p __attribute__ ((unused))) {}
 #else /* inhibit_libc */
 
 #include <string.h>
+
 #if GCOV_LOCKED
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/stat.h>
+#elif GCOV_LOCKED_WITH_LOCKING
+#include <fcntl.h>
+#include <sys/locking.h>
+#include <sys/stat.h>
+#endif
+
+#if HAVE_SYS_MMAN_H
+#include <sys/mman.h>
 #endif
 
 #ifdef L_gcov
@@ -192,7 +201,7 @@ gcov_version (struct gcov_info *ptr, gcov_unsigned_t version,
   if (version != GCOV_VERSION)
     {
       char v[4], e[4];
-      char version_string[128], expected_string[128];
+      char ver_string[128], expected_string[128];
 
       GCOV_UNSIGNED2STRING (v, version);
       GCOV_UNSIGNED2STRING (e, GCOV_VERSION);
@@ -201,7 +210,7 @@ gcov_version (struct gcov_info *ptr, gcov_unsigned_t version,
 		  "got %s (%.4s)\n",
 		  filename? filename : ptr->filename,
 		  gcov_version_string (expected_string, e), e,
-		  gcov_version_string (version_string, v), v);
+		  gcov_version_string (ver_string, v), v);
       return 0;
     }
   return 1;
@@ -334,30 +343,65 @@ read_error:
   return -1;
 }
 
+#define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
+
 /* Store all TOP N counters where each has a dynamic length.  */
 
 static void
-write_top_counters (const struct gcov_ctr_info *ci_ptr,
-		    unsigned t_ix,
-		    gcov_unsigned_t n_counts)
+write_topn_counters (const struct gcov_ctr_info *ci_ptr,
+		     unsigned t_ix,
+		     gcov_unsigned_t n_counts)
 {
   unsigned counters = n_counts / GCOV_TOPN_MEM_COUNTERS;
   gcc_assert (n_counts % GCOV_TOPN_MEM_COUNTERS == 0);
+
+  /* It can happen in a multi-threaded environment that number of counters is
+     different from the size of the corresponding linked lists.  */
+#define LIST_SIZE_MIN_LENGTH 4 * 1024
+
+  static unsigned *list_sizes = NULL;
+  static unsigned list_size_length = 0;
+
+  if (list_sizes == NULL || counters > list_size_length)
+    {
+      list_size_length = MAX (LIST_SIZE_MIN_LENGTH, 2 * counters);
+#if HAVE_SYS_MMAN_H
+      list_sizes
+	= (unsigned *)malloc_mmap (list_size_length * sizeof (unsigned));
+#endif
+
+      /* Malloc fallback.  */
+      if (list_sizes == NULL)
+	list_sizes = (unsigned *)xmalloc (list_size_length * sizeof (unsigned));
+    }
+
+  memset (list_sizes, 0, counters * sizeof (unsigned));
   unsigned pair_total = 0;
+
   for (unsigned i = 0; i < counters; i++)
-    pair_total += ci_ptr->values[GCOV_TOPN_MEM_COUNTERS * i + 1];
+    {
+      gcov_type start = ci_ptr->values[GCOV_TOPN_MEM_COUNTERS * i + 2];
+      for (struct gcov_kvp *node = (struct gcov_kvp *)(intptr_t)start;
+	   node != NULL; node = node->next)
+	{
+	  ++pair_total;
+	  ++list_sizes[i];
+	}
+    }
+
   unsigned disk_size = GCOV_TOPN_DISK_COUNTERS * counters + 2 * pair_total;
   gcov_write_tag_length (GCOV_TAG_FOR_COUNTER (t_ix),
 			 GCOV_TAG_COUNTER_LENGTH (disk_size));
 
   for (unsigned i = 0; i < counters; i++)
     {
-      gcov_type pair_count = ci_ptr->values[GCOV_TOPN_MEM_COUNTERS * i + 1];
       gcov_write_counter (ci_ptr->values[GCOV_TOPN_MEM_COUNTERS * i]);
-      gcov_write_counter (pair_count);
+      gcov_write_counter (list_sizes[i]);
       gcov_type start = ci_ptr->values[GCOV_TOPN_MEM_COUNTERS * i + 2];
+
+      unsigned j = 0;
       for (struct gcov_kvp *node = (struct gcov_kvp *)(intptr_t)start;
-	   node != NULL; node = node->next)
+	   j < list_sizes[i]; node = node->next, j++)
 	{
 	  gcov_write_counter (node->value);
 	  gcov_write_counter (node->count);
@@ -425,7 +469,7 @@ write_one_data (const struct gcov_info *gi_ptr,
 	  n_counts = ci_ptr->num;
 
 	  if (t_ix == GCOV_COUNTER_V_TOPN || t_ix == GCOV_COUNTER_V_INDIR)
-	    write_top_counters (ci_ptr, t_ix, n_counts);
+	    write_topn_counters (ci_ptr, t_ix, n_counts);
 	  else
 	    {
 	      /* Do not stream when all counters are zero.  */
@@ -514,10 +558,8 @@ read_fatal:;
     fn_buffer = free_fn_data (gi_ptr, fn_buffer, GCOV_COUNTERS);
 
   if ((error = gcov_close ()))
-    gcov_error (error  < 0 ?
-		GCOV_PROF_PREFIX "Overflow writing\n" :
-		GCOV_PROF_PREFIX "Error writing\n",
-                gf->filename);
+    gcov_error ((error < 0 ? GCOV_PROF_PREFIX "Overflow writing\n"
+		 : GCOV_PROF_PREFIX "Error writing\n"), gf->filename);
 }
 
 
@@ -588,11 +630,14 @@ struct gcov_root __gcov_root;
 struct gcov_master __gcov_master = 
   {GCOV_VERSION, 0};
 
-/* Pool of pre-allocated gcov_kvp strutures.  */
-struct gcov_kvp __gcov_kvp_pool[GCOV_PREALLOCATED_KVP];
+/* Dynamic pool for gcov_kvp structures.  */
+struct gcov_kvp *__gcov_kvp_dynamic_pool;
 
-/* Index to first free gcov_kvp in the pool.  */
-unsigned __gcov_kvp_pool_index;
+/* Index into __gcov_kvp_dynamic_pool array.  */
+unsigned __gcov_kvp_dynamic_pool_index;
+
+/* Size of _gcov_kvp_dynamic_pool array.  */
+unsigned __gcov_kvp_dynamic_pool_size;
 
 void
 __gcov_exit (void)

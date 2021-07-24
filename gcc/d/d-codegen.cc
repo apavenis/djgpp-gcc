@@ -1153,6 +1153,14 @@ build_struct_literal (tree type, vec <constructor_elt, va_gc> *init)
   if (vec_safe_is_empty (init))
     return build_constructor (type, NULL);
 
+  /* Struct literals can be seen for special enums representing `_Complex',
+     make sure to reinterpret the literal as the correct type.  */
+  if (COMPLEX_FLOAT_TYPE_P (type))
+    {
+      gcc_assert (vec_safe_length (init) == 2);
+      return build_complex (type, (*init)[0].value, (*init)[1].value);
+    }
+
   vec <constructor_elt, va_gc> *ve = NULL;
   HOST_WIDE_INT offset = 0;
   bool constant_p = true;
@@ -1322,6 +1330,7 @@ component_ref (tree object, tree field)
 tree
 build_assign (tree_code code, tree lhs, tree rhs)
 {
+  tree result;
   tree init = stabilize_expr (&lhs);
   init = compound_expr (init, stabilize_expr (&rhs));
 
@@ -1335,27 +1344,39 @@ build_assign (tree_code code, tree lhs, tree rhs)
       d_mark_addressable (lhs);
       CALL_EXPR_RETURN_SLOT_OPT (rhs) = true;
     }
+  /* If modifying an LHS whose type is marked TREE_ADDRESSABLE.  */
+  else if (code == MODIFY_EXPR && TREE_ADDRESSABLE (TREE_TYPE (lhs))
+	   && TREE_SIDE_EFFECTS (rhs) && TREE_CODE (rhs) != TARGET_EXPR)
+    {
+      /* LHS may be referenced by the RHS expression, so force a temporary.  */
+      rhs = force_target_expr (rhs);
+    }
 
   /* The LHS assignment replaces the temporary in TARGET_EXPR_SLOT.  */
   if (TREE_CODE (rhs) == TARGET_EXPR)
     {
       /* If CODE is not INIT_EXPR, can't initialize LHS directly,
-	 since that would cause the LHS to be constructed twice.
-	 So we force the TARGET_EXPR to be expanded without a target.  */
+	 since that would cause the LHS to be constructed twice.  */
       if (code != INIT_EXPR)
 	{
 	  init = compound_expr (init, rhs);
-	  rhs = TARGET_EXPR_SLOT (rhs);
+	  result = build_assign (code, lhs, TARGET_EXPR_SLOT (rhs));
 	}
       else
 	{
 	  d_mark_addressable (lhs);
-	  rhs = TARGET_EXPR_INITIAL (rhs);
+	  TARGET_EXPR_INITIAL (rhs) = build_assign (code, lhs,
+						    TARGET_EXPR_INITIAL (rhs));
+	  result = rhs;
 	}
     }
+  else
+    {
+      /* Simple assignment.  */
+      result = fold_build2_loc (input_location, code,
+				TREE_TYPE (lhs), lhs, rhs);
+    }
 
-  tree result = fold_build2_loc (input_location, code,
-				 TREE_TYPE (lhs), lhs, rhs);
   return compound_expr (init, result);
 }
 
@@ -1477,6 +1498,11 @@ compound_expr (tree arg0, tree arg1)
   if (arg0 == NULL_TREE || !TREE_SIDE_EFFECTS (arg0))
     return arg1;
 
+  /* Remove intermediate expressions that have no side-effects.  */
+  while (TREE_CODE (arg0) == COMPOUND_EXPR
+	 && !TREE_SIDE_EFFECTS (TREE_OPERAND (arg0, 1)))
+    arg0 = TREE_OPERAND (arg0, 0);
+
   if (TREE_CODE (arg1) == TARGET_EXPR)
     {
       /* If the rhs is a TARGET_EXPR, then build the compound expression
@@ -1497,6 +1523,19 @@ compound_expr (tree arg0, tree arg1)
 tree
 return_expr (tree ret)
 {
+  /* Same as build_assign, the DECL_RESULT assignment replaces the temporary
+     in TARGET_EXPR_SLOT.  */
+  if (ret != NULL_TREE && TREE_CODE (ret) == TARGET_EXPR)
+    {
+      tree exp = TARGET_EXPR_INITIAL (ret);
+      tree init = stabilize_expr (&exp);
+
+      exp = fold_build1_loc (input_location, RETURN_EXPR, void_type_node, exp);
+      TARGET_EXPR_INITIAL (ret) = compound_expr (init, exp);
+
+      return ret;
+    }
+
   return fold_build1_loc (input_location, RETURN_EXPR,
 			  void_type_node, ret);
 }
@@ -2499,15 +2538,11 @@ build_frame_type (tree ffi, FuncDeclaration *fd)
 	    {
 	      VarDeclaration *v = (*fd->parameters)[i];
 	      /* Remove if already in closureVars so can push to front.  */
-	      for (size_t j = i; j < fd->closureVars.length; j++)
-		{
-		  Dsymbol *s = fd->closureVars[j];
-		  if (s == v)
-		    {
-		      fd->closureVars.remove (j);
-		      break;
-		    }
-		}
+	      size_t j = fd->closureVars.find (v);
+
+	      if (j < fd->closureVars.length)
+		fd->closureVars.remove (j);
+
 	      fd->closureVars.insert (i, v);
 	    }
 	}
@@ -2515,15 +2550,11 @@ build_frame_type (tree ffi, FuncDeclaration *fd)
       /* Also add hidden `this' to outer context.  */
       if (fd->vthis)
 	{
-	  for (size_t i = 0; i < fd->closureVars.length; i++)
-	    {
-	      Dsymbol *s = fd->closureVars[i];
-	      if (s == fd->vthis)
-		{
-		  fd->closureVars.remove (i);
-		  break;
-		}
-	    }
+	  size_t i = fd->closureVars.find (fd->vthis);
+
+	  if (i < fd->closureVars.length)
+	    fd->closureVars.remove (i);
+
 	  fd->closureVars.insert (0, fd->vthis);
 	}
     }

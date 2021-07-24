@@ -366,7 +366,7 @@ extern bool umips_12bit_offset_address_p (rtx, machine_mode);
 extern bool mips_9bit_offset_address_p (rtx, machine_mode);
 extern bool lwsp_swsp_address_p (rtx, machine_mode);
 extern bool m16_based_address_p (rtx, machine_mode,
-			         int (*)(rtx_def*, machine_mode)); 
+				 bool (*)(rtx_def*, machine_mode));
 extern rtx mips_expand_thread_pointer (rtx);
 extern void mips16_expand_get_fcsr (rtx);
 extern void mips16_expand_set_fcsr (rtx);
@@ -388,5 +388,6 @@ extern void mips_expand_vec_cond_expr (machine_mode, machine_mode, rtx *);
 
 /* Routines implemented in mips-d.c  */
 extern void mips_d_target_versions (void);
+extern void mips_d_register_target_info (void);
 
 #endif /* ! GCC_MIPS_PROTOS_H */

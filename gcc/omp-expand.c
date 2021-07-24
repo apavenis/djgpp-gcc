@@ -1541,7 +1541,7 @@ expand_oacc_collapse_init (const struct omp_for_data *fd,
       tree iter_type = TREE_TYPE (loop->v);
       tree plus_type = iter_type;
 
-      gcc_assert (loop->cond_code == fd->loop.cond_code);
+      gcc_assert (loop->cond_code == LT_EXPR || loop->cond_code == GT_EXPR);
 
       if (POINTER_TYPE_P (iter_type))
 	plus_type = sizetype;
@@ -3845,7 +3845,7 @@ expand_omp_for_generic (struct omp_region *region,
 	  for (i = first_zero_iter1;
 	       i < (fd->ordered ? fd->ordered : fd->collapse); i++)
 	    if (SSA_VAR_P (counts[i]))
-	      TREE_NO_WARNING (counts[i]) = 1;
+	      suppress_warning (counts[i], OPT_Wuninitialized);
 	  gsi_prev (&gsi);
 	  e = split_block (entry_bb, gsi_stmt (gsi));
 	  entry_bb = e->dest;
@@ -3862,7 +3862,7 @@ expand_omp_for_generic (struct omp_region *region,
 	     be executed in that case, so just avoid uninit warnings.  */
 	  for (i = first_zero_iter2; i < fd->ordered; i++)
 	    if (SSA_VAR_P (counts[i]))
-	      TREE_NO_WARNING (counts[i]) = 1;
+	      suppress_warning (counts[i], OPT_Wuninitialized);
 	  if (zero_iter1_bb)
 	    make_edge (zero_iter2_bb, entry_bb, EDGE_FALLTHRU);
 	  else
@@ -6360,6 +6360,7 @@ expand_omp_simd (struct omp_region *region, struct omp_for_data *fd)
       n2 = OMP_CLAUSE_DECL (innerc);
     }
   tree step = fd->loop.step;
+  tree orig_step = step; /* May be different from step if is_simt.  */
 
   bool is_simt = omp_find_clause (gimple_omp_for_clauses (fd->for_stmt),
 				  OMP_CLAUSE__SIMT_);
@@ -6510,7 +6511,7 @@ expand_omp_simd (struct omp_region *region, struct omp_for_data *fd)
   tree altv = NULL_TREE, altn2 = NULL_TREE;
   if (fd->collapse == 1
       && !broken_loop
-      && TREE_CODE (fd->loops[0].step) != INTEGER_CST)
+      && TREE_CODE (orig_step) != INTEGER_CST)
     {
       /* The vectorizer currently punts on loops with non-constant steps
 	 for the main IV (can't compute number of iterations and gives up
@@ -6526,7 +6527,7 @@ expand_omp_simd (struct omp_region *region, struct omp_for_data *fd)
 	itype = signed_type_for (itype);
       t = build_int_cst (itype, (fd->loop.cond_code == LT_EXPR ? -1 : 1));
       t = fold_build2 (PLUS_EXPR, itype,
-		       fold_convert (itype, fd->loop.step), t);
+		       fold_convert (itype, step), t);
       t = fold_build2 (PLUS_EXPR, itype, t, fold_convert (itype, n2));
       t = fold_build2 (MINUS_EXPR, itype, t,
 		       fold_convert (itype, fd->loop.v));
@@ -6534,10 +6535,10 @@ expand_omp_simd (struct omp_region *region, struct omp_for_data *fd)
 	t = fold_build2 (TRUNC_DIV_EXPR, itype,
 			 fold_build1 (NEGATE_EXPR, itype, t),
 			 fold_build1 (NEGATE_EXPR, itype,
-				      fold_convert (itype, fd->loop.step)));
+				      fold_convert (itype, step)));
       else
 	t = fold_build2 (TRUNC_DIV_EXPR, itype, t,
-			 fold_convert (itype, fd->loop.step));
+			 fold_convert (itype, step));
       t = fold_convert (TREE_TYPE (altv), t);
       altn2 = create_tmp_var (TREE_TYPE (altv));
       expand_omp_build_assign (&gsi, altn2, t);
@@ -6685,7 +6686,7 @@ expand_omp_simd (struct omp_region *region, struct omp_for_data *fd)
   if (is_simt)
     {
       gsi = gsi_start_bb (l2_bb);
-      step = fold_build2 (MINUS_EXPR, TREE_TYPE (step), fd->loop.step, step);
+      step = fold_build2 (MINUS_EXPR, TREE_TYPE (step), orig_step, step);
       if (POINTER_TYPE_P (type))
 	t = fold_build_pointer_plus (fd->loop.v, step);
       else
@@ -7050,7 +7051,7 @@ expand_omp_taskloop_for_outer (struct omp_region *region,
 	     be executed in that case, so just avoid uninit warnings.  */
 	  for (i = first_zero_iter; i < fd->collapse; i++)
 	    if (SSA_VAR_P (counts[i]))
-	      TREE_NO_WARNING (counts[i]) = 1;
+	      suppress_warning (counts[i], OPT_Wuninitialized);
 	  gsi_prev (&gsi);
 	  edge e = split_block (entry_bb, gsi_stmt (gsi));
 	  entry_bb = e->dest;
@@ -9289,7 +9290,8 @@ expand_omp_target (struct omp_region *region)
     case GF_OMP_TARGET_KIND_OACC_KERNELS:
     case GF_OMP_TARGET_KIND_OACC_SERIAL:
     case GF_OMP_TARGET_KIND_OACC_UPDATE:
-    case GF_OMP_TARGET_KIND_OACC_ENTER_EXIT_DATA:
+    case GF_OMP_TARGET_KIND_OACC_ENTER_DATA:
+    case GF_OMP_TARGET_KIND_OACC_EXIT_DATA:
     case GF_OMP_TARGET_KIND_OACC_DECLARE:
     case GF_OMP_TARGET_KIND_OACC_PARALLEL_KERNELS_PARALLELIZED:
     case GF_OMP_TARGET_KIND_OACC_PARALLEL_KERNELS_GANG_SINGLE:
@@ -9573,8 +9575,11 @@ expand_omp_target (struct omp_region *region)
     case GF_OMP_TARGET_KIND_OACC_UPDATE:
       start_ix = BUILT_IN_GOACC_UPDATE;
       break;
-    case GF_OMP_TARGET_KIND_OACC_ENTER_EXIT_DATA:
-      start_ix = BUILT_IN_GOACC_ENTER_EXIT_DATA;
+    case GF_OMP_TARGET_KIND_OACC_ENTER_DATA:
+      start_ix = BUILT_IN_GOACC_ENTER_DATA;
+      break;
+    case GF_OMP_TARGET_KIND_OACC_EXIT_DATA:
+      start_ix = BUILT_IN_GOACC_EXIT_DATA;
       break;
     case GF_OMP_TARGET_KIND_OACC_DECLARE:
       start_ix = BUILT_IN_GOACC_DECLARE;
@@ -9610,6 +9615,10 @@ expand_omp_target (struct omp_region *region)
 	}
 
       c = omp_find_clause (clauses, OMP_CLAUSE_NOWAIT);
+      /* FIXME: in_reduction(...) nowait is unimplemented yet, pretend
+	 nowait doesn't appear.  */
+      if (c && omp_find_clause (clauses, OMP_CLAUSE_IN_REDUCTION))
+	c = NULL;
       if (c)
 	flags_i |= GOMP_TARGET_FLAG_NOWAIT;
     }
@@ -9772,7 +9781,8 @@ expand_omp_target (struct omp_region *region)
 	oacc_set_fn_attrib (child_fn, clauses, &args);
       tagging = true;
       /* FALLTHRU */
-    case BUILT_IN_GOACC_ENTER_EXIT_DATA:
+    case BUILT_IN_GOACC_ENTER_DATA:
+    case BUILT_IN_GOACC_EXIT_DATA:
     case BUILT_IN_GOACC_UPDATE:
       {
 	tree t_async = NULL_TREE;
@@ -10041,7 +10051,8 @@ build_omp_regions_1 (basic_block bb, struct omp_region *parent,
 		case GF_OMP_TARGET_KIND_OACC_HOST_DATA:
 		case GF_OMP_TARGET_KIND_OACC_DATA_KERNELS:
 		case GF_OMP_TARGET_KIND_OACC_UPDATE:
-		case GF_OMP_TARGET_KIND_OACC_ENTER_EXIT_DATA:
+		case GF_OMP_TARGET_KIND_OACC_ENTER_DATA:
+		case GF_OMP_TARGET_KIND_OACC_EXIT_DATA:
 		case GF_OMP_TARGET_KIND_OACC_DECLARE:
 		  /* ..., other than for those stand-alone directives...  */
 		  region = NULL;
@@ -10298,7 +10309,8 @@ omp_make_gimple_edges (basic_block bb, struct omp_region **region,
 	case GF_OMP_TARGET_KIND_OACC_HOST_DATA:
 	case GF_OMP_TARGET_KIND_OACC_DATA_KERNELS:
 	case GF_OMP_TARGET_KIND_OACC_UPDATE:
-	case GF_OMP_TARGET_KIND_OACC_ENTER_EXIT_DATA:
+	case GF_OMP_TARGET_KIND_OACC_ENTER_DATA:
+	case GF_OMP_TARGET_KIND_OACC_EXIT_DATA:
 	case GF_OMP_TARGET_KIND_OACC_DECLARE:
 	  cur_region = cur_region->outer;
 	  break;
