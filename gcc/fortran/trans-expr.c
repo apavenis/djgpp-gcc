@@ -1700,8 +1700,9 @@ gfc_trans_class_init_assign (gfc_code *code)
 	}
     }
 
-  if (code->expr1->symtree->n.sym->attr.optional
-      || code->expr1->symtree->n.sym->ns->proc_name->attr.entry_master)
+  if (code->expr1->symtree->n.sym->attr.dummy
+      && (code->expr1->symtree->n.sym->attr.optional
+	  || code->expr1->symtree->n.sym->ns->proc_name->attr.entry_master))
     {
       tree present = gfc_conv_expr_present (code->expr1->symtree->n.sym);
       tmp = build3_loc (input_location, COND_EXPR, TREE_TYPE (tmp),
@@ -5826,7 +5827,9 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 				     &derived_array);
 	}
       else if (UNLIMITED_POLY (fsym) && e->ts.type != BT_CLASS
-	       && gfc_expr_attr (e).flavor != FL_PROCEDURE)
+	       && e->ts.type != BT_PROCEDURE
+	       && (gfc_expr_attr (e).flavor != FL_PROCEDURE
+		   || gfc_expr_attr (e).proc != PROC_UNKNOWN))
 	{
 	  /* The intrinsic type needs to be converted to a temporary
 	     CLASS object for the unlimited polymorphic formal.  */
@@ -6014,11 +6017,8 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 			    || (!e->value.function.esym
 				&& e->symtree->n.sym->attr.pointer))
 			&& fsym && fsym->attr.target)
-		{
-		  gfc_conv_expr (&parmse, e);
-		  parmse.expr = gfc_build_addr_expr (NULL_TREE, parmse.expr);
-		}
-
+		/* Make sure the function only gets called once.  */
+		gfc_conv_expr_reference (&parmse, e, false);
 	      else if (e->expr_type == EXPR_FUNCTION
 		       && e->symtree->n.sym->result
 		       && e->symtree->n.sym->result != e->symtree->n.sym
@@ -6128,6 +6128,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 		      bool add_clobber;
 		      add_clobber = fsym && fsym->attr.intent == INTENT_OUT
 			&& !fsym->attr.allocatable && !fsym->attr.pointer
+			&& e->symtree && e->symtree->n.sym
 			&& !e->symtree->n.sym->attr.dimension
 			&& !e->symtree->n.sym->attr.pointer
 			&& !e->symtree->n.sym->attr.allocatable

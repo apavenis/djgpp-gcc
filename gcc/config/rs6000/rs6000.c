@@ -4036,6 +4036,10 @@ rs6000_option_override_internal (bool global_init_p)
       && ((rs6000_isa_flags_explicit & OPTION_MASK_QUAD_MEMORY_ATOMIC) == 0))
     rs6000_isa_flags |= OPTION_MASK_QUAD_MEMORY_ATOMIC;
 
+  /* If we are inserting ROP-protect instructions, disable shrink wrap.  */
+  if (rs6000_rop_protect)
+    flag_shrink_wrap = 0;
+
   /* If we can shrink-wrap the TOC register save separately, then use
      -msave-toc-indirect unless explicitly disabled.  */
   if ((rs6000_isa_flags_explicit & OPTION_MASK_SAVE_TOC_INDIRECT) == 0
@@ -4457,15 +4461,29 @@ rs6000_option_override_internal (bool global_init_p)
   if (TARGET_POWER10 && (rs6000_isa_flags_explicit & OPTION_MASK_MMA) == 0)
     rs6000_isa_flags |= OPTION_MASK_MMA;
 
-  if (TARGET_POWER10 && (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION) == 0)
+  if (TARGET_POWER10
+      && (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION) == 0)
     rs6000_isa_flags |= OPTION_MASK_P10_FUSION;
 
   if (TARGET_POWER10 &&
       (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION_LD_CMPI) == 0)
     rs6000_isa_flags |= OPTION_MASK_P10_FUSION_LD_CMPI;
 
-  if (TARGET_POWER10 && (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION_2LOGICAL) == 0)
+  if (TARGET_POWER10
+      && (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION_2LOGICAL) == 0)
     rs6000_isa_flags |= OPTION_MASK_P10_FUSION_2LOGICAL;
+
+  if (TARGET_POWER10
+      && (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION_LOGADD) == 0)
+    rs6000_isa_flags |= OPTION_MASK_P10_FUSION_LOGADD;
+
+  if (TARGET_POWER10
+      && (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION_ADDLOG) == 0)
+    rs6000_isa_flags |= OPTION_MASK_P10_FUSION_ADDLOG;
+
+  if (TARGET_POWER10
+      && (rs6000_isa_flags_explicit & OPTION_MASK_P10_FUSION_2ADD) == 0)
+    rs6000_isa_flags |= OPTION_MASK_P10_FUSION_2ADD;
 
   /* Turn off vector pair/mma options on non-power10 systems.  */
   else if (!TARGET_POWER10 && TARGET_MMA)
@@ -6126,7 +6144,7 @@ vspltis_constant (rtx op, unsigned step, unsigned copies)
 
   /* Also check if are loading up the most significant bit which can be done by
      loading up -1 and shifting the value left by -1.  */
-  else if (EASY_VECTOR_MSB (splat_val, inner))
+  else if (EASY_VECTOR_MSB (splat_val, inner) && step == 1 && copies == 1)
     ;
 
   else
@@ -9608,7 +9626,8 @@ rs6000_cannot_force_const_mem (machine_mode mode ATTRIBUTE_UNUSED, rtx x)
       && SYMBOL_REF_TLS_MODEL (XEXP (XEXP (x, 0), 0)) != 0)
     return true;
 
-  /* Do not place an ELF TLS symbol in the constant pool.  */
+  /* Allow AIX TOC TLS symbols in the constant pool,
+     but not ELF TLS symbols.  */
   return TARGET_ELF && tls_referenced_p (x);
 }
 
@@ -11022,10 +11041,10 @@ init_float128_ieee (machine_mode mode)
 
       if (TARGET_POWERPC64)
 	{
-	  set_conv_libfunc (sfix_optab, TImode, mode, "__fixkfti");
-	  set_conv_libfunc (ufix_optab, TImode, mode, "__fixunskfti");
-	  set_conv_libfunc (sfloat_optab, mode, TImode, "__floattikf");
-	  set_conv_libfunc (ufloat_optab, mode, TImode, "__floatuntikf");
+	  set_conv_libfunc (sfix_optab, TImode, mode, "__fixkfti_sw");
+	  set_conv_libfunc (ufix_optab, TImode, mode, "__fixunskfti_sw");
+	  set_conv_libfunc (sfloat_optab, mode, TImode, "__floattikf_sw");
+	  set_conv_libfunc (ufloat_optab, mode, TImode, "__floatuntikf_sw");
 	}
     }
 
@@ -15706,8 +15725,8 @@ rs6000_emit_vector_cond_expr (rtx dest, rtx op_true, rtx op_false,
   return 1;
 }
 
-/* Possibly emit the xsmaxcdp and xsmincdp instructions to emit a maximum or
-   minimum with "C" semantics.
+/* Possibly emit the xsmaxc{dp,qp} and xsminc{dp,qp} instructions to emit a
+   maximum or minimum with "C" semantics.
 
    Unless you use -ffast-math, you can't use these instructions to replace
    conditions that implicitly reverse the condition because the comparison
@@ -15783,6 +15802,7 @@ rs6000_maybe_emit_fp_cmove (rtx dest, rtx op, rtx true_cond, rtx false_cond)
   enum rtx_code code = GET_CODE (op);
   rtx op0 = XEXP (op, 0);
   rtx op1 = XEXP (op, 1);
+  machine_mode compare_mode = GET_MODE (op0);
   machine_mode result_mode = GET_MODE (dest);
   rtx compare_rtx;
   rtx cmove_rtx;
@@ -15790,6 +15810,29 @@ rs6000_maybe_emit_fp_cmove (rtx dest, rtx op, rtx true_cond, rtx false_cond)
 
   if (!can_create_pseudo_p ())
     return 0;
+
+  /* We allow the comparison to be either SFmode/DFmode and the true/false
+     condition to be either SFmode/DFmode.  I.e. we allow:
+
+	float a, b;
+	double c, d, r;
+
+	r = (a == b) ? c : d;
+
+    and:
+
+	double a, b;
+	float c, d, r;
+
+	r = (a == b) ? c : d;
+
+    but we don't allow intermixing the IEEE 128-bit floating point types with
+    the 32/64-bit scalar types.  */
+
+  if (!(compare_mode == result_mode
+	|| (compare_mode == SFmode && result_mode == DFmode)
+	|| (compare_mode == DFmode && result_mode == SFmode)))
+    return false;
 
   switch (code)
     {
@@ -15842,6 +15885,10 @@ have_compare_and_set_mask (machine_mode mode)
     case E_SFmode:
     case E_DFmode:
       return TARGET_P9_MINMAX;
+
+    case E_KFmode:
+    case E_TFmode:
+      return TARGET_POWER10 && TARGET_FLOAT128_HW && FLOAT128_IEEE_P (mode);
 
     default:
       break;
@@ -16111,7 +16158,8 @@ rs6000_emit_minmax (rtx dest, enum rtx_code code, rtx op0, rtx op1)
   /* VSX/altivec have direct min/max insns.  */
   if ((code == SMAX || code == SMIN)
       && (VECTOR_UNIT_ALTIVEC_OR_VSX_P (mode)
-	  || (mode == SFmode && VECTOR_UNIT_VSX_P (DFmode))))
+	  || (mode == SFmode && VECTOR_UNIT_VSX_P (DFmode))
+	  || (TARGET_POWER10 && TARGET_FLOAT128_HW && FLOAT128_IEEE_P (mode))))
     {
       emit_insn (gen_rtx_SET (dest, gen_rtx_fmt_ee (code, mode, op0, op1)));
       return;
@@ -16815,9 +16863,11 @@ rs6000_split_multireg_move (rtx dst, rtx src)
 	    gcc_assert (VSX_REGNO_P (REGNO (dst)));
 
 	  reg_mode = GET_MODE (XVECEXP (src, 0, 0));
-	  for (int i = 0; i < XVECLEN (src, 0); i++)
+	  int nvecs = XVECLEN (src, 0);
+	  for (int i = 0; i < nvecs; i++)
 	    {
-	      rtx dst_i = gen_rtx_REG (reg_mode, reg + i);
+	      int index = WORDS_BIG_ENDIAN ? i : nvecs - 1 - i;
+	      rtx dst_i = gen_rtx_REG (reg_mode, reg + index);
 	      emit_insn (gen_rtx_SET (dst_i, XVECEXP (src, 0, i)));
 	    }
 
@@ -20225,6 +20275,7 @@ rs6000_handle_altivec_attribute (tree *node,
     case 'b':
       switch (mode)
 	{
+	case E_TImode: case E_V1TImode: result = bool_V1TI_type_node; break;
 	case E_DImode: case E_V2DImode: result = bool_V2DI_type_node; break;
 	case E_SImode: case E_V4SImode: result = bool_V4SI_type_node; break;
 	case E_HImode: case E_V8HImode: result = bool_V8HI_type_node; break;
@@ -25369,6 +25420,20 @@ rs6000_legitimate_constant_p (machine_mode mode, rtx x)
 
   return true;
 }
+
+#if TARGET_AIX_OS
+/* Implement TARGET_PRECOMPUTE_TLS_P.
+
+   On the AIX, TLS symbols are in the TOC, which is maintained in the
+   constant pool.  AIX TOC TLS symbols need to be pre-computed, but
+   must be considered legitimate constants.  */
+
+static bool
+rs6000_aix_precompute_tls_p (machine_mode mode ATTRIBUTE_UNUSED, rtx x)
+{
+  return tls_referenced_p (x);
+}
+#endif
 
 
 /* Return TRUE iff the sequence ending in LAST sets the static chain.  */

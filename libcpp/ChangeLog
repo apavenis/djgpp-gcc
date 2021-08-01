@@ -1,3 +1,41 @@
+2021-07-28  Release Manager
+
+	* GCC 11.2.0 released.
+
+2021-06-16  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100796
+	PR preprocessor/96391
+	* line-map.c (linemap_compare_locations): Only use comparison with
+	LINE_MAP_MAX_LOCATION_WITH_COLS to avoid abort.
+
+2021-05-31  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-05-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR preprocessor/100646
+	* lex.c (cpp_directive_only_process): Treat end of file as termination
+	for !is_block comments.
+
+2021-05-12  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-05-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR preprocessor/100392
+	* lex.c (cpp_directive_only_process): If buffer doesn't end with '\n',
+	add buffer->rlimit[0] character to the printed range and
+	CPP_INCREMENT_LINE and increment line_count.
+
+2021-05-07  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-05-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/100450
+	* lex.c (cpp_avoid_paste): Handle token1 CPP_PRAGMA like CPP_NAME.
+
 2021-04-27  Release Manager
 
 	* GCC 11.1.0 released.

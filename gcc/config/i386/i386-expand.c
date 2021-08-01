@@ -154,9 +154,13 @@ split_double_mode (machine_mode mode, rtx operands[],
 	  lo_half[num] = simplify_gen_subreg (half_mode, op,
 					      GET_MODE (op) == VOIDmode
 					      ? mode : GET_MODE (op), 0);
-	  hi_half[num] = simplify_gen_subreg (half_mode, op,
-					      GET_MODE (op) == VOIDmode
-					      ? mode : GET_MODE (op), byte);
+
+	  rtx tmp = simplify_gen_subreg (half_mode, op,
+					 GET_MODE (op) == VOIDmode
+					 ? mode : GET_MODE (op), byte);
+	  /* simplify_gen_subreg will return NULL RTX for the
+	     high half of the paradoxical subreg. */
+	  hi_half[num] = tmp ? tmp : gen_reg_rtx (half_mode);
 	}
     }
 }
@@ -8055,6 +8059,7 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
     pop = NULL;
   gcc_assert (!TARGET_64BIT || !pop);
 
+  rtx addr = XEXP (fnaddr, 0);
   if (TARGET_MACHO && !TARGET_64BIT)
     {
 #if TARGET_MACHO
@@ -8067,7 +8072,6 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
       /* Static functions and indirect calls don't need the pic register.  Also,
 	 check if PLT was explicitly avoided via no-plt or "noplt" attribute, making
 	 it an indirect call.  */
-      rtx addr = XEXP (fnaddr, 0);
       if (flag_pic
 	  && GET_CODE (addr) == SYMBOL_REF
 	  && !SYMBOL_REF_LOCAL_P (addr))
@@ -8228,6 +8232,20 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 	      cfun->machine->call_ms2sysv = true;
 	    }
 	}
+    }
+
+  if (TARGET_MACHO && TARGET_64BIT && !sibcall
+      && ((GET_CODE (addr) == SYMBOL_REF && !SYMBOL_REF_LOCAL_P (addr))
+	  || !fndecl || TREE_PUBLIC (fndecl)))
+    {
+      /* We allow public functions defined in a TU to bind locally for PIC
+	 code (the default) on 64bit Mach-O.
+	 If such functions are not inlined, we cannot tell at compile-time if
+	 they will be called via the lazy symbol resolver (this can depend on
+	 options given at link-time).  Therefore, we must assume that the lazy
+	 resolver could be used which clobbers R11 and R10.  */
+      clobber_reg (&use, gen_rtx_REG (DImode, R11_REG));
+      clobber_reg (&use, gen_rtx_REG (DImode, R10_REG));
     }
 
   if (vec_len > 1)
@@ -10855,11 +10873,12 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
 
 	  op = fixup_modeless_constant (op, mode);
 
-	  /* NB: 3-operands load implied it's a mask load,
+	  /* NB: 3-operands load implied it's a mask load or v{p}expand*,
 	     and that mask operand shoud be at the end.
 	     Keep all-ones mask which would be simplified by the expander.  */
 	  if (nargs == 3 && i == 2 && klass == load
-	      && constm1_operand (op, mode))
+	      && constm1_operand (op, mode)
+	      && insn_p->operand[i].predicate (op, mode))
 	    ;
 	  else if (GET_MODE (op) == mode || GET_MODE (op) == VOIDmode)
 	    op = copy_to_mode_reg (mode, op);
@@ -14509,11 +14528,15 @@ ix86_expand_vector_init (bool mmx_ok, rtx target, rtx vals)
       if (GET_MODE_NUNITS (GET_MODE (x)) * 2 == n_elts)
 	{
 	  rtx ops[2] = { XVECEXP (vals, 0, 0), XVECEXP (vals, 0, 1) };
-	  if (inner_mode == QImode || inner_mode == HImode)
+	  if (inner_mode == QImode
+	      || inner_mode == HImode
+	      || inner_mode == TImode)
 	    {
 	      unsigned int n_bits = n_elts * GET_MODE_SIZE (inner_mode);
-	      mode = mode_for_vector (SImode, n_bits / 4).require ();
-	      inner_mode = mode_for_vector (SImode, n_bits / 8).require ();
+	      scalar_mode elt_mode = inner_mode == TImode ? DImode : SImode;
+	      n_bits /= GET_MODE_SIZE (elt_mode);
+	      mode = mode_for_vector (elt_mode, n_bits).require ();
+	      inner_mode = mode_for_vector (elt_mode, n_bits / 2).require ();
 	      ops[0] = gen_lowpart (inner_mode, ops[0]);
 	      ops[1] = gen_lowpart (inner_mode, ops[1]);
 	      subtarget = gen_reg_rtx (mode);

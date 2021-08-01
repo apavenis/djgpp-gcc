@@ -1,3 +1,197 @@
+2021-07-28  Release Manager
+
+	* GCC 11.2.0 released.
+
+2021-07-15  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-07-14  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100949
+	* trans-expr.c (gfc_trans_class_init_assign): Call
+	gfc_conv_expr_present only for dummy variables.
+
+2021-07-08  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	Backported from master:
+	2021-07-06  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	PR fortran/100227
+	* frontend-passes.c (traverse_io_block): Adjust test for
+	when a variable is eligible for the transformation to
+	array slice.
+
+2021-06-19  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-06-18  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100283
+	PR fortran/101123
+	* trans-intrinsic.c (gfc_conv_intrinsic_minmax): Unconditionally
+	convert result of min/max to result type.
+
+2021-06-18  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-06-16  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/95501
+	PR fortran/95502
+	* expr.c (gfc_check_pointer_assign): Avoid NULL pointer
+	dereference.
+	* match.c (gfc_match_pointer_assignment): Likewise.
+	* parse.c (gfc_check_do_variable): Avoid comparison with NULL
+	symtree.
+
+2021-06-17  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-06-09  Jakub Jelinek  <jakub@redhat.com>
+
+	PR fortran/100965
+	* trans-openmp.c (gfc_omp_finish_clause): Gimplify OMP_CLAUSE_SIZE.
+
+2021-06-16  José Rui Faustino de Sousa  <jrfsousa@gmail.com>
+
+	PR fortran/82376
+	* trans-expr.c (gfc_conv_procedure_call): Evaluate function result
+	and then pass a pointer.
+
+2021-06-06  Andre Vehreschild  <vehre@gcc.gnu.org>
+	    Steve Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/98301
+	* trans-decl.c (gfc_build_builtin_function_decls): Move decl.
+	* trans-intrinsic.c (conv_intrinsic_random_init): Use bool for
+	lib-call of caf_random_init instead of logical (4-byte).
+	* trans.h: Add tree var for random_init.
+
+2021-06-04  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-06-04  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/99839
+	* frontend-passes.c (inline_matmul_assign): Do not inline matmul
+	if the assignment to the resulting array if it is not of canonical
+	type (real/integer/complex/logical).
+
+2021-05-28  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-05-17  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/98411
+	* trans-decl.c (gfc_finish_var_decl): Add check for explicit SAVE
+	attribute.
+
+2021-05-28  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-05-27  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100656
+	* trans-array.c (gfc_conv_ss_startstride): Do not call check for
+	presence of a dummy argument when a symbol actually refers to a
+	non-dummy.
+
+2021-05-28  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-05-27  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100602
+	* trans-intrinsic.c (gfc_conv_intrinsic_size): Use CLASS data
+	attributes for CLASS arrays for generation of runtime error.
+
+2021-05-25  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-05-23  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100551
+	* trans-expr.c (gfc_conv_procedure_call): Adjust check for
+	implicit conversion of actual argument to an unlimited polymorphic
+	procedure argument.
+
+2021-05-25  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from master:
+	2021-05-25  Tobias Burnus  <tobias@codesourcery.com>
+		    Johannes Nendwich  <a08727063@unet.univie.ac.at>
+
+	* intrinsic.texi (GERROR, GETARGS, GETLOG, NORM2, PARITY, RANDOM_INIT,
+	RANDOM_NUMBER): Fix typos and copy'n'paste errors.
+
+2021-05-23  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from master:
+	2021-05-23  Tobias Burnus  <tobias@codesourcery.com>
+
+	* intrinsic.texi (ATOMIC_ADD, ATOMIC_FETCH_ADD): Use the
+	proper variable name in the description.
+
+2021-05-18  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from master:
+	2021-05-17  Tobias Burnus  <tobias@codesourcery.com>
+
+	PR fortran/100633
+	* resolve.c (gfc_resolve_code): Reject nonintrinsic assignments in
+	OMP WORKSHARE.
+
+2021-05-17  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from master:
+	2021-05-14  Tobias Burnus  <tobias@codesourcery.com>
+
+	* resolve.c (resolve_symbol): Handle implicit SAVE of main-program
+	for vars in 'omp threadprivate' and 'omp declare target'.
+
+2021-05-05  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-05-05  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100274
+	* interface.c (gfc_compare_actual_formal): Continue checks after
+	emitting warning for argument length mismatch.
+	* trans-expr.c (gfc_conv_procedure_call): Check for NULL pointer
+	dereference.
+
+2021-04-29  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from master:
+	2021-04-28  Tobias Burnus  <tobias@codesourcery.com>
+
+	* openmp.c (gfc_match_omp_variable_list): Gobble whitespace before
+	checking whether a '%' or parenthesis-open follows as next character.
+
+2021-04-27  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-04-24  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100218
+	* expr.c (gfc_check_vardef_context): Extend check to allow pointer
+	from a function reference.
+
+2021-04-27  Harald Anlauf  <anlauf@gmx.de>
+
+	Backported from master:
+	2021-04-24  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/100154
+	* check.c (variable_check): Allow function reference having a data
+	pointer result.
+	(arg_strlen_is_zero): New function.
+	(gfc_check_fgetputc_sub): Add static check of character and status
+	arguments.
+	(gfc_check_fgetput_sub): Likewise.
+	* intrinsic.c (add_subroutines): Fix argument name for the
+	character argument to intrinsic subroutines fget[c], fput[c].
+
 2021-04-27  Release Manager
 
 	* GCC 11.1.0 released.

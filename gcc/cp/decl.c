@@ -944,7 +944,9 @@ static bool
 function_requirements_equivalent_p (tree newfn, tree oldfn)
 {
   /* In the concepts TS, the combined constraints are compared.  */
-  if (cxx_dialect < cxx20)
+  if (cxx_dialect < cxx20
+      && (DECL_TEMPLATE_SPECIALIZATION (newfn)
+	  <= DECL_TEMPLATE_SPECIALIZATION (oldfn)))
     {
       tree ci1 = get_constraints (oldfn);
       tree ci2 = get_constraints (newfn);
@@ -2160,11 +2162,10 @@ duplicate_decls (tree newdecl, tree olddecl, bool hiding, bool was_hidden)
 	  if (DECL_DELETED_FN (newdecl))
 	    {
 	      auto_diagnostic_group d;
-	      pedwarn (newdecl_loc, OPT_Wpedantic,
-		       "deleted definition of %qD is not first declaration",
-		       newdecl);
-	      inform (olddecl_loc,
-		      "previous declaration of %qD", olddecl);
+	      if (pedwarn (newdecl_loc, OPT_Wpedantic, "deleted definition of "
+			   "%qD is not first declaration", newdecl))
+		inform (olddecl_loc,
+			"previous declaration of %qD", olddecl);
 	    }
 	  DECL_DELETED_FN (newdecl) |= DECL_DELETED_FN (olddecl);
 	}
@@ -6388,10 +6389,9 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 	      /* We already reshaped this.  */
 	      if (field != d->cur->index)
 		{
-		  tree id = DECL_NAME (d->cur->index);
-		  gcc_assert (id);
-		  gcc_checking_assert (d->cur->index
-				       == get_class_binding (type, id));
+		  if (tree id = DECL_NAME (d->cur->index))
+		    gcc_checking_assert (d->cur->index
+					 == get_class_binding (type, id));
 		  field = d->cur->index;
 		}
 	    }
@@ -6411,6 +6411,32 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 		error ("%qT has no non-static data member named %qD", type,
 		       d->cur->index);
 	      return error_mark_node;
+	    }
+
+	  /* If the element is an anonymous union object and the initializer
+	     list is a designated-initializer-list, the anonymous union object
+	     is initialized by the designated-initializer-list { D }, where D
+	     is the designated-initializer-clause naming a member of the
+	     anonymous union object.  */
+	  tree ictx = DECL_CONTEXT (field);
+	  if (!same_type_ignoring_top_level_qualifiers_p (ictx, type))
+	    {
+	      gcc_assert (ANON_AGGR_TYPE_P (ictx));
+	      /* Find the anon aggr that is a direct member of TYPE.  */
+	      while (true)
+		{
+		  tree cctx = TYPE_CONTEXT (ictx);
+		  if (same_type_ignoring_top_level_qualifiers_p (cctx, type))
+		    break;
+		  ictx = cctx;
+		}
+	      /* And then the TYPE member with that anon aggr type.  */
+	      tree aafield = TYPE_FIELDS (type);
+	      for (; aafield; aafield = TREE_CHAIN (aafield))
+		if (TREE_TYPE (aafield) == ictx)
+		  break;
+	      gcc_assert (aafield);
+	      field = aafield;
 	    }
 	}
 
@@ -7028,17 +7054,9 @@ check_initializer (tree decl, tree init, int flags, vec<tree, va_gc> **cleanups)
 	     have returned an INIT_EXPR rather than a CALL_EXPR.  In that
 	     case, pull the initializer back out and pass it down into
 	     store_init_value.  */
-	  while (true)
-	    {
-	      if (TREE_CODE (init_code) == EXPR_STMT
-		  || TREE_CODE (init_code) == STMT_EXPR
-		  || TREE_CODE (init_code) == CONVERT_EXPR)
-		init_code = TREE_OPERAND (init_code, 0);
-	      else if (TREE_CODE (init_code) == BIND_EXPR)
-		init_code = BIND_EXPR_BODY (init_code);
-	      else
-		break;
-	    }
+	  while (TREE_CODE (init_code) == EXPR_STMT
+		 || TREE_CODE (init_code) == CONVERT_EXPR)
+	    init_code = TREE_OPERAND (init_code, 0);
 	  if (TREE_CODE (init_code) == INIT_EXPR)
 	    {
 	      /* In C++20, the call to build_aggr_init could have created
@@ -13966,6 +13984,8 @@ grokdeclarator (const cp_declarator *declarator,
 		storage_class = sc_none;
 	      }
 	  }
+	if (declspecs->explicit_specifier)
+	  store_explicit_specifier (decl, declspecs->explicit_specifier);
       }
     else
       {
@@ -16261,17 +16281,9 @@ incremented enumerator value is too large for %<long%>"));
 
 	 For which case we need to make sure that the access of `S::i'
 	 matches the access of `S::E'.  */
-      tree saved_cas = current_access_specifier;
-      if (TREE_PRIVATE (TYPE_NAME (enumtype)))
-	current_access_specifier = access_private_node;
-      else if (TREE_PROTECTED (TYPE_NAME (enumtype)))
-	current_access_specifier = access_protected_node;
-      else
-	current_access_specifier = access_public_node;
-
+      auto cas = make_temp_override (current_access_specifier);
+      set_current_access_from_decl (TYPE_NAME (enumtype));
       finish_member_declaration (decl);
-
-      current_access_specifier = saved_cas;
     }
   else
     pushdecl (decl);

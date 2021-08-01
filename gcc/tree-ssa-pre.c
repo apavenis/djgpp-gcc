@@ -3409,7 +3409,11 @@ do_pre_regular_insertion (basic_block block, basic_block dom,
 	  /* If all edges produce the same value and that value is
 	     an invariant, then the PHI has the same value on all
 	     edges.  Note this.  */
-	  else if (!cant_insert && all_same)
+	  else if (!cant_insert
+		   && all_same
+		   && (edoubleprime->kind != NAME
+		       || !SSA_NAME_OCCURS_IN_ABNORMAL_PHI
+			     (PRE_EXPR_NAME (edoubleprime))))
 	    {
 	      gcc_assert (edoubleprime->kind == CONSTANT
 			  || edoubleprime->kind == NAME);
@@ -4152,6 +4156,16 @@ compute_avail (void)
 		      if (ref->set == set
 			  || alias_set_subset_of (set, ref->set))
 			;
+		      else if (ref1->opcode != ref2->opcode
+			       || (ref1->opcode != MEM_REF
+				   && ref1->opcode != TARGET_MEM_REF))
+			{
+			  /* With mismatching base opcodes or bases
+			     other than MEM_REF or TARGET_MEM_REF we
+			     can't do any easy TBAA adjustment.  */
+			  operands.release ();
+			  continue;
+			}
 		      else if (alias_set_subset_of (ref->set, set))
 			{
 			  ref->set = set;

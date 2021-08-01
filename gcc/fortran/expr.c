@@ -3815,6 +3815,9 @@ gfc_check_pointer_assign (gfc_expr *lvalue, gfc_expr *rvalue,
   int proc_pointer;
   bool same_rank;
 
+  if (!lvalue->symtree)
+    return false;
+
   lhs_attr = gfc_expr_attr (lvalue);
   if (lvalue->ts.type == BT_UNKNOWN && !lhs_attr.proc_pointer)
     {
@@ -6121,7 +6124,9 @@ gfc_check_vardef_context (gfc_expr* e, bool pointer, bool alloc_obj,
     }
   if (!pointer && sym->attr.flavor != FL_VARIABLE
       && !(sym->attr.flavor == FL_PROCEDURE && sym == sym->result)
-      && !(sym->attr.flavor == FL_PROCEDURE && sym->attr.proc_pointer))
+      && !(sym->attr.flavor == FL_PROCEDURE && sym->attr.proc_pointer)
+      && !(sym->attr.flavor == FL_PROCEDURE
+	   && sym->attr.function && sym->attr.pointer))
     {
       if (context)
 	gfc_error ("%qs in variable definition context (%s) at %L is not"

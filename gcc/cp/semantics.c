@@ -3660,8 +3660,10 @@ baselink_for_fns (tree fns)
   cl = currently_open_derived_class (scope);
   if (!cl)
     cl = scope;
-  cl = TYPE_BINFO (cl);
-  return build_baselink (cl, cl, fns, /*optype=*/NULL_TREE);
+  tree access_path = TYPE_BINFO (cl);
+  tree conv_path = (cl == scope ? access_path
+		    : lookup_base (cl, scope, ba_any, NULL, tf_none));
+  return build_baselink (conv_path, access_path, fns, /*optype=*/NULL_TREE);
 }
 
 /* Returns true iff DECL is a variable from a function outside
@@ -4093,12 +4095,6 @@ finish_id_expression_1 (tree id_expression,
 
 	  cp_warn_deprecated_use_scopes (scope);
 
-	  /* In a constant-expression context, turn off cp_unevaluated_operand
-	     so finish_non_static_data_member will complain (93314).  */
-	  auto eval = make_temp_override (cp_unevaluated_operand);
-	  if (integral_constant_expression_p && TREE_CODE (decl) == FIELD_DECL)
-	    cp_unevaluated_operand = 0;
-
 	  if (TYPE_P (scope))
 	    decl = finish_qualified_id_expr (scope,
 					     decl,
@@ -4112,10 +4108,6 @@ finish_id_expression_1 (tree id_expression,
 	}
       else if (TREE_CODE (decl) == FIELD_DECL)
 	{
-	  auto eval = make_temp_override (cp_unevaluated_operand);
-	  if (integral_constant_expression_p)
-	    cp_unevaluated_operand = 0;
-
 	  /* Since SCOPE is NULL here, this is an unqualified name.
 	     Access checking has been performed during name lookup
 	     already.  Turn off checking to avoid duplicate errors.  */
@@ -6008,7 +6000,8 @@ finish_omp_reduction_clause (tree c, bool *need_default_ctor, bool *need_dtor)
       if (!processing_template_decl)
 	{
 	  t = require_complete_type (t);
-	  if (t == error_mark_node)
+	  if (t == error_mark_node
+	      || !complete_type_or_else (oatype, NULL_TREE))
 	    return true;
 	  tree size = size_binop (EXACT_DIV_EXPR, TYPE_SIZE_UNIT (oatype),
 				  TYPE_SIZE_UNIT (type));
@@ -6038,6 +6031,8 @@ finish_omp_reduction_clause (tree c, bool *need_default_ctor, bool *need_dtor)
       case PLUS_EXPR:
       case MULT_EXPR:
       case MINUS_EXPR:
+      case TRUTH_ANDIF_EXPR:
+      case TRUTH_ORIF_EXPR:
 	predefined = true;
 	break;
       case MIN_EXPR:
@@ -6050,12 +6045,6 @@ finish_omp_reduction_clause (tree c, bool *need_default_ctor, bool *need_dtor)
       case BIT_IOR_EXPR:
       case BIT_XOR_EXPR:
 	if (FLOAT_TYPE_P (type) || TREE_CODE (type) == COMPLEX_TYPE)
-	  break;
-	predefined = true;
-	break;
-      case TRUTH_ANDIF_EXPR:
-      case TRUTH_ORIF_EXPR:
-	if (FLOAT_TYPE_P (type))
 	  break;
 	predefined = true;
 	break;
@@ -6527,7 +6516,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
      has been seen, -2 if mixed inscan/normal reduction diagnosed.  */
   int reduction_seen = 0;
   bool allocate_seen = false;
-  bool detach_seen = false;
+  tree detach_seen = NULL_TREE;
   bool mergeable_seen = false;
 
   bitmap_obstack_initialize (NULL);
@@ -7578,7 +7567,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 			    type);
 		  remove = true;
 		}
-	      detach_seen = true;
+	      detach_seen = c;
 	      cxx_mark_addressable (t);
 	    }
 	  break;
@@ -8548,7 +8537,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	      || OMP_CLAUSE_CODE (c) == OMP_CLAUSE_PRIVATE
 	      || OMP_CLAUSE_CODE (c) == OMP_CLAUSE_FIRSTPRIVATE
 	      || OMP_CLAUSE_CODE (c) == OMP_CLAUSE_LASTPRIVATE)
-	  && OMP_CLAUSE_DECL (c) == t)
+	  && OMP_CLAUSE_DECL (c) == OMP_CLAUSE_DECL (detach_seen))
 	{
 	  error_at (OMP_CLAUSE_LOCATION (c),
 		    "the event handle of a %<detach%> clause "

@@ -1,3 +1,31 @@
+2021-07-28  Release Manager
+
+	* GCC 11.2.0 released.
+
+2021-06-21  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100879
+	* c-warn.c (warn_for_sign_compare): Remove C++ enum mismatch
+	warning.
+
+2021-06-17  Martin Sebor  <msebor@redhat.com>
+
+	PR c/100783
+	* c-attribs.c (positional_argument): Bail on erroneous types.
+
+2021-06-17  Martin Sebor  <msebor@redhat.com>
+
+	PR c/100619
+	* c-attribs.c (build_attr_access_from_parms): Handle arbitrarily many
+	bounds.
+
+2021-05-14  Martin Liska  <mliska@suse.cz>
+
+	Backported from master:
+	2021-05-14  Martin Liska  <mliska@suse.cz>
+
+	* c.opt: Add Warning keyword for 2 options.
+
 2021-04-27  Release Manager
 
 	* GCC 11.1.0 released.

@@ -3837,38 +3837,43 @@ conv_intrinsic_random_init (gfc_code *code)
 {
   stmtblock_t block;
   gfc_se se;
-  tree arg1, arg2, arg3, tmp;
-  tree logical4_type_node = gfc_get_logical_type (4);
+  tree arg1, arg2, tmp;
+  /* On none coarray == lib compiles use LOGICAL(4) else regular LOGICAL.  */
+  tree used_bool_type_node = flag_coarray == GFC_FCOARRAY_LIB
+			     ? logical_type_node
+			     : gfc_get_logical_type (4);
 
   /* Make the function call.  */
   gfc_init_block (&block);
   gfc_init_se (&se, NULL);
 
-  /* Convert REPEATABLE to a LOGICAL(4) entity.  */
+  /* Convert REPEATABLE to the desired LOGICAL entity.  */
   gfc_conv_expr (&se, code->ext.actual->expr);
   gfc_add_block_to_block (&block, &se.pre);
-  arg1 = fold_convert (logical4_type_node, gfc_evaluate_now (se.expr, &block));
+  arg1 = fold_convert (used_bool_type_node, gfc_evaluate_now (se.expr, &block));
   gfc_add_block_to_block (&block, &se.post);
 
-  /* Convert IMAGE_DISTINCT to a LOGICAL(4) entity.  */
+  /* Convert IMAGE_DISTINCT to the desired LOGICAL entity.  */
   gfc_conv_expr (&se, code->ext.actual->next->expr);
   gfc_add_block_to_block (&block, &se.pre);
-  arg2 = fold_convert (logical4_type_node, gfc_evaluate_now (se.expr, &block));
+  arg2 = fold_convert (used_bool_type_node, gfc_evaluate_now (se.expr, &block));
   gfc_add_block_to_block (&block, &se.post);
 
-  /* Create the hidden argument.  For non-coarray codes and -fcoarray=single,
-     simply set this to 0.  For -fcoarray=lib, generate a call to
-     THIS_IMAGE() without arguments.  */
-  arg3 = build_int_cst (gfc_get_int_type (4), 0);
   if (flag_coarray == GFC_FCOARRAY_LIB)
     {
-      arg3 = build_call_expr_loc (input_location, gfor_fndecl_caf_this_image,
-				  1, arg3);
-      se.expr = fold_convert (gfc_get_int_type (4), arg3);
+      tmp = build_call_expr_loc (input_location, gfor_fndecl_caf_random_init,
+				 2, arg1, arg2);
+    }
+  else
+    {
+      /* The ABI for libgfortran needs to be maintained, so a hidden
+	 argument must be include if code is compiled with -fcoarray=single
+	 or without the option.  Set to 0.  */
+      tree arg3 = build_int_cst (gfc_get_int_type (4), 0);
+      tmp = build_call_expr_loc (input_location, gfor_fndecl_random_init,
+				 3, arg1, arg2, arg3);
     }
 
-  tmp = build_call_expr_loc (input_location, gfor_fndecl_random_init, 3,
-			     arg1, arg2, arg3);
   gfc_add_expr_to_block (&block, tmp);
 
   return gfc_finish_block (&block);
@@ -4152,10 +4157,7 @@ gfc_conv_intrinsic_minmax (gfc_se * se, gfc_expr * expr, enum tree_code op)
 			build_empty_stmt (input_location));
       gfc_add_expr_to_block (&se->pre, tmp);
     }
-  if (TREE_CODE (type) == INTEGER_TYPE)
-    se->expr = fold_build1_loc (input_location, FIX_TRUNC_EXPR, type, mvar);
-  else
-    se->expr = convert (type, mvar);
+  se->expr = convert (type, mvar);
 }
 
 
@@ -8009,7 +8011,14 @@ gfc_conv_intrinsic_size (gfc_se * se, gfc_expr * expr)
       tree temp;
       tree cond;
 
-      attr = sym ? sym->attr : gfc_expr_attr (e);
+      if (e->symtree->n.sym && IS_CLASS_ARRAY (e->symtree->n.sym))
+	{
+	  attr = CLASS_DATA (e->symtree->n.sym)->attr;
+	  attr.pointer = attr.class_pointer;
+	}
+      else
+	attr = gfc_expr_attr (e);
+
       if (attr.allocatable)
 	msg = xasprintf ("Allocatable argument '%s' is not allocated",
 			 e->symtree->n.sym->name);

@@ -2298,7 +2298,8 @@ tsubst_requires_expr (tree t, tree args, sat_info info)
   /* A requires-expression is an unevaluated context.  */
   cp_unevaluated u;
 
-  args = add_extra_args (REQUIRES_EXPR_EXTRA_ARGS (t), args);
+  args = add_extra_args (REQUIRES_EXPR_EXTRA_ARGS (t), args,
+			 info.complain, info.in_decl);
   if (processing_template_decl)
     {
       /* We're partially instantiating a generic lambda.  Substituting into
@@ -2747,6 +2748,7 @@ tsubst_constraint (tree t, tree args, tsubst_flags_t complain, tree in_decl)
   /* We also don't want to evaluate concept-checks when substituting the
      constraint-expressions of a declaration.  */
   processing_constraint_expression_sentinel s;
+  cp_unevaluated u;
   tree expr = tsubst_expr (t, args, complain, in_decl, false);
   return expr;
 }
@@ -3005,7 +3007,10 @@ satisfy_atom (tree t, tree args, sat_info info)
 
   /* Compute the value of the constraint.  */
   if (info.noisy ())
-    result = cxx_constant_value (result);
+    {
+      iloc_sentinel ils (EXPR_LOCATION (result));
+      result = cxx_constant_value (result);
+    }
   else
     {
       result = maybe_constant_value (result, NULL_TREE,
@@ -3088,6 +3093,15 @@ normalize_placeholder_type_constraints (tree t, bool diag)
      scope for this placeholder type; use them as the initial template
      parameters for normalization.  */
   tree initial_parms = TREE_PURPOSE (ci);
+
+  if (!initial_parms && TEMPLATE_TYPE_LEVEL (t) == 2)
+    /* This is a return-type-requirement of a non-templated requires-expression,
+       which are parsed under processing_template_decl == 1 and empty
+       current_template_parms; hence the 'auto' has level 2 and initial_parms
+       is empty.  Fix up initial_parms to be consistent with the value of
+       processing_template_decl whence the 'auto' was created.  */
+    initial_parms = build_tree_list (size_int (1), make_tree_vec (0));
+
   /* The 'auto' itself is used as the first argument in its own constraints,
      and its level is one greater than its template depth.  So in order to
      capture all used template parameters, we need to add an extra level of
@@ -3354,7 +3368,7 @@ evaluate_concept_check (tree check)
 }
 
 /* Evaluate the requires-expression T, returning either boolean_true_node
-   or boolean_false_node.  This is used during gimplification and constexpr
+   or boolean_false_node.  This is used during folding and constexpr
    evaluation.  */
 
 tree

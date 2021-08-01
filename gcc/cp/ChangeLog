@@ -1,3 +1,489 @@
+2021-07-28  Release Manager
+
+	* GCC 11.2.0 released.
+
+2021-07-21  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-07-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/101516
+	* semantics.c (finish_omp_reduction_clause): Also call
+	complete_type_or_else and return true if it fails.
+
+2021-07-20  Iain Sandoe  <iain@sandoe.co.uk>
+
+	Backported from master:
+	2021-07-19  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/95520
+	* coroutines.cc (struct coroutine_info): Add fields for
+	actor and destroy function decls.
+	(to_ramp): New.
+	(coro_get_ramp_function): New.
+	(coro_get_actor_function): New.
+	(coro_get_destroy_function): New.
+	(act_des_fn): Set up mapping between ramp, actor and
+	destroy functions.
+	(morph_fn_to_coro): Adjust interface to the builder for
+	helper function decls.
+	* cp-tree.h (DECL_ACTOR_FN, DECL_DESTROY_FN, DECL_RAMP_FN,
+	JOIN_STR): New.
+	* mangle.c (write_encoding): Handle coroutine helpers.
+	(write_unqualified_name): Handle lambda coroutine helpers.
+
+2021-07-20  Iain Sandoe  <iain@sandoe.co.uk>
+
+	Backported from master:
+	2021-07-09  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (build_actor_fn): Move common code to
+	act_des_fn.
+	(build_destroy_fn): Likewise.
+	(act_des_fn): Build the void return here.  Ensure that the
+	source location matches the original function.
+
+2021-07-20  Iain Sandoe  <iain@sandoe.co.uk>
+
+	Backported from master:
+	2021-07-09  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc
+	(coro_rewrite_function_body): Connect the replacement
+	function block to the block nest correctly.
+
+2021-07-18  Tobias Burnus  <tobias@codesourcery.com>
+
+	Backported from master:
+	2021-05-04  Tobias Burnus  <tobias@codesourcery.com>
+
+	* semantics.c (finish_omp_reduction_clause): Accept float + complex
+	for || and && reductions.
+
+2021-07-18  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-07-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/101443
+	* cp-gimplify.c (cp_fold): For comparisons with NULLPTR_TYPE
+	operands, fold them right away to true or false.
+
+2021-07-16  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-07-16  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/101233
+	* pt.c (alias_ctad_tweaks): Clear cp_unevaluated_operand for
+	substituting DECL_ARGUMENTS.
+
+2021-07-16  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-05-11  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/100138
+	* constraint.cc (tsubst_constraint): Set up cp_unevaluated.
+	(satisfy_atom): Set up iloc_sentinel before calling
+	cxx_constant_value.
+	* pt.c (tsubst_pack_expansion): When returning a rebuilt pack
+	expansion, carry over PACK_EXPANSION_LOCAL_P and
+	PACK_EXPANSION_SIZEOF_P from the original pack expansion.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-07-09  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/101181
+	* constraint.cc (tsubst_requires_expr): Pass complain/in_decl to
+	add_extra_args.
+	* cp-tree.h (add_extra_args): Add complain/in_decl parameters.
+	* pt.c (build_extra_args): Make a copy of args.
+	(add_extra_args): Add complain/in_decl parameters.  Enable the
+	code for handling the case where the extra arguments are
+	dependent.
+	(tsubst_pack_expansion): Pass complain/in_decl to
+	add_extra_args.
+	(tsubst_template_args): Handle missing template arguments.
+	(tsubst_expr) <case IF_STMT>: Pass complain/in_decl to
+	add_extra_args.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-07-09  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/101247
+	* pt.c (any_template_parm_r) <case TEMPLATE_DECL>: Just walk the
+	DECL_CONTEXT.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-07-02  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/101247
+	* pt.c (any_template_parm_r) <case TEMPLATE_DECL>: Rewrite to
+	use common_enclosing_class and to not depend on the TREE_TYPE
+	of outer levels pointing to the corresponding primary template.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-07-01  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/101194
+	* constexpr.c (cxx_eval_array_reference): When the element type
+	is an empty type and the corresponding element is omitted, just
+	return an empty CONSTRUCTOR instead of attempting value
+	initialization.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-06-24  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/98832
+	* pt.c (maybe_aggr_guide): Handle alias templates appropriately.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-06-24  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/101182
+	* constraint.cc (evaluate_requires_expr): Adjust function comment.
+	* cp-gimplify.c (cp_genericize_r) <case REQUIRES_EXPR>: Move to ...
+	(cp_fold) <case REQUIRES_EXPR>: ... here.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-06-07  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/100918
+	* parser.c (cp_parser_lookup_name): Check access of the lookup
+	result before we potentially adjust an injected-class-name to
+	its TEMPLATE_DECL.
+
+2021-07-13  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-05-26  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/97420
+	* cvt.c (noexcept_conv_p): Remove redundant checks and simplify.
+	(fnptr_conv_p): Don't call non_reference.  Use INDIRECT_TYPE_P
+	instead of TYPE_PTR_P.
+	* pt.c (convert_nontype_argument_function): Look through
+	implicit INDIRECT_REFs before calling strip_fnptr_conv.
+
+2021-07-09  Jason Merrill  <jason@redhat.com>
+
+	PR c++/101098
+	* decl.c (function_requirements_equivalent_p): Only compare
+	trailing requirements on a specialization.
+
+2021-07-09  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100838
+	* call.c (convert_like_internal): Clear tf_no_cleanup when
+	recursing.
+	(build_user_type_conversion_1): Only add ck_rvalue if
+	LOOKUP_ONLYCONVERTING.
+
+2021-07-09  Jason Merrill  <jason@redhat.com>
+
+	PR c++/86355
+	* pt.c (use_pack_expansion_extra_args_p): Don't compare
+	args from the same argument pack.
+
+2021-07-08  Marek Polacek  <polacek@redhat.com>
+
+	Backported from master:
+	2021-07-08  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/101087
+	* cp-tree.h (unevaluated_p): New.
+	* except.c (check_noexcept_r): Use it.  Don't walk into
+	unevaluated operands.
+
+2021-07-07  Jason Merrill  <jason@redhat.com>
+
+	Revert:
+	2020-12-02  Jason Merrill  <jason@redhat.com>
+
+	* decl.c (check_initializer): Also look through STMT_EXPR
+	and BIND_EXPR.
+
+2021-07-07  Jason Merrill  <jason@redhat.com>
+
+	PR c++/101040
+	PR c++/97566
+	* class.c (is_empty_field): Handle null argument.
+	* constexpr.c (cxx_eval_bare_aggregate): Discard initializer
+	for empty field.
+
+2021-06-29  Marek Polacek  <polacek@redhat.com>
+
+	Backported from master:
+	2021-06-26  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/100752
+	* parser.c (cp_parser_declarator): Pass flags down to
+	cp_parser_declarator.  Also pass static_p/member_p.
+
+2021-06-23  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-06-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR inline-asm/100785
+	* typeck.c (cxx_mark_addressable): Diagnose trying to make
+	bit-fields addressable.
+
+2021-06-21  Jason Merrill  <jason@redhat.com>
+
+	PR c++/101106
+	* decl.c (duplicate_decls): Condition note on return value of pedwarn.
+
+2021-06-17  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-06-06  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/100902
+	* parser.c (cp_parser_omp_target): Call c_omp_adjust_map_clauses
+	even when target is combined with other constructs.
+
+2021-06-17  Jason Merrill  <jason@redhat.com>
+
+	* init.c (build_vec_init): Preserve the type of base.
+
+2021-06-16  Jason Merrill  <jason@redhat.com>
+
+	PR c++/101078
+	* pt.c (tsubst_baselink): Update binfos in non-dependent case.
+
+2021-06-16  Jason Merrill  <jason@redhat.com>
+
+	PR c++/101029
+	* init.c (build_vec_init): Shortcut [0] case.
+
+2021-06-10  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-06-10  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/100946
+	* constraint.cc (normalize_placeholder_type_constraints): When
+	normalizing a non-templated return-type-requirement, add a dummy
+	level to initial_parms.
+
+2021-06-09  Marek Polacek  <polacek@redhat.com>
+
+	Backported from master:
+	2021-06-08  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/100065
+	* decl.c (grokdeclarator): Store a value-dependent
+	explicit-specifier even for deduction guides.
+
+2021-06-08  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100963
+	* call.c (perfect_conversion_p): Check check_narrowing.
+
+2021-06-08  Jason Merrill  <jason@redhat.com>
+
+	PR c++/91706
+	* semantics.c (baselink_for_fns): Fix BASELINK_BINFO.
+
+2021-06-08  Jason Merrill  <jason@redhat.com>
+
+	* module.cc (duplicate_hash::hash): Comment out.
+	(trees_in::tree_value): Adjust loop counter.
+
+2021-06-07  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-06-03  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/100862
+	* pt.c (set_current_access_from_decl): Move to ...
+	* class.c (set_current_access_from_decl): ... here.
+	(handle_using_decl): Use it to propagate the access of the
+	using-enum decl to the copy of the imported enumerator.
+	* cp-tree.h (set_current_access_from_decl): Declare.
+	* decl.c (build_enumerator): Simplify using make_temp_override
+	and set_current_access_from_decl.
+
+2021-06-07  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-06-04  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/100102
+	* pt.c (tsubst_function_decl): Remove old code for reducing
+	args when it has excess levels.
+
+2021-06-01  Jason Merrill  <jason@redhat.com>
+
+	PR c++/91859
+	* call.c (build_op_delete_call): Don't set CALL_FROM_NEW_OR_DELETE_P
+	for destroying delete.
+	* init.c (build_delete): Don't clobber before destroying delete.
+
+2021-06-01  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100797
+	PR c++/95719
+	* call.c (build_over_call): Adjust base_binfo in
+	resolves_to_fixed_type_p case.
+
+2021-05-31  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-05-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/100666
+	* call.c (convert_arg_to_ellipsis): For expressions with NULLPTR_TYPE
+	and side-effects, temporarily disable -Wunused-result warning when
+	building COMPOUND_EXPR.
+
+2021-05-28  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-05-26  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/100502
+	* typeck.c (finish_class_member_access_expr): Disable ahead
+	of time access checking during the member lookup.
+
+2021-05-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100489
+	* decl.c (reshape_init_class): Handle designator for
+	member of anonymous aggregate here.
+	* typeck2.c (process_init_constructor_record): Not here.
+
+2021-05-20  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	Backported from master:
+	2021-05-18  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	PR c++/100281
+	* cvt.c (cp_convert_to_pointer): Use the size of the target
+	pointer type.
+	* tree.c (cp_build_reference_type): Call
+	cp_build_reference_type_for_mode with VOIDmode.
+	(cp_build_reference_type_for_mode): Rename from
+	cp_build_reference_type.  Add MODE argument and invoke
+	build_reference_type_for_mode.
+	(strip_typedefs): Use build_pointer_type_for_mode and
+	cp_build_reference_type_for_mode for pointers and references.
+
+2021-05-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100634
+	* pt.c (invalid_nontype_parm_type_p): Return true for COMPLEX_TYPE.
+
+2021-05-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100659
+	* cp-tree.h (CONST_DECL_USING_P): Check for null TREE_TYPE.
+
+2021-05-19  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100367
+	PR c++/96299
+	* method.c (genericize_spaceship): Use fold_build2 for scalar
+	operands.
+
+2021-05-19  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100261
+	* rtti.c (get_tinfo_decl_direct): Check TYPE_TRANSPARENT_AGGR.
+
+2021-05-19  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100372
+	* tree.c (strip_typedefs): Only look at the pattern of a
+	TYPE_PACK_EXPANSION if it's a type.
+
+2021-05-18  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100644
+	* call.c (perfect_candidate_p): An implicitly deleted move
+	is not perfect.
+
+2021-05-18  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100205
+	PR c++/93314
+	* cp-tree.h (cp_evaluated): Add reset parm to constructor.
+	* parser.c (cp_parser_constant_expression): Change
+	allow_non_constant_p to int.  Use cp_evaluated.
+	(cp_parser_initializer_clause): Pass 2 to allow_non_constant_p.
+	* semantics.c (finish_id_expression_1): Don't mess with
+	cp_unevaluated_operand here.
+
+2021-05-03  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-05-03  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/100362
+	* parser.c (cp_parser_class_head): Reinstate calls to pushclass
+	and popclass when parsing the base-clause that were removed in
+	r11-6815.
+
+2021-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2021-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/100319
+	* semantics.c (finish_omp_clauses): Fix up check that variable
+	mentioned in detach clause doesn't appear in data-sharing clauses.
+
+2021-04-27  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2021-04-24  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/89565
+	PR c++/93383
+	PR c++/95291
+	PR c++/99200
+	PR c++/99683
+	* pt.c (do_class_deduction): Punt if the initializer is
+	type-dependent.
+
+2021-04-27  Marek Polacek  <polacek@redhat.com>
+
+	Backported from master:
+	2021-04-22  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/100161
+	* pt.c (tsubst_copy_and_build) <case PLUS_EXPR>: Test op0 and
+	op1 separately for value- or type-dependence.
+
+2021-04-27  Marek Polacek  <polacek@redhat.com>
+
+	Backported from master:
+	2021-04-21  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/96380
+	* parser.c (cp_parser_enum_specifier): Don't allow defining
+	types in enum-base.
+
+2021-04-27  Jakub Jelinek  <jakub@redhat.com>
+
+	* module.cc: Remove #error that triggers if DEV-PHASE is empty.
+
 2021-04-27  Release Manager
 
 	* GCC 11.1.0 released.

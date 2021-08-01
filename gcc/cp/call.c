@@ -4108,7 +4108,7 @@ build_user_type_conversion_1 (tree totype, tree expr, int flags,
 	{
 	  cand->second_conv = build_identity_conv (totype, NULL_TREE);
 
-	  /* If totype isn't a reference, and LOOKUP_NO_TEMP_BIND isn't
+	  /* If totype isn't a reference, and LOOKUP_ONLYCONVERTING is
 	     set, then this is copy-initialization.  In that case, "The
 	     result of the call is then used to direct-initialize the
 	     object that is the destination of the copy-initialization."
@@ -4117,6 +4117,7 @@ build_user_type_conversion_1 (tree totype, tree expr, int flags,
 	     We represent this in the conversion sequence with an
 	     rvalue conversion, which means a constructor call.  */
 	  if (!TYPE_REF_P (totype)
+	      && (flag_elide_constructors || (flags & LOOKUP_ONLYCONVERTING))
 	      && !(convflags & LOOKUP_NO_TEMP_BIND))
 	    cand->second_conv
 	      = build_conv (ck_rvalue, totype, cand->second_conv);
@@ -5878,6 +5879,9 @@ perfect_conversion_p (conversion *conv)
 			next_conversion (conv)->type))
 	return false;
     }
+  if (conv->check_narrowing)
+    /* Brace elision is imperfect.  */
+    return false;
   return true;
 }
 
@@ -5891,6 +5895,11 @@ static bool
 perfect_candidate_p (z_candidate *cand)
 {
   if (cand->viable < 1)
+    return false;
+  /* CWG1402 makes an implicitly deleted move op worse than other
+     candidates.  */
+  if (DECL_DELETED_FN (cand->fn) && DECL_DEFAULTED_FN (cand->fn)
+      && move_fn_p (cand->fn))
     return false;
   int len = cand->num_convs;
   for (int i = 0; i < len; ++i)
@@ -7206,8 +7215,10 @@ build_op_delete_call (enum tree_code code, tree addr, tree size,
 	 treat that as an implicit delete-expression.  This is also called for
 	 the delete if the constructor throws in a new-expression, and for a
 	 deleting destructor (which implements a delete-expression).  */
+      /* But leave this flag off for destroying delete to avoid wrong
+	 assumptions in the optimizers.  */
       tree call = extract_call_expr (ret);
-      if (TREE_CODE (call) == CALL_EXPR)
+      if (TREE_CODE (call) == CALL_EXPR && !destroying_delete_p (fn))
 	CALL_FROM_NEW_OR_DELETE_P (call) = 1;
 
       return ret;
@@ -7794,10 +7805,13 @@ convert_like_internal (conversion *convs, tree expr, tree fn, int argnum,
       break;
     };
 
+  tsubst_flags_t sub_complain = complain;
+  if (!flag_elide_constructors)
+    sub_complain &= ~tf_no_cleanup;
   expr = convert_like (next_conversion (convs), expr, fn, argnum,
 		       convs->kind == ck_ref_bind
 		       ? issue_conversion_warnings : false,
-		       c_cast_p, complain);
+		       c_cast_p, sub_complain);
   if (expr == error_mark_node)
     return error_mark_node;
 
@@ -8173,7 +8187,10 @@ convert_arg_to_ellipsis (tree arg, tsubst_flags_t complain)
     {
       arg = mark_rvalue_use (arg);
       if (TREE_SIDE_EFFECTS (arg))
-	arg = cp_build_compound_expr (arg, null_pointer_node, complain);
+	{
+	  warning_sentinel w(warn_unused_result);
+	  arg = cp_build_compound_expr (arg, null_pointer_node, complain);
+	}
       else
 	arg = null_pointer_node;
     }
@@ -9144,17 +9161,31 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 	  if (base_binfo == error_mark_node)
 	    return error_mark_node;
 	}
-      tree converted_arg = build_base_path (PLUS_EXPR, arg,
-					    base_binfo, 1, complain);
 
       /* If we know the dynamic type of the object, look up the final overrider
 	 in the BINFO.  */
       if (DECL_VINDEX (fn) && (flags & LOOKUP_NONVIRTUAL) == 0
 	  && resolves_to_fixed_type_p (arg))
 	{
-	  fn = lookup_vfn_in_binfo (DECL_VINDEX (fn), base_binfo);
-	  flags |= LOOKUP_NONVIRTUAL;
+	  tree ov = lookup_vfn_in_binfo (DECL_VINDEX (fn), base_binfo);
+
+	  /* And unwind base_binfo to match.  If we don't find the type we're
+	     looking for in BINFO_INHERITANCE_CHAIN, we're looking at diamond
+	     inheritance; for now do a normal virtual call in that case.  */
+	  tree octx = DECL_CONTEXT (ov);
+	  tree obinfo = base_binfo;
+	  while (obinfo && !SAME_BINFO_TYPE_P (BINFO_TYPE (obinfo), octx))
+	    obinfo = BINFO_INHERITANCE_CHAIN (obinfo);
+	  if (obinfo)
+	    {
+	      fn = ov;
+	      base_binfo = obinfo;
+	      flags |= LOOKUP_NONVIRTUAL;
+	    }
 	}
+
+      tree converted_arg = build_base_path (PLUS_EXPR, arg,
+					    base_binfo, 1, complain);
 
       argarray[j++] = converted_arg;
       parm = TREE_CHAIN (parm);

@@ -512,7 +512,7 @@ negate_expr_p (tree t)
       if (TREE_CODE (TREE_OPERAND (t, 1)) == INTEGER_CST)
 	{
 	  tree op1 = TREE_OPERAND (t, 1);
-	  if (wi::to_wide (op1) == TYPE_PRECISION (type) - 1)
+	  if (wi::to_wide (op1) == element_precision (type) - 1)
 	    return true;
 	}
       break;
@@ -705,7 +705,7 @@ fold_negate_expr_1 (location_t loc, tree t)
       if (TREE_CODE (TREE_OPERAND (t, 1)) == INTEGER_CST)
 	{
 	  tree op1 = TREE_OPERAND (t, 1);
-	  if (wi::to_wide (op1) == TYPE_PRECISION (type) - 1)
+	  if (wi::to_wide (op1) == element_precision (type) - 1)
 	    {
 	      tree ntype = TYPE_UNSIGNED (type)
 			   ? signed_type_for (type)
@@ -15479,6 +15479,9 @@ fold_read_from_vector (tree arg, poly_uint64 idx)
 	return VECTOR_CST_ELT (arg, i);
       else if (TREE_CODE (arg) == CONSTRUCTOR)
 	{
+	  if (CONSTRUCTOR_NELTS (arg)
+	      && VECTOR_TYPE_P (TREE_TYPE (CONSTRUCTOR_ELT (arg, 0)->value)))
+	    return NULL_TREE;
 	  if (i >= CONSTRUCTOR_NELTS (arg))
 	    return build_zero_cst (TREE_TYPE (TREE_TYPE (arg)));
 	  return CONSTRUCTOR_ELT (arg, i)->value;
