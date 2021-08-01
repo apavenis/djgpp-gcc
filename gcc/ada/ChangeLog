@@ -1,3 +1,46 @@
+2021-07-28  Release Manager
+
+	* GCC 11.2.0 released.
+
+2021-07-09  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/utils.c (finish_subprog_decl): Remove obsolete line.
+
+2021-07-01  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR ada/101094
+	* exp_attr.adb (Get_Integer_Type): Return an integer type with the
+	same signedness as the input type.
+
+2021-06-03  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_entity) <E_Array_Type>: Add PAT
+	local constant and use it throughout.  If it is set, use a ref-all
+	pointer type for the pointer-to-array field of the fat pointer type.
+	<E_Array_Subtype>: Add PAT local constant and use it throughout.
+
+2021-05-21  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_entity) <E_Array_Type>: Process
+	the implementation type of a packed type implemented specially.
+
+2021-05-21  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/decl.c (gnat_to_gnu_subprog_type): Always translate
+	the Is_Pure flag into the "pure" attribute of GNU C.
+
+2021-05-21  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/trans.c (Call_to_gnu): Restrict previous change
+	to bitfields whose size is not equal to the type size.
+	(gnat_to_gnu): Likewise.
+
+2021-05-21  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc-interface/trans.c (gnat_to_gnu) <N_Simple_Return_Statement>:
+	Put a SLOC on the assignment from the return value to the return
+	object in the copy-in/copy-out case.
+
 2021-04-27  Release Manager
 
 	* GCC 11.1.0 released.

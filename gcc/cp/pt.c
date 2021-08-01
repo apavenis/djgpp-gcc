@@ -190,7 +190,6 @@ static tree tsubst_arg_types (tree, tree, tree, tsubst_flags_t, tree);
 static tree tsubst_function_type (tree, tree, tsubst_flags_t, tree);
 static bool check_specialization_scope (void);
 static tree process_partial_specialization (tree);
-static void set_current_access_from_decl (tree);
 static enum template_base_result get_template_base (tree, tree, tree, tree,
 						    bool , tree *);
 static tree try_class_unification (tree, tree, tree, tree, bool);
@@ -6635,7 +6634,10 @@ convert_nontype_argument_function (tree type, tree expr,
   if (value_dependent_expression_p (fn))
     goto accept;
 
-  fn_no_ptr = strip_fnptr_conv (fn);
+  fn_no_ptr = fn;
+  if (REFERENCE_REF_P (fn_no_ptr))
+    fn_no_ptr = TREE_OPERAND (fn_no_ptr, 0);
+  fn_no_ptr = strip_fnptr_conv (fn_no_ptr);
   if (TREE_CODE (fn_no_ptr) == ADDR_EXPR)
     fn_no_ptr = TREE_OPERAND (fn_no_ptr, 0);
   if (BASELINK_P (fn_no_ptr))
@@ -10728,28 +10730,11 @@ any_template_parm_r (tree t, void *data)
       break;
 
     case TEMPLATE_DECL:
-      {
-	/* If T is a member template that shares template parameters with
-	   ctx_parms, we need to mark all those parameters for mapping.  */
-	tree dparms = DECL_TEMPLATE_PARMS (t);
-	tree cparms = ftpi->ctx_parms;
-	while (TMPL_PARMS_DEPTH (dparms) > ftpi->max_depth)
-	  dparms = TREE_CHAIN (dparms);
-	while (TMPL_PARMS_DEPTH (cparms) > TMPL_PARMS_DEPTH (dparms))
-	  cparms = TREE_CHAIN (cparms);
-	while (dparms
-	       && (TREE_TYPE (TREE_VALUE (dparms))
-		   != TREE_TYPE (TREE_VALUE (cparms))))
-	  dparms = TREE_CHAIN (dparms),
-	    cparms = TREE_CHAIN (cparms);
-	if (dparms)
-	  {
-	    int ddepth = TMPL_PARMS_DEPTH (dparms);
-	    tree dargs = TI_ARGS (get_template_info (DECL_TEMPLATE_RESULT (t)));
-	    for (int i = 0; i < ddepth; ++i)
-	      WALK_SUBTREE (TMPL_ARGS_LEVEL (dargs, i+1));
-	  }
-      }
+      /* If T is a member template that shares template parameters with
+	 ctx_parms, we need to mark all those parameters for mapping.
+	 To that end, it should suffice to just walk the DECL_CONTEXT of
+	 the template (assuming the template is not overly general).  */
+      WALK_SUBTREE (DECL_CONTEXT (t));
       break;
 
     case LAMBDA_EXPR:
@@ -12445,9 +12430,9 @@ use_pack_expansion_extra_args_p (tree parm_packs,
       return false;
     }
 
-  bool has_expansion_arg = false;
   for (int i = 0 ; i < arg_pack_len; ++i)
     {
+      bool has_expansion_arg = false;
       bool has_non_expansion_arg = false;
       for (tree parm_pack = parm_packs;
 	   parm_pack;
@@ -12467,7 +12452,10 @@ use_pack_expansion_extra_args_p (tree parm_packs,
 	}
 
       if (has_expansion_arg && has_non_expansion_arg)
-	return true;
+	{
+	  gcc_checking_assert (false);
+	  return true;
+	}
     }
   return false;
 }
@@ -12926,7 +12914,9 @@ extract_local_specs (tree pattern, tsubst_flags_t complain)
 tree
 build_extra_args (tree pattern, tree args, tsubst_flags_t complain)
 {
-  tree extra = args;
+  /* Make a copy of the extra arguments so that they won't get changed
+     out from under us.  */
+  tree extra = copy_template_args (args);
   if (local_specializations)
     if (tree locals = extract_local_specs (pattern, complain))
       extra = tree_cons (NULL_TREE, extra, locals);
@@ -12937,7 +12927,7 @@ build_extra_args (tree pattern, tree args, tsubst_flags_t complain)
    normal template args to ARGS.  */
 
 tree
-add_extra_args (tree extra, tree args)
+add_extra_args (tree extra, tree args, tsubst_flags_t complain, tree in_decl)
 {
   if (extra && TREE_CODE (extra) == TREE_LIST)
     {
@@ -12957,20 +12947,14 @@ add_extra_args (tree extra, tree args)
       gcc_assert (!TREE_PURPOSE (extra));
       extra = TREE_VALUE (extra);
     }
-#if 1
-  /* I think we should always be able to substitute dependent args into the
-     pattern.  If that turns out to be incorrect in some cases, enable the
-     alternate code (and add complain/in_decl parms to this function).  */
-  gcc_checking_assert (!uses_template_parms (extra));
-#else
-  if (!uses_template_parms (extra))
+  if (uses_template_parms (extra))
     {
-      gcc_unreachable ();
+      /* This can happen after dependent substitution into a
+	 requires-expr or a lambda that uses constexpr if.  */
       extra = tsubst_template_args (extra, args, complain, in_decl);
       args = add_outermost_template_args (args, extra);
     }
   else
-#endif
     args = add_to_template_args (extra, args);
   return args;
 }
@@ -12996,7 +12980,7 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
   pattern = PACK_EXPANSION_PATTERN (t);
 
   /* Add in any args remembered from an earlier partial instantiation.  */
-  args = add_extra_args (PACK_EXPANSION_EXTRA_ARGS (t), args);
+  args = add_extra_args (PACK_EXPANSION_EXTRA_ARGS (t), args, complain, in_decl);
 
   levels = TMPL_ARGS_DEPTH (args);
 
@@ -13202,6 +13186,8 @@ tsubst_pack_expansion (tree t, tree args, tsubst_flags_t complain,
       else
 	result = tsubst (pattern, args, complain, in_decl);
       result = make_pack_expansion (result, complain);
+      PACK_EXPANSION_LOCAL_P (result) = PACK_EXPANSION_LOCAL_P (t);
+      PACK_EXPANSION_SIZEOF_P (result) = PACK_EXPANSION_SIZEOF_P (t);
       if (PACK_EXPANSION_AUTO_P (t))
 	{
 	  /* This is a fake auto... pack expansion created in add_capture with
@@ -13396,7 +13382,9 @@ tsubst_template_args (tree t, tree args, tsubst_flags_t complain, tree in_decl)
       tree orig_arg = TREE_VEC_ELT (t, i);
       tree new_arg;
 
-      if (TREE_CODE (orig_arg) == TREE_VEC)
+      if (!orig_arg)
+	new_arg = NULL_TREE;
+      else if (TREE_CODE (orig_arg) == TREE_VEC)
 	new_arg = tsubst_template_args (orig_arg, args, complain, in_decl);
       else if (PACK_EXPANSION_P (orig_arg))
         {
@@ -13446,8 +13434,9 @@ tsubst_template_args (tree t, tree args, tsubst_flags_t complain, tree in_decl)
     }
   for (i = 0, out = 0; i < len; i++)
     {
-      if ((PACK_EXPANSION_P (TREE_VEC_ELT (orig_t, i))
-           || ARGUMENT_PACK_P (TREE_VEC_ELT (orig_t, i)))
+      tree orig_arg = TREE_VEC_ELT (orig_t, i);
+      if (orig_arg
+	  && (PACK_EXPANSION_P (orig_arg) || ARGUMENT_PACK_P (orig_arg))
           && TREE_CODE (elts[i]) == TREE_VEC)
         {
           int idx;
@@ -13954,45 +13943,6 @@ tsubst_function_decl (tree t, tree args, tsubst_flags_t complain,
 	  if (tree spec = retrieve_specialization (gen_tmpl, argvec, hash))
 	    return spec;
 	}
-
-      /* We can see more levels of arguments than parameters if
-	 there was a specialization of a member template, like
-	 this:
-
-	 template <class T> struct S { template <class U> void f(); }
-	 template <> template <class U> void S<int>::f(U);
-
-	 Here, we'll be substituting into the specialization,
-	 because that's where we can find the code we actually
-	 want to generate, but we'll have enough arguments for
-	 the most general template.
-
-	 We also deal with the peculiar case:
-
-	 template <class T> struct S {
-	   template <class U> friend void f();
-	 };
-	 template <class U> void f() {}
-	 template S<int>;
-	 template void f<double>();
-
-	 Here, the ARGS for the instantiation of will be {int,
-	 double}.  But, we only need as many ARGS as there are
-	 levels of template parameters in CODE_PATTERN.  We are
-	 careful not to get fooled into reducing the ARGS in
-	 situations like:
-
-	 template <class T> struct S { template <class U> void f(U); }
-	 template <class T> template <> void S<T>::f(int) {}
-
-	 which we can spot because the pattern will be a
-	 specialization in this case.  */
-      int args_depth = TMPL_ARGS_DEPTH (args);
-      int parms_depth =
-	TMPL_PARMS_DEPTH (DECL_TEMPLATE_PARMS (DECL_TI_TEMPLATE (t)));
-
-      if (args_depth > parms_depth && !DECL_TEMPLATE_SPECIALIZATION (t))
-	args = get_innermost_template_args (args, parms_depth);
     }
   else
     {
@@ -16353,8 +16303,19 @@ tsubst_baselink (tree baselink, tree object_type,
 	fns = BASELINK_FUNCTIONS (baselink);
     }
   else
-    /* We're going to overwrite pieces below, make a duplicate.  */
-    baselink = copy_node (baselink);
+    {
+      /* We're going to overwrite pieces below, make a duplicate.  */
+      baselink = copy_node (baselink);
+
+      if (qualifying_scope != BINFO_TYPE (BASELINK_ACCESS_BINFO (baselink)))
+	{
+	  /* The decl we found was from non-dependent scope, but we still need
+	     to update the binfos for the instantiated qualifying_scope.  */
+	  BASELINK_ACCESS_BINFO (baselink) = TYPE_BINFO (qualifying_scope);
+	  BASELINK_BINFO (baselink) = lookup_base (qualifying_scope, binfo_type,
+						   ba_unique, nullptr, complain);
+	}
+    }
 
   /* If lookup found a single function, mark it as used at this point.
      (If lookup found multiple functions the one selected later by
@@ -18530,7 +18491,7 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl,
       stmt = begin_if_stmt ();
       IF_STMT_CONSTEXPR_P (stmt) = IF_STMT_CONSTEXPR_P (t);
       if (IF_STMT_CONSTEXPR_P (t))
-	args = add_extra_args (IF_STMT_EXTRA_ARGS (t), args);
+	args = add_extra_args (IF_STMT_EXTRA_ARGS (t), args, complain, in_decl);
       tmp = RECUR (IF_COND (t));
       tmp = finish_if_stmt_cond (tmp, stmt);
       if (IF_STMT_CONSTEXPR_P (t)
@@ -19900,15 +19861,21 @@ tsubst_copy_and_build (tree t,
     case MEMBER_REF:
     case DOTSTAR_EXPR:
       {
-	/* If T was type-dependent, suppress warnings that depend on the range
-	   of the types involved.  */
-	++processing_template_decl;
-	const bool was_dep = (potential_constant_expression (t)
-			      ? value_dependent_expression_p (t)
-			      : type_dependent_expression_p (t));
-	--processing_template_decl;
-	tree op0 = RECUR (TREE_OPERAND (t, 0));
-	tree op1 = RECUR (TREE_OPERAND (t, 1));
+	/* If either OP0 or OP1 was value- or type-dependent, suppress
+	   warnings that depend on the range of the types involved.  */
+	tree op0 = TREE_OPERAND (t, 0);
+	tree op1 = TREE_OPERAND (t, 1);
+	auto dep_p = [](tree t) {
+	  ++processing_template_decl;
+	  bool r = (potential_constant_expression (t)
+		    ? value_dependent_expression_p (t)
+		    : type_dependent_expression_p (t));
+	  --processing_template_decl;
+	  return r;
+	};
+	const bool was_dep = dep_p (op0) || dep_p (op1);
+	op0 = RECUR (op0);
+	op1 = RECUR (op1);
 
 	warning_sentinel s1(warn_type_limits, was_dep);
 	warning_sentinel s2(warn_div_by_zero, was_dep);
@@ -26476,19 +26443,6 @@ tsubst_initializer_list (tree t, tree argvec)
   return inits;
 }
 
-/* Set CURRENT_ACCESS_SPECIFIER based on the protection of DECL.  */
-
-static void
-set_current_access_from_decl (tree decl)
-{
-  if (TREE_PRIVATE (decl))
-    current_access_specifier = access_private_node;
-  else if (TREE_PROTECTED (decl))
-    current_access_specifier = access_protected_node;
-  else
-    current_access_specifier = access_public_node;
-}
-
 /* Instantiate an enumerated type.  TAG is the template type, NEWTAG
    is the instantiation (which should have been created with
    start_enum) and ARGS are the template arguments to use.  */
@@ -26614,6 +26568,8 @@ invalid_nontype_parm_type_p (tree type, tsubst_flags_t complain)
   else if (cxx_dialect >= cxx11
 	   && TREE_CODE (type) == BOUND_TEMPLATE_TEMPLATE_PARM)
     return false;
+  else if (TREE_CODE (type) == COMPLEX_TYPE)
+    /* Fall through.  */;
   else if (VOID_TYPE_P (type))
     /* Fall through.  */;
   else if (cxx_dialect >= cxx20)
@@ -28928,6 +28884,8 @@ is_spec_or_derived (tree etype, tree tmpl)
   return !err;
 }
 
+static tree alias_ctad_tweaks (tree, tree);
+
 /* Return a C++20 aggregate deduction candidate for TYPE initialized from
    INIT.  */
 
@@ -28939,6 +28897,15 @@ maybe_aggr_guide (tree tmpl, tree init, vec<tree,va_gc> *args)
 
   if (init == NULL_TREE)
     return NULL_TREE;
+
+  if (DECL_ALIAS_TEMPLATE_P (tmpl))
+    {
+      tree under = DECL_ORIGINAL_TYPE (DECL_TEMPLATE_RESULT (tmpl));
+      tree tinfo = get_template_info (under);
+      if (tree guide = maybe_aggr_guide (TI_TEMPLATE (tinfo), init, args))
+	return alias_ctad_tweaks (tmpl, guide);
+      return NULL_TREE;
+    }
 
   /* We might be creating a guide for a class member template, e.g.,
 
@@ -29130,7 +29097,13 @@ alias_ctad_tweaks (tree tmpl, tree uguides)
 	  /* Substitute the deduced arguments plus the rewritten template
 	     parameters into f to get g.  This covers the type, copyness,
 	     guideness, and explicit-specifier.  */
-	  tree g = tsubst_decl (DECL_TEMPLATE_RESULT (f), targs, complain);
+	  tree g;
+	    {
+	      /* Parms are to have DECL_CHAIN tsubsted, which would be skipped
+		 if cp_unevaluated_operand.  */
+	      cp_evaluated ev;
+	      g = tsubst_decl (DECL_TEMPLATE_RESULT (f), targs, complain);
+	    }
 	  if (g == error_mark_node)
 	    continue;
 	  DECL_USE_TEMPLATE (g) = 0;
@@ -29355,6 +29328,10 @@ do_class_deduction (tree ptype, tree tmpl, tree init,
 	       "with %<-std=c++20%> or %<-std=gnu++20%>");
       return error_mark_node;
     }
+
+  /* Wait until the initializer is non-dependent.  */
+  if (type_dependent_expression_p (init))
+    return ptype;
 
   tree type = TREE_TYPE (tmpl);
 

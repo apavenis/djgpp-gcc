@@ -6671,12 +6671,29 @@ ix86_compute_frame_layout (void)
 	 area, see the SEH code in config/i386/winnt.c for the rationale.  */
       frame->hard_frame_pointer_offset = frame->sse_reg_save_offset;
 
-      /* If we can leave the frame pointer where it is, do so.  Also, return
+      /* If we can leave the frame pointer where it is, do so; however return
 	 the establisher frame for __builtin_frame_address (0) or else if the
-	 frame overflows the SEH maximum frame size.  */
+	 frame overflows the SEH maximum frame size.
+
+	 Note that the value returned by __builtin_frame_address (0) is quite
+	 constrained, because setjmp is piggybacked on the SEH machinery with
+	 recent versions of MinGW:
+
+	  #    elif defined(__SEH__)
+	  #     if defined(__aarch64__) || defined(_ARM64_)
+	  #      define setjmp(BUF) _setjmp((BUF), __builtin_sponentry())
+	  #     elif (__MINGW_GCC_VERSION < 40702)
+	  #      define setjmp(BUF) _setjmp((BUF), mingw_getsp())
+	  #     else
+	  #      define setjmp(BUF) _setjmp((BUF), __builtin_frame_address (0))
+	  #     endif
+
+	 and the second argument passed to _setjmp, if not null, is forwarded
+	 to the TargetFrame parameter of RtlUnwindEx by longjmp (after it has
+	 built an ExceptionRecord on the fly describing the setjmp buffer).  */
       const HOST_WIDE_INT diff
 	= frame->stack_pointer_offset - frame->hard_frame_pointer_offset;
-      if (diff <= 255)
+      if (diff <= 255 && !crtl->accesses_prior_frames)
 	{
 	  /* The resulting diff will be a multiple of 16 lower than 255,
 	     i.e. at most 240 as required by the unwind data structure.  */
@@ -8384,9 +8401,13 @@ ix86_expand_prologue (void)
 		   || frame.stack_pointer_offset < CHECK_STACK_LIMIT))
 	{
 	  ix86_emit_save_regs_using_mov (frame.reg_save_offset);
+	  cfun->machine->red_zone_used = true;
 	  int_registers_saved = true;
 	}
     }
+
+  if (frame.red_zone_size != 0)
+    cfun->machine->red_zone_used = true;
 
   if (stack_realign_fp)
     {
@@ -15897,7 +15918,7 @@ ix86_output_indirect_jmp (rtx call_op)
     {
       /* We can't have red-zone since "call" in the indirect thunk
          pushes the return address onto stack, destroying red-zone.  */
-      if (ix86_red_zone_size != 0)
+      if (ix86_red_zone_used)
 	gcc_unreachable ();
 
       ix86_output_indirect_branch (call_op, "%0", true);
@@ -21744,10 +21765,12 @@ ix86_stack_protect_fail (void)
    After all, the relocation needed is the same as for the call insn.
    Whether or not a particular assembler allows us to enter such, I
    guess we'll have to see.  */
+
 int
 asm_preferred_eh_data_format (int code, int global)
 {
-  if (flag_pic)
+  /* PE-COFF is effectively always -fPIC because of the .reloc section.  */
+  if (flag_pic || TARGET_PECOFF)
     {
       int type = DW_EH_PE_sdata8;
       if (!TARGET_64BIT
@@ -21756,9 +21779,11 @@ asm_preferred_eh_data_format (int code, int global)
 	type = DW_EH_PE_sdata4;
       return (global ? DW_EH_PE_indirect : 0) | DW_EH_PE_pcrel | type;
     }
+
   if (ix86_cmodel == CM_SMALL
       || (ix86_cmodel == CM_MEDIUM && code))
     return DW_EH_PE_udata4;
+
   return DW_EH_PE_absptr;
 }
 

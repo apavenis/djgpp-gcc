@@ -1299,8 +1299,8 @@ traverse_io_block (gfc_code *code, bool *has_reached, gfc_code *prev)
 		std::swap (start->value.op.op1, start->value.op.op2);
 	      gcc_fallthrough ();
 	    case INTRINSIC_MINUS:
-	      if ((start->value.op.op1->expr_type!= EXPR_VARIABLE
-		   && start->value.op.op2->expr_type != EXPR_CONSTANT)
+	      if (start->value.op.op1->expr_type!= EXPR_VARIABLE
+		  || start->value.op.op2->expr_type != EXPR_CONSTANT
 		  || start->value.op.op1->ref)
 		return false;
 	      if (!stack_top || !stack_top->iter
@@ -4192,6 +4192,19 @@ inline_matmul_assign (gfc_code **c, int *walk_subtrees,
 
   if (m_case == none)
     return 0;
+
+  /* We only handle assignment to numeric or logical variables.  */
+  switch(expr1->ts.type)
+    {
+    case BT_INTEGER:
+    case BT_LOGICAL:
+    case BT_REAL:
+    case BT_COMPLEX:
+      break;
+
+    default:
+      return 0;
+    }
 
   ns = insert_block ();
 

@@ -5033,8 +5033,17 @@ c_mark_addressable (tree exp, bool array_ref_p)
 	    && TREE_CODE (TREE_TYPE (x)) == ARRAY_TYPE
 	    && VECTOR_TYPE_P (TREE_TYPE (TREE_OPERAND (x, 0))))
 	  return true;
-	/* FALLTHRU */
+	x = TREE_OPERAND (x, 0);
+	break;
+
       case COMPONENT_REF:
+	if (DECL_C_BIT_FIELD (TREE_OPERAND (x, 1)))
+	  {
+	    error ("cannot take address of bit-field %qD",
+		   TREE_OPERAND (x, 1));
+	    return false;
+	  }
+	/* FALLTHRU */
       case ADDR_EXPR:
       case ARRAY_REF:
       case REALPART_EXPR:
@@ -6121,6 +6130,7 @@ build_c_cast (location_t loc, tree type, tree expr)
      return value reflects this.  */
   if (int_operands
       && INTEGRAL_TYPE_P (type)
+      && value != error_mark_node
       && !EXPR_INT_CONST_OPERANDS (value))
     value = note_integer_operands (value);
 
@@ -7294,23 +7304,35 @@ convert_for_assignment (location_t location, location_t expr_loc, tree type,
 	  && (AGGREGATE_TYPE_P (ttl) && TYPE_REVERSE_STORAGE_ORDER (ttl))
 	     != (AGGREGATE_TYPE_P (ttr) && TYPE_REVERSE_STORAGE_ORDER (ttr)))
 	{
+	  tree t;
+
 	  switch (errtype)
 	  {
 	  case ic_argpass:
 	    /* Do not warn for built-in functions, for example memcpy, since we
 	       control how they behave and they can be useful in this area.  */
 	    if (TREE_CODE (rname) != FUNCTION_DECL
-		|| !DECL_IS_UNDECLARED_BUILTIN (rname))
+		|| !fndecl_built_in_p (rname))
 	      warning_at (location, OPT_Wscalar_storage_order,
 			  "passing argument %d of %qE from incompatible "
 			  "scalar storage order", parmnum, rname);
 	    break;
 	  case ic_assign:
+	    /* Do not warn if the RHS is a call to a function that returns a
+	       pointer that is not an alias.  */
+	    if (TREE_CODE (rhs) != CALL_EXPR
+		|| (t = get_callee_fndecl (rhs)) == NULL_TREE
+		|| !DECL_IS_MALLOC (t))
 	    warning_at (location, OPT_Wscalar_storage_order,
 			"assignment to %qT from pointer type %qT with "
 			"incompatible scalar storage order", type, rhstype);
 	    break;
 	  case ic_init:
+	    /* Do not warn if the RHS is a call to a function that returns a
+	       pointer that is not an alias.  */
+	    if (TREE_CODE (rhs) != CALL_EXPR
+		|| (t = get_callee_fndecl (rhs)) == NULL_TREE
+		|| !DECL_IS_MALLOC (t))
 	    warning_at (location, OPT_Wscalar_storage_order,
 			"initialization of %qT from pointer type %qT with "
 			"incompatible scalar storage order", type, rhstype);
@@ -14097,6 +14119,8 @@ c_finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 		case PLUS_EXPR:
 		case MULT_EXPR:
 		case MINUS_EXPR:
+		case TRUTH_ANDIF_EXPR:
+		case TRUTH_ORIF_EXPR:
 		  break;
 		case MIN_EXPR:
 		  if (TREE_CODE (type) == COMPLEX_TYPE)
@@ -14114,14 +14138,6 @@ c_finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 		  break;
 		case BIT_IOR_EXPR:
 		  r_name = "|";
-		  break;
-		case TRUTH_ANDIF_EXPR:
-		  if (FLOAT_TYPE_P (type))
-		    r_name = "&&";
-		  break;
-		case TRUTH_ORIF_EXPR:
-		  if (FLOAT_TYPE_P (type))
-		    r_name = "||";
 		  break;
 		default:
 		  gcc_unreachable ();

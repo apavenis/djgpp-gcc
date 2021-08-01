@@ -2109,6 +2109,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 
     case E_Array_Type:
       {
+	const Entity_Id PAT = Packed_Array_Impl_Type (gnat_entity);
 	const bool convention_fortran_p
 	  = (Convention (gnat_entity) == Convention_Fortran);
 	const int ndim = Number_Dimensions (gnat_entity);
@@ -2212,16 +2213,16 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	  }
 
 	/* If the GNAT encodings are used, give the fat pointer type a name.
-	   If this is a packed array, tell the debugger how to interpret the
-	   underlying bits by fetching that of the implementation type.  But
-	   in any case, mark it as artificial so the debugger can skip it.  */
+	   If this is a packed type implemented specially, tell the debugger
+	   how to interpret the underlying bits by fetching the name of the
+	   implementation type.  But, in any case, mark it as artificial so
+	   the debugger can skip it.  */
 	const Entity_Id gnat_name
-	  = (Present (Packed_Array_Impl_Type (gnat_entity))
-	     && gnat_encodings != DWARF_GNAT_ENCODINGS_MINIMAL)
-	    ? Packed_Array_Impl_Type (gnat_entity)
+	  = Present (PAT) && gnat_encodings != DWARF_GNAT_ENCODINGS_MINIMAL
+	    ? PAT
 	    : gnat_entity;
 	tree xup_name
-	  = (gnat_encodings != DWARF_GNAT_ENCODINGS_MINIMAL)
+	  = gnat_encodings != DWARF_GNAT_ENCODINGS_MINIMAL
 	    ? create_concat_name (gnat_name, "XUP")
 	    : gnu_entity_name;
 	create_type_decl (xup_name, gnu_fat_type, true, debug_info_p,
@@ -2354,11 +2355,14 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	      set_nonaliased_component_on_array_type (tem);
 	  }
 
-	/* If an alignment is specified, use it if valid.  But ignore it
-	   for the original type of packed array types.  If the alignment
-	   was requested with an explicit alignment clause, state so.  */
-	if (No (Packed_Array_Impl_Type (gnat_entity))
-	    && Known_Alignment (gnat_entity))
+	/* If this is a packed type implemented specially, then process the
+	   implementation type so it is elaborated in the proper scope.  */
+	if (Present (PAT))
+	  gnat_to_gnu_entity (PAT, NULL_TREE, false);
+
+	/* Otherwise, if an alignment is specified, use it if valid and, if
+	   the alignment was requested with an explicit clause, state so.  */
+	else if (Known_Alignment (gnat_entity))
 	  {
 	    SET_TYPE_ALIGN (tem,
 			    validate_alignment (Alignment (gnat_entity),
@@ -2379,8 +2383,15 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	  tem = change_qualified_type (tem, TYPE_QUAL_VOLATILE);
 
 	/* Adjust the type of the pointer-to-array field of the fat pointer
-	   and record the aliasing relationships if necessary.  */
-	TREE_TYPE (TYPE_FIELDS (gnu_fat_type)) = build_pointer_type (tem);
+	   and record the aliasing relationships if necessary.  If this is
+	   a packed type implemented specially, then use a ref-all pointer
+	   type since the implementation type may vary between constrained
+	   subtypes and unconstrained base type.  */
+	if (Present (PAT))
+	  TREE_TYPE (TYPE_FIELDS (gnu_fat_type))
+	    = build_pointer_type_for_mode (tem, ptr_mode, true);
+	else
+	  TREE_TYPE (TYPE_FIELDS (gnu_fat_type)) = build_pointer_type (tem);
 	if (TYPE_ALIAS_SET_KNOWN_P (gnu_fat_type))
 	  record_component_aliases (gnu_fat_type);
 
@@ -2444,6 +2455,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 	;
       else
 	{
+	  const Entity_Id PAT = Packed_Array_Impl_Type (gnat_entity);
 	  Entity_Id gnat_index, gnat_base_index;
 	  const bool convention_fortran_p
 	    = (Convention (gnat_entity) == Convention_Fortran);
@@ -2849,7 +2861,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 
 	  /* If this is a packed type implemented specially, then replace our
 	     type with the implementation type.  */
-	  if (Present (Packed_Array_Impl_Type (gnat_entity)))
+	  if (Present (PAT))
 	    {
 	      /* First finish the type we had been making so that we output
 		 debugging information for it.  */
@@ -2874,8 +2886,7 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		 this type again.  */
 	      save_gnu_tree (gnat_entity, gnu_tmp_decl, false);
 
-	      gnu_type
-		= gnat_to_gnu_type (Packed_Array_Impl_Type (gnat_entity));
+	      gnu_type = gnat_to_gnu_type (PAT);
 	      save_gnu_tree (gnat_entity, NULL_TREE, false);
 
 	      /* Set the ___XP suffix for GNAT encodings.  */
@@ -5761,16 +5772,16 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
   tree gnu_cico_return_type = NULL_TREE;
   tree gnu_cico_field_list = NULL_TREE;
   bool gnu_cico_only_integral_type = true;
-  /* The semantics of "pure" in Ada essentially matches that of "const"
-     or "pure" in GCC.  In particular, both properties are orthogonal
-     to the "nothrow" property if the EH circuitry is explicit in the
-     internal representation of the middle-end.  If we are to completely
-     hide the EH circuitry from it, we need to declare that calls to pure
-     Ada subprograms that can throw have side effects since they can
-     trigger an "abnormal" transfer of control flow; therefore, they can
-     be neither "const" nor "pure" in the GCC sense.  */
-  bool const_flag = (Back_End_Exceptions () && Is_Pure (gnat_subprog));
-  bool pure_flag = false;
+  /* Although the semantics of "pure" units in Ada essentially match those of
+     "const" in GNU C, the semantics of the Is_Pure flag in GNAT do not say
+     anything about access to global memory, that's why it needs to be mapped
+     to "pure" instead of "const" in GNU C.  The property is orthogonal to the
+     "nothrow" property only if the EH circuitry is explicit in the internal
+     representation of the middle-end: if we are to completely hide the EH
+     circuitry from it, we need to declare that calls to pure Ada subprograms
+     that can throw have side effects, since they can trigger an "abnormal"
+     transfer of control; therefore they cannot be "pure" in the GCC sense.  */
+  bool pure_flag = Is_Pure (gnat_subprog) && Back_End_Exceptions ();
   bool return_by_direct_ref_p = false;
   bool return_by_invisi_ref_p = false;
   bool return_unconstrained_p = false;
@@ -5923,14 +5934,14 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
     }
 
   /* A procedure (something that doesn't return anything) shouldn't be
-     considered const since there would be no reason for calling such a
+     considered pure since there would be no reason for calling such a
      subprogram.  Note that procedures with Out (or In Out) parameters
      have already been converted into a function with a return type.
      Similarly, if the function returns an unconstrained type, then the
      function will allocate the return value on the secondary stack and
      thus calls to it cannot be CSE'ed, lest the stack be reclaimed.  */
   if (VOID_TYPE_P (gnu_return_type) || return_unconstrained_p)
-    const_flag = false;
+    pure_flag = false;
 
   /* Loop over the parameters and get their associated GCC tree.  While doing
      this, build a copy-in copy-out structure if we need one.  */
@@ -6058,18 +6069,16 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
 	  save_gnu_tree (gnat_param, gnu_param, false);
 
 	  /* A pure function in the Ada sense which takes an access parameter
-	     may modify memory through it and thus need be considered neither
-	     const nor pure in the GCC sense.  Likewise it if takes a by-ref
-	     In Out or Out parameter.  But if it takes a by-ref In parameter,
-	     then it may only read memory through it and can be considered
-	     pure in the GCC sense.  */
-	  if ((const_flag || pure_flag)
-	      && (POINTER_TYPE_P (gnu_param_type)
+	     may modify memory through it and thus cannot be considered pure
+	     in the GCC sense, unless it's access-to-function.  Likewise it if
+	     takes a by-ref In Out or Out parameter.  But if it takes a by-ref
+	     In parameter, then it may only read memory through it and can be
+	     considered pure in the GCC sense.  */
+	  if (pure_flag
+	      && ((POINTER_TYPE_P (gnu_param_type)
+		   && TREE_CODE (TREE_TYPE (gnu_param_type)) != FUNCTION_TYPE)
 		  || TYPE_IS_FAT_POINTER_P (gnu_param_type)))
-	    {
-	      const_flag = false;
-	      pure_flag = DECL_POINTS_TO_READONLY_P (gnu_param);
-	    }
+	    pure_flag = DECL_POINTS_TO_READONLY_P (gnu_param);
 	}
 
       /* If the parameter uses the copy-in copy-out mechanism, allocate a field
@@ -6268,9 +6277,6 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
 	      TREE_ADDRESSABLE (gnu_type) = return_by_invisi_ref_p;
 	    }
 	}
-
-      if (const_flag)
-	gnu_type = change_qualified_type (gnu_type, TYPE_QUAL_CONST);
 
       if (pure_flag)
 	gnu_type = change_qualified_type (gnu_type, TYPE_QUAL_RESTRICT);

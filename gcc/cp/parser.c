@@ -2163,7 +2163,7 @@ static enum tree_code cp_parser_assignment_operator_opt
 static cp_expr cp_parser_expression
   (cp_parser *, cp_id_kind * = NULL, bool = false, bool = false, bool = false);
 static cp_expr cp_parser_constant_expression
-  (cp_parser *, bool = false, bool * = NULL, bool = false);
+  (cp_parser *, int = 0, bool * = NULL, bool = false);
 static cp_expr cp_parser_builtin_offsetof
   (cp_parser *);
 static cp_expr cp_parser_lambda_expression
@@ -10374,13 +10374,15 @@ cp_parser_expression (cp_parser* parser, cp_id_kind * pidk,
   If ALLOW_NON_CONSTANT_P a non-constant expression is silently
   accepted.  If ALLOW_NON_CONSTANT_P is true and the expression is not
   constant, *NON_CONSTANT_P is set to TRUE.  If ALLOW_NON_CONSTANT_P
-  is false, NON_CONSTANT_P should be NULL.  If STRICT_P is true,
+  is false, NON_CONSTANT_P should be NULL.  If ALLOW_NON_CONSTANT_P is
+  greater than 1, this isn't really a constant-expression, only a
+  potentially constant-evaluated expression.  If STRICT_P is true,
   only parse a conditional-expression, otherwise parse an
   assignment-expression.  See below for rationale.  */
 
 static cp_expr
 cp_parser_constant_expression (cp_parser* parser,
-			       bool allow_non_constant_p,
+			       int allow_non_constant_p,
 			       bool *non_constant_p,
 			       bool strict_p)
 {
@@ -10416,6 +10418,11 @@ cp_parser_constant_expression (cp_parser* parser,
   parser->allow_non_integral_constant_expression_p
     = (allow_non_constant_p || cxx_dialect >= cxx11);
   parser->non_integral_constant_expression_p = false;
+
+  /* A manifestly constant-evaluated expression is evaluated even in an
+     unevaluated operand.  */
+  cp_evaluated ev (/*reset if*/allow_non_constant_p <= 1);
+
   /* Although the grammar says "conditional-expression", when not STRICT_P,
      we parse an "assignment-expression", which also permits
      "throw-expression" and the use of assignment operators.  In the case
@@ -19942,6 +19949,10 @@ cp_parser_enum_specifier (cp_parser* parser)
       /* Consume the `:'.  */
       cp_lexer_consume_token (parser->lexer);
 
+      auto tdf
+	= make_temp_override (parser->type_definition_forbidden_message,
+			      G_("types may not be defined in enum-base"));
+
       /* Parse the type-specifier-seq.  */
       cp_parser_type_specifier_seq (parser, CP_PARSER_FLAGS_NONE,
 				    /*is_declaration=*/false,
@@ -22013,12 +22024,10 @@ cp_parser_declarator (cp_parser* parser,
 	cp_parser_parse_tentatively (parser);
 
       /* Parse the dependent declarator.  */
-      declarator = cp_parser_declarator (parser, dcl_kind,
-					 CP_PARSER_FLAGS_NONE,
+      declarator = cp_parser_declarator (parser, dcl_kind, flags,
 					 /*ctor_dtor_or_conv_p=*/NULL,
 					 /*parenthesized_p=*/NULL,
-					 /*member_p=*/false,
-					 friend_p, /*static_p=*/false);
+					 member_p, friend_p, static_p);
 
       /* If we are parsing an abstract-declarator, we must handle the
 	 case where the dependent declarator is absent.  */
@@ -24232,7 +24241,7 @@ cp_parser_initializer_clause (cp_parser* parser, bool* non_constant_p)
     {
       initializer
 	= cp_parser_constant_expression (parser,
-					/*allow_non_constant_p=*/true,
+					/*allow_non_constant_p=*/2,
 					non_constant_p);
     }
   else
@@ -25676,7 +25685,13 @@ cp_parser_class_head (cp_parser* parser,
      until the entire list has been seen, as per [class.access.general].  */
   push_deferring_access_checks (dk_deferred);
   if (cp_lexer_next_token_is (parser->lexer, CPP_COLON))
-    bases = cp_parser_base_clause (parser);
+    {
+      if (type)
+	pushclass (type);
+      bases = cp_parser_base_clause (parser);
+      if (type)
+	popclass ();
+    }
   else
     bases = NULL_TREE;
 
@@ -29429,6 +29444,19 @@ cp_parser_lookup_name (cp_parser *parser, tree name,
   if (!decl || decl == error_mark_node)
     return error_mark_node;
 
+  /* If we have resolved the name of a member declaration, check to
+     see if the declaration is accessible.  When the name resolves to
+     set of overloaded functions, accessibility is checked when
+     overload resolution is done.  If we have a TREE_LIST, then the lookup
+     is either ambiguous or it found multiple injected-class-names, the
+     accessibility of which is trivially satisfied.
+
+     During an explicit instantiation, access is not checked at all,
+     as per [temp.explicit].  */
+  if (DECL_P (decl))
+    check_accessibility_of_qualified_id (decl, object_type, parser->scope,
+					 tf_warning_or_error);
+
   /* Pull out the template from an injected-class-name (or multiple).  */
   if (is_template)
     decl = maybe_get_template_decl_from_type_decl (decl);
@@ -29454,17 +29482,6 @@ cp_parser_lookup_name (cp_parser *parser, tree name,
 	      || TREE_CODE (decl) == SCOPE_REF
 	      || TREE_CODE (decl) == UNBOUND_CLASS_TEMPLATE
 	      || BASELINK_P (decl));
-
-  /* If we have resolved the name of a member declaration, check to
-     see if the declaration is accessible.  When the name resolves to
-     set of overloaded functions, accessibility is checked when
-     overload resolution is done.
-
-     During an explicit instantiation, access is not checked at all,
-     as per [temp.explicit].  */
-  if (DECL_P (decl))
-    check_accessibility_of_qualified_id (decl, object_type, parser->scope,
-					 tf_warning_or_error);
 
   maybe_record_typedef_use (decl);
 
@@ -42028,6 +42045,7 @@ cp_parser_omp_target (cp_parser *parser, cp_token *pragma_tok,
 	  tree stmt = make_node (OMP_TARGET);
 	  TREE_TYPE (stmt) = void_type_node;
 	  OMP_TARGET_CLAUSES (stmt) = cclauses[C_OMP_CLAUSE_SPLIT_TARGET];
+	  c_omp_adjust_map_clauses (OMP_TARGET_CLAUSES (stmt), true);
 	  OMP_TARGET_BODY (stmt) = body;
 	  OMP_TARGET_COMBINED (stmt) = 1;
 	  SET_EXPR_LOCATION (stmt, pragma_tok->location);

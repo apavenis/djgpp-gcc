@@ -131,6 +131,7 @@
 #define __cpp_lib_clamp 201603
 #if __cplusplus == 201703L // N.B. updated value in C++20
 # define __cpp_lib_constexpr_char_traits 201611L
+# define __cpp_lib_constexpr_string 201611L
 #endif
 #define __cpp_lib_enable_shared_from_this 201603
 #define __cpp_lib_execution 201902L // FIXME: should be 201603L
@@ -168,7 +169,7 @@
 #define __cpp_lib_variant 201606L
 #endif
 
-#if __cplusplus > 201703L
+#if __cplusplus >= 202002L
 // c++20
 #define __cpp_lib_atomic_flag_test 201907L
 #define __cpp_lib_atomic_float 201711L
@@ -212,17 +213,23 @@
 // FIXME: #define __cpp_lib_execution 201902L
 #define __cpp_lib_integer_comparison_functions 202002L
 #define __cpp_lib_constexpr_algorithms 201806L
-#define __cpp_lib_constexpr_char_traits 201811L
+#ifdef __cpp_lib_is_constant_evaluated
+# define __cpp_lib_constexpr_char_traits 201811L
+#endif
 #define __cpp_lib_constexpr_complex 201711L
 #define __cpp_lib_constexpr_dynamic_alloc 201907L
 #define __cpp_lib_constexpr_functional 201907L
 #define __cpp_lib_constexpr_iterator 201811L
 #define __cpp_lib_constexpr_memory 201811L
 #define __cpp_lib_constexpr_numeric 201911L
+#ifdef __cpp_lib_is_constant_evaluated
+# define __cpp_lib_constexpr_string 201811L
+#endif
 #define __cpp_lib_constexpr_string_view 201811L
 #define __cpp_lib_constexpr_tuple 201811L
 #define __cpp_lib_constexpr_utility 201811L
 #define __cpp_lib_erase_if 202002L
+#define __cpp_lib_generic_unordered_lookup 201811L
 #define __cpp_lib_interpolate 201902L
 #ifdef _GLIBCXX_HAS_GTHREADS
 # define __cpp_lib_jthread 201911L
@@ -239,7 +246,7 @@
 #if __cpp_lib_concepts
 # define __cpp_lib_ranges 201911L
 #endif
-#if __cpp_lib_atomic_wait
+#if __cpp_lib_atomic_wait || _GLIBCXX_HAVE_POSIX_SEMAPHORE
 # define __cpp_lib_semaphore 201907L
 #endif
 #define __cpp_lib_shift 201806L
