@@ -21,7 +21,7 @@ case $basever in
         dj_branch=tags/djgpp/gcc-$basever
         djn_branch=tags/djgpp/native/gcc-$basever
         ;;
-    11.0.* | 11.[1-9].[1-9])
+    1[1-9].0.* | 11.[1-9].[1-9])
         upstream=master
         dj_branch=djgpp/master
         djn_branch=djgpp/native/master
