@@ -28,7 +28,7 @@ along with GCC; see the file COPYING3.  If not see
 // OS
 #include <fcntl.h>
 #include <unistd.h>
-#if 0 // 1 for testing no mmap
+#if 1 // 1 for testing no mmap
 #define MAPPED_READING 0
 #else
 #ifdef IN_GCC
