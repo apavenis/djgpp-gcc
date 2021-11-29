@@ -131,6 +131,11 @@ typedef unsigned gcov_type_unsigned __attribute__ ((mode (QI)));
    gcov-tool binary.  */
 
 #include "config.h"
+
+#ifdef __DJGPP__
+#undef HAVE_SYS_MMAN_H
+#endif // __DJGPP__
+
 #include "system.h"
 #include "coretypes.h"
 #include "tm.h"
