@@ -45,11 +45,6 @@
 #include "libgcc_tm.h"
 #include "gcov.h"
 
-#ifdef __DJGPP__
-#include <stdint.h>
-#undef HAVE_SYS_MMAN_H
-#endif // __DJGPP__
-
 #if HAVE_SYS_MMAN_H
 #include <sys/mman.h>
 #endif
@@ -157,6 +152,11 @@ extern unsigned gcov_get_merge_weight ();
 extern struct gcov_info *gcov_list;
 
 #endif /* !IN_GCOV_TOOL */
+
+#ifdef __DJGPP__
+#include <stdint.h>
+#undef HAVE_SYS_MMAN_H
+#endif // __DJGPP__
 
 #if defined(inhibit_libc)
 #define IN_LIBGCOV (-1)
