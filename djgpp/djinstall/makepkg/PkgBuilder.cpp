@@ -421,6 +421,7 @@ void PkgBuilder::sfn_check(const fs::path& dir)
     for (const fs::path& p : fs::recursive_directory_iterator(dir)) {
         if (fs::is_regular_file(p)) {
             const fs::path rel_path = make_relative(p, dir);
+            if (rel_path.string().substr(0, 8) == "makepkg/") continue;
             std::string sfn_name;
             bool ok = true;
             for (const auto& x : rel_path) {
