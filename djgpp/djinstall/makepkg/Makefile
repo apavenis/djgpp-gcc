@@ -1,4 +1,9 @@
-CXX = g++
+ifeq ($(shell uname),MS-DOS)
+CXX ?= $(shell cd .. && pwd)/bin/gpp
+else
+CXX ?= g++
+endif
+
 CXXFLAGS = -std=c++17 -Og -Wall -g3
 
 SRCS = \
@@ -19,7 +24,7 @@ clean:
 	rm -f makepkg $(OBJS)
 
 makepkg: $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) -o $@ -lstdc++
+	$(CXX) $(CXXFLAGS) $(OBJS) -o $@
 
 %o : %.cpp;  $(CXX) -o $@ $< -M $CXXFLAGS
 
