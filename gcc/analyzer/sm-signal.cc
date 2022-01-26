@@ -1,7 +1,7 @@
 /* An experimental state machine, for tracking bad calls from within
    signal handlers.
 
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -206,10 +206,10 @@ update_model_for_signal_handler (region_model *model,
 
 /* Custom exploded_edge info: entry into a signal-handler.  */
 
-class signal_delivery_edge_info_t : public exploded_edge::custom_info_t
+class signal_delivery_edge_info_t : public custom_edge_info
 {
 public:
-  void print (pretty_printer *pp) FINAL OVERRIDE
+  void print (pretty_printer *pp) const FINAL OVERRIDE
   {
     pp_string (pp, "signal delivered");
   }
@@ -220,15 +220,18 @@ public:
     return custom_obj;
   }
 
-  void update_model (region_model *model,
-		     const exploded_edge &eedge) FINAL OVERRIDE
+  bool update_model (region_model *model,
+		     const exploded_edge *eedge,
+		     region_model_context *) const FINAL OVERRIDE
   {
-    update_model_for_signal_handler (model, eedge.m_dest->get_function ());
+    gcc_assert (eedge);
+    update_model_for_signal_handler (model, eedge->m_dest->get_function ());
+    return true;
   }
 
   void add_events_to_path (checker_path *emission_path,
 			   const exploded_edge &eedge ATTRIBUTE_UNUSED)
-    FINAL OVERRIDE
+    const FINAL OVERRIDE
   {
     emission_path->add_event
       (new precanned_custom_event

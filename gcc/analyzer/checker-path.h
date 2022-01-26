@@ -1,5 +1,5 @@
 /* Subclasses of diagnostic_path and diagnostic_event for analyzer diagnostics.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -338,6 +338,9 @@ public:
   label_text get_desc (bool can_colorize) const FINAL OVERRIDE;
 
   bool is_call_p () const FINAL OVERRIDE;
+
+  const supernode *m_src_snode;
+  const supernode *m_dest_snode;
 };
 
 /* A concrete event subclass for an interprocedural return.  */
@@ -351,6 +354,9 @@ public:
   label_text get_desc (bool can_colorize) const FINAL OVERRIDE;
 
   bool is_return_p () const FINAL OVERRIDE;
+
+  const supernode *m_src_snode;
+  const supernode *m_dest_snode;
 };
 
 /* A concrete event subclass for the start of a consolidated run of CFG

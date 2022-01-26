@@ -1,5 +1,5 @@
 /* Data references and dependences detectors.
-   Copyright (C) 2003-2021 Free Software Foundation, Inc.
+   Copyright (C) 2003-2022 Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
 This file is part of GCC.
@@ -166,14 +166,19 @@ struct data_reference
      and runs to completion.  */
   bool is_conditional_in_stmt;
 
+  /* Alias information for the data reference.  */
+  struct dr_alias alias;
+
   /* Behavior of the memory reference in the innermost loop.  */
   struct innermost_loop_behavior innermost;
 
   /* Subscripts of this data reference.  */
   struct indices indices;
 
-  /* Alias information for the data reference.  */
-  struct dr_alias alias;
+  /* Alternate subscripts initialized lazily and used by data-dependence
+     analysis only when the main indices of two DRs are not comparable.
+     Keep last to keep vec_info_shared::check_datarefs happy.  */
+  struct indices alt_indices;
 };
 
 #define DR_STMT(DR)                (DR)->stmt
@@ -528,8 +533,8 @@ extern void debug_data_reference (struct data_reference *);
 extern void debug_data_references (vec<data_reference_p> );
 extern void debug (vec<data_reference_p> &ref);
 extern void debug (vec<data_reference_p> *ptr);
-extern void debug_data_dependence_relation (struct data_dependence_relation *);
-extern void dump_data_dependence_relations (FILE *, vec<ddr_p> );
+extern void debug_data_dependence_relation (const data_dependence_relation *);
+extern void dump_data_dependence_relations (FILE *, const vec<ddr_p> &);
 extern void debug (vec<ddr_p> &ref);
 extern void debug (vec<ddr_p> *ptr);
 extern void debug_data_dependence_relations (vec<ddr_p> );

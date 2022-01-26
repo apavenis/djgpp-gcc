@@ -1,4 +1,4 @@
-/* Copyright (C) 2016-2021 Free Software Foundation, Inc.
+/* Copyright (C) 2016-2022 Free Software Foundation, Inc.
 
    This file is free software; you can redistribute it and/or modify it under
    the terms of the GNU General Public License as published by the Free
@@ -576,10 +576,8 @@ struct GTY(()) machine_function
   HOST_WIDE_INT local_vars;
   HOST_WIDE_INT callee_saves;
 
-  unsigned lds_allocated;
-  hash_map<tree, int> *lds_allocs;
-
-  vec<tree, va_gc> *reduc_decls;
+  unsigned HOST_WIDE_INT reduction_base;
+  unsigned HOST_WIDE_INT reduction_limit;
 
   bool use_flat_addressing;
 };

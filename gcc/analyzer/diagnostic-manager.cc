@@ -1,5 +1,5 @@
 /* Classes for saving, deduplicating, and emitting analyzer diagnostics.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -303,18 +303,21 @@ private:
 
    Hence this is an RAII class for temporarily disabling complexity-checking
    in the region_model_manager, for use within
-   epath_finder::explore_feasible_paths.  */
+   epath_finder::explore_feasible_paths.
 
-class auto_disable_complexity_checks
+   We also disable the creation of unknown_svalue instances during feasibility
+   checking, instead creating unique svalues, to avoid paradoxes in paths.  */
+
+class auto_checking_feasibility
 {
 public:
-  auto_disable_complexity_checks (region_model_manager *mgr) : m_mgr (mgr)
+  auto_checking_feasibility (region_model_manager *mgr) : m_mgr (mgr)
   {
-    m_mgr->disable_complexity_check ();
+    m_mgr->begin_checking_feasibility ();
   }
-  ~auto_disable_complexity_checks ()
+  ~auto_checking_feasibility ()
   {
-    m_mgr->enable_complexity_check ();
+    m_mgr->end_checking_feasibility ();
   }
 private:
   region_model_manager *m_mgr;
@@ -406,7 +409,7 @@ epath_finder::explore_feasible_paths (const exploded_node *target_enode,
   exploded_path *best_path = NULL;
 
   {
-    auto_disable_complexity_checks sentinel (mgr);
+    auto_checking_feasibility sentinel (mgr);
 
     while (process_worklist_item (&worklist, tg, &fg, target_enode, diag_idx,
 				  &best_path))
@@ -520,8 +523,7 @@ epath_finder::process_worklist_item (feasible_worklist *worklist,
 	  gcc_assert (rc);
 	  fg->add_feasibility_problem (fnode,
 				       succ_eedge,
-				       *rc);
-	  delete rc;
+				       rc);
 
 	  /* Give up if there have been too many infeasible edges.  */
 	  if (fg->get_num_infeasible ()
@@ -2093,18 +2095,28 @@ diagnostic_manager::prune_for_sm_diagnostic (checker_path *path,
 	case EK_CALL_EDGE:
 	  {
 	    call_event *event = (call_event *)base_event;
-	    const callgraph_superedge& cg_superedge
-	      = event->get_callgraph_superedge ();
 	    const region_model *callee_model
 	      = event->m_eedge.m_dest->get_state ().m_region_model;
+	    const region_model *caller_model
+	      = event->m_eedge.m_src->get_state ().m_region_model;
 	    tree callee_var = callee_model->get_representative_tree (sval);
-	    /* We could just use caller_model->get_representative_tree (sval);
-	       to get the caller_var, but for now use
-	       map_expr_from_callee_to_caller so as to only record critical
-	       state for parms and the like.  */
 	    callsite_expr expr;
-	    tree caller_var
-	      = cg_superedge.map_expr_from_callee_to_caller (callee_var, &expr);
+
+	    tree caller_var;
+            if(event->m_sedge)
+              {
+                const callgraph_superedge& cg_superedge
+                  = event->get_callgraph_superedge ();
+                if (cg_superedge.m_cedge)
+	          caller_var
+	            = cg_superedge.map_expr_from_callee_to_caller (callee_var,
+                                                                   &expr);
+                else
+                  caller_var = caller_model->get_representative_tree (sval);
+              }
+            else
+	      caller_var = caller_model->get_representative_tree (sval);
+
 	    if (caller_var)
 	      {
 		if (get_logger ())
@@ -2126,15 +2138,28 @@ diagnostic_manager::prune_for_sm_diagnostic (checker_path *path,
 	    if (sval)
 	      {
 		return_event *event = (return_event *)base_event;
-		const callgraph_superedge& cg_superedge
-		  = event->get_callgraph_superedge ();
-		const region_model *caller_model
-		  = event->m_eedge.m_dest->get_state ().m_region_model;
-		tree caller_var = caller_model->get_representative_tree (sval);
+                const region_model *caller_model
+                  = event->m_eedge.m_dest->get_state ().m_region_model;
+                tree caller_var = caller_model->get_representative_tree (sval);
+                const region_model *callee_model
+                  = event->m_eedge.m_src->get_state ().m_region_model;
 		callsite_expr expr;
-		tree callee_var
-		  = cg_superedge.map_expr_from_caller_to_callee (caller_var,
-								 &expr);
+
+                tree callee_var;
+                if (event->m_sedge)
+                  {
+                    const callgraph_superedge& cg_superedge
+                      = event->get_callgraph_superedge ();
+                    if (cg_superedge.m_cedge)
+                      callee_var
+                        = cg_superedge.map_expr_from_caller_to_callee (caller_var,
+                                                                       &expr);
+                    else
+                      callee_var = callee_model->get_representative_tree (sval);
+                  }
+                else
+                  callee_var = callee_model->get_representative_tree (sval);
+
 		if (callee_var)
 		  {
 		    if (get_logger ())

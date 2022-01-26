@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---             Copyright (C) 2013-2021, Free Software Foundation, Inc.      --
+--             Copyright (C) 2013-2022, Free Software Foundation, Inc.      --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -30,6 +30,8 @@
 ------------------------------------------------------------------------------
 
 --  This version is for Linux/x32
+
+with System.Parameters;
 
 package body System.OS_Primitives is
 

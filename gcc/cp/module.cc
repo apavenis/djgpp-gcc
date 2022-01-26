@@ -1,5 +1,5 @@
 /* C++ modules.  Experimental!
-   Copyright (C) 2017-2021 Free Software Foundation, Inc.
+   Copyright (C) 2017-2022 Free Software Foundation, Inc.
    Written by Nathan Sidwell <nathan@acm.org> while at FaceBook
 
    This file is part of GCC.
@@ -8789,6 +8789,7 @@ trees_out::type_node (tree type)
     case DECLTYPE_TYPE:
     case TYPEOF_TYPE:
     case UNDERLYING_TYPE:
+    case DEPENDENT_OPERATOR_TYPE:
       tree_node (TYPE_VALUES_RAW (type));
       if (TREE_CODE (type) == DECLTYPE_TYPE)
 	/* We stash a whole bunch of things into decltype's
@@ -9311,6 +9312,7 @@ trees_in::tree_node (bool is_use)
 	  case DECLTYPE_TYPE:
 	  case TYPEOF_TYPE:
 	  case UNDERLYING_TYPE:
+	  case DEPENDENT_OPERATOR_TYPE:
 	    {
 	      tree expr = tree_node ();
 	      if (!get_overrun ())
@@ -10065,9 +10067,10 @@ trees_out::get_merge_kind (tree decl, depset *dep)
       tree ctx = CP_DECL_CONTEXT (decl);
       if (TREE_CODE (ctx) == FUNCTION_DECL)
 	{
-	  /* USING_DECLs cannot have DECL_TEMPLATE_INFO -- this isn't
-	     permitting them to have one.   */
+	  /* USING_DECLs and NAMESPACE_DECLs cannot have DECL_TEMPLATE_INFO --
+	     this isn't permitting them to have one.   */
 	  gcc_checking_assert (TREE_CODE (decl) == USING_DECL
+			       || TREE_CODE (decl) == NAMESPACE_DECL
 			       || !DECL_LANG_SPECIFIC (decl)
 			       || !DECL_TEMPLATE_INFO (decl));
 
@@ -11750,7 +11753,7 @@ trees_out::mark_class_def (tree defn)
 /* Nop sorting, needed for resorting the member vec.  */
 
 static void
-nop (void *, void *)
+nop (void *, void *, void *)
 {
 }
 
@@ -11859,8 +11862,9 @@ trees_in::read_class_def (tree defn, tree maybe_template)
 		{
 		  CLASSTYPE_BEFRIENDING_CLASSES (type_dup)
 		    = CLASSTYPE_BEFRIENDING_CLASSES (type);
-		  CLASSTYPE_TYPEINFO_VAR (type_dup)
-		    = CLASSTYPE_TYPEINFO_VAR (type);
+		  if (!ANON_AGGR_TYPE_P (type))
+		    CLASSTYPE_TYPEINFO_VAR (type_dup)
+		      = CLASSTYPE_TYPEINFO_VAR (type);
 		}
 	      for (tree v = type; v; v = TYPE_NEXT_VARIANT (v))
 		TYPE_LANG_SPECIFIC (v) = ls;
@@ -11890,6 +11894,11 @@ trees_in::read_class_def (tree defn, tree maybe_template)
 	      gcc_checking_assert (!*chain == !DECL_CLONED_FUNCTION_P (decl));
 	      *chain = decl;
 	      chain = &DECL_CHAIN (decl);
+
+	      if (TREE_CODE (decl) == FIELD_DECL
+		  && ANON_AGGR_TYPE_P (TREE_TYPE (decl)))
+		ANON_AGGR_TYPE_FIELD
+		  (TYPE_MAIN_VARIANT (TREE_TYPE (decl))) = decl;
 
 	      if (TREE_CODE (decl) == USING_DECL
 		  && TREE_CODE (USING_DECL_SCOPE (decl)) == RECORD_TYPE)
@@ -12814,7 +12823,7 @@ specialization_add (bool decl_p, spec_entry *entry, void *data_)
     {
       /* We exclusively use decls to locate things.  Make sure there's
 	 no mismatch between the two specialization tables we keep.
-	 pt.c optimizes instantiation lookup using a complicated
+	 pt.cc optimizes instantiation lookup using a complicated
 	 heuristic.  We don't attempt to replicate that algorithm, but
 	 observe its behaviour and reproduce it upon read back.  */
 
@@ -14870,7 +14879,7 @@ module_state::read_cluster (unsigned snum)
 	}
 
     }
-  /* Look, function.c's interface to cfun does too much for us, we
+  /* Look, function.cc's interface to cfun does too much for us, we
      just need to restore the old value.  I do not want to go
      redesigning that API right now.  */
 #undef cfun
@@ -17977,7 +17986,7 @@ module_state::read_language (bool outermost)
 
   function_depth++; /* Prevent unexpected GCs.  */
 
-  if (counts[MSC_entities] != entity_num)
+  if (ok && counts[MSC_entities] != entity_num)
     ok = false;
   if (ok && counts[MSC_entities]
       && !read_entities (counts[MSC_entities],

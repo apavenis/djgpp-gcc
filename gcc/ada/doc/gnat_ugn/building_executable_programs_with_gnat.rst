@@ -1497,9 +1497,10 @@ Alphabetical List of All Switches
 
 :switch:`-gnateA`
   Check that the actual parameters of a subprogram call are not aliases of one
-  another. To qualify as aliasing, the actuals must denote objects of a composite
-  type, their memory locations must be identical or overlapping, and at least one
-  of the corresponding formal parameters must be of mode OUT or IN OUT.
+  another. To qualify as aliasing, their memory locations must be identical or
+  overlapping, at least one of the corresponding formal parameters must be of
+  mode OUT or IN OUT, and at least one of the corresponding formal parameters
+  must have its parameter passing mechanism not specified.
 
 
   .. code-block:: ada
@@ -3581,6 +3582,25 @@ of the pragma in the :title:`GNAT_Reference_manual`).
   ordering.
 
 
+.. index:: -gnatw_p  (gcc)
+
+:switch:`-gnatw_p`
+  *Activate warnings for pedantic checks.*
+
+  This switch activates warnings for the failure of certain pedantic checks.
+  The only case currently supported is a check that the subtype_marks given
+  for corresponding formal parameter and function results in a subprogram
+  declaration and its body denote the same subtype declaration. The default
+  is that such warnings are not given.
+
+.. index:: -gnatw_P  (gcc)
+
+:switch:`-gnatw_P`
+  *Suppress warnings for pedantic checks.*
+
+  This switch suppresses warnings on violations of pedantic checks.
+
+
 .. index:: -gnatwq  (gcc)
 .. index:: Parentheses, warnings
 
@@ -3682,6 +3702,8 @@ of the pragma in the :title:`GNAT_Reference_manual`).
 
   * Comparison of an object or (unary or binary) operation of boolean type to
     an explicit True value.
+
+  * Import of parent package.
 
   The default is that warnings for redundant constructs are not given.
 
@@ -4157,16 +4179,16 @@ of the pragma in the :title:`GNAT_Reference_manual`).
   This switch enables most warnings from the GCC back end.
   The code generator detects a number of warning situations that are missed
   by the GNAT front end, and this switch can be used to activate them.
-  The use of this switch also sets the default front end warning mode to
-  :switch:`-gnatwa`, that is, most front end warnings activated as well.
+  The use of this switch also sets the default front-end warning mode to
+  :switch:`-gnatwa`, that is, most front-end warnings are activated as well.
 
 
 .. index:: -w (gcc)
 
 :switch:`-w`
   Conversely, this switch suppresses warnings from the GCC back end.
-  The use of this switch also sets the default front end warning mode to
-  :switch:`-gnatws`, that is, front end warnings suppressed as well.
+  The use of this switch also sets the default front-end warning mode to
+  :switch:`-gnatws`, that is, front-end warnings are suppressed as well.
 
 
 .. index:: -Werror (gcc)
@@ -4175,6 +4197,9 @@ of the pragma in the :title:`GNAT_Reference_manual`).
   This switch causes warnings from the GCC back end to be treated as
   errors.  The warning string still appears, but the warning messages are
   counted as errors, and prevent the generation of an object file.
+  The use of this switch also sets the default front-end warning mode to
+  :switch:`-gnatwe`, that is, front-end warning messages and style check
+  messages are treated as errors as well.
 
 
 A string of warning parameters can be used in the same parameter. For example::

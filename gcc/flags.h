@@ -1,5 +1,5 @@
 /* Compilation switch flag definitions for GCC.
-   Copyright (C) 1987-2021 Free Software Foundation, Inc.
+   Copyright (C) 1987-2022 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -43,6 +43,10 @@ const char * debug_set_names (uint32_t w_symbols);
 /* Return true iff BTF debug info is enabled.  */
 
 extern bool btf_debuginfo_p ();
+
+/* Return true iff BTF with CO-RE debug info is enabled.  */
+
+extern bool btf_with_core_debuginfo_p ();
 
 /* Return true iff CTF debug info is enabled.  */
 

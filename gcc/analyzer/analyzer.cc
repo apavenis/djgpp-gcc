@@ -1,5 +1,5 @@
 /* Utility functions for the analyzer.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -131,6 +131,7 @@ maybe_reconstruct_from_def_stmt (tree ssa_name,
     {
     default:
       gcc_unreachable ();
+    case GIMPLE_ASM:
     case GIMPLE_NOP:
     case GIMPLE_PHI:
       /* Can't handle these.  */
@@ -144,6 +145,8 @@ maybe_reconstruct_from_def_stmt (tree ssa_name,
 	tree return_type = gimple_call_return_type (call_stmt);
 	tree fn = fixup_tree_for_diagnostic_1 (gimple_call_fn (call_stmt),
 					       visited);
+	if (fn == NULL_TREE)
+	  return NULL_TREE;
 	unsigned num_args = gimple_call_num_args (call_stmt);
 	auto_vec<tree> args (num_args);
 	for (unsigned i = 0; i < num_args; i++)
@@ -154,6 +157,7 @@ maybe_reconstruct_from_def_stmt (tree ssa_name,
 	      return NULL_TREE;
 	    args.quick_push (arg);
 	  }
+	gcc_assert (fn);
 	return build_call_array_loc (gimple_location (call_stmt),
 				     return_type, fn,
 				     num_args, args.address ());
@@ -237,10 +241,10 @@ is_special_named_call_p (const gcall *call, const char *funcname,
 /* Helper function for checkers.  Is FNDECL an extern fndecl at file scope
    that has the given FUNCNAME?
 
-   Compare with special_function_p in calls.c.  */
+   Compare with special_function_p in calls.cc.  */
 
 bool
-is_named_call_p (tree fndecl, const char *funcname)
+is_named_call_p (const_tree fndecl, const char *funcname)
 {
   gcc_assert (fndecl);
   gcc_assert (funcname);
@@ -267,7 +271,7 @@ is_named_call_p (tree fndecl, const char *funcname)
 }
 
 /* Return true if FNDECL is within the namespace "std".
-   Compare with cp/typeck.c: decl_in_std_namespace_p, but this doesn't
+   Compare with cp/typeck.cc: decl_in_std_namespace_p, but this doesn't
    rely on being the C++ FE (or handle inline namespaces inside of std).  */
 
 static inline bool
@@ -292,7 +296,7 @@ is_std_function_p (const_tree fndecl)
 /* Like is_named_call_p, but look for std::FUNCNAME.  */
 
 bool
-is_std_named_call_p (tree fndecl, const char *funcname)
+is_std_named_call_p (const_tree fndecl, const char *funcname)
 {
   gcc_assert (fndecl);
   gcc_assert (funcname);
@@ -314,7 +318,7 @@ is_std_named_call_p (tree fndecl, const char *funcname)
    arguments?  */
 
 bool
-is_named_call_p (tree fndecl, const char *funcname,
+is_named_call_p (const_tree fndecl, const char *funcname,
 		 const gcall *call, unsigned int num_args)
 {
   gcc_assert (fndecl);
@@ -332,7 +336,7 @@ is_named_call_p (tree fndecl, const char *funcname,
 /* Like is_named_call_p, but check for std::FUNCNAME.  */
 
 bool
-is_std_named_call_p (tree fndecl, const char *funcname,
+is_std_named_call_p (const_tree fndecl, const char *funcname,
 		     const gcall *call, unsigned int num_args)
 {
   gcc_assert (fndecl);
