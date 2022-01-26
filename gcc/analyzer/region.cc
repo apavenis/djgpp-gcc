@@ -1,5 +1,5 @@
 /* Regions of memory.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -638,6 +638,20 @@ region::symbolic_for_unknown_ptr_p () const
   return false;
 }
 
+/* Return true if this is a region for a decl with name DECL_NAME.
+   Intended for use when debugging (for assertions and conditional
+   breakpoints).  */
+
+DEBUG_FUNCTION bool
+region::is_named_decl_p (const char *decl_name) const
+{
+  if (tree decl = maybe_get_decl ())
+    if (DECL_NAME (decl)
+	&& !strcmp (IDENTIFIER_POINTER (DECL_NAME (decl)), decl_name))
+      return true;
+  return false;
+}
+
 /* region's ctor.  */
 
 region::region (complexity c, unsigned id, const region *parent, tree type)
@@ -1154,7 +1168,7 @@ field_region::dump_to_pp (pretty_printer *pp, bool simple) const
 bool
 field_region::get_relative_concrete_offset (bit_offset_t *out) const
 {
-  /* Compare with e.g. gimple-fold.c's
+  /* Compare with e.g. gimple-fold.cc's
      fold_nonarray_ctor_reference.  */
   tree byte_offset = DECL_FIELD_OFFSET (m_field);
   if (TREE_CODE (byte_offset) != INTEGER_CST)

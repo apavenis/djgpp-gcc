@@ -1,5 +1,5 @@
 /* Classes for representing the state of interest at a given path of analysis.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -218,6 +218,17 @@ public:
   void push_frame (const extrinsic_state &ext_state, function *fun);
   function * get_current_function () const;
 
+  void push_call (exploded_graph &eg,
+		  exploded_node *enode,
+		  const gcall *call_stmt,
+		  uncertainty_t *uncertainty);
+
+  void returning_call (exploded_graph &eg,
+		       exploded_node *enode,
+		       const gcall *call_stmt,
+		       uncertainty_t *uncertainty);
+
+
   bool on_edge (exploded_graph &eg,
 		exploded_node *enode,
 		const superedge *succ,
@@ -231,7 +242,7 @@ public:
   tree get_representative_tree (const svalue *sval) const;
 
   bool can_purge_p (const extrinsic_state &ext_state,
-		    const svalue *sval)
+		    const svalue *sval) const
   {
     /* Don't purge vars that have non-purgeable sm state, to avoid
        generating false "leak" complaints.  */
@@ -247,6 +258,7 @@ public:
   }
 
   bool can_merge_with_p (const program_state &other,
+			 const extrinsic_state &ext_state,
 			 const program_point &point,
 			 program_state *out) const;
 

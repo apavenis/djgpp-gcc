@@ -114,4 +114,5 @@ const std::vector<std::string> PkgBuilder::mft_ignore = {
     "/contrib/reg",
     "/contrib/vim-gcc-dev",
     "/libhsail/"
+    "/^makepkg/"
 };

@@ -1,5 +1,5 @@
 /* Classes for modeling the state of memory.
-   Copyright (C) 2020-2021 Free Software Foundation, Inc.
+   Copyright (C) 2020-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -269,8 +269,13 @@ struct bit_range
     return (get_start_bit_offset () < other.get_next_bit_offset ()
 	    && other.get_start_bit_offset () < get_next_bit_offset ());
   }
+  bool intersects_p (const bit_range &other,
+		     bit_range *out_this,
+		     bit_range *out_other) const;
 
   static int cmp (const bit_range &br1, const bit_range &br2);
+
+  bit_range operator- (bit_offset_t offset) const;
 
   static bool from_mask (unsigned HOST_WIDE_INT mask, bit_range *out);
 
@@ -554,6 +559,8 @@ public:
 
   bool symbolic_p () const;
 
+  const region *get_base_region () const { return m_base_region; }
+
   void dump_to_pp (pretty_printer *pp, bool simple, bool multiline) const;
   void dump (bool simple) const;
 
@@ -603,6 +610,7 @@ public:
 
   void mark_as_escaped ();
   void on_unknown_fncall (const gcall *call, store_manager *mgr);
+  void on_asm (const gasm *stmt, store_manager *mgr);
 
   bool escaped_p () const { return m_escaped; }
   bool touched_p () const { return m_touched; }
@@ -778,6 +786,8 @@ class store_manager
 {
 public:
   store_manager (region_model_manager *mgr) : m_mgr (mgr) {}
+
+  logger *get_logger () const;
 
   /* binding consolidation.  */
   const concrete_binding *

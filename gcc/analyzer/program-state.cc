@@ -1,5 +1,5 @@
 /* Classes for representing the state of interest at a given path of analysis.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -273,6 +273,7 @@ DEBUG_FUNCTION void
 sm_state_map::dump (bool simple) const
 {
   pretty_printer pp;
+  pp_format_decoder (&pp) = default_tree_printer;
   pp_show_color (&pp) = pp_show_color (global_dc->printer);
   pp.buffer->stream = stderr;
   print (NULL, simple, true, &pp);
@@ -419,6 +420,10 @@ sm_state_map::get_state (const svalue *sval,
 	  }
       }
 
+  if (state_machine::state_t state
+      = m_sm.alt_get_inherited_state (*this, sval, ext_state))
+    return state;
+
   return m_sm.get_default_state (sval);
 }
 
@@ -493,6 +498,18 @@ sm_state_map::impl_set_state (const svalue *sval,
     return false;
 
   gcc_assert (sval->can_have_associated_state_p ());
+
+  if (m_sm.inherited_state_p ())
+    {
+      if (const compound_svalue *compound_sval
+	    = sval->dyn_cast_compound_svalue ())
+	for (auto iter : *compound_sval)
+	  {
+	    const svalue *inner_sval = iter.second;
+	    if (inner_sval->can_have_associated_state_p ())
+	      impl_set_state (inner_sval, state, origin, ext_state);
+	  }
+    }
 
   /* Special-case state 0 as the default value.  */
   if (state == 0)
@@ -1013,7 +1030,7 @@ program_state::on_edge (exploded_graph &eg,
   impl_region_model_context ctxt (eg, enode,
 				  &enode->get_state (),
 				  this,
-				  uncertainty,
+				  uncertainty, NULL,
 				  last_stmt);
   if (!m_region_model->maybe_update_for_edge (*succ,
 					      last_stmt,
@@ -1032,6 +1049,52 @@ program_state::on_edge (exploded_graph &eg,
 			       &ctxt);
 
   return true;
+}
+
+/* Update this program_state to reflect a call to function
+   represented by CALL_STMT.
+   currently used only when the call doesn't have a superedge representing 
+   the call ( like call via a function pointer )  */
+void
+program_state::push_call (exploded_graph &eg,
+                          exploded_node *enode,
+                          const gcall *call_stmt,
+                          uncertainty_t *uncertainty)
+{
+  /* Update state.  */
+  const program_point &point = enode->get_point ();
+  const gimple *last_stmt = point.get_supernode ()->get_last_stmt ();
+
+  impl_region_model_context ctxt (eg, enode,
+                                  &enode->get_state (),
+                                  this,
+                                  uncertainty,
+				  NULL,
+                                  last_stmt);
+  m_region_model->update_for_gcall (call_stmt, &ctxt);
+}
+
+/* Update this program_state to reflect a return from function
+   call to which is represented by CALL_STMT.
+   currently used only when the call doesn't have a superedge representing 
+   the return */
+void
+program_state::returning_call (exploded_graph &eg,
+                               exploded_node *enode,
+                               const gcall *call_stmt,
+                               uncertainty_t *uncertainty)
+{
+  /* Update state.  */
+  const program_point &point = enode->get_point ();
+  const gimple *last_stmt = point.get_supernode ()->get_last_stmt ();
+
+  impl_region_model_context ctxt (eg, enode,
+                                  &enode->get_state (),
+                                  this,
+                                  uncertainty,
+				  NULL,
+                                  last_stmt);
+  m_region_model->update_for_return_gcall (call_stmt, &ctxt);
 }
 
 /* Generate a simpler version of THIS, discarding state that's no longer
@@ -1108,7 +1171,7 @@ program_state::prune_for_point (exploded_graph &eg,
 	  impl_region_model_context ctxt (eg, enode_for_diag,
 					  this,
 					  &new_state,
-					  uncertainty,
+					  uncertainty, NULL,
 					  point.get_stmt ());
 	  detect_leaks (*this, new_state, NULL, eg.get_ext_state (), &ctxt);
 	}
@@ -1134,6 +1197,7 @@ program_state::get_representative_tree (const svalue *sval) const
 
 bool
 program_state::can_merge_with_p (const program_state &other,
+				 const extrinsic_state &ext_state,
 				 const program_point &point,
 				 program_state *out) const
 {
@@ -1150,7 +1214,9 @@ program_state::can_merge_with_p (const program_state &other,
   /* Attempt to merge the region_models.  */
   if (!m_region_model->can_merge_with_p (*other.m_region_model,
 					  point,
-					  out->m_region_model))
+					 out->m_region_model,
+					 &ext_state,
+					 this, &other))
     return false;
 
   /* Copy m_checker_states to OUT.  */
@@ -1337,6 +1403,10 @@ program_state::impl_call_analyzer_dump_state (const gcall *call,
 
   const svalue *sval = cd.get_arg_svalue (1);
 
+  /* Strip off cast to int (due to variadic args).  */
+  if (const svalue *cast = sval->maybe_undo_cast ())
+    sval = cast;
+
   state_machine::state_t state = smap->get_state (sval, ext_state);
   warning_at (call->location, 0, "state: %qs", state->get_name ());
 }
@@ -1496,7 +1566,8 @@ test_program_state_1 ()
   region_model *model = s.m_region_model;
   const svalue *size_in_bytes
     = mgr->get_or_create_unknown_svalue (size_type_node);
-  const region *new_reg = model->create_region_for_heap_alloc (size_in_bytes);
+  const region *new_reg
+    = model->create_region_for_heap_alloc (size_in_bytes, NULL);
   const svalue *ptr_sval = mgr->get_ptr_svalue (ptr_type_node, new_reg);
   model->set_value (model->get_lvalue (p, NULL),
 		    ptr_sval, NULL);
@@ -1552,7 +1623,8 @@ test_program_state_merging ()
   region_model *model0 = s0.m_region_model;
   const svalue *size_in_bytes
     = mgr->get_or_create_unknown_svalue (size_type_node);
-  const region *new_reg = model0->create_region_for_heap_alloc (size_in_bytes);
+  const region *new_reg
+    = model0->create_region_for_heap_alloc (size_in_bytes, NULL);
   const svalue *ptr_sval = mgr->get_ptr_svalue (ptr_type_node, new_reg);
   model0->set_value (model0->get_lvalue (p, &ctxt),
 		     ptr_sval, &ctxt);
@@ -1576,7 +1648,7 @@ test_program_state_merging ()
      with the given sm-state.
      They ought to be mergeable, preserving the sm-state.  */
   program_state merged (ext_state);
-  ASSERT_TRUE (s0.can_merge_with_p (s1, point, &merged));
+  ASSERT_TRUE (s0.can_merge_with_p (s1, ext_state, point, &merged));
   merged.validate (ext_state);
 
   /* Verify that the merged state has the sm-state for "p".  */
@@ -1634,7 +1706,7 @@ test_program_state_merging_2 ()
 
   /* They ought to not be mergeable.  */
   program_state merged (ext_state);
-  ASSERT_FALSE (s0.can_merge_with_p (s1, point, &merged));
+  ASSERT_FALSE (s0.can_merge_with_p (s1, ext_state, point, &merged));
 }
 
 /* Run all of the selftests within this file.  */

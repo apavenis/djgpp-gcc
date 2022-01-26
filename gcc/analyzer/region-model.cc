@@ -1,5 +1,5 @@
 /* Classes for modeling the state of memory.
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -64,6 +64,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "analyzer/pending-diagnostic.h"
 #include "analyzer/region-model-reachability.h"
 #include "analyzer/analyzer-selftests.h"
+#include "analyzer/program-state.h"
 #include "stor-layout.h"
 #include "attribs.h"
 #include "tree-object-size.h"
@@ -980,7 +981,10 @@ region_model::on_stmt_pre (const gimple *stmt,
       break;
 
     case GIMPLE_ASM:
-      /* No-op for now.  */
+      {
+	const gasm *asm_stmt = as_a <const gasm *> (stmt);
+	on_asm_stmt (asm_stmt, ctxt);
+      }
       break;
 
     case GIMPLE_CALL:
@@ -995,6 +999,8 @@ region_model::on_stmt_pre (const gimple *stmt,
 	  impl_call_analyzer_describe (call, ctxt);
 	else if (is_special_named_call_p (call, "__analyzer_dump_capacity", 1))
 	  impl_call_analyzer_dump_capacity (call, ctxt);
+	else if (is_special_named_call_p (call, "__analyzer_dump_escaped", 0))
+	  impl_call_analyzer_dump_escaped (call);
 	else if (is_special_named_call_p (call, "__analyzer_dump_path", 0))
 	  {
 	    /* Handle the builtin "__analyzer_dump_path" by queuing a
@@ -1038,6 +1044,16 @@ region_model::on_stmt_pre (const gimple *stmt,
     }
 }
 
+/* Ensure that all arguments at the call described by CD are checked
+   for poisoned values, by calling get_rvalue on each argument.  */
+
+void
+region_model::check_call_args (const call_details &cd) const
+{
+  for (unsigned arg_idx = 0; arg_idx < cd.num_args (); arg_idx++)
+    cd.get_arg_svalue (arg_idx);
+}
+
 /* Update this model for the CALL stmt, using CTXT to report any
    diagnostics - the first half.
 
@@ -1066,14 +1082,11 @@ region_model::on_call_pre (const gcall *call, region_model_context *ctxt,
   if (tree lhs = gimple_call_lhs (call))
     {
       const region *lhs_region = get_lvalue (lhs, ctxt);
-      if (TREE_CODE (lhs) == SSA_NAME)
-	{
-	  const svalue *sval
-	    = m_mgr->get_or_create_conjured_svalue (TREE_TYPE (lhs), call,
-						    lhs_region);
-	  purge_state_involving (sval, ctxt);
-	  set_value (lhs_region, sval, ctxt);
-	}
+      const svalue *sval
+	= m_mgr->get_or_create_conjured_svalue (TREE_TYPE (lhs), call,
+						lhs_region);
+      purge_state_involving (sval, ctxt);
+      set_value (lhs_region, sval, ctxt);
     }
 
   if (gimple_call_internal_p (call))
@@ -1083,7 +1096,10 @@ region_model::on_call_pre (const gcall *call, region_model_context *ctxt,
        default:
 	 break;
        case IFN_BUILTIN_EXPECT:
-	 return impl_call_builtin_expect (cd);
+	 impl_call_builtin_expect (cd);
+	 return false;
+       case IFN_UBSAN_BOUNDS:
+	 return false;
        }
     }
 
@@ -1104,17 +1120,21 @@ region_model::on_call_pre (const gcall *call, region_model_context *ctxt,
 	    break;
 	  case BUILT_IN_ALLOCA:
 	  case BUILT_IN_ALLOCA_WITH_ALIGN:
-	    return impl_call_alloca (cd);
+	    impl_call_alloca (cd);
+	    return false;
 	  case BUILT_IN_CALLOC:
-	    return impl_call_calloc (cd);
+	    impl_call_calloc (cd);
+	    return false;
 	  case BUILT_IN_EXPECT:
 	  case BUILT_IN_EXPECT_WITH_PROBABILITY:
-	    return impl_call_builtin_expect (cd);
+	    impl_call_builtin_expect (cd);
+	    return false;
 	  case BUILT_IN_FREE:
 	    /* Handle in "on_call_post".  */
 	    break;
 	  case BUILT_IN_MALLOC:
-	    return impl_call_malloc (cd);
+	    impl_call_malloc (cd);
+	    return false;
 	  case BUILT_IN_MEMCPY:
 	  case BUILT_IN_MEMCPY_CHK:
 	    impl_call_memcpy (cd);
@@ -1125,16 +1145,21 @@ region_model::on_call_pre (const gcall *call, region_model_context *ctxt,
 	    return false;
 	    break;
 	  case BUILT_IN_REALLOC:
-	    impl_call_realloc (cd);
+	    return false;
+	  case BUILT_IN_STRCHR:
+	    impl_call_strchr (cd);
 	    return false;
 	  case BUILT_IN_STRCPY:
 	  case BUILT_IN_STRCPY_CHK:
 	    impl_call_strcpy (cd);
 	    return false;
 	  case BUILT_IN_STRLEN:
-	    if (impl_call_strlen (cd))
-	      return false;
-	    break;
+	    impl_call_strlen (cd);
+	    return false;
+
+	  case BUILT_IN_STACK_SAVE:
+	  case BUILT_IN_STACK_RESTORE:
+	    return false;
 
 	  /* Stdio builtins.  */
 	  case BUILT_IN_FPRINTF:
@@ -1158,14 +1183,24 @@ region_model::on_call_pre (const gcall *call, region_model_context *ctxt,
 	    /* These stdio builtins have external effects that are out
 	       of scope for the analyzer: we only want to model the effects
 	       on the return value.  */
+	    check_call_args (cd);
 	    break;
 	  }
       else if (is_named_call_p (callee_fndecl, "malloc", call, 1))
-	return impl_call_malloc (cd);
+	{
+	  impl_call_malloc (cd);
+	  return false;
+	}
       else if (is_named_call_p (callee_fndecl, "calloc", call, 2))
-	return impl_call_calloc (cd);
+	{
+	  impl_call_calloc (cd);
+	  return false;
+	}
       else if (is_named_call_p (callee_fndecl, "alloca", call, 1))
-	return impl_call_alloca (cd);
+	{
+	  impl_call_alloca (cd);
+	  return false;
+	}
       else if (is_named_call_p (callee_fndecl, "realloc", call, 2))
 	{
 	  impl_call_realloc (cd);
@@ -1207,16 +1242,28 @@ region_model::on_call_pre (const gcall *call, region_model_context *ctxt,
 	  impl_call_memset (cd);
 	  return false;
 	}
+      else if (is_named_call_p (callee_fndecl, "strchr", call, 2)
+	       && POINTER_TYPE_P (cd.get_arg_type (0)))
+	{
+	  impl_call_strchr (cd);
+	  return false;
+	}
       else if (is_named_call_p (callee_fndecl, "strlen", call, 1)
 	       && POINTER_TYPE_P (cd.get_arg_type (0)))
 	{
-	  if (impl_call_strlen (cd))
-	    return false;
+	  impl_call_strlen (cd);
+	  return false;
 	}
       else if (is_named_call_p (callee_fndecl, "operator new", call, 1))
-	return impl_call_operator_new (cd);
+	{
+	  impl_call_operator_new (cd);
+	  return false;
+	}
       else if (is_named_call_p (callee_fndecl, "operator new []", call, 1))
-	return impl_call_operator_new (cd);
+	{
+	  impl_call_operator_new (cd);
+	  return false;
+	}
       else if (is_named_call_p (callee_fndecl, "operator delete", call, 1)
 	       || is_named_call_p (callee_fndecl, "operator delete", call, 2)
 	       || is_named_call_p (callee_fndecl, "operator delete []", call, 1))
@@ -1251,9 +1298,9 @@ region_model::on_call_post (const gcall *call,
 {
   if (tree callee_fndecl = get_fndecl_for_call (call, ctxt))
     {
+      call_details cd (call, this, ctxt);
       if (is_named_call_p (callee_fndecl, "free", call, 1))
 	{
-	  call_details cd (call, this, ctxt);
 	  impl_call_free (cd);
 	  return;
 	}
@@ -1261,7 +1308,6 @@ region_model::on_call_post (const gcall *call,
 	  || is_named_call_p (callee_fndecl, "operator delete", call, 2)
 	  || is_named_call_p (callee_fndecl, "operator delete []", call, 1))
 	{
-	  call_details cd (call, this, ctxt);
 	  impl_call_operator_delete (cd);
 	  return;
 	}
@@ -1269,10 +1315,19 @@ region_model::on_call_post (const gcall *call,
 	 __attribute__((malloc(FOO)))?  */
       if (lookup_attribute ("*dealloc", DECL_ATTRIBUTES (callee_fndecl)))
 	{
-	  call_details cd (call, this, ctxt);
 	  impl_deallocation_call (cd);
 	  return;
 	}
+      if (fndecl_built_in_p (callee_fndecl, BUILT_IN_NORMAL)
+	  && gimple_builtin_call_types_compatible_p (call, callee_fndecl))
+	switch (DECL_UNCHECKED_FUNCTION_CODE (callee_fndecl))
+	  {
+	  default:
+	    break;
+	  case BUILT_IN_REALLOC:
+	    impl_call_realloc (cd);
+	    return;
+	  }
     }
 
   if (unknown_side_effects)
@@ -1681,7 +1736,7 @@ assert_compat_types (tree src_type, tree dst_type)
 
 /* Return true if SRC_TYPE can be converted to DST_TYPE as a no-op.  */
 
-static bool
+bool
 compat_types_p (tree src_type, tree dst_type)
 {
   if (src_type && dst_type && !VOID_TYPE_P (dst_type))
@@ -1815,6 +1870,11 @@ region_model::get_rvalue_1 (path_var pv, region_model_context *ctxt) const
       {
 	const region *ref_reg = get_lvalue (pv, ctxt);
 	return get_store_value (ref_reg, ctxt);
+      }
+    case OBJ_TYPE_REF:
+      {
+        tree expr = OBJ_TYPE_REF_EXPR (pv.m_tree);
+        return get_rvalue (expr, ctxt);
       }
     }
 }
@@ -2124,8 +2184,23 @@ public:
 
   bool emit (rich_location *rich_loc) FINAL OVERRIDE
   {
-    bool warned = warning_at (rich_loc, OPT_Wanalyzer_write_to_const,
-			      "write to %<const%> object %qE", m_decl);
+    auto_diagnostic_group d;
+    bool warned;
+    switch (m_reg->get_kind ())
+      {
+      default:
+	warned = warning_at (rich_loc, OPT_Wanalyzer_write_to_const,
+			     "write to %<const%> object %qE", m_decl);
+	break;
+      case RK_FUNCTION:
+	warned = warning_at (rich_loc, OPT_Wanalyzer_write_to_const,
+			     "write to function %qE", m_decl);
+	break;
+      case RK_LABEL:
+	warned = warning_at (rich_loc, OPT_Wanalyzer_write_to_const,
+			     "write to label %qE", m_decl);
+	break;
+      }
     if (warned)
       inform (DECL_SOURCE_LOCATION (m_decl), "declared here");
     return warned;
@@ -2133,7 +2208,15 @@ public:
 
   label_text describe_final_event (const evdesc::final_event &ev) FINAL OVERRIDE
   {
-    return ev.formatted_print ("write to %<const%> object %qE here", m_decl);
+    switch (m_reg->get_kind ())
+      {
+      default:
+	return ev.formatted_print ("write to %<const%> object %qE here", m_decl);
+      case RK_FUNCTION:
+	return ev.formatted_print ("write to function %qE here", m_decl);
+      case RK_LABEL:
+	return ev.formatted_print ("write to label %qE here", m_decl);
+      }
   }
 
 private:
@@ -2193,6 +2276,20 @@ region_model::check_for_writable_region (const region* dest_reg,
   switch (base_reg->get_kind ())
     {
     default:
+      break;
+    case RK_FUNCTION:
+      {
+	const function_region *func_reg = as_a <const function_region *> (base_reg);
+	tree fndecl = func_reg->get_fndecl ();
+	ctxt->warn (new write_to_const_diagnostic (func_reg, fndecl));
+      }
+      break;
+    case RK_LABEL:
+      {
+	const label_region *label_reg = as_a <const label_region *> (base_reg);
+	tree label = label_reg->get_label ();
+	ctxt->warn (new write_to_const_diagnostic (label_reg, label));
+      }
       break;
     case RK_DECL:
       {
@@ -2263,6 +2360,8 @@ region_model::check_region_access (const region *reg,
   /* Fail gracefully if CTXT is NULL.  */
   if (!ctxt)
     return;
+
+  check_region_for_taint (reg, dir, ctxt);
 
   switch (dir)
     {
@@ -2458,34 +2557,51 @@ region_model::eval_condition_without_cm (const svalue *lhs,
     if (const constant_svalue *cst_rhs = rhs->dyn_cast_constant_svalue ())
       return constant_svalue::eval_condition (cst_lhs, op, cst_rhs);
 
-  /* Handle comparison of a region_svalue against zero.  */
+  /* Handle comparison against zero.  */
+  if (const constant_svalue *cst_rhs = rhs->dyn_cast_constant_svalue ())
+    if (zerop (cst_rhs->get_constant ()))
+      {
+	if (const region_svalue *ptr = lhs->dyn_cast_region_svalue ())
+	  {
+	    /* A region_svalue is a non-NULL pointer, except in certain
+	       special cases (see the comment for region::non_null_p).  */
+	    const region *pointee = ptr->get_pointee ();
+	    if (pointee->non_null_p ())
+	      {
+		switch (op)
+		  {
+		  default:
+		    gcc_unreachable ();
 
-  if (const region_svalue *ptr = lhs->dyn_cast_region_svalue ())
-    if (const constant_svalue *cst_rhs = rhs->dyn_cast_constant_svalue ())
-      if (zerop (cst_rhs->get_constant ()))
-	{
-	  /* A region_svalue is a non-NULL pointer, except in certain
-	     special cases (see the comment for region::non_null_p.  */
-	  const region *pointee = ptr->get_pointee ();
-	  if (pointee->non_null_p ())
-	    {
-	      switch (op)
-		{
-		default:
-		  gcc_unreachable ();
+		  case EQ_EXPR:
+		  case GE_EXPR:
+		  case LE_EXPR:
+		    return tristate::TS_FALSE;
 
-		case EQ_EXPR:
-		case GE_EXPR:
-		case LE_EXPR:
-		  return tristate::TS_FALSE;
-
-		case NE_EXPR:
-		case GT_EXPR:
-		case LT_EXPR:
-		  return tristate::TS_TRUE;
-		}
-	    }
-	}
+		  case NE_EXPR:
+		  case GT_EXPR:
+		  case LT_EXPR:
+		    return tristate::TS_TRUE;
+		  }
+	      }
+	  }
+	else if (const binop_svalue *binop = lhs->dyn_cast_binop_svalue ())
+	  {
+	    /* Treat offsets from a non-NULL pointer as being non-NULL.  This
+	       isn't strictly true, in that eventually ptr++ will wrap
+	       around and be NULL, but it won't occur in practise and thus
+	       can be used to suppress effectively false positives that we
+	       shouldn't warn for.  */
+	    if (binop->get_op () == POINTER_PLUS_EXPR)
+	      {
+		tristate lhs_ts
+		  = eval_condition_without_cm (binop->get_arg0 (),
+					       op, rhs);
+		if (lhs_ts.is_known ())
+		  return lhs_ts;
+	      }
+	  }
+      }
 
   /* Handle rejection of equality for comparisons of the initial values of
      "external" values (such as params) with the address of locals.  */
@@ -2696,8 +2812,9 @@ region_model::add_constraint (const svalue *lhs,
   if (add_constraints_from_binop (lhs, op, rhs, &out, ctxt))
     return out;
 
-  /* Store the constraint.  */
-  m_constraints->add_constraint (lhs, op, rhs);
+  /* Attempt to store the constraint.  */
+  if (!m_constraints->add_constraint (lhs, op, rhs))
+    return false;
 
   /* Notify the context, if any.  This exists so that the state machines
      in a program_state can be notified about the condition, and so can
@@ -2726,7 +2843,7 @@ region_model::add_constraint (tree lhs, enum tree_code op, tree rhs,
 {
   bool sat = add_constraint (lhs, op, rhs, ctxt);
   if (!sat && out)
-    *out = new rejected_constraint (*this, lhs, op, rhs);
+    *out = new rejected_op_constraint (*this, lhs, op, rhs);
   return sat;
 }
 
@@ -2807,6 +2924,17 @@ region_model::get_representative_path_var_1 (const svalue *sval,
 				   NULL_TREE),
 			   parent_pv.m_stack_depth);
     }
+
+  /* Handle binops.  */
+  if (const binop_svalue *binop_sval = sval->dyn_cast_binop_svalue ())
+    if (path_var lhs_pv
+	= get_representative_path_var (binop_sval->get_arg0 (), visited))
+      if (path_var rhs_pv
+	  = get_representative_path_var (binop_sval->get_arg1 (), visited))
+	return path_var (build2 (binop_sval->get_op (),
+				 sval->get_type (),
+				 lhs_pv.m_tree, rhs_pv.m_tree),
+			 lhs_pv.m_stack_depth);
 
   if (pvs.length () < 1)
     return path_var (NULL_TREE, 0);
@@ -3147,12 +3275,12 @@ region_model::maybe_update_for_edge (const superedge &edge,
    caller's frame.  */
 
 void
-region_model::update_for_call_superedge (const call_superedge &call_edge,
-					 region_model_context *ctxt)
+region_model::update_for_gcall (const gcall *call_stmt,
+				region_model_context *ctxt,
+				function *callee)
 {
   /* Build a vec of argument svalues, using the current top
      frame for resolving tree expressions.  */
-  const gcall *call_stmt = call_edge.get_call_stmt ();
   auto_vec<const svalue *> arg_svals (gimple_call_num_args (call_stmt));
 
   for (unsigned i = 0; i < gimple_call_num_args (call_stmt); i++)
@@ -3161,31 +3289,60 @@ region_model::update_for_call_superedge (const call_superedge &call_edge,
       arg_svals.quick_push (get_rvalue (arg, ctxt));
     }
 
-  push_frame (call_edge.get_callee_function (), &arg_svals, ctxt);
+  if(!callee)
+  {
+    /* Get the function * from the gcall.  */
+    tree fn_decl = get_fndecl_for_call (call_stmt,ctxt);
+    callee = DECL_STRUCT_FUNCTION (fn_decl);
+  }
+
+  push_frame (callee, &arg_svals, ctxt);
 }
 
 /* Pop the top-most frame_region from the stack, and copy the return
    region's values (if any) into the region for the lvalue of the LHS of
    the call (if any).  */
+
 void
-region_model::update_for_return_superedge (const return_superedge &return_edge,
-					   region_model_context *ctxt)
+region_model::update_for_return_gcall (const gcall *call_stmt,
+				       region_model_context *ctxt)
 {
   /* Get the region for the result of the call, within the caller frame.  */
   const region *result_dst_reg = NULL;
-  const gcall *call_stmt = return_edge.get_call_stmt ();
   tree lhs = gimple_call_lhs (call_stmt);
   if (lhs)
     {
       /* Normally we access the top-level frame, which is:
-	   path_var (expr, get_stack_depth () - 1)
-	 whereas here we need the caller frame, hence "- 2" here.  */
+         path_var (expr, get_stack_depth () - 1)
+         whereas here we need the caller frame, hence "- 2" here.  */
       gcc_assert (get_stack_depth () >= 2);
       result_dst_reg = get_lvalue (path_var (lhs, get_stack_depth () - 2),
-				   ctxt);
+           			   ctxt);
     }
 
   pop_frame (result_dst_reg, NULL, ctxt);
+}
+
+/* Extract calling information from the superedge and update the model for the 
+   call  */
+
+void
+region_model::update_for_call_superedge (const call_superedge &call_edge,
+					 region_model_context *ctxt)
+{
+  const gcall *call_stmt = call_edge.get_call_stmt ();
+  update_for_gcall (call_stmt, ctxt, call_edge.get_callee_function ());
+}
+
+/* Extract calling information from the return superedge and update the model 
+   for the returning call */
+
+void
+region_model::update_for_return_superedge (const return_superedge &return_edge,
+					   region_model_context *ctxt)
+{
+  const gcall *call_stmt = return_edge.get_call_stmt ();
+  update_for_return_gcall (call_stmt, ctxt);
 }
 
 /* Update this region_model with a summary of the effect of calling
@@ -3253,56 +3410,15 @@ region_model::apply_constraints_for_gswitch (const switch_cfg_superedge &edge,
 					     region_model_context *ctxt,
 					     rejected_constraint **out)
 {
+  bounded_ranges_manager *ranges_mgr = get_range_manager ();
+  const bounded_ranges *all_cases_ranges
+    = ranges_mgr->get_or_create_ranges_for_switch (&edge, switch_stmt);
   tree index  = gimple_switch_index (switch_stmt);
-  tree case_label = edge.get_case_label ();
-  gcc_assert (TREE_CODE (case_label) == CASE_LABEL_EXPR);
-  tree lower_bound = CASE_LOW (case_label);
-  tree upper_bound = CASE_HIGH (case_label);
-  if (lower_bound)
-    {
-      if (upper_bound)
-	{
-	  /* Range.  */
-	  if (!add_constraint (index, GE_EXPR, lower_bound, ctxt, out))
-	    return false;
-	  return add_constraint (index, LE_EXPR, upper_bound, ctxt, out);
-	}
-      else
-	/* Single-value.  */
-	return add_constraint (index, EQ_EXPR, lower_bound, ctxt, out);
-    }
-  else
-    {
-      /* The default case.
-	 Add exclusions based on the other cases.  */
-      for (unsigned other_idx = 1;
-	   other_idx < gimple_switch_num_labels (switch_stmt);
-	   other_idx++)
-	{
-	  tree other_label = gimple_switch_label (switch_stmt,
-						  other_idx);
-	  tree other_lower_bound = CASE_LOW (other_label);
-	  tree other_upper_bound = CASE_HIGH (other_label);
-	  gcc_assert (other_lower_bound);
-	  if (other_upper_bound)
-	    {
-	      /* Exclude this range-valued case.
-		 For now, we just exclude the boundary values.
-		 TODO: exclude the values within the region.  */
-	      if (!add_constraint (index, NE_EXPR, other_lower_bound,
-				   ctxt, out))
-		return false;
-	      if (!add_constraint (index, NE_EXPR, other_upper_bound,
-				   ctxt, out))
-		return false;
-	    }
-	  else
-	    /* Exclude this single-valued case.  */
-	    if (!add_constraint (index, NE_EXPR, other_lower_bound, ctxt, out))
-	      return false;
-	}
-      return true;
-    }
+  const svalue *index_sval = get_rvalue (index, ctxt);
+  bool sat = m_constraints->add_bounded_ranges (index_sval, all_cases_ranges);
+  if (!sat && out)
+    *out = new rejected_ranges_constraint (*this, index, all_cases_ranges);
+  return sat;
 }
 
 /* Apply any constraints due to an exception being thrown at LAST_STMT.
@@ -3582,7 +3698,10 @@ region_model::poison_any_pointers_to_descendents (const region *reg,
 bool
 region_model::can_merge_with_p (const region_model &other_model,
 				const program_point &point,
-				region_model *out_model) const
+				region_model *out_model,
+				const extrinsic_state *ext_state,
+				const program_state *state_a,
+				const program_state *state_b) const
 {
   gcc_assert (out_model);
   gcc_assert (m_mgr == other_model.m_mgr);
@@ -3592,7 +3711,8 @@ region_model::can_merge_with_p (const region_model &other_model,
     return false;
   out_model->m_current_frame = m_current_frame;
 
-  model_merger m (this, &other_model, point, out_model);
+  model_merger m (this, &other_model, point, out_model,
+		  ext_state, state_a, state_b);
 
   if (!store::can_merge_p (&m_store, &other_model.m_store,
 			   &out_model->m_store, m_mgr->get_store_manager (),
@@ -3678,36 +3798,45 @@ region_model::append_ssa_names_cb (const region *base_reg,
     }
 }
 
-/* Return a new region describing a heap-allocated block of memory.  */
+/* Return a new region describing a heap-allocated block of memory.
+   Use CTXT to complain about tainted sizes.  */
 
 const region *
-region_model::create_region_for_heap_alloc (const svalue *size_in_bytes)
+region_model::create_region_for_heap_alloc (const svalue *size_in_bytes,
+					    region_model_context *ctxt)
 {
   const region *reg = m_mgr->create_region_for_heap_alloc ();
   if (compat_types_p (size_in_bytes->get_type (), size_type_node))
-    set_dynamic_extents (reg, size_in_bytes);
+    set_dynamic_extents (reg, size_in_bytes, ctxt);
   return reg;
 }
 
 /* Return a new region describing a block of memory allocated within the
-   current frame.  */
+   current frame.
+   Use CTXT to complain about tainted sizes.  */
 
 const region *
-region_model::create_region_for_alloca (const svalue *size_in_bytes)
+region_model::create_region_for_alloca (const svalue *size_in_bytes,
+					region_model_context *ctxt)
 {
   const region *reg = m_mgr->create_region_for_alloca (m_current_frame);
   if (compat_types_p (size_in_bytes->get_type (), size_type_node))
-    set_dynamic_extents (reg, size_in_bytes);
+    set_dynamic_extents (reg, size_in_bytes, ctxt);
   return reg;
 }
 
-/* Record that the size of REG is SIZE_IN_BYTES.  */
+/* Record that the size of REG is SIZE_IN_BYTES.
+   Use CTXT to complain about tainted sizes.  */
 
 void
 region_model::set_dynamic_extents (const region *reg,
-				   const svalue *size_in_bytes)
+				   const svalue *size_in_bytes,
+				   region_model_context *ctxt)
 {
   assert_compat_types (size_in_bytes->get_type (), size_type_node);
+  if (ctxt)
+    check_dynamic_size_for_taint (reg->get_memory_space (), size_in_bytes,
+				  ctxt);
   m_dynamic_extents.put (reg, size_in_bytes);
 }
 
@@ -3728,6 +3857,19 @@ void
 region_model::unset_dynamic_extents (const region *reg)
 {
   m_dynamic_extents.remove (reg);
+}
+
+/* class noop_region_model_context : public region_model_context.  */
+
+void
+noop_region_model_context::bifurcate (custom_edge_info *info)
+{
+  delete info;
+}
+
+void
+noop_region_model_context::terminate_path ()
+{
 }
 
 /* struct model_merger.  */
@@ -3774,6 +3916,30 @@ model_merger::dump (bool simple) const
   dump (stderr, simple);
 }
 
+/* Return true if it's OK to merge SVAL with other svalues.  */
+
+bool
+model_merger::mergeable_svalue_p (const svalue *sval) const
+{
+  if (m_ext_state)
+    {
+      /* Reject merging svalues that have non-purgable sm-state,
+	 to avoid falsely reporting memory leaks by merging them
+	 with something else.  For example, given a local var "p",
+	 reject the merger of a:
+	   store_a mapping "p" to a malloc-ed ptr
+	 with:
+	   store_b mapping "p" to a NULL ptr.  */
+      if (m_state_a)
+	if (!m_state_a->can_purge_p (*m_ext_state, sval))
+	  return false;
+      if (m_state_b)
+	if (!m_state_b->can_purge_p (*m_ext_state, sval))
+	  return false;
+    }
+  return true;
+}
+
 } // namespace ana
 
 /* Dump RMODEL fully to stderr (i.e. without summarization).  */
@@ -3784,10 +3950,10 @@ debug (const region_model &rmodel)
   rmodel.dump (false);
 }
 
-/* struct rejected_constraint.  */
+/* class rejected_op_constraint : public rejected_constraint.  */
 
 void
-rejected_constraint::dump_to_pp (pretty_printer *pp) const
+rejected_op_constraint::dump_to_pp (pretty_printer *pp) const
 {
   region_model m (m_model);
   const svalue *lhs_sval = m.get_rvalue (m_lhs, NULL);
@@ -3797,7 +3963,26 @@ rejected_constraint::dump_to_pp (pretty_printer *pp) const
   rhs_sval->dump_to_pp (pp, true);
 }
 
+/* class rejected_ranges_constraint : public rejected_constraint.  */
+
+void
+rejected_ranges_constraint::dump_to_pp (pretty_printer *pp) const
+{
+  region_model m (m_model);
+  const svalue *sval = m.get_rvalue (m_expr, NULL);
+  sval->dump_to_pp (pp, true);
+  pp_string (pp, " in ");
+  m_ranges->dump_to_pp (pp, true);
+}
+
 /* class engine.  */
+
+/* engine's ctor.  */
+
+engine::engine (logger *logger)
+: m_mgr (logger)
+{
+}
 
 /* Dump the managed objects by class to LOGGER, and the per-class totals.  */
 
@@ -4382,6 +4567,39 @@ test_binop_svalue_folding ()
     = mgr.get_or_create_binop (integer_type_node, PLUS_EXPR,
 			       x_init_plus_one, cst_sval[1]);
   ASSERT_EQ (x_init_plus_one_plus_one, x_init_plus_two);
+
+  /* Verify various binops on booleans.  */
+  {
+    const svalue *sval_true = mgr.get_or_create_int_cst (boolean_type_node, 1);
+    const svalue *sval_false = mgr.get_or_create_int_cst (boolean_type_node, 0);
+    const svalue *sval_unknown
+      = mgr.get_or_create_unknown_svalue (boolean_type_node);
+    const placeholder_svalue sval_placeholder (boolean_type_node, "v");
+    for (auto op : {BIT_IOR_EXPR, TRUTH_OR_EXPR})
+      {
+	ASSERT_EQ (mgr.get_or_create_binop (boolean_type_node, op,
+					    sval_true, sval_unknown),
+		   sval_true);
+	ASSERT_EQ (mgr.get_or_create_binop (boolean_type_node, op,
+					    sval_false, sval_unknown),
+		   sval_unknown);
+	ASSERT_EQ (mgr.get_or_create_binop (boolean_type_node, op,
+					    sval_false, &sval_placeholder),
+		   &sval_placeholder);
+      }
+    for (auto op : {BIT_AND_EXPR, TRUTH_AND_EXPR})
+      {
+	ASSERT_EQ (mgr.get_or_create_binop (boolean_type_node, op,
+					    sval_false, sval_unknown),
+		   sval_false);
+	ASSERT_EQ (mgr.get_or_create_binop (boolean_type_node, op,
+					    sval_true, sval_unknown),
+		   sval_unknown);
+	ASSERT_EQ (mgr.get_or_create_binop (boolean_type_node, op,
+					    sval_true, &sval_placeholder),
+		   &sval_placeholder);
+      }
+  }
 }
 
 /* Verify that sub_svalues are folded as expected.  */
@@ -5029,7 +5247,8 @@ test_state_merging ()
     region_model model0 (&mgr);
     tree size = build_int_cst (size_type_node, 1024);
     const svalue *size_sval = mgr.get_or_create_constant_svalue (size);
-    const region *new_reg = model0.create_region_for_heap_alloc (size_sval);
+    const region *new_reg
+      = model0.create_region_for_heap_alloc (size_sval, &ctxt);
     const svalue *ptr_sval = mgr.get_ptr_svalue (ptr_type_node, new_reg);
     model0.set_value (model0.get_lvalue (p, &ctxt),
 		      ptr_sval, &ctxt);
@@ -5417,7 +5636,7 @@ test_malloc_constraints ()
 
   const svalue *size_in_bytes
     = mgr.get_or_create_unknown_svalue (size_type_node);
-  const region *reg = model.create_region_for_heap_alloc (size_in_bytes);
+  const region *reg = model.create_region_for_heap_alloc (size_in_bytes, NULL);
   const svalue *sval = mgr.get_ptr_svalue (ptr_type_node, reg);
   model.set_value (model.get_lvalue (p, NULL), sval, NULL);
   model.set_value (q, p, NULL);
@@ -5638,7 +5857,7 @@ test_malloc ()
 
   /* "p = malloc (n * 4);".  */
   const svalue *size_sval = model.get_rvalue (n_times_4, &ctxt);
-  const region *reg = model.create_region_for_heap_alloc (size_sval);
+  const region *reg = model.create_region_for_heap_alloc (size_sval, &ctxt);
   const svalue *ptr = mgr.get_ptr_svalue (int_star, reg);
   model.set_value (model.get_lvalue (p, &ctxt), ptr, &ctxt);
   ASSERT_EQ (model.get_capacity (reg), size_sval);
@@ -5672,7 +5891,7 @@ test_alloca ()
 			NULL, &ctxt);
   /* "p = alloca (n * 4);".  */
   const svalue *size_sval = model.get_rvalue (n_times_4, &ctxt);
-  const region *reg = model.create_region_for_alloca (size_sval);
+  const region *reg = model.create_region_for_alloca (size_sval, &ctxt);
   ASSERT_EQ (reg->get_parent_region (), frame_reg);
   const svalue *ptr = mgr.get_ptr_svalue (int_star, reg);
   model.set_value (model.get_lvalue (p, &ctxt), ptr, &ctxt);

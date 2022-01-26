@@ -1,5 +1,5 @@
 /* Loop interchange.
-   Copyright (C) 2017-2021 Free Software Foundation, Inc.
+   Copyright (C) 2017-2022 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
 This file is part of GCC.
@@ -2089,8 +2089,7 @@ pass_linterchange::execute (function *fun)
     return 0;
 
   bool changed_p = false;
-  class loop *loop;
-  FOR_EACH_LOOP (loop, LI_ONLY_INNERMOST)
+  for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
     {
       vec<loop_p> loop_nest = vNULL;
       vec<data_reference_p> datarefs = vNULL;

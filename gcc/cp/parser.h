@@ -1,5 +1,5 @@
 /* Data structures and function exported by the C++ Parser.
-   Copyright (C) 2010-2021 Free Software Foundation, Inc.
+   Copyright (C) 2010-2022 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -117,6 +117,10 @@ struct GTY (()) cp_lexer {
   /* True if we're in the context of OpenMP directives written as C++11
      attributes turned into pragma.  */
   bool in_omp_attribute_pragma;
+
+  /* True for in_omp_attribute_pragma lexer that should be destroyed
+     when it is no longer in use.  */
+  bool orphan_p;
 };
 
 
@@ -212,15 +216,14 @@ struct cp_omp_declare_simd_data {
   bool error_seen; /* Set if error has been reported.  */
   bool fndecl_seen; /* Set if one fn decl/definition has been seen already.  */
   bool variant_p; /* Set for #pragma omp declare variant.  */
-  bool in_omp_attribute_pragma; /* True if declare simd/variant comes from
-				   C++11 attribute rather than pragma.  */
+  location_t loc;
   vec<cp_token_cache_ptr> tokens;
-  tree clauses;
+  tree *attribs[2];
 };
 
 /* Helper data structure for parsing #pragma acc routine.  */
 struct cp_oacc_routine_data : cp_omp_declare_simd_data {
-  location_t loc;
+  tree clauses;
 };
 
 /* The cp_parser structure represents the C++ parser.  */
@@ -431,7 +434,7 @@ struct GTY(()) cp_parser {
 
 };
 
-/* In parser.c  */
+/* In parser.cc  */
 extern void debug (cp_token &ref);
 extern void debug (cp_token *ptr);
 extern void cp_lexer_debug_tokens (vec<cp_token, va_gc> *);

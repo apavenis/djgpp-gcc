@@ -1,6 +1,6 @@
 /* Gimple IR definitions.
 
-   Copyright (C) 2007-2021 Free Software Foundation, Inc.
+   Copyright (C) 2007-2022 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez <aldyh@redhat.com>
 
 This file is part of GCC.
@@ -194,8 +194,9 @@ enum gf_mask {
     GF_OMP_RETURN_NOWAIT	= 1 << 0,
 
     GF_OMP_SECTION_LAST		= 1 << 0,
-    GF_OMP_ATOMIC_MEMORY_ORDER  = (1 << 3) - 1,
-    GF_OMP_ATOMIC_NEED_VALUE	= 1 << 3,
+    GF_OMP_ATOMIC_MEMORY_ORDER  = (1 << 6) - 1,
+    GF_OMP_ATOMIC_NEED_VALUE	= 1 << 6,
+    GF_OMP_ATOMIC_WEAK		= 1 << 7,
     GF_PREDICT_TAKEN		= 1 << 15
 };
 
@@ -404,7 +405,7 @@ struct GTY((tag("GSS_BIND")))
      which is analogous to TREE_BLOCK (i.e., the lexical block holding
      this statement).  This field is the equivalent of BIND_EXPR_BLOCK
      in tree land (i.e., the lexical scope defined by this bind).  See
-     gimple-low.c.  */
+     gimple-low.cc.  */
   tree block;
 
   /* [ WORD 9 ]  */
@@ -742,7 +743,7 @@ struct GTY((tag("GSS_OMP_CONTINUE")))
 };
 
 /* GIMPLE_OMP_SINGLE, GIMPLE_OMP_ORDERED, GIMPLE_OMP_TASKGROUP,
-   GIMPLE_OMP_SCAN.  */
+   GIMPLE_OMP_SCAN, GIMPLE_OMP_MASKED, GIMPLE_OMP_SCOPE.  */
 
 struct GTY((tag("GSS_OMP_SINGLE_LAYOUT")))
   gimple_statement_omp_single_layout : public gimple_statement_omp
@@ -1559,7 +1560,9 @@ gomp_parallel *gimple_build_omp_parallel (gimple_seq, tree, tree, tree);
 gomp_task *gimple_build_omp_task (gimple_seq, tree, tree, tree, tree,
 				       tree, tree);
 gimple *gimple_build_omp_section (gimple_seq);
+gimple *gimple_build_omp_scope (gimple_seq, tree);
 gimple *gimple_build_omp_master (gimple_seq);
+gimple *gimple_build_omp_masked (gimple_seq, tree);
 gimple *gimple_build_omp_taskgroup (gimple_seq, tree);
 gomp_continue *gimple_build_omp_continue (tree, tree);
 gomp_ordered *gimple_build_omp_ordered (gimple_seq, tree);
@@ -1586,6 +1589,8 @@ gimple_seq gimple_seq_copy (gimple_seq);
 bool gimple_call_same_target_p (const gimple *, const gimple *);
 int gimple_call_flags (const gimple *);
 int gimple_call_arg_flags (const gcall *, unsigned);
+int gimple_call_retslot_flags (const gcall *);
+int gimple_call_static_chain_flags (const gcall *);
 int gimple_call_return_flags (const gcall *);
 bool gimple_call_nonnull_result_p (gcall *);
 tree gimple_call_nonnull_arg (gcall *);
@@ -1836,11 +1841,13 @@ gimple_has_substatements (gimple *g)
     case GIMPLE_TRY:
     case GIMPLE_OMP_FOR:
     case GIMPLE_OMP_MASTER:
+    case GIMPLE_OMP_MASKED:
     case GIMPLE_OMP_TASKGROUP:
     case GIMPLE_OMP_ORDERED:
     case GIMPLE_OMP_SECTION:
     case GIMPLE_OMP_PARALLEL:
     case GIMPLE_OMP_TASK:
+    case GIMPLE_OMP_SCOPE:
     case GIMPLE_OMP_SECTIONS:
     case GIMPLE_OMP_SINGLE:
     case GIMPLE_OMP_TARGET:
@@ -2439,6 +2446,29 @@ gimple_omp_atomic_set_need_value (gimple *g)
   if (gimple_code (g) != GIMPLE_OMP_ATOMIC_LOAD)
     GIMPLE_CHECK (g, GIMPLE_OMP_ATOMIC_STORE);
   g->subcode |= GF_OMP_ATOMIC_NEED_VALUE;
+}
+
+
+/* Return true if OMP atomic load/store statement G has the
+   GF_OMP_ATOMIC_WEAK flag set.  */
+
+static inline bool
+gimple_omp_atomic_weak_p (const gimple *g)
+{
+  if (gimple_code (g) != GIMPLE_OMP_ATOMIC_LOAD)
+    GIMPLE_CHECK (g, GIMPLE_OMP_ATOMIC_STORE);
+  return (gimple_omp_subcode (g) & GF_OMP_ATOMIC_WEAK) != 0;
+}
+
+
+/* Set the GF_OMP_ATOMIC_WEAK flag on G.  */
+
+static inline void
+gimple_omp_atomic_set_weak (gimple *g)
+{
+  if (gimple_code (g) != GIMPLE_OMP_ATOMIC_LOAD)
+    GIMPLE_CHECK (g, GIMPLE_OMP_ATOMIC_STORE);
+  g->subcode |= GF_OMP_ATOMIC_WEAK;
 }
 
 
@@ -4662,6 +4692,44 @@ gimple_phi_arg_has_location (const gphi *phi, size_t i)
   return gimple_phi_arg_location (phi, i) != UNKNOWN_LOCATION;
 }
 
+/* Return the number of arguments that can be accessed by gimple_arg.  */
+
+static inline unsigned
+gimple_num_args (const gimple *gs)
+{
+  if (auto phi = dyn_cast<const gphi *> (gs))
+    return gimple_phi_num_args (phi);
+  if (auto call = dyn_cast<const gcall *> (gs))
+    return gimple_call_num_args (call);
+  return gimple_num_ops (as_a <const gassign *> (gs)) - 1;
+}
+
+/* GS must be an assignment, a call, or a PHI.
+   If it's an assignment, return rhs operand I.
+   If it's a call, return function argument I.
+   If it's a PHI, return the value of PHI argument I.  */
+
+static inline tree
+gimple_arg (const gimple *gs, unsigned int i)
+{
+  if (auto phi = dyn_cast<const gphi *> (gs))
+    return gimple_phi_arg_def (phi, i);
+  if (auto call = dyn_cast<const gcall *> (gs))
+    return gimple_call_arg (call, i);
+  return gimple_op (as_a <const gassign *> (gs), i + 1);
+}
+
+/* Return a pointer to gimple_arg (GS, I).  */
+
+static inline tree *
+gimple_arg_ptr (gimple *gs, unsigned int i)
+{
+  if (auto phi = dyn_cast<gphi *> (gs))
+    return gimple_phi_arg_def_ptr (phi, i);
+  if (auto call = dyn_cast<gcall *> (gs))
+    return gimple_call_arg_ptr (call, i);
+  return gimple_op_ptr (as_a <gassign *> (gs), i + 1);
+}
 
 /* Return the region number for GIMPLE_RESX RESX_STMT.  */
 
@@ -5200,6 +5268,74 @@ static inline void
 gimple_omp_taskgroup_set_clauses (gimple *gs, tree clauses)
 {
   GIMPLE_CHECK (gs, GIMPLE_OMP_TASKGROUP);
+  static_cast <gimple_statement_omp_single_layout *> (gs)->clauses
+    = clauses;
+}
+
+
+/* Return the clauses associated with OMP_MASKED statement GS.  */
+
+static inline tree
+gimple_omp_masked_clauses (const gimple *gs)
+{
+  GIMPLE_CHECK (gs, GIMPLE_OMP_MASKED);
+  return
+    static_cast <const gimple_statement_omp_single_layout *> (gs)->clauses;
+}
+
+
+/* Return a pointer to the clauses associated with OMP masked statement
+   GS.  */
+
+static inline tree *
+gimple_omp_masked_clauses_ptr (gimple *gs)
+{
+  GIMPLE_CHECK (gs, GIMPLE_OMP_MASKED);
+  return &static_cast <gimple_statement_omp_single_layout *> (gs)->clauses;
+}
+
+
+/* Set CLAUSES to be the clauses associated with OMP masked statement
+   GS.  */
+
+static inline void
+gimple_omp_masked_set_clauses (gimple *gs, tree clauses)
+{
+  GIMPLE_CHECK (gs, GIMPLE_OMP_MASKED);
+  static_cast <gimple_statement_omp_single_layout *> (gs)->clauses
+    = clauses;
+}
+
+
+/* Return the clauses associated with OMP_SCOPE statement GS.  */
+
+static inline tree
+gimple_omp_scope_clauses (const gimple *gs)
+{
+  GIMPLE_CHECK (gs, GIMPLE_OMP_SCOPE);
+  return
+    static_cast <const gimple_statement_omp_single_layout *> (gs)->clauses;
+}
+
+
+/* Return a pointer to the clauses associated with OMP scope statement
+   GS.  */
+
+static inline tree *
+gimple_omp_scope_clauses_ptr (gimple *gs)
+{
+  GIMPLE_CHECK (gs, GIMPLE_OMP_SCOPE);
+  return &static_cast <gimple_statement_omp_single_layout *> (gs)->clauses;
+}
+
+
+/* Set CLAUSES to be the clauses associated with OMP scope statement
+   GS.  */
+
+static inline void
+gimple_omp_scope_set_clauses (gimple *gs, tree clauses)
+{
+  GIMPLE_CHECK (gs, GIMPLE_OMP_SCOPE);
   static_cast <gimple_statement_omp_single_layout *> (gs)->clauses
     = clauses;
 }
@@ -6491,8 +6627,10 @@ gimple_return_set_retval (greturn *gs, tree retval)
     case GIMPLE_OMP_SINGLE:			\
     case GIMPLE_OMP_TARGET:			\
     case GIMPLE_OMP_TEAMS:			\
+    case GIMPLE_OMP_SCOPE:			\
     case GIMPLE_OMP_SECTION:			\
     case GIMPLE_OMP_MASTER:			\
+    case GIMPLE_OMP_MASKED:			\
     case GIMPLE_OMP_TASKGROUP:			\
     case GIMPLE_OMP_ORDERED:			\
     case GIMPLE_OMP_CRITICAL:			\
@@ -6610,7 +6748,7 @@ is_gimple_resx (const gimple *gs)
 
 
 /* Enum and arrays used for allocation stats.  Keep in sync with
-   gimple.c:gimple_alloc_kind_names.  */
+   gimple.cc:gimple_alloc_kind_names.  */
 enum gimple_alloc_kind
 {
   gimple_alloc_kind_assign,	/* Assignments.  */
