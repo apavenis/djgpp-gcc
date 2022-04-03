@@ -34,7 +34,7 @@
 #include <cerrno>
 
 // Include Watt-32 errno list, if present
-#if __has_include(<sys/werrno.h>)
+#if defined __has_include && __has_include(<sys/werrno.h>)
 #include <sys/werrno.h>
 #endif
 
