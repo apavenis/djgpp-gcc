@@ -3019,7 +3019,11 @@ shorten_compare (location_t loc, tree *op0_ptr, tree *op1_ptr,
   else if (real1 && real2
 	   && (DECIMAL_FLOAT_MODE_P (TYPE_MODE (TREE_TYPE (primop0)))
 	       || DECIMAL_FLOAT_MODE_P (TYPE_MODE (TREE_TYPE (primop1)))))
-    return NULL_TREE;
+    {
+      type = *restype_ptr;
+      primop0 = op0;
+      primop1 = op1;
+    }
 
   else if (real1 && real2
 	   && (TYPE_PRECISION (TREE_TYPE (primop0))
@@ -6759,10 +6763,13 @@ complete_flexible_array_elts (tree init)
 void 
 c_common_mark_addressable_vec (tree t)
 {   
-  if (TREE_CODE (t) == C_MAYBE_CONST_EXPR)
-    t = C_MAYBE_CONST_EXPR_EXPR (t);
-  while (handled_component_p (t))
-    t = TREE_OPERAND (t, 0);
+  while (handled_component_p (t) || TREE_CODE (t) == C_MAYBE_CONST_EXPR)
+    {
+      if (TREE_CODE (t) == C_MAYBE_CONST_EXPR)
+	t = C_MAYBE_CONST_EXPR_EXPR (t);
+      else
+	t = TREE_OPERAND (t, 0);
+    }
   if (!VAR_P (t)
       && TREE_CODE (t) != PARM_DECL
       && TREE_CODE (t) != COMPOUND_LITERAL_EXPR)
