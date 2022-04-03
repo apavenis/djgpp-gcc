@@ -1031,7 +1031,7 @@ void
 bounded_ranges_manager::log_stats (logger *logger, bool show_objs) const
 {
   LOG_SCOPE (logger);
-  logger->log ("  # %s: %li", "ranges", m_map.elements ());
+  logger->log ("  # %s: %li", "ranges", (long)m_map.elements ());
   if (!show_objs)
     return;
 
@@ -1818,6 +1818,10 @@ constraint_manager::add_constraint (const svalue *lhs,
 	      = m_mgr->get_or_create_constant_svalue (offset_of_cst);
 	    if (!add_constraint (implied_lhs, implied_op, implied_rhs))
 	      return false;
+	    /* The above add_constraint could lead to EC merger, so we need
+	       to refresh the EC IDs.  */
+	    lhs_ec_id = get_or_add_equiv_class (lhs);
+	    rhs_ec_id = get_or_add_equiv_class (rhs);
 	  }
 
   add_unknown_constraint (lhs_ec_id, op, rhs_ec_id);

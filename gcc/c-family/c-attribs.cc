@@ -129,6 +129,8 @@ static tree handle_unavailable_attribute (tree *, tree, tree, int,
 					  bool *);
 static tree handle_vector_size_attribute (tree *, tree, tree, int,
 					  bool *) ATTRIBUTE_NONNULL(3);
+static tree handle_vector_mask_attribute (tree *, tree, tree, int,
+					  bool *) ATTRIBUTE_NONNULL(3);
 static tree handle_nonnull_attribute (tree *, tree, tree, int, bool *);
 static tree handle_nonstring_attribute (tree *, tree, tree, int, bool *);
 static tree handle_nothrow_attribute (tree *, tree, tree, int, bool *);
@@ -417,6 +419,8 @@ const struct attribute_spec c_common_attribute_table[] =
 			      handle_unavailable_attribute, NULL },
   { "vector_size",	      1, 1, false, true, false, true,
 			      handle_vector_size_attribute, NULL },
+  { "vector_mask",	      0, 0, false, true, false, true,
+			      handle_vector_mask_attribute, NULL },
   { "visibility",	      1, 1, false, false, false, false,
 			      handle_visibility_attribute, NULL },
   { "tls_model",	      1, 1, true,  false, false, false,
@@ -802,6 +806,8 @@ decl_or_type_attrs (tree node)
 	return attrs;
 
       tree type = TREE_TYPE (node);
+      if (type == error_mark_node)
+	return NULL_TREE;
       return TYPE_ATTRIBUTES (type);
     }
 
@@ -3417,7 +3423,7 @@ handle_malloc_attribute (tree *node, tree name, tree args, int flags,
 	 it with this one.  Ideally, the attribute would reference
 	 the DECL of the deallocator but since that changes for each
 	 redeclaration, use DECL_NAME instead.  (DECL_ASSEMBLER_NAME
-	 need not be set set this point and setting it here is too early.  */
+	 need not be set at this point and setting it here is too early.  */
       tree attrs = build_tree_list (NULL_TREE, DECL_NAME (fndecl));
       attrs = tree_cons (get_identifier ("*dealloc"), attrs, at_noinline);
       decl_attributes (&dealloc, attrs, 0);
@@ -4419,6 +4425,38 @@ handle_vector_size_attribute (tree *node, tree name, tree args,
   return NULL_TREE;
 }
 
+/* Handle a "vector_mask" attribute; arguments as in
+   struct attribute_spec.handler.  */
+
+static tree
+handle_vector_mask_attribute (tree *node, tree name, tree,
+			      int ARG_UNUSED (flags),
+			      bool *no_add_attrs)
+{
+  *no_add_attrs = true;
+  if (!flag_gimple)
+    {
+      warning (OPT_Wattributes, "%qE attribute ignored", name);
+      return NULL_TREE;
+    }
+
+  /* Determine the "base" type to apply the attribute to.  */
+  tree type = type_for_vector_size (*node);
+  if (!VECTOR_TYPE_P (type) || VECTOR_BOOLEAN_TYPE_P (type))
+    {
+      warning (OPT_Wattributes, "%qE attribute only supported on "
+	       "non-mask vector types", name);
+      return NULL_TREE;
+    }
+
+  tree new_type = truth_type_for (type);
+
+  /* Build back pointers if needed.  */
+  *node = lang_hooks.types.reconstruct_complex_type (*node, new_type);
+
+  return NULL_TREE;
+}
+
 /* Handle the "nonnull" attribute.  */
 
 static tree
@@ -5106,7 +5144,7 @@ handle_access_attribute (tree node[3], tree name, tree args, int flags,
      value: "+^2[*],$0$1^3[*],$1$1"
      list:  < <0, x> <1, y> >
 
-   where the list has a single value which itself is is a list each
+   where the list has a single value which itself is a list, each
    of whose <node>s corresponds to one VLA bound for each of the two
    parameters.  */
 
@@ -5448,6 +5486,12 @@ handle_target_clones_attribute (tree *node, tree name, tree ARG_UNUSED (args),
 	{
 	  warning (OPT_Wattributes, "%qE attribute ignored due to conflict "
 		   "with %qs attribute", name, "target");
+	  *no_add_attrs = true;
+	}
+      else if (get_target_clone_attr_len (args) == -1)
+	{
+	  warning (OPT_Wattributes,
+		   "single %<target_clones%> attribute is ignored");
 	  *no_add_attrs = true;
 	}
       else

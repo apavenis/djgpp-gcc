@@ -790,6 +790,29 @@ ao_ref_alias_ptr_type (ao_ref *ref)
   return ret;
 }
 
+/* Return the alignment of the access *REF and store it in the *ALIGN
+   and *BITPOS pairs.  Returns false if no alignment could be determined.
+   See get_object_alignment_2 for details.  */
+
+bool
+ao_ref_alignment (ao_ref *ref, unsigned int *align,
+		  unsigned HOST_WIDE_INT *bitpos)
+{
+  if (ref->ref)
+    return get_object_alignment_1 (ref->ref, align, bitpos);
+
+  /* When we just have ref->base we cannot use get_object_alignment since
+     that will eventually use the type of the appearant access while for
+     example ao_ref_init_from_ptr_and_range is not careful to adjust that.  */
+  *align = BITS_PER_UNIT;
+  HOST_WIDE_INT offset;
+  if (!ref->offset.is_constant (&offset)
+      || !get_object_alignment_2 (ref->base, align, bitpos, true))
+    return false;
+  *bitpos += (unsigned HOST_WIDE_INT)offset * BITS_PER_UNIT;
+  *bitpos = *bitpos & (*align - 1);
+  return true;
+}
 
 /* Init an alias-oracle reference representation from a gimple pointer
    PTR a range specified by OFFSET, SIZE and MAX_SIZE under the assumption
@@ -2420,12 +2443,12 @@ refs_may_alias_p_2 (ao_ref *ref1, ao_ref *ref2, bool tbaa_p)
 	  rbase2 = TREE_OPERAND (rbase2, 0);
     }
   if (rbase1 && rbase2
-      && (TREE_CODE (base1) == MEM_REF || TREE_CODE (base1) == TARGET_MEM_REF)
-      && (TREE_CODE (base2) == MEM_REF || TREE_CODE (base2) == TARGET_MEM_REF)
+      && (TREE_CODE (rbase1) == MEM_REF || TREE_CODE (rbase1) == TARGET_MEM_REF)
+      && (TREE_CODE (rbase2) == MEM_REF || TREE_CODE (rbase2) == TARGET_MEM_REF)
       /* If the accesses are in the same restrict clique... */
-      && MR_DEPENDENCE_CLIQUE (base1) == MR_DEPENDENCE_CLIQUE (base2)
+      && MR_DEPENDENCE_CLIQUE (rbase1) == MR_DEPENDENCE_CLIQUE (rbase2)
       /* But based on different pointers they do not alias.  */
-      && MR_DEPENDENCE_BASE (base1) != MR_DEPENDENCE_BASE (base2))
+      && MR_DEPENDENCE_BASE (rbase1) != MR_DEPENDENCE_BASE (rbase2))
     return false;
 
   ind1_p = (TREE_CODE (base1) == MEM_REF

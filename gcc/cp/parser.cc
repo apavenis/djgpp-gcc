@@ -4111,8 +4111,6 @@ cp_parser_skip_to_pragma_eol (cp_parser* parser, cp_token *pragma_tok)
 
   if (pragma_tok)
     {
-      /* Ensure that the pragma is not parsed again.  */
-      cp_lexer_purge_tokens_after (parser->lexer, pragma_tok);
       parser->lexer->in_pragma = false;
       if (parser->lexer->in_omp_attribute_pragma
 	  && cp_lexer_next_token_is (parser->lexer, CPP_EOF))
@@ -7527,8 +7525,10 @@ cp_parser_postfix_expression (cp_parser *parser, bool address_p, bool cast_p,
 	}
 	/* Look for the closing `)'.  */
 	parens.require_close (parser);
-	return cp_build_vec_convert (expression, type_location, type,
-				     tf_warning_or_error);
+	postfix_expression
+	  = cp_build_vec_convert (expression, type_location, type,
+				  tf_warning_or_error);
+	break;
       }
 
     case RID_BUILTIN_BIT_CAST:
@@ -7553,8 +7553,10 @@ cp_parser_postfix_expression (cp_parser *parser, bool address_p, bool cast_p,
 	expression = cp_parser_assignment_expression (parser);
 	/* Look for the closing `)'.  */
 	parens.require_close (parser);
-	return cp_build_bit_cast (type_location, type, expression,
-				  tf_warning_or_error);
+	postfix_expression
+	  = cp_build_bit_cast (type_location, type, expression,
+			       tf_warning_or_error);
+	break;
       }
 
     default:
@@ -7958,7 +7960,6 @@ cp_parser_postfix_expression (cp_parser *parser, bool address_p, bool cast_p,
 static cp_expr
 cp_parser_parenthesized_expression_list_elt (cp_parser *parser, bool cast_p,
 					     bool allow_expansion_p,
-					     bool fold_expr_p,
 					     bool *non_constant_p)
 {
   cp_expr expr (NULL_TREE);
@@ -7984,9 +7985,6 @@ cp_parser_parenthesized_expression_list_elt (cp_parser *parser, bool cast_p,
     }
   else
     expr = cp_parser_assignment_expression (parser, /*pidk=*/NULL, cast_p);
-
-  if (fold_expr_p)
-    expr = instantiate_non_dependent_expr (expr);
 
   /* If we have an ellipsis, then this is an expression expansion.  */
   if (allow_expansion_p
@@ -8053,8 +8051,6 @@ cp_parser_postfix_open_square_expression (cp_parser *parser,
 							       false,
 							       /*allow_exp_p=*/
 							       true,
-							       /*fold_expr_p=*/
-							       false,
 							       /*non_cst_p=*/
 							       NULL);
 
@@ -8424,7 +8420,6 @@ cp_parser_parenthesized_expression_list (cp_parser* parser,
 					 bool wrap_locations_p)
 {
   vec<tree, va_gc> *expression_list;
-  bool fold_expr_p = is_attribute_list != non_attr;
   tree identifier = NULL_TREE;
   bool saved_greater_than_is_operator_p;
 
@@ -8467,7 +8462,6 @@ cp_parser_parenthesized_expression_list (cp_parser* parser,
 	    expr
 	      = cp_parser_parenthesized_expression_list_elt (parser, cast_p,
 							     allow_expansion_p,
-							     fold_expr_p,
 							     non_constant_p);
 
 	    if (wrap_locations_p)
@@ -16148,8 +16142,9 @@ cp_parser_linkage_specification (cp_parser* parser, tree prefix_attr)
   /* Transform the literal into an identifier.  If the literal is a
      wide-character string, or contains embedded NULs, then we can't
      handle it as the user wants.  */
-  if (strlen (TREE_STRING_POINTER (linkage))
-      != (size_t) (TREE_STRING_LENGTH (linkage) - 1))
+  if (linkage == error_mark_node
+      || strlen (TREE_STRING_POINTER (linkage))
+	 != (size_t) (TREE_STRING_LENGTH (linkage) - 1))
     {
       cp_parser_error (parser, "invalid linkage-specification");
       /* Assume C++ linkage.  */
@@ -18680,7 +18675,11 @@ cp_parser_template_name (cp_parser* parser,
 	  cp_parser_error (parser, "expected template-name");
 	  return error_mark_node;
 	}
-      else if (!DECL_P (decl) && !is_overloaded_fn (decl))
+      else if ((!DECL_P (decl) && !is_overloaded_fn (decl))
+	       || TREE_CODE (decl) == USING_DECL
+	       /* cp_parser_template_id can only handle some TYPE_DECLs.  */
+	       || (TREE_CODE (decl) == TYPE_DECL
+		   && TREE_CODE (TREE_TYPE (decl)) != TYPENAME_TYPE))
 	/* Repeat the lookup at instantiation time.  */
 	decl = identifier;
     }
@@ -21145,7 +21144,16 @@ cp_parser_enumerator_definition (cp_parser* parser, tree type)
 
   /* If we are processing a template, make sure the initializer of the
      enumerator doesn't contain any bare template parameter pack.  */
-  if (check_for_bare_parameter_packs (value))
+  if (current_lambda_expr ())
+    {
+      /* In a lambda it should work, but doesn't currently.  */
+      if (uses_parameter_packs (value))
+	{
+	  sorry ("unexpanded parameter pack in enumerator in lambda");
+	  value = error_mark_node;
+	}
+    }
+  else if (check_for_bare_parameter_packs (value))
     value = error_mark_node;
 
   /* Create the enumerator.  */
@@ -26534,7 +26542,7 @@ cp_parser_class_head (cp_parser* parser,
     }
   else if (nested_name_specifier)
     {
-      tree class_type;
+      type = TREE_TYPE (type);
 
       /* Given:
 
@@ -26544,31 +26552,27 @@ cp_parser_class_head (cp_parser* parser,
 	 we will get a TYPENAME_TYPE when processing the definition of
 	 `S::T'.  We need to resolve it to the actual type before we
 	 try to define it.  */
-      if (TREE_CODE (TREE_TYPE (type)) == TYPENAME_TYPE)
+      if (TREE_CODE (type) == TYPENAME_TYPE)
 	{
-	  class_type = resolve_typename_type (TREE_TYPE (type),
-					      /*only_current_p=*/false);
-	  if (TREE_CODE (class_type) != TYPENAME_TYPE)
-	    type = TYPE_NAME (class_type);
-	  else
+	  type = resolve_typename_type (type, /*only_current_p=*/false);
+	  if (TREE_CODE (type) == TYPENAME_TYPE)
 	    {
 	      cp_parser_error (parser, "could not resolve typename type");
 	      type = error_mark_node;
 	    }
 	}
 
-      if (maybe_process_partial_specialization (TREE_TYPE (type))
-	  == error_mark_node)
+      type = maybe_process_partial_specialization (type);
+      if (type == error_mark_node)
 	{
 	  type = NULL_TREE;
 	  goto done;
 	}
 
-      class_type = current_class_type;
       /* Enter the scope indicated by the nested-name-specifier.  */
       pushed_scope = push_scope (nested_name_specifier);
       /* Get the canonical version of this type.  */
-      type = TYPE_MAIN_DECL (TREE_TYPE (type));
+      type = TYPE_MAIN_DECL (type);
       /* Call push_template_decl if it seems like we should be defining a
 	 template either from the template headers or the type we're
 	 defining, so that we diagnose both extra and missing headers.  */
@@ -26627,6 +26631,14 @@ cp_parser_class_head (cp_parser* parser,
 
   if (type)
     {
+      if (current_lambda_expr ()
+	  && uses_parameter_packs (attributes))
+	{
+	  /* In a lambda this should work, but doesn't currently.  */
+	  sorry ("unexpanded parameter pack in local class in lambda");
+	  attributes = NULL_TREE;
+	}
+
       /* Apply attributes now, before any use of the class as a template
 	 argument in its base list.  */
       cplus_decl_attributes (&type, attributes, (int)ATTR_FLAG_TYPE_IN_PLACE);
@@ -31405,8 +31417,14 @@ cp_parser_template_introduction (cp_parser* parser, bool member_p)
   tree saved_scope = parser->scope;
   tree saved_object_scope = parser->object_scope;
   tree saved_qualifying_scope = parser->qualifying_scope;
+  bool saved_colon_corrects_to_scope_p = parser->colon_corrects_to_scope_p;
 
   cp_token *start_token = cp_lexer_peek_token (parser->lexer);
+
+  /* In classes don't parse valid unnamed bitfields as invalid
+     template introductions.  */
+  if (member_p)
+    parser->colon_corrects_to_scope_p = false;
 
   /* Look for the optional `::' operator.  */
   cp_parser_global_scope_opt (parser,
@@ -31428,6 +31446,7 @@ cp_parser_template_introduction (cp_parser* parser, bool member_p)
   parser->scope = saved_scope;
   parser->object_scope = saved_object_scope;
   parser->qualifying_scope = saved_qualifying_scope;
+  parser->colon_corrects_to_scope_p = saved_colon_corrects_to_scope_p;
 
   if (concept_name == error_mark_node
       || (seen_error () && !concept_definition_p (tmpl_decl)))
@@ -32112,8 +32131,9 @@ cp_parser_late_parsing_for_member (cp_parser* parser, tree member_function)
   maybe_begin_member_template_processing (member_function);
 
   /* If the body of the function has not yet been parsed, parse it
-     now.  */
-  if (DECL_PENDING_INLINE_P (member_function))
+     now.  Except if the tokens have been purged (PR c++/39751).  */
+  if (DECL_PENDING_INLINE_P (member_function)
+      && !DECL_PENDING_INLINE_INFO (member_function)->first->purged_p)
     {
       tree function_scope;
       cp_token_cache *tokens;
@@ -36327,7 +36347,9 @@ cp_parser_omp_clause_name (cp_parser *parser)
 	    result = PRAGMA_OMP_CLAUSE_GRAINSIZE;
 	  break;
 	case 'h':
-	  if (!strcmp ("hint", p))
+	  if (!strcmp ("has_device_addr", p))
+	    result = PRAGMA_OMP_CLAUSE_HAS_DEVICE_ADDR;
+	  else if (!strcmp ("hint", p))
 	    result = PRAGMA_OMP_CLAUSE_HINT;
 	  else if (!strcmp ("host", p))
 	    result = PRAGMA_OACC_CLAUSE_HOST;
@@ -36630,6 +36652,7 @@ cp_parser_omp_var_list_no_open (cp_parser *parser, enum omp_clause_code kind,
 	    case OMP_CLAUSE_REDUCTION:
 	    case OMP_CLAUSE_IN_REDUCTION:
 	    case OMP_CLAUSE_TASK_REDUCTION:
+	    case OMP_CLAUSE_HAS_DEVICE_ADDR:
 	      array_section_p = false;
 	      dims.truncate (0);
 	      while (cp_lexer_next_token_is (parser->lexer, CPP_OPEN_SQUARE))
@@ -39415,8 +39438,8 @@ cp_parser_omp_clause_map (cp_parser *parser, tree list)
       else
 	{
 	  cp_parser_error (parser, "%<#pragma omp target%> with "
-				   "modifier other than %<always%> or %<close%>"
-				   "on %<map%> clause");
+				   "modifier other than %<always%> or "
+				   "%<close%> on %<map%> clause");
 	  cp_parser_skip_to_closing_parenthesis (parser,
 						 /*recovering=*/true,
 						 /*or_comma=*/false,
@@ -40070,6 +40093,11 @@ cp_parser_omp_all_clauses (cp_parser *parser, omp_clause_mask mask,
 	  clauses = cp_parser_omp_var_list (parser, OMP_CLAUSE_IS_DEVICE_PTR,
 					    clauses);
 	  c_name = "is_device_ptr";
+	  break;
+	case PRAGMA_OMP_CLAUSE_HAS_DEVICE_ADDR:
+	  clauses = cp_parser_omp_var_list (parser, OMP_CLAUSE_HAS_DEVICE_ADDR,
+					    clauses);
+	  c_name = "has_device_addr";
 	  break;
 	case PRAGMA_OMP_CLAUSE_IF:
 	  clauses = cp_parser_omp_clause_if (parser, clauses, token->location,
@@ -44251,7 +44279,8 @@ cp_parser_omp_target_update (cp_parser *parser, cp_token *pragma_tok,
 	| (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_ALLOCATE)	\
 	| (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_IN_REDUCTION)	\
 	| (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_THREAD_LIMIT)	\
-	| (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_IS_DEVICE_PTR))
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_IS_DEVICE_PTR)\
+	| (OMP_CLAUSE_MASK_1 << PRAGMA_OMP_CLAUSE_HAS_DEVICE_ADDR))
 
 static bool
 cp_parser_omp_target (cp_parser *parser, cp_token *pragma_tok,
@@ -48194,7 +48223,8 @@ synthesize_implicit_template_parm  (cp_parser *parser, tree constr)
      function template is equivalent to an explicit template.
 
      Note that DECL_ARTIFICIAL is used elsewhere for template parameters.  */
-  DECL_VIRTUAL_P (TREE_VALUE (new_parm)) = true;
+  if (TREE_VALUE (new_parm) != error_mark_node)
+    DECL_VIRTUAL_P (TREE_VALUE (new_parm)) = true;
 
   // Chain the new parameter to the list of implicit parameters.
   if (parser->implicit_template_parms)

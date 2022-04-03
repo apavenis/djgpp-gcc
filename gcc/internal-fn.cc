@@ -1500,7 +1500,7 @@ expand_mul_overflow (location_t loc, tree lhs, tree arg0, tree arg1,
 		 0 and there will be no overflow, if the first argument is
 		 negative and the second argument positive, the result when
 		 treated as signed will be negative (minimum -0x7f80 or
-		 -0x7f..f80..0) there there will be always overflow.  So, do
+		 -0x7f..f80..0) there will be always overflow.  So, do
 		 res = (U) (s1 * u2)
 		 ovf = (S) res < 0  */
 	      struct separate_ops ops;
@@ -4392,7 +4392,8 @@ vectorized_internal_fn_supported_p (internal_fn ifn, tree type)
     return direct_internal_fn_supported_p (ifn, type, OPTIMIZE_FOR_SPEED);
 
   scalar_mode smode;
-  if (!is_a <scalar_mode> (TYPE_MODE (type), &smode))
+  if (VECTOR_TYPE_P (type)
+      || !is_a <scalar_mode> (TYPE_MODE (type), &smode))
     return false;
 
   machine_mode vmode = targetm.vectorize.preferred_simd_mode (smode);
@@ -4435,6 +4436,8 @@ expand_SPACESHIP (internal_fn, gcall *stmt)
   tree rhs1 = gimple_call_arg (stmt, 0);
   tree rhs2 = gimple_call_arg (stmt, 1);
   tree type = TREE_TYPE (rhs1);
+
+  do_pending_stack_adjust ();
 
   rtx target = expand_expr (lhs, NULL_RTX, VOIDmode, EXPAND_WRITE);
   rtx op1 = expand_normal (rhs1);

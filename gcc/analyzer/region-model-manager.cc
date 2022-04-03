@@ -771,7 +771,7 @@ region_model_manager::maybe_fold_sub_svalue (tree type,
       if (unary->get_op () == NOP_EXPR
 	  || unary->get_op () == VIEW_CONVERT_EXPR)
 	if (tree cst = unary->get_arg ()->maybe_get_constant ())
-	  if (zerop (cst))
+	  if (zerop (cst) && type)
 	    {
 	      const svalue *cst_sval
 		= get_or_create_constant_svalue (cst);
@@ -782,15 +782,23 @@ region_model_manager::maybe_fold_sub_svalue (tree type,
   /* Handle getting individual chars from a STRING_CST.  */
   if (tree cst = parent_svalue->maybe_get_constant ())
     if (TREE_CODE (cst) == STRING_CST)
-      if (const element_region *element_reg
-	    = subregion->dyn_cast_element_region ())
-	{
-	  const svalue *idx_sval = element_reg->get_index ();
-	  if (tree cst_idx = idx_sval->maybe_get_constant ())
+      {
+	/* If we have a concrete 1-byte access within the parent region... */
+	byte_range subregion_bytes (0, 0);
+	if (subregion->get_relative_concrete_byte_range (&subregion_bytes)
+	    && subregion_bytes.m_size_in_bytes == 1
+	    && type)
+	  {
+	    /* ...then attempt to get that char from the STRING_CST.  */
+	    HOST_WIDE_INT hwi_start_byte
+	      = subregion_bytes.m_start_byte_offset.to_shwi ();
+	    tree cst_idx
+	      = build_int_cst_type (size_type_node, hwi_start_byte);
 	    if (const svalue *char_sval
 		= maybe_get_char_from_string_cst (cst, cst_idx))
 	      return get_or_create_cast (type, char_sval);
-	}
+	  }
+      }
 
   if (const initial_svalue *init_sval
 	= parent_svalue->dyn_cast_initial_svalue ())
@@ -1161,17 +1169,38 @@ region_model_manager::get_or_create_compound_svalue (tree type,
   return compound_sval;
 }
 
+/* class conjured_purge.  */
+
+/* Purge state relating to SVAL.  */
+
+void
+conjured_purge::purge (const conjured_svalue *sval) const
+{
+  m_model->purge_state_involving (sval, m_ctxt);
+}
+
 /* Return the svalue * of type TYPE for the value conjured for ID_REG
-   at STMT, creating it if necessary.  */
+   at STMT, creating it if necessary.
+   Use P to purge existing state from the svalue, for the case where a
+   conjured_svalue would be reused along an execution path.  */
 
 const svalue *
 region_model_manager::get_or_create_conjured_svalue (tree type,
 						     const gimple *stmt,
-						     const region *id_reg)
+						     const region *id_reg,
+						     const conjured_purge &p)
 {
   conjured_svalue::key_t key (type, stmt, id_reg);
   if (conjured_svalue **slot = m_conjured_values_map.get (key))
-    return *slot;
+    {
+      const conjured_svalue *sval = *slot;
+      /* We're reusing an existing conjured_svalue, perhaps from a different
+	 state within this analysis, or perhaps from an earlier state on this
+	 execution path.  For the latter, purge any state involving the "new"
+	 svalue from the current program_state.  */
+      p.purge (sval);
+      return sval;
+    }
   conjured_svalue *conjured_sval
     = new conjured_svalue (type, stmt, id_reg);
   RETURN_UNKNOWN_IF_TOO_COMPLEX (conjured_sval);
@@ -1222,6 +1251,32 @@ get_or_create_asm_output_svalue (tree type,
   RETURN_UNKNOWN_IF_TOO_COMPLEX (asm_output_sval);
   m_asm_output_values_map.put (key, asm_output_sval);
   return asm_output_sval;
+}
+
+
+/* Return the svalue * of type TYPE for the result of a call to FNDECL
+   with __attribute__((const)), given INPUTS as inputs.  */
+
+const svalue *
+region_model_manager::
+get_or_create_const_fn_result_svalue (tree type,
+				      tree fndecl,
+				      const vec<const svalue *> &inputs)
+{
+  gcc_assert (type);
+  gcc_assert (fndecl);
+  gcc_assert (DECL_P (fndecl));
+  gcc_assert (TREE_READONLY (fndecl));
+  gcc_assert (inputs.length () <= const_fn_result_svalue::MAX_INPUTS);
+
+  const_fn_result_svalue::key_t key (type, fndecl, inputs);
+  if (const_fn_result_svalue **slot = m_const_fn_result_values_map.get (key))
+    return *slot;
+  const_fn_result_svalue *const_fn_result_sval
+    = new const_fn_result_svalue (type, fndecl, inputs);
+  RETURN_UNKNOWN_IF_TOO_COMPLEX (const_fn_result_sval);
+  m_const_fn_result_values_map.put (key, const_fn_result_sval);
+  return const_fn_result_sval;
 }
 
 /* Given STRING_CST, a STRING_CST and BYTE_OFFSET_CST a constant,
@@ -1494,6 +1549,25 @@ region_model_manager::get_region_for_string (tree string_cst)
   return reg;
 }
 
+/* Return the region that describes accessing BITS within PARENT as TYPE,
+   creating it if necessary.  */
+
+const region *
+region_model_manager::get_bit_range (const region *parent, tree type,
+				     const bit_range &bits)
+{
+  gcc_assert (parent);
+
+  bit_range_region::key_t key (parent, type, bits);
+  if (bit_range_region *reg = m_bit_range_regions.get (key))
+    return reg;
+
+  bit_range_region *bit_range_reg
+    = new bit_range_region (alloc_region_id (), parent, type, bits);
+  m_bit_range_regions.put (key, bit_range_reg);
+  return bit_range_reg;
+}
+
 /* If we see a tree code we don't know how to handle, rather than
    ICE or generate bogus results, create a dummy region, and notify
    CTXT so that it can mark the new state as being not properly
@@ -1573,7 +1647,7 @@ static void
 log_uniq_map (logger *logger, bool show_objs, const char *title,
 	      const hash_map<K, T*> &uniq_map)
 {
-  logger->log ("  # %s: %li", title, uniq_map.elements ());
+  logger->log ("  # %s: %li", title, (long)uniq_map.elements ());
   if (!show_objs)
     return;
   auto_vec<const T *> vec_objs (uniq_map.elements ());
@@ -1597,7 +1671,7 @@ static void
 log_uniq_map (logger *logger, bool show_objs, const char *title,
 	      const consolidation_map<T> &map)
 {
-  logger->log ("  # %s: %li", title, map.elements ());
+  logger->log ("  # %s: %li", title, (long)map.elements ());
   if (!show_objs)
     return;
 
@@ -1644,6 +1718,8 @@ region_model_manager::log_stats (logger *logger, bool show_objs) const
   log_uniq_map (logger, show_objs, "conjured_svalue", m_conjured_values_map);
   log_uniq_map (logger, show_objs, "asm_output_svalue",
 		m_asm_output_values_map);
+  log_uniq_map (logger, show_objs, "const_fn_result_svalue",
+		m_const_fn_result_values_map);
 
   logger->log ("max accepted svalue num_nodes: %i",
 	       m_max_complexity.m_num_nodes);
@@ -1663,6 +1739,7 @@ region_model_manager::log_stats (logger *logger, bool show_objs) const
   log_uniq_map (logger, show_objs, "frame_region", m_frame_regions);
   log_uniq_map (logger, show_objs, "symbolic_region", m_symbolic_regions);
   log_uniq_map (logger, show_objs, "string_region", m_string_map);
+  log_uniq_map (logger, show_objs, "bit_range_region", m_bit_range_regions);
   logger->log ("  # managed dynamic regions: %i",
 	       m_managed_dynamic_regions.length ());
   m_store_mgr.log_stats (logger, show_objs);
@@ -1682,6 +1759,54 @@ store_manager::log_stats (logger *logger, bool show_objs) const
 		m_concrete_binding_key_mgr);
   log_uniq_map (logger, show_objs, "symbolic_binding",
 		m_symbolic_binding_key_mgr);
+}
+
+/* Emit a warning showing DECL_REG->tracked_p () for use in DejaGnu tests
+   (using -fdump-analyzer-untracked).  */
+
+static void
+dump_untracked_region (const decl_region *decl_reg)
+{
+  tree decl = decl_reg->get_decl ();
+  if (TREE_CODE (decl) != VAR_DECL)
+    return;
+  /* For now, don't emit the status of decls in the constant pool, to avoid
+     differences in DejaGnu test results between targets that use these vs
+     those that don't.
+     (Eventually these decls should probably be untracked and we should test
+     for that, but that's not stage 4 material).  */
+  if (DECL_IN_CONSTANT_POOL (decl))
+    return;
+  warning_at (DECL_SOURCE_LOCATION (decl), 0,
+	      "track %qD: %s",
+	      decl, (decl_reg->tracked_p () ? "yes" : "no"));
+}
+
+/* Implementation of -fdump-analyzer-untracked.  */
+
+void
+region_model_manager::dump_untracked_regions () const
+{
+  for (auto iter : m_globals_map)
+    {
+      const decl_region *decl_reg = iter.second;
+      dump_untracked_region (decl_reg);
+    }
+  for (auto frame_iter : m_frame_regions)
+    {
+      const frame_region *frame_reg = frame_iter.second;
+      frame_reg->dump_untracked_regions ();
+    }
+}
+
+void
+frame_region::dump_untracked_regions () const
+{
+  for (auto iter : m_locals)
+    {
+      const decl_region *decl_reg = iter.second;
+      dump_untracked_region (decl_reg);
+    }
 }
 
 } // namespace ana

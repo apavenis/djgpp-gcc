@@ -62,6 +62,7 @@ sigtramp(int sig, siginfo_t *info, void *context)
 	G *gp;
 	void *stack_context[10];
 	void *stack;
+	void *find_stack;
 	size_t stack_size;
 	void *next_segment;
 	void *next_sp;
@@ -91,9 +92,15 @@ sigtramp(int sig, siginfo_t *info, void *context)
 
 	__splitstack_getcontext(&stack_context[0]);
 
-	stack = __splitstack_find_context((void*)(&gp->m->gsignal->stackcontext[0]),
-					  &stack_size, &next_segment,
-					  &next_sp, &initial_sp);
+	find_stack = 
+	  __splitstack_find_context((void*)(&gp->m->gsignal->stackcontext[0]),
+				    &stack_size, &next_segment,
+				    &next_sp, &initial_sp);
+	stack = find_stack;
+	if (stack == NULL) {
+		stack = gp->m->gsignalstack;
+		stack_size = gp->m->gsignalstacksize;
+	}
 
 	// If some non-Go code called sigaltstack, adjust.
 	sp = (uintptr)(&stack_size);
@@ -113,7 +120,7 @@ sigtramp(int sig, siginfo_t *info, void *context)
 		// Unfortunately __splitstack_find_context will return NULL
 		// when it is called on a context that has never been used.
 		// There isn't much we can do but assume all is well.
-		if (stack != NULL) {
+		if (find_stack != NULL) {
 			// Here the gc runtime adjusts the gsignal
 			// stack guard to match the values returned by
 			// sigaltstack.  Unfortunately we have no way
@@ -224,7 +231,14 @@ getSiginfo(siginfo_t *info, void *context __attribute__((unused)))
 #elif defined(__alpha__) && defined(__linux__)
 	ret.sigpc = ((ucontext_t*)(context))->uc_mcontext.sc_pc;
 #elif defined(__PPC__) && defined(__linux__)
+	// For some reason different libc implementations use
+	// different names.
+#if defined(__PPC64__) || defined(__GLIBC__)
 	ret.sigpc = ((ucontext_t*)(context))->uc_mcontext.regs->nip;
+#else
+	// Assumed to be ppc32 musl.
+	ret.sigpc = ((ucontext_t*)(context))->uc_mcontext.gregs[32];
+#endif
 #elif defined(__PPC__) && defined(_AIX)
 	ret.sigpc = ((ucontext_t*)(context))->uc_mcontext.jmp_context.iar;
 #elif defined(__aarch64__) && defined(__linux__)
@@ -340,6 +354,7 @@ dumpregs(siginfo_t *info __attribute__((unused)), void *context __attribute__((u
 		mcontext_t *m = &((ucontext_t*)(context))->uc_mcontext;
 		int i;
 
+#if defined(__PPC64__) || defined(__GLIBC__)
 		for (i = 0; i < 32; i++)
 			runtime_printf("r%d %X\n", i, m->regs->gpr[i]);
 		runtime_printf("pc  %X\n", m->regs->nip);
@@ -348,6 +363,16 @@ dumpregs(siginfo_t *info __attribute__((unused)), void *context __attribute__((u
 		runtime_printf("lr  %X\n", m->regs->link);
 		runtime_printf("ctr %X\n", m->regs->ctr);
 		runtime_printf("xer %X\n", m->regs->xer);
+#else
+		for (i = 0; i < 32; i++)
+			runtime_printf("r%d %X\n", i, m->gregs[i]);
+		runtime_printf("pc  %X\n", m->gregs[32]);
+		runtime_printf("msr %X\n", m->gregs[33]);
+		runtime_printf("cr  %X\n", m->gregs[38]);
+		runtime_printf("lr  %X\n", m->gregs[36]);
+		runtime_printf("ctr %X\n", m->gregs[35]);
+		runtime_printf("xer %X\n", m->gregs[37]);
+#endif
 	  }
 #elif defined(__PPC__) && defined(_AIX)
 	  {

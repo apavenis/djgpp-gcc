@@ -2747,6 +2747,32 @@ Memory addressed using the small base register ($sb).
 $r1h
 @end table
 
+@item LoongArch---@file{config/loongarch/constraints.md}
+@table @code
+@item f
+A floating-point register (if available).
+@item k
+A memory operand whose address is formed by a base register and
+(optionally scaled) index register.
+@item l
+A signed 16-bit constant.
+@item m
+A memory operand whose address is formed by a base register and offset
+that is suitable for use in instructions with the same addressing mode
+as @code{st.w} and @code{ld.w}.
+@item I
+A signed 12-bit constant (for arithmetic instructions).
+@item K
+An unsigned 12-bit constant (for logic instructions).
+@item ZB
+An address that is held in a general-purpose register.
+The offset is zero.
+@item ZC
+A memory operand whose address is formed by a base register and offset
+that is suitable for use in instructions with the same addressing mode
+as @code{ll.w} and @code{sc.w}.
+@end table
+
 @item MicroBlaze---@file{config/microblaze/constraints.md}
 @table @code
 @item d
@@ -6360,12 +6386,13 @@ Perform a vector multiply and accumulate that is semantically the same as
 a multiply and accumulate of complex numbers.
 
 @smallexample
-  complex TYPE c[N];
-  complex TYPE a[N];
-  complex TYPE b[N];
+  complex TYPE op0[N];
+  complex TYPE op1[N];
+  complex TYPE op2[N];
+  complex TYPE op3[N];
   for (int i = 0; i < N; i += 1)
     @{
-      c[i] += a[i] * b[i];
+      op0[i] = op1[i] * op2[i] + op3[i];
     @}
 @end smallexample
 
@@ -6383,12 +6410,13 @@ the same as a multiply and accumulate of complex numbers where the second
 multiply arguments is conjugated.
 
 @smallexample
-  complex TYPE c[N];
-  complex TYPE a[N];
-  complex TYPE b[N];
+  complex TYPE op0[N];
+  complex TYPE op1[N];
+  complex TYPE op2[N];
+  complex TYPE op3[N];
   for (int i = 0; i < N; i += 1)
     @{
-      c[i] += a[i] * conj (b[i]);
+      op0[i] = op1[i] * conj (op2[i]) + op3[i];
     @}
 @end smallexample
 
@@ -6405,12 +6433,13 @@ Perform a vector multiply and subtract that is semantically the same as
 a multiply and subtract of complex numbers.
 
 @smallexample
-  complex TYPE c[N];
-  complex TYPE a[N];
-  complex TYPE b[N];
+  complex TYPE op0[N];
+  complex TYPE op1[N];
+  complex TYPE op2[N];
+  complex TYPE op3[N];
   for (int i = 0; i < N; i += 1)
     @{
-      c[i] -= a[i] * b[i];
+      op0[i] = op1[i] * op2[i] - op3[i];
     @}
 @end smallexample
 
@@ -6428,12 +6457,13 @@ the same as a multiply and subtract of complex numbers where the second
 multiply arguments is conjugated.
 
 @smallexample
-  complex TYPE c[N];
-  complex TYPE a[N];
-  complex TYPE b[N];
+  complex TYPE op0[N];
+  complex TYPE op1[N];
+  complex TYPE op2[N];
+  complex TYPE op3[N];
   for (int i = 0; i < N; i += 1)
     @{
-      c[i] -= a[i] * conj (b[i]);
+      op0[i] = op1[i] * conj (op2[i]) - op3[i];
     @}
 @end smallexample
 
@@ -6450,12 +6480,12 @@ Perform a vector multiply that is semantically the same as multiply of
 complex numbers.
 
 @smallexample
-  complex TYPE c[N];
-  complex TYPE a[N];
-  complex TYPE b[N];
+  complex TYPE op0[N];
+  complex TYPE op1[N];
+  complex TYPE op2[N];
   for (int i = 0; i < N; i += 1)
     @{
-      c[i] = a[i] * b[i];
+      op0[i] = op1[i] * op2[i];
     @}
 @end smallexample
 
@@ -6472,12 +6502,12 @@ Perform a vector multiply by conjugate that is semantically the same as a
 multiply of complex numbers where the second multiply arguments is conjugated.
 
 @smallexample
-  complex TYPE c[N];
-  complex TYPE a[N];
-  complex TYPE b[N];
+  complex TYPE op0[N];
+  complex TYPE op1[N];
+  complex TYPE op2[N];
   for (int i = 0; i < N; i += 1)
     @{
-      c[i] = a[i] * conj (b[i]);
+      op0[i] = op1[i] * conj (op2[i]);
     @}
 @end smallexample
 
