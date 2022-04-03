@@ -1683,6 +1683,7 @@ show_omp_clauses (gfc_omp_clauses *omp_clauses)
 	  case OMP_LIST_CACHE: type = "CACHE"; break;
 	  case OMP_LIST_IS_DEVICE_PTR: type = "IS_DEVICE_PTR"; break;
 	  case OMP_LIST_USE_DEVICE_PTR: type = "USE_DEVICE_PTR"; break;
+	  case OMP_LIST_HAS_DEVICE_ADDR: type = "HAS_DEVICE_ADDR"; break;
 	  case OMP_LIST_USE_DEVICE_ADDR: type = "USE_DEVICE_ADDR"; break;
 	  case OMP_LIST_NONTEMPORAL: type = "NONTEMPORAL"; break;
 	  case OMP_LIST_ALLOCATE: type = "ALLOCATE"; break;
@@ -2369,6 +2370,11 @@ show_code_node (int level, gfc_code *c)
 	show_expr (c->expr1);
       else
 	fprintf (dumpfile, "%d", c->ext.stop_code);
+      if (c->expr2 != NULL)
+	{
+	  fputs (" QUIET=", dumpfile);
+	  show_expr (c->expr2);
+	}
 
       break;
 
@@ -3537,7 +3543,7 @@ gfc_dump_c_prototypes (gfc_namespace *ns, FILE *file)
   gfc_traverse_ns (ns, write_interop_decl);
 }
 
-/* Loop over all global symbols, writing out their declrations.  */
+/* Loop over all global symbols, writing out their declarations.  */
 
 void
 gfc_dump_external_c_prototypes (FILE * file)

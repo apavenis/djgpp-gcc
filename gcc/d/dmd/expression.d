@@ -25,7 +25,6 @@ import dmd.arraytypes;
 import dmd.astenums;
 import dmd.ast_node;
 import dmd.gluelayer;
-import dmd.canthrow;
 import dmd.constfold;
 import dmd.ctfeexpr;
 import dmd.ctorflow;
@@ -73,10 +72,15 @@ import dmd.typesem;
 import dmd.visitor;
 
 enum LOGSEMANTIC = false;
+
 void emplaceExp(T : Expression, Args...)(void* p, Args args)
 {
-    scope tmp = new T(args);
-    memcpy(p, cast(void*)tmp, __traits(classInstanceSize, T));
+    static if (__VERSION__ < 2099)
+        const init = typeid(T).initializer;
+    else
+        const init = __traits(initSymbol, T);
+    p[0 .. __traits(classInstanceSize, T)] = init[];
+    (cast(T)p).__ctor(args);
 }
 
 void emplaceExp(T : UnionExp)(T* p, Expression e)
@@ -84,7 +88,7 @@ void emplaceExp(T : UnionExp)(T* p, Expression e)
     memcpy(p, cast(void*)e, e.size);
 }
 
-// Return value for `checkModifiable`
+/// Return value for `checkModifiable`
 enum Modifiable
 {
     /// Not modifiable
@@ -166,7 +170,7 @@ FuncDeclaration hasThis(Scope* sc)
         {
             return null;
         }
-        if (!fd.isNested() || fd.isThis() || (fd.isThis2 && fd.isMember2()))
+        if (!fd.isNested() || fd.isThis() || (fd.hasDualContext() && fd.isMember2()))
             break;
 
         Dsymbol parent = fd.parent;
@@ -183,7 +187,7 @@ FuncDeclaration hasThis(Scope* sc)
         fd = parent.isFuncDeclaration();
     }
 
-    if (!fd.isThis() && !(fd.isThis2 && fd.isMember2()))
+    if (!fd.isThis() && !(fd.hasDualContext() && fd.isMember2()))
     {
         return null;
     }
@@ -466,7 +470,17 @@ private Expression callCpCtor(Scope* sc, Expression e, Type destinationType)
              */
             auto tmp = copyToTemp(STC.rvalue, "__copytmp", e);
             if (sd.hasCopyCtor && destinationType)
-                tmp.type = destinationType;
+            {
+                // https://issues.dlang.org/show_bug.cgi?id=22619
+                // If the destination type is inout we can preserve it
+                // only if inside an inout function; if we are not inside
+                // an inout function, then we will preserve the type of
+                // the source
+                if (destinationType.hasWild && !(sc.func.storage_class & STC.wild))
+                    tmp.type = e.type;
+                else
+                    tmp.type = destinationType;
+            }
             tmp.storage_class |= STC.nodtor;
             tmp.dsymbolSemantic(sc);
             Expression de = new DeclarationExp(e.loc, tmp);
@@ -1196,7 +1210,7 @@ extern (C++) abstract class Expression : ASTNode
                 scope bool function(DtorDeclaration) check, const string checkName
     ) {
         auto dd = f.isDtorDeclaration();
-        if (!dd || !dd.generated)
+        if (!dd || !dd.isGenerated())
             return;
 
         // DtorDeclaration without parents should fail at an earlier stage
@@ -1213,7 +1227,7 @@ extern (C++) abstract class Expression : ASTNode
         }
 
         dd.loc.errorSupplemental("%s`%s.~this` is %.*s because of the following field's destructors:",
-                            dd.generated ? "generated " : "".ptr,
+                            dd.isGenerated() ? "generated " : "".ptr,
                             ad.toChars,
                             cast(int) checkName.length, checkName.ptr);
 
@@ -1244,7 +1258,7 @@ extern (C++) abstract class Expression : ASTNode
             {
                 field.loc.errorSupplemental(" - %s %s", field.type.toChars(), field.toChars());
 
-                if (fieldSd.dtor.generated)
+                if (fieldSd.dtor.isGenerated())
                     checkOverridenDtor(sc, fieldSd.dtor, check, checkName);
                 else
                     fieldSd.dtor.loc.errorSupplemental("   %.*s `%s.~this` is declared here",
@@ -1274,7 +1288,7 @@ extern (C++) abstract class Expression : ASTNode
             return false; // magic variable never violates pure and safe
         if (v.isImmutable())
             return false; // always safe and pure to access immutables...
-        if (v.isConst() && !v.isRef() && (v.isDataseg() || v.isParameter()) && v.type.implicitConvTo(v.type.immutableOf()))
+        if (v.isConst() && !v.isReference() && (v.isDataseg() || v.isParameter()) && v.type.implicitConvTo(v.type.immutableOf()))
             return false; // or const global/parameter values which have no mutable indirections
         if (v.storage_class & STC.manifest)
             return false; // ...or manifest constants
@@ -1733,11 +1747,21 @@ extern (C++) abstract class Expression : ASTNode
         inout(PrettyFuncInitExp) isPrettyFuncInitExp() { return op == EXP.prettyFunction ? cast(typeof(return))this : null; }
         inout(ClassReferenceExp) isClassReferenceExp() { return op == EXP.classReference ? cast(typeof(return))this : null; }
         inout(ThrownExceptionExp) isThrownExceptionExp() { return op == EXP.thrownException ? cast(typeof(return))this : null; }
-    }
 
-    inout(BinAssignExp) isBinAssignExp() pure inout nothrow @nogc
-    {
-        return null;
+        inout(UnaExp) isUnaExp() pure inout nothrow @nogc
+        {
+            return exptab[op] & EXPFLAGS.unary ? cast(typeof(return))this : null;
+        }
+
+        inout(BinExp) isBinExp() pure inout nothrow @nogc
+        {
+            return exptab[op] & EXPFLAGS.binary ? cast(typeof(return))this : null;
+        }
+
+        inout(BinAssignExp) isBinAssignExp() pure inout nothrow @nogc
+        {
+            return exptab[op] & EXPFLAGS.binaryAssign ? cast(typeof(return))this : null;
+        }
     }
 
     override void accept(Visitor v)
@@ -1747,6 +1771,7 @@ extern (C++) abstract class Expression : ASTNode
 }
 
 /***********************************************************
+ * A compile-time known integer value
  */
 extern (C++) final class IntegerExp : Expression
 {
@@ -1772,7 +1797,7 @@ extern (C++) final class IntegerExp : Expression
     {
         super(Loc.initial, EXP.int64, __traits(classInstanceSize, IntegerExp));
         this.type = Type.tint32;
-        this.value = cast(d_int32)value;
+        this.value = cast(int)value;
     }
 
     static IntegerExp create(const ref Loc loc, dinteger_t value, Type type)
@@ -1813,8 +1838,8 @@ extern (C++) final class IntegerExp : Expression
         const val = normalize(ty, value);
         value = val;
         return (ty == Tuns64)
-            ? real_t(cast(d_uns64)val)
-            : real_t(cast(d_int64)val);
+            ? real_t(cast(ulong)val)
+            : real_t(cast(long)val);
     }
 
     override real_t toImaginary()
@@ -1870,38 +1895,38 @@ extern (C++) final class IntegerExp : Expression
             break;
 
         case Tint8:
-            result = cast(d_int8)value;
+            result = cast(byte)value;
             break;
 
         case Tchar:
         case Tuns8:
-            result = cast(d_uns8)value;
+            result = cast(ubyte)value;
             break;
 
         case Tint16:
-            result = cast(d_int16)value;
+            result = cast(short)value;
             break;
 
         case Twchar:
         case Tuns16:
-            result = cast(d_uns16)value;
+            result = cast(ushort)value;
             break;
 
         case Tint32:
-            result = cast(d_int32)value;
+            result = cast(int)value;
             break;
 
         case Tdchar:
         case Tuns32:
-            result = cast(d_uns32)value;
+            result = cast(uint)value;
             break;
 
         case Tint64:
-            result = cast(d_int64)value;
+            result = cast(long)value;
             break;
 
         case Tuns64:
-            result = cast(d_uns64)value;
+            result = cast(ulong)value;
             break;
 
         case Tpointer:
@@ -1963,6 +1988,7 @@ extern (C++) final class IntegerExp : Expression
 
 /***********************************************************
  * Use this expression for error recovery.
+ *
  * It should behave as a 'sink' to prevent further cascaded error messages.
  */
 extern (C++) final class ErrorExp : Expression
@@ -2007,6 +2033,8 @@ extern (C++) final class ErrorExp : Expression
 /***********************************************************
  * An uninitialized value,
  * generated from void initializers.
+ *
+ * https://dlang.org/spec/declaration.html#void_init
  */
 extern (C++) final class VoidInitExp : Expression
 {
@@ -2033,6 +2061,7 @@ extern (C++) final class VoidInitExp : Expression
 
 
 /***********************************************************
+ * A compile-time known floating point number
  */
 extern (C++) final class RealExp : Expression
 {
@@ -2108,6 +2137,7 @@ extern (C++) final class RealExp : Expression
 }
 
 /***********************************************************
+ * A compile-time complex number (deprecated)
  */
 extern (C++) final class ComplexExp : Expression
 {
@@ -2183,6 +2213,12 @@ extern (C++) final class ComplexExp : Expression
 }
 
 /***********************************************************
+ * An identifier in the context of an expression (as opposed to a declaration)
+ *
+ * ---
+ * int x; // VarDeclaration with Identifier
+ * x++; // PostExp with IdentifierExp
+ * ---
  */
 extern (C++) class IdentifierExp : Expression
 {
@@ -2216,6 +2252,9 @@ extern (C++) class IdentifierExp : Expression
 }
 
 /***********************************************************
+ * The dollar operator used when indexing or slicing an array. E.g `a[$]`, `a[1 .. $]` etc.
+ *
+ * https://dlang.org/spec/arrays.html#array-length
  */
 extern (C++) final class DollarExp : IdentifierExp
 {
@@ -2334,6 +2373,8 @@ extern (C++) final class SuperExp : ThisExp
 }
 
 /***********************************************************
+ * A compile-time known `null` value
+ *
  * https://dlang.org/spec/expression.html#null
  */
 extern (C++) final class NullExp : Expression
@@ -2707,29 +2748,6 @@ extern (C++) final class StringExp : Expression
         return ErrorExp.get();
     }
 
-    uint charAt(uinteger_t i) const
-    {
-        uint value;
-        switch (sz)
-        {
-        case 1:
-            value = (cast(char*)string)[cast(size_t)i];
-            break;
-
-        case 2:
-            value = (cast(ushort*)string)[cast(size_t)i];
-            break;
-
-        case 4:
-            value = (cast(uint*)string)[cast(size_t)i];
-            break;
-
-        default:
-            assert(0);
-        }
-        return value;
-    }
-
     /********************************
      * Convert string contents to a 0 terminated string,
      * allocated by mem.xmalloc().
@@ -2795,6 +2813,12 @@ extern (C++) final class StringExp : Expression
 }
 
 /***********************************************************
+ * A sequence of expressions
+ *
+ * ---
+ * alias AliasSeq(T...) = T;
+ * alias Tup = AliasSeq!(3, int, "abc");
+ * ---
  */
 extern (C++) final class TupleExp : Expression
 {
@@ -3437,7 +3461,7 @@ extern (C++) final class ScopeExp : Expression
             //assert(ti.needsTypeInference(sc));
             if (ti.tempdecl &&
                 ti.semantictiargsdone &&
-                ti.semanticRun == PASS.init)
+                ti.semanticRun == PASS.initial)
             {
                 error("partial %s `%s` has no type", sds.kind(), toChars());
                 return true;
@@ -3507,12 +3531,11 @@ extern (C++) final class TemplateExp : Expression
 }
 
 /***********************************************************
- * thisexp.new(newargs) newtype(arguments)
+ * newtype(arguments)
  */
 extern (C++) final class NewExp : Expression
 {
     Expression thisexp;         // if !=null, 'this' for class being allocated
-    Expressions* newargs;       // Array of Expression's to call new operator
     Type newtype;
     Expressions* arguments;     // Array of Expression's
 
@@ -3521,25 +3544,23 @@ extern (C++) final class NewExp : Expression
     bool onstack;               // allocate on stack
     bool thrownew;              // this NewExp is the expression of a ThrowStatement
 
-    extern (D) this(const ref Loc loc, Expression thisexp, Expressions* newargs, Type newtype, Expressions* arguments)
+    extern (D) this(const ref Loc loc, Expression thisexp, Type newtype, Expressions* arguments)
     {
         super(loc, EXP.new_, __traits(classInstanceSize, NewExp));
         this.thisexp = thisexp;
-        this.newargs = newargs;
         this.newtype = newtype;
         this.arguments = arguments;
     }
 
-    static NewExp create(const ref Loc loc, Expression thisexp, Expressions* newargs, Type newtype, Expressions* arguments)
+    static NewExp create(const ref Loc loc, Expression thisexp, Type newtype, Expressions* arguments)
     {
-        return new NewExp(loc, thisexp, newargs, newtype, arguments);
+        return new NewExp(loc, thisexp, newtype, arguments);
     }
 
     override NewExp syntaxCopy()
     {
         return new NewExp(loc,
             thisexp ? thisexp.syntaxCopy() : null,
-            arraySyntaxCopy(newargs),
             newtype.syntaxCopy(),
             arraySyntaxCopy(arguments));
     }
@@ -3551,27 +3572,25 @@ extern (C++) final class NewExp : Expression
 }
 
 /***********************************************************
- * thisexp.new(newargs) class baseclasses { } (arguments)
+ * class baseclasses { } (arguments)
  */
 extern (C++) final class NewAnonClassExp : Expression
 {
     Expression thisexp;     // if !=null, 'this' for class being allocated
-    Expressions* newargs;   // Array of Expression's to call new operator
     ClassDeclaration cd;    // class being instantiated
     Expressions* arguments; // Array of Expression's to call class constructor
 
-    extern (D) this(const ref Loc loc, Expression thisexp, Expressions* newargs, ClassDeclaration cd, Expressions* arguments)
+    extern (D) this(const ref Loc loc, Expression thisexp, ClassDeclaration cd, Expressions* arguments)
     {
         super(loc, EXP.newAnonymousClass, __traits(classInstanceSize, NewAnonClassExp));
         this.thisexp = thisexp;
-        this.newargs = newargs;
         this.cd = cd;
         this.arguments = arguments;
     }
 
     override NewAnonClassExp syntaxCopy()
     {
-        return new NewAnonClassExp(loc, thisexp ? thisexp.syntaxCopy() : null, arraySyntaxCopy(newargs), cd.syntaxCopy(null), arraySyntaxCopy(arguments));
+        return new NewAnonClassExp(loc, thisexp ? thisexp.syntaxCopy() : null, cd.syntaxCopy(null), arraySyntaxCopy(arguments));
     }
 
     override void accept(Visitor v)
@@ -3840,7 +3859,7 @@ extern (C++) final class FuncExp : Expression
     {
         if (td)
             return new FuncExp(loc, td.syntaxCopy(null));
-        else if (fd.semanticRun == PASS.init)
+        else if (fd.semanticRun == PASS.initial)
             return new FuncExp(loc, fd.syntaxCopy(null));
         else // https://issues.dlang.org/show_bug.cgi?id=13481
              // Prevent multiple semantic analysis of lambda body.
@@ -4136,6 +4155,9 @@ extern (C++) final class TraitsExp : Expression
 }
 
 /***********************************************************
+ * Generates a halt instruction
+ *
+ * `assert(0)` gets rewritten to this with `CHECKACTION.halt`
  */
 extern (C++) final class HaltExp : Expression
 {
@@ -4194,6 +4216,9 @@ extern (C++) final class IsExp : Expression
 }
 
 /***********************************************************
+ * Base class for unary operators
+ *
+ * https://dlang.org/spec/expression.html#unary-expression
  */
 extern (C++) abstract class UnaExp : Expression
 {
@@ -4264,6 +4289,7 @@ alias fp_t = UnionExp function(const ref Loc loc, Type, Expression, Expression);
 alias fp2_t = bool function(const ref Loc loc, EXP, Expression, Expression);
 
 /***********************************************************
+ * Base class for binary operators
  */
 extern (C++) abstract class BinExp : Expression
 {
@@ -4559,6 +4585,7 @@ extern (C++) abstract class BinExp : Expression
 }
 
 /***********************************************************
+ * Binary operator assignment, `+=` `-=` `*=` etc.
  */
 extern (C++) class BinAssignExp : BinExp
 {
@@ -4584,11 +4611,6 @@ extern (C++) class BinAssignExp : BinExp
         return toLvalue(sc, this);
     }
 
-    override inout(BinAssignExp) isBinAssignExp() pure inout nothrow @nogc @safe
-    {
-        return this;
-    }
-
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -4596,6 +4618,8 @@ extern (C++) class BinAssignExp : BinExp
 }
 
 /***********************************************************
+ * A string mixin, `mixin("x")`
+ *
  * https://dlang.org/spec/expression.html#mixin_expressions
  */
 extern (C++) final class MixinExp : Expression
@@ -4642,6 +4666,11 @@ extern (C++) final class MixinExp : Expression
 }
 
 /***********************************************************
+ * An import expression, `import("file.txt")`
+ *
+ * Not to be confused with module imports, `import std.stdio`, which is an `ImportStatement`
+ *
+ * https://dlang.org/spec/expression.html#import_expressions
  */
 extern (C++) final class ImportExp : UnaExp
 {
@@ -4657,6 +4686,8 @@ extern (C++) final class ImportExp : UnaExp
 }
 
 /***********************************************************
+ * An assert expression, `assert(x == y)`
+ *
  * https://dlang.org/spec/expression.html#assert_expressions
  */
 extern (C++) final class AssertExp : UnaExp
@@ -4672,6 +4703,31 @@ extern (C++) final class AssertExp : UnaExp
     override AssertExp syntaxCopy()
     {
         return new AssertExp(loc, e1.syntaxCopy(), msg ? msg.syntaxCopy() : null);
+    }
+
+    override void accept(Visitor v)
+    {
+        v.visit(this);
+    }
+}
+
+/***********************************************************
+ * `throw <e1>` as proposed by DIP 1034.
+ *
+ * Replacement for the deprecated `ThrowStatement` that can be nested
+ * in other expression.
+ */
+extern (C++) final class ThrowExp : UnaExp
+{
+    extern (D) this(const ref Loc loc, Expression e)
+    {
+        super(loc, EXP.throw_, __traits(classInstanceSize, ThrowExp), e);
+        this.type = Type.tnoreturn;
+    }
+
+    override ThrowExp syntaxCopy()
+    {
+        return new ThrowExp(loc, e1.syntaxCopy());
     }
 
     override void accept(Visitor v)
@@ -4894,7 +4950,7 @@ extern (C++) final class DotTemplateInstanceExp : UnaExp
         // Same logic as ScopeExp.checkType()
         if (ti.tempdecl &&
             ti.semantictiargsdone &&
-            ti.semanticRun == PASS.init)
+            ti.semanticRun == PASS.initial)
         {
             error("partial %s `%s` has no type", ti.kind(), toChars());
             return true;
@@ -4906,7 +4962,7 @@ extern (C++) final class DotTemplateInstanceExp : UnaExp
     {
         if (ti.tempdecl &&
             ti.semantictiargsdone &&
-            ti.semanticRun == PASS.init)
+            ti.semanticRun == PASS.initial)
 
             error("partial %s `%s` has no value", ti.kind(), toChars());
         else
@@ -5142,6 +5198,7 @@ FuncDeclaration isFuncAddress(Expression e, bool* hasOverloads = null)
 }
 
 /***********************************************************
+ * The 'address of' operator, `&p`
  */
 extern (C++) final class AddrExp : UnaExp
 {
@@ -5163,6 +5220,7 @@ extern (C++) final class AddrExp : UnaExp
 }
 
 /***********************************************************
+ * The pointer dereference operator, `*p`
  */
 extern (C++) final class PtrExp : UnaExp
 {
@@ -5215,6 +5273,7 @@ extern (C++) final class PtrExp : UnaExp
 }
 
 /***********************************************************
+ * The negation operator, `-x`
  */
 extern (C++) final class NegExp : UnaExp
 {
@@ -5230,6 +5289,7 @@ extern (C++) final class NegExp : UnaExp
 }
 
 /***********************************************************
+ * The unary add operator, `+x`
  */
 extern (C++) final class UAddExp : UnaExp
 {
@@ -5245,6 +5305,7 @@ extern (C++) final class UAddExp : UnaExp
 }
 
 /***********************************************************
+ * The bitwise complement operator, `~x`
  */
 extern (C++) final class ComExp : UnaExp
 {
@@ -5260,6 +5321,7 @@ extern (C++) final class ComExp : UnaExp
 }
 
 /***********************************************************
+ * The logical not operator, `!x`
  */
 extern (C++) final class NotExp : UnaExp
 {
@@ -5275,6 +5337,9 @@ extern (C++) final class NotExp : UnaExp
 }
 
 /***********************************************************
+ * The delete operator, `delete x` (deprecated)
+ *
+ * https://dlang.org/spec/expression.html#delete_expressions
  */
 extern (C++) final class DeleteExp : UnaExp
 {
@@ -5293,7 +5358,11 @@ extern (C++) final class DeleteExp : UnaExp
 }
 
 /***********************************************************
- * Possible to cast to one type while painting to another type
+ * The type cast operator, `cast(T) x`
+ *
+ * It's possible to cast to one type while painting to another type
+ *
+ * https://dlang.org/spec/expression.html#cast_expressions
  */
 extern (C++) final class CastExp : UnaExp
 {
@@ -5489,6 +5558,7 @@ extern (C++) final class SliceExp : UnaExp
 }
 
 /***********************************************************
+ * The `.length` property of an array
  */
 extern (C++) final class ArrayLengthExp : UnaExp
 {
@@ -5673,6 +5743,11 @@ extern (C++) final class IntervalExp : Expression
     }
 }
 
+/***********************************************************
+ * The `dg.ptr` property, pointing to the delegate's 'context'
+ *
+ * c.f.`DelegateFuncptrExp` for the delegate's function pointer `dg.funcptr`
+ */
 extern (C++) final class DelegatePtrExp : UnaExp
 {
     extern (D) this(const ref Loc loc, Expression e1)
@@ -5708,6 +5783,9 @@ extern (C++) final class DelegatePtrExp : UnaExp
 }
 
 /***********************************************************
+ * The `dg.funcptr` property, pointing to the delegate's function
+ *
+ * c.f.`DelegatePtrExp` for the delegate's function pointer `dg.ptr`
  */
 extern (C++) final class DelegateFuncptrExp : UnaExp
 {
@@ -5755,6 +5833,13 @@ extern (C++) final class IndexExp : BinExp
     extern (D) this(const ref Loc loc, Expression e1, Expression e2)
     {
         super(loc, EXP.index, __traits(classInstanceSize, IndexExp), e1, e2);
+        //printf("IndexExp::IndexExp('%s')\n", toChars());
+    }
+
+    extern (D) this(const ref Loc loc, Expression e1, Expression e2, bool indexIsInBounds)
+    {
+        super(loc, EXP.index, __traits(classInstanceSize, IndexExp), e1, e2);
+        this.indexIsInBounds = indexIsInBounds;
         //printf("IndexExp::IndexExp('%s')\n", toChars());
     }
 
@@ -5824,7 +5909,7 @@ extern (C++) final class IndexExp : BinExp
 }
 
 /***********************************************************
- * For both i++ and i--
+ * The postfix increment/decrement operator, `i++` / `i--`
  */
 extern (C++) final class PostExp : BinExp
 {
@@ -5841,7 +5926,7 @@ extern (C++) final class PostExp : BinExp
 }
 
 /***********************************************************
- * For both ++i and --i
+ * The prefix increment/decrement operator, `++i` / `--i`
  */
 extern (C++) final class PreExp : UnaExp
 {
@@ -5865,6 +5950,9 @@ enum MemorySet
 }
 
 /***********************************************************
+ * The assignment / initialization operator, `=`
+ *
+ * Note: operator assignment `op=` has a different base class, `BinAssignExp`
  */
 extern (C++) class AssignExp : BinExp
 {
@@ -5942,6 +6030,7 @@ extern (C++) final class ConstructExp : AssignExp
 }
 
 /***********************************************************
+ * A bit-for-bit copy from `e2` to `e1`
  */
 extern (C++) final class BlitExp : AssignExp
 {
@@ -5970,6 +6059,7 @@ extern (C++) final class BlitExp : AssignExp
 }
 
 /***********************************************************
+ * `x += y`
  */
 extern (C++) final class AddAssignExp : BinAssignExp
 {
@@ -5985,6 +6075,7 @@ extern (C++) final class AddAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x -= y`
  */
 extern (C++) final class MinAssignExp : BinAssignExp
 {
@@ -6000,6 +6091,7 @@ extern (C++) final class MinAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x *= y`
  */
 extern (C++) final class MulAssignExp : BinAssignExp
 {
@@ -6015,6 +6107,7 @@ extern (C++) final class MulAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x /= y`
  */
 extern (C++) final class DivAssignExp : BinAssignExp
 {
@@ -6030,6 +6123,7 @@ extern (C++) final class DivAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x %= y`
  */
 extern (C++) final class ModAssignExp : BinAssignExp
 {
@@ -6045,6 +6139,7 @@ extern (C++) final class ModAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x &= y`
  */
 extern (C++) final class AndAssignExp : BinAssignExp
 {
@@ -6060,6 +6155,7 @@ extern (C++) final class AndAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x |= y`
  */
 extern (C++) final class OrAssignExp : BinAssignExp
 {
@@ -6075,6 +6171,7 @@ extern (C++) final class OrAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x ^= y`
  */
 extern (C++) final class XorAssignExp : BinAssignExp
 {
@@ -6090,6 +6187,7 @@ extern (C++) final class XorAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x ^^= y`
  */
 extern (C++) final class PowAssignExp : BinAssignExp
 {
@@ -6105,6 +6203,7 @@ extern (C++) final class PowAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x <<= y`
  */
 extern (C++) final class ShlAssignExp : BinAssignExp
 {
@@ -6120,6 +6219,7 @@ extern (C++) final class ShlAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x >>= y`
  */
 extern (C++) final class ShrAssignExp : BinAssignExp
 {
@@ -6135,6 +6235,7 @@ extern (C++) final class ShrAssignExp : BinAssignExp
 }
 
 /***********************************************************
+ * `x >>>= y`
  */
 extern (C++) final class UshrAssignExp : BinAssignExp
 {
@@ -6150,7 +6251,9 @@ extern (C++) final class UshrAssignExp : BinAssignExp
 }
 
 /***********************************************************
- * The ~= operator. It can have one of the following operators:
+ * The `~=` operator.
+ *
+ * It can have one of the following operators:
  *
  * EXP.concatenateAssign      - appending T[] to T[]
  * EXP.concatenateElemAssign  - appending T to T[]
@@ -6177,7 +6280,9 @@ extern (C++) class CatAssignExp : BinAssignExp
     }
 }
 
-///
+/***********************************************************
+ * The `~=` operator when appending a single element
+ */
 extern (C++) final class CatElemAssignExp : CatAssignExp
 {
     extern (D) this(const ref Loc loc, Type type, Expression e1, Expression e2)
@@ -6192,7 +6297,9 @@ extern (C++) final class CatElemAssignExp : CatAssignExp
     }
 }
 
-///
+/***********************************************************
+ * The `~=` operator when appending a single `dchar`
+ */
 extern (C++) final class CatDcharAssignExp : CatAssignExp
 {
     extern (D) this(const ref Loc loc, Type type, Expression e1, Expression e2)
@@ -6208,6 +6315,8 @@ extern (C++) final class CatDcharAssignExp : CatAssignExp
 }
 
 /***********************************************************
+ * The addition operator, `x + y`
+ *
  * https://dlang.org/spec/expression.html#add_expressions
  */
 extern (C++) final class AddExp : BinExp
@@ -6224,6 +6333,9 @@ extern (C++) final class AddExp : BinExp
 }
 
 /***********************************************************
+ * The minus operator, `x - y`
+ *
+ * https://dlang.org/spec/expression.html#add_expressions
  */
 extern (C++) final class MinExp : BinExp
 {
@@ -6239,6 +6351,8 @@ extern (C++) final class MinExp : BinExp
 }
 
 /***********************************************************
+ * The concatenation operator, `x ~ y`
+ *
  * https://dlang.org/spec/expression.html#cat_expressions
  */
 extern (C++) final class CatExp : BinExp
@@ -6262,6 +6376,8 @@ extern (C++) final class CatExp : BinExp
 }
 
 /***********************************************************
+ * The multiplication operator, `x * y`
+ *
  * https://dlang.org/spec/expression.html#mul_expressions
  */
 extern (C++) final class MulExp : BinExp
@@ -6278,6 +6394,8 @@ extern (C++) final class MulExp : BinExp
 }
 
 /***********************************************************
+ * The division operator, `x / y`
+ *
  * https://dlang.org/spec/expression.html#mul_expressions
  */
 extern (C++) final class DivExp : BinExp
@@ -6294,6 +6412,8 @@ extern (C++) final class DivExp : BinExp
 }
 
 /***********************************************************
+ * The modulo operator, `x % y`
+ *
  * https://dlang.org/spec/expression.html#mul_expressions
  */
 extern (C++) final class ModExp : BinExp
@@ -6310,6 +6430,8 @@ extern (C++) final class ModExp : BinExp
 }
 
 /***********************************************************
+ * The 'power' operator, `x ^^ y`
+ *
  * https://dlang.org/spec/expression.html#pow_expressions
  */
 extern (C++) final class PowExp : BinExp
@@ -6326,6 +6448,9 @@ extern (C++) final class PowExp : BinExp
 }
 
 /***********************************************************
+ * The 'shift left' operator, `x << y`
+ *
+ * https://dlang.org/spec/expression.html#shift_expressions
  */
 extern (C++) final class ShlExp : BinExp
 {
@@ -6341,6 +6466,9 @@ extern (C++) final class ShlExp : BinExp
 }
 
 /***********************************************************
+ * The 'shift right' operator, `x >> y`
+ *
+ * https://dlang.org/spec/expression.html#shift_expressions
  */
 extern (C++) final class ShrExp : BinExp
 {
@@ -6356,6 +6484,9 @@ extern (C++) final class ShrExp : BinExp
 }
 
 /***********************************************************
+ * The 'unsigned shift right' operator, `x >>> y`
+ *
+ * https://dlang.org/spec/expression.html#shift_expressions
  */
 extern (C++) final class UshrExp : BinExp
 {
@@ -6371,6 +6502,9 @@ extern (C++) final class UshrExp : BinExp
 }
 
 /***********************************************************
+ * The bitwise 'and' operator, `x & y`
+ *
+ * https://dlang.org/spec/expression.html#and_expressions
  */
 extern (C++) final class AndExp : BinExp
 {
@@ -6386,6 +6520,9 @@ extern (C++) final class AndExp : BinExp
 }
 
 /***********************************************************
+ * The bitwise 'or' operator, `x | y`
+ *
+ * https://dlang.org/spec/expression.html#or_expressions
  */
 extern (C++) final class OrExp : BinExp
 {
@@ -6401,6 +6538,9 @@ extern (C++) final class OrExp : BinExp
 }
 
 /***********************************************************
+ * The bitwise 'xor' operator, `x ^ y`
+ *
+ * https://dlang.org/spec/expression.html#xor_expressions
  */
 extern (C++) final class XorExp : BinExp
 {
@@ -6416,6 +6556,8 @@ extern (C++) final class XorExp : BinExp
 }
 
 /***********************************************************
+ * The logical 'and' / 'or' operator, `X && Y` / `X || Y`
+ *
  * https://dlang.org/spec/expression.html#andand_expressions
  * https://dlang.org/spec/expression.html#oror_expressions
  */
@@ -6434,6 +6576,8 @@ extern (C++) final class LogicalExp : BinExp
 }
 
 /***********************************************************
+ * A comparison operator, `<` `<=` `>` `>=`
+ *
  * `op` is one of:
  *      EXP.lessThan, EXP.lessOrEqual, EXP.greaterThan, EXP.greaterOrEqual
  *
@@ -6454,6 +6598,11 @@ extern (C++) final class CmpExp : BinExp
 }
 
 /***********************************************************
+ * The `in` operator, `"a" in ["a": 1]`
+ *
+ * Note: `x !in y` is rewritten to `!(x in y)` in the parser
+ *
+ * https://dlang.org/spec/expression.html#in_expressions
  */
 extern (C++) final class InExp : BinExp
 {
@@ -6469,6 +6618,8 @@ extern (C++) final class InExp : BinExp
 }
 
 /***********************************************************
+ * Associative array removal, `aa.remove(arg)`
+ *
  * This deletes the key e1 from the associative array e2
  */
 extern (C++) final class RemoveExp : BinExp
@@ -6528,7 +6679,7 @@ extern (C++) final class IdentityExp : BinExp
 }
 
 /***********************************************************
- * `econd ? e1 : e2`
+ * The ternary operator, `econd ? e1 : e2`
  *
  * https://dlang.org/spec/expression.html#conditional_expressions
  */
@@ -6661,6 +6812,18 @@ bool isDefaultInitOp(EXP op) pure nothrow @safe @nogc
 }
 
 /***********************************************************
+ * A special keyword when used as a function's default argument
+ *
+ * When possible, special keywords are resolved in the parser, but when
+ * appearing as a default argument, they result in an expression deriving
+ * from this base class that is resolved for each function call.
+ *
+ * ---
+ * const x = __LINE__; // resolved in the parser
+ * void foo(string file = __FILE__, int line = __LINE__); // DefaultInitExp
+ * ---
+ *
+ * https://dlang.org/spec/expression.html#specialkeywords
  */
 extern (C++) class DefaultInitExp : Expression
 {
@@ -6676,6 +6839,7 @@ extern (C++) class DefaultInitExp : Expression
 }
 
 /***********************************************************
+ * The `__FILE__` token as a default argument
  */
 extern (C++) final class FileInitExp : DefaultInitExp
 {
@@ -6706,6 +6870,7 @@ extern (C++) final class FileInitExp : DefaultInitExp
 }
 
 /***********************************************************
+ * The `__LINE__` token as a default argument
  */
 extern (C++) final class LineInitExp : DefaultInitExp
 {
@@ -6728,6 +6893,7 @@ extern (C++) final class LineInitExp : DefaultInitExp
 }
 
 /***********************************************************
+ * The `__MODULE__` token as a default argument
  */
 extern (C++) final class ModuleInitExp : DefaultInitExp
 {
@@ -6752,6 +6918,7 @@ extern (C++) final class ModuleInitExp : DefaultInitExp
 }
 
 /***********************************************************
+ * The `__FUNCTION__` token as a default argument
  */
 extern (C++) final class FuncInitExp : DefaultInitExp
 {
@@ -6782,6 +6949,7 @@ extern (C++) final class FuncInitExp : DefaultInitExp
 }
 
 /***********************************************************
+ * The `__PRETTY_FUNCTION__` token as a default argument
  */
 extern (C++) final class PrettyFuncInitExp : DefaultInitExp
 {
@@ -7021,3 +7189,53 @@ extern(D) Modifiable checkModifiable(Expression exp, Scope* sc, ModifyFlags flag
             return exp.type ? Modifiable.yes : Modifiable.no; // default modifiable
     }
 }
+
+/******************************
+ * Provide efficient way to implement isUnaExp(), isBinExp(), isBinAssignExp()
+ */
+private immutable ubyte[EXP.max + 1] exptab =
+() {
+    ubyte[EXP.max + 1] tab;
+    with (EXPFLAGS)
+    {
+        foreach (i; Eunary)  { tab[i] |= unary;  }
+        foreach (i; Ebinary) { tab[i] |= unary | binary; }
+        foreach (i; EbinaryAssign) { tab[i] |= unary | binary | binaryAssign; }
+    }
+    return tab;
+} ();
+
+private enum EXPFLAGS : ubyte
+{
+    unary = 1,
+    binary = 2,
+    binaryAssign = 4,
+}
+
+private enum Eunary =
+    [
+        EXP.import_, EXP.assert_, EXP.throw_, EXP.dotIdentifier, EXP.dotTemplateDeclaration,
+        EXP.dotVariable, EXP.dotTemplateInstance, EXP.delegate_, EXP.dotType, EXP.call,
+        EXP.address, EXP.star, EXP.negate, EXP.uadd, EXP.tilde, EXP.not, EXP.delete_, EXP.cast_,
+        EXP.vector, EXP.vectorArray, EXP.slice, EXP.arrayLength, EXP.array, EXP.delegatePointer,
+        EXP.delegateFunctionPointer, EXP.preMinusMinus, EXP.prePlusPlus,
+    ];
+
+private enum Ebinary =
+    [
+        EXP.dot, EXP.comma, EXP.index, EXP.minusMinus, EXP.plusPlus, EXP.assign,
+        EXP.add, EXP.min, EXP.concatenate, EXP.mul, EXP.div, EXP.mod, EXP.pow, EXP.leftShift,
+        EXP.rightShift, EXP.unsignedRightShift, EXP.and, EXP.or, EXP.xor, EXP.andAnd, EXP.orOr,
+        EXP.lessThan, EXP.lessOrEqual, EXP.greaterThan, EXP.greaterOrEqual,
+        EXP.in_, EXP.remove, EXP.equal, EXP.notEqual, EXP.identity, EXP.notIdentity,
+        EXP.question,
+        EXP.construct, EXP.blit,
+    ];
+
+private enum EbinaryAssign =
+    [
+        EXP.addAssign, EXP.minAssign, EXP.mulAssign, EXP.divAssign, EXP.modAssign,
+        EXP.andAssign, EXP.orAssign, EXP.xorAssign, EXP.powAssign,
+        EXP.leftShiftAssign, EXP.rightShiftAssign, EXP.unsignedRightShiftAssign,
+        EXP.concatenateAssign, EXP.concatenateElemAssign, EXP.concatenateDcharAssign,
+    ];

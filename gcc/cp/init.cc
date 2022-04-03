@@ -679,10 +679,10 @@ get_nsdmi (tree member, bool in_ctor, tsubst_flags_t complain)
   if (simple_target)
     init = TARGET_EXPR_INITIAL (init);
   init = break_out_target_exprs (init, /*loc*/true);
-  if (in_ctor && init && TREE_CODE (init) == TARGET_EXPR)
-    /* This expresses the full initialization, prevent perform_member_init from
-       calling another constructor (58162).  */
-    TARGET_EXPR_DIRECT_INIT_P (init) = true;
+  if (init && TREE_CODE (init) == TARGET_EXPR)
+    /* In a constructor, this expresses the full initialization, prevent
+       perform_member_init from calling another constructor (58162).  */
+    TARGET_EXPR_DIRECT_INIT_P (init) = in_ctor;
   if (simple_target && TREE_CODE (init) != CONSTRUCTOR)
     /* Now put it back so C++17 copy elision works.  */
     init = get_target_expr (init);
@@ -2019,11 +2019,7 @@ build_aggr_init (tree exp, tree init, int flags, tsubst_flags_t complain)
       return stmt_expr;
     }
 
-  if (init && init != void_type_node
-      && TREE_CODE (init) != TREE_LIST
-      && !(TREE_CODE (init) == TARGET_EXPR
-	   && TARGET_EXPR_DIRECT_INIT_P (init))
-      && !DIRECT_LIST_INIT_P (init))
+  if (is_copy_initialization (init))
     flags |= LOOKUP_ONLYCONVERTING;
 
   is_global = begin_init_stmts (&stmt_expr, &compound_stmt);
@@ -2331,6 +2327,19 @@ is_class_type (tree type, int or_else)
   return 1;
 }
 
+/* Returns true iff the initializer INIT represents copy-initialization
+   (and therefore we must set LOOKUP_ONLYCONVERTING when processing it).  */
+
+bool
+is_copy_initialization (tree init)
+{
+  return (init && init != void_type_node
+	  && TREE_CODE (init) != TREE_LIST
+	  && !(TREE_CODE (init) == TARGET_EXPR
+	       && TARGET_EXPR_DIRECT_INIT_P (init))
+	  && !DIRECT_LIST_INIT_P (init));
+}
+
 /* Build a reference to a member of an aggregate.  This is not a C++
    `&', but really something which can have its address taken, and
    then act as a pointer to member, for example TYPE :: FIELD can have
@@ -2362,8 +2371,9 @@ build_offset_ref (tree type, tree member, bool address_p,
     return error_mark_node;
 
   gcc_assert (DECL_P (member) || BASELINK_P (member));
-  /* Callers should call mark_used before this point.  */
-  gcc_assert (!DECL_P (member) || TREE_USED (member));
+  /* Callers should call mark_used before this point, except for functions.  */
+  gcc_assert (!DECL_P (member) || TREE_USED (member)
+	      || TREE_CODE (member) == FUNCTION_DECL);
 
   type = TYPE_MAIN_VARIANT (type);
   if (!COMPLETE_OR_OPEN_TYPE_P (complete_type (type)))
@@ -2921,33 +2931,17 @@ std_placement_new_fn_p (tree alloc_fn)
 }
 
 /* For element type ELT_TYPE, return the appropriate type of the heap object
-   containing such element(s).  COOKIE_SIZE is NULL or the size of cookie
-   in bytes.  FULL_SIZE is NULL if it is unknown how big the heap allocation
-   will be, otherwise size of the heap object.  If COOKIE_SIZE is NULL,
-   return array type ELT_TYPE[FULL_SIZE / sizeof(ELT_TYPE)], otherwise return
+   containing such element(s).  COOKIE_SIZE is the size of cookie in bytes.
+   Return
    struct { size_t[COOKIE_SIZE/sizeof(size_t)]; ELT_TYPE[N]; }
-   where N is nothing (flexible array member) if FULL_SIZE is NULL, otherwise
-   it is computed such that the size of the struct fits into FULL_SIZE.  */
+   where N is nothing (flexible array member) if ITYPE2 is NULL, otherwise
+   the array has ITYPE2 as its TYPE_DOMAIN.  */
 
 tree
-build_new_constexpr_heap_type (tree elt_type, tree cookie_size, tree full_size)
+build_new_constexpr_heap_type (tree elt_type, tree cookie_size, tree itype2)
 {
-  gcc_assert (cookie_size == NULL_TREE || tree_fits_uhwi_p (cookie_size));
-  gcc_assert (full_size == NULL_TREE || tree_fits_uhwi_p (full_size));
-  unsigned HOST_WIDE_INT csz = cookie_size ? tree_to_uhwi (cookie_size) : 0;
-  tree itype2 = NULL_TREE;
-  if (full_size)
-    {
-      unsigned HOST_WIDE_INT fsz = tree_to_uhwi (full_size);
-      gcc_assert (fsz >= csz);
-      fsz -= csz;
-      fsz /= int_size_in_bytes (elt_type);
-      itype2 = build_index_type (size_int (fsz - 1));
-      if (!cookie_size)
-	return build_cplus_array_type (elt_type, itype2);
-    }
-  else
-    gcc_assert (cookie_size);
+  gcc_assert (tree_fits_uhwi_p (cookie_size));
+  unsigned HOST_WIDE_INT csz = tree_to_uhwi (cookie_size);
   csz /= int_size_in_bytes (sizetype);
   tree itype1 = build_index_type (size_int (csz - 1));
   tree atype1 = build_cplus_array_type (sizetype, itype1);
@@ -3290,7 +3284,13 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 
   tree align_arg = NULL_TREE;
   if (type_has_new_extended_alignment (elt_type))
-    align_arg = build_int_cst (align_type_node, TYPE_ALIGN_UNIT (elt_type));
+    {
+      unsigned align = TYPE_ALIGN_UNIT (elt_type);
+      /* Also consider the alignment of the cookie, if any.  */
+      if (TYPE_VEC_NEW_USES_COOKIE (elt_type))
+	align = MAX (align, TYPE_ALIGN_UNIT (size_type_node));
+      align_arg = build_int_cst (align_type_node, align);
+    }
 
   alloc_fn = NULL_TREE;
 
@@ -3398,6 +3398,12 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 	    outer_nelts_check = NULL_TREE;
 	}
 
+      /* If size is zero e.g. due to type having zero size, try to
+	 preserve outer_nelts for constant expression evaluation
+	 purposes.  */
+      if (integer_zerop (size) && outer_nelts)
+	size = build2 (MULT_EXPR, TREE_TYPE (size), size, outer_nelts);
+
       alloc_call = build_operator_new_call (fnname, placement,
 					    &size, &cookie_size,
 					    align_arg, outer_nelts_check,
@@ -3473,18 +3479,19 @@ build_new_1 (vec<tree, va_gc> **placement, tree type, tree nelts,
 	}
     }
 
+  alloc_expr = alloc_call;
   if (cookie_size)
-    alloc_call = maybe_wrap_new_for_constexpr (alloc_call, elt_type,
+    alloc_expr = maybe_wrap_new_for_constexpr (alloc_expr, type,
 					       cookie_size);
 
   /* In the simple case, we can stop now.  */
   pointer_type = build_pointer_type (type);
   if (!cookie_size && !is_initialized && !member_delete_p)
-    return build_nop (pointer_type, alloc_call);
+    return build_nop (pointer_type, alloc_expr);
 
   /* Store the result of the allocation call in a variable so that we can
      use it more than once.  */
-  alloc_expr = get_target_expr (alloc_call);
+  alloc_expr = get_target_expr (alloc_expr);
   alloc_node = TARGET_EXPR_SLOT (alloc_expr);
 
   /* Strip any COMPOUND_EXPRs from ALLOC_CALL.  */
@@ -4368,8 +4375,8 @@ build_vec_init (tree base, tree maxindex, tree init,
       && from_array != 2)
     init = TARGET_EXPR_INITIAL (init);
 
-  if (init && TREE_CODE (init) == VEC_INIT_EXPR)
-    init = VEC_INIT_EXPR_INIT (init);
+  if (tree vi = get_vec_init_expr (init))
+    init = VEC_INIT_EXPR_INIT (vi);
 
   bool direct_init = false;
   if (from_array && init && BRACE_ENCLOSED_INITIALIZER_P (init)
@@ -4395,6 +4402,7 @@ build_vec_init (tree base, tree maxindex, tree init,
   if (init
       && TREE_CODE (atype) == ARRAY_TYPE
       && TREE_CONSTANT (maxindex)
+      && !vla_type_p (type)
       && (from_array == 2
 	  ? vec_copy_assign_is_trivial (inner_elt_type, init)
 	  : !TYPE_NEEDS_CONSTRUCTING (type))
@@ -4581,10 +4589,14 @@ build_vec_init (tree base, tree maxindex, tree init,
 
 	  num_initialized_elts++;
 
+	  /* We need to see sub-array TARGET_EXPR before cp_fold_r so we can
+	     handle cleanup flags properly.  */
+	  gcc_checking_assert (!target_expr_needs_replace (elt));
+
 	  if (digested)
 	    one_init = build2 (INIT_EXPR, type, baseref, elt);
-	  else if (TREE_CODE (elt) == VEC_INIT_EXPR)
-	    one_init = expand_vec_init_expr (baseref, elt, complain, flags);
+	  else if (tree vi = get_vec_init_expr (elt))
+	    one_init = expand_vec_init_expr (baseref, vi, complain, flags);
 	  else if (MAYBE_CLASS_TYPE_P (type) || TREE_CODE (type) == ARRAY_TYPE)
 	    one_init = build_aggr_init (baseref, elt, 0, complain);
 	  else

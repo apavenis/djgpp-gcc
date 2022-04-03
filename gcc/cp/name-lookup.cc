@@ -1715,7 +1715,6 @@ static void consider_binding_level (tree name,
 				    cp_binding_level *lvl,
 				    bool look_within_fields,
 				    enum lookup_name_fuzzy_kind kind);
-static void diagnose_name_conflict (tree, tree);
 
 /* ADL lookup of NAME.  FNS is the result of regular lookup, and we
    don't add duplicates to it.  ARGS is the vector of call
@@ -2711,9 +2710,13 @@ supplement_binding (cxx_binding *binding, tree decl)
   return ok;
 }
 
-/* Diagnose a name conflict between DECL and BVAL.  */
+/* Diagnose a name conflict between DECL and BVAL.
 
-static void
+   This is non-static so maybe_push_used_methods can use it and avoid changing
+   the diagnostic for inherit/using4.C; otherwise it should not be used from
+   outside this file.  */
+
+void
 diagnose_name_conflict (tree decl, tree bval)
 {
   if (TREE_CODE (decl) == TREE_CODE (bval)
@@ -3296,18 +3299,22 @@ check_local_shadow (tree decl)
 
 	/* Warn if a variable shadows a non-function, or the variable
 	   is a function or a pointer-to-function.  */
-	if (!OVL_P (member)
-	    || TREE_CODE (decl) == FUNCTION_DECL
-	    || (TREE_TYPE (decl)
-		&& (TYPE_PTRFN_P (TREE_TYPE (decl))
-		    || TYPE_PTRMEMFUNC_P (TREE_TYPE (decl)))))
+	if ((!OVL_P (member)
+	     || TREE_CODE (decl) == FUNCTION_DECL
+	     || (TREE_TYPE (decl)
+		 && (TYPE_PTRFN_P (TREE_TYPE (decl))
+		     || TYPE_PTRMEMFUNC_P (TREE_TYPE (decl)))))
+	    && !warning_suppressed_p (decl, OPT_Wshadow))
 	  {
 	    auto_diagnostic_group d;
 	    if (warning_at (DECL_SOURCE_LOCATION (decl), OPT_Wshadow,
 			    "declaration of %qD shadows a member of %qT",
 			    decl, current_nonlambda_class_type ())
 		&& DECL_P (member))
-	      inform_shadowed (member);
+	      {
+		inform_shadowed (member);
+		suppress_warning (decl, OPT_Wshadow);
+	      }
 	  }
 	return;
       }
@@ -3319,14 +3326,18 @@ check_local_shadow (tree decl)
 	  || (TREE_CODE (old) == TYPE_DECL
 	      && (!DECL_ARTIFICIAL (old)
 		  || TREE_CODE (decl) == TYPE_DECL)))
-      && !instantiating_current_function_p ())
+      && !instantiating_current_function_p ()
+      && !warning_suppressed_p (decl, OPT_Wshadow))
     /* XXX shadow warnings in outer-more namespaces */
     {
       auto_diagnostic_group d;
       if (warning_at (DECL_SOURCE_LOCATION (decl), OPT_Wshadow,
 		      "declaration of %qD shadows a global declaration",
 		      decl))
-	inform_shadowed (old);
+	{
+	  inform_shadowed (old);
+	  suppress_warning (decl, OPT_Wshadow);
+	}
       return;
     }
 
@@ -3465,6 +3476,9 @@ push_local_extern_decl_alias (tree decl)
 	      && CP_DECL_THREAD_LOCAL_P (decl)
 	      && alias != error_mark_node)
 	    set_decl_tls_model (alias, DECL_TLS_MODEL (decl));
+
+	  /* Adjust visibility.  */
+	  determine_visibility (alias);
 	}
     }
 
@@ -5472,13 +5486,18 @@ push_class_level_binding (tree name, tree x)
 	       && DECL_DEPENDENT_P (bval))
 	return true;
       else if (TREE_CODE (decl) == USING_DECL
+	       && DECL_DEPENDENT_P (decl)
 	       && OVL_P (target_bval))
+	/* The new dependent using beats an old overload.  */
 	old_decl = bval;
       else if (TREE_CODE (bval) == USING_DECL
+	       && DECL_DEPENDENT_P (bval)
 	       && OVL_P (target_decl))
-	old_decl = bval;
+	/* The old dependent using beats a new overload.  */
+	return true;
       else if (OVL_P (target_decl)
 	       && OVL_P (target_bval))
+	/* The new overload set contains the old one.  */
 	old_decl = bval;
 
       if (old_decl && binding->scope == class_binding_level)
@@ -5648,6 +5667,21 @@ lookup_using_decl (tree scope, name_lookup &lookup)
       if (!dependent_p)
 	lookup.value = lookup_member (binfo, lookup.name, /*protect=*/2,
 				      /*want_type=*/false, tf_none);
+
+      /* If the lookup in the base contains a dependent using, this
+	 using is also dependent.  */
+      if (!dependent_p && lookup.value && dependent_type_p (scope))
+	{
+	  tree val = lookup.value;
+	  if (tree fns = maybe_get_fns (val))
+	    val = fns;
+	  for (tree f: lkp_range (val))
+	    if (TREE_CODE (f) == USING_DECL && DECL_DEPENDENT_P (f))
+	      {
+		dependent_p = true;
+		break;
+	      }
+	}
 
       if (!depscope && b_kind < bk_proper_base)
 	{

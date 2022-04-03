@@ -590,7 +590,11 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, ref Typ
                     i.exp = ErrorExp.get();
                 }
             }
+            Type et = i.exp.type;
+            const errors = global.startGagging();
             i.exp = i.exp.implicitCastTo(sc, t);
+            if (global.endGagging(errors))
+                currExp.error("cannot implicitly convert expression `%s` of type `%s` to `%s`", currExp.toChars(), et.toChars(), t.toChars());
         }
     L1:
         if (i.exp.op == EXP.error)
@@ -1076,10 +1080,11 @@ Initializer inferType(Initializer init, Scope* sc)
  * Params:
  *      init = `Initializer` AST node
  *      itype = if not `null`, type to coerce expression to
+ *      isCfile = default initializers are different with C
  * Returns:
  *      `Expression` created, `null` if cannot, `ErrorExp` for other errors
  */
-extern (C++) Expression initializerToExpression(Initializer init, Type itype = null)
+extern (C++) Expression initializerToExpression(Initializer init, Type itype = null, const bool isCfile = false)
 {
     Expression visitVoid(VoidInitializer)
     {
@@ -1200,7 +1205,7 @@ extern (C++) Expression initializerToExpression(Initializer init, Type itype = n
                 if (!init.type) // don't know what type to use
                     return null;
                 if (!defaultInit)
-                    defaultInit = (cast(TypeNext)t).next.defaultInit(Loc.initial);
+                    defaultInit = (cast(TypeNext)t).next.defaultInit(Loc.initial, isCfile);
                 element = defaultInit;
             }
         }

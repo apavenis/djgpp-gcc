@@ -720,7 +720,7 @@ static bool
 supports_vec_convert_optab_p (optab op, machine_mode mode)
 {
   int start = mode == VOIDmode ? 0 : mode;
-  int end = mode == VOIDmode ? MAX_MACHINE_MODE : mode;
+  int end = mode == VOIDmode ? MAX_MACHINE_MODE - 1 : mode;
   for (int i = start; i <= end; ++i)
     if (VECTOR_MODE_P ((machine_mode) i))
       for (int j = MIN_MODE_VECTOR_INT; j < MAX_MODE_VECTOR_INT; ++j)
@@ -763,3 +763,31 @@ supports_vec_scatter_store_p (machine_mode mode)
   return this_fn_optabs->supports_vec_scatter_store[mode] > 0;
 }
 
+/* Whether we can extract part of the vector mode MODE as
+   (scalar or vector) mode EXTR_MODE.  */
+
+bool
+can_vec_extract (machine_mode mode, machine_mode extr_mode)
+{
+  unsigned m;
+  if (!VECTOR_MODE_P (mode)
+      || !constant_multiple_p (GET_MODE_SIZE (mode),
+			       GET_MODE_SIZE (extr_mode), &m))
+    return false;
+
+  if (convert_optab_handler (vec_extract_optab, mode, extr_mode)
+      != CODE_FOR_nothing)
+    return true;
+
+  /* Besides a direct vec_extract we can also use an element extract from
+     an integer vector mode with elements of the size of the extr_mode.  */
+  scalar_int_mode imode;
+  machine_mode vmode;
+  if (!int_mode_for_size (GET_MODE_BITSIZE (extr_mode), 0).exists (&imode)
+      || !related_vector_mode (mode, imode, m).exists (&vmode)
+      || (convert_optab_handler (vec_extract_optab, vmode, imode)
+	  == CODE_FOR_nothing))
+    return false;
+  /* We assume we can pun mode to vmode and imode to extr_mode.  */
+  return true;
+}

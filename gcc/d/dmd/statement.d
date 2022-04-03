@@ -21,7 +21,6 @@ import dmd.arraytypes;
 import dmd.astenums;
 import dmd.ast_node;
 import dmd.gluelayer;
-import dmd.canthrow;
 import dmd.cond;
 import dmd.dclass;
 import dmd.declaration;
@@ -1762,6 +1761,9 @@ extern (C++) final class GotoStatement : Statement
         return new GotoStatement(loc, ident);
     }
 
+    /**************
+     * Returns: true for error
+     */
     extern (D) bool checkLabel()
     {
         if (!label.statement)

@@ -67,8 +67,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-vector-builder.h"
 #include "tree-ssa-strlen.h"
 #include "varasm.h"
-#include "memmodel.h"
-#include "optabs.h"
 #include "internal-fn.h"
 
 enum strlen_range_kind {
@@ -962,17 +960,14 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 	= build_int_cst (build_pointer_type_for_mode (char_type_node,
 						      ptr_mode, true), 0);
 
-      /* If we can perform the copy efficiently with first doing all loads and
-	 then all stores inline it that way.  Currently efficiently means that
-	 we can load all the memory with a single set operation and that the
-	 total size is less than MOVE_MAX * MOVE_RATIO.  */
+      /* If we can perform the copy efficiently with first doing all loads
+         and then all stores inline it that way.  Currently efficiently
+	 means that we can load all the memory into a single integer
+	 register which is what MOVE_MAX gives us.  */
       src_align = get_pointer_alignment (src);
       dest_align = get_pointer_alignment (dest);
       if (tree_fits_uhwi_p (len)
-	  && (compare_tree_int
-	      (len, (MOVE_MAX
-		     * MOVE_RATIO (optimize_function_for_size_p (cfun))))
-	      <= 0)
+	  && compare_tree_int (len, MOVE_MAX) <= 0
 	  /* FIXME: Don't transform copies from strings with known length.
 	     Until GCC 9 this prevented a case in gcc.dg/strlenopt-8.c
 	     from being handled, and the case was XFAILed for that reason.
@@ -1006,7 +1001,6 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 	      scalar_int_mode mode;
 	      if (int_mode_for_size (ilen * 8, 0).exists (&mode)
 		  && GET_MODE_SIZE (mode) * BITS_PER_UNIT == ilen * 8
-		  && have_insn_for (SET, mode)
 		  /* If the destination pointer is not aligned we must be able
 		     to emit an unaligned store.  */
 		  && (dest_align >= GET_MODE_ALIGNMENT (mode)
@@ -1039,6 +1033,7 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 							  new_stmt);
 			  gimple_assign_set_lhs (new_stmt, srcmem);
 			  gimple_set_vuse (new_stmt, gimple_vuse (stmt));
+			  gimple_set_location (new_stmt, loc);
 			  gsi_insert_before (gsi, new_stmt, GSI_SAME_STMT);
 			}
 		      if (dest_align < GET_MODE_ALIGNMENT (mode))
@@ -1254,7 +1249,11 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 	    srcvar = fold_build2 (MEM_REF, desttype, src, off0);
 	  else
 	    {
-	      if (STRICT_ALIGNMENT)
+	      enum machine_mode mode = TYPE_MODE (desttype);
+	      if ((mode == BLKmode && STRICT_ALIGNMENT)
+		  || (targetm.slow_unaligned_access (mode, src_align)
+		      && (optab_handler (movmisalign_optab, mode)
+			  == CODE_FOR_nothing)))
 		return false;
 	      srctype = build_aligned_type (TYPE_MAIN_VARIANT (desttype),
 					    src_align);
@@ -1267,7 +1266,11 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 	    destvar = fold_build2 (MEM_REF, srctype, dest, off0);
 	  else
 	    {
-	      if (STRICT_ALIGNMENT)
+	      enum machine_mode mode = TYPE_MODE (srctype);
+	      if ((mode == BLKmode && STRICT_ALIGNMENT)
+		  || (targetm.slow_unaligned_access (mode, dest_align)
+		      && (optab_handler (movmisalign_optab, mode)
+			  == CODE_FOR_nothing)))
 		return false;
 	      desttype = build_aligned_type (TYPE_MAIN_VARIANT (srctype),
 					     dest_align);
@@ -4379,7 +4382,17 @@ clear_padding_flush (clear_padding_struct *buf, bool full)
 	      else
 		{
 		  src = make_ssa_name (type);
-		  g = gimple_build_assign (src, unshare_expr (dst));
+		  tree tmp_dst = unshare_expr (dst);
+		  /* The folding introduces a read from the tmp_dst, we should
+		     prevent uninitialized warning analysis from issuing warning
+		     for such fake read.  In order to suppress warning only for
+		     this expr, we should set the location of tmp_dst to
+		     UNKNOWN_LOCATION first, then suppress_warning will call
+		     set_no_warning_bit to set the no_warning flag only for
+		     tmp_dst.  */
+		  SET_EXPR_LOCATION (tmp_dst, UNKNOWN_LOCATION);
+		  suppress_warning (tmp_dst, OPT_Wuninitialized);
+		  g = gimple_build_assign (src, tmp_dst);
 		  gimple_set_location (g, buf->loc);
 		  gsi_insert_before (buf->gsi, g, GSI_SAME_STMT);
 		  tree mask = native_interpret_expr (type,
@@ -4807,10 +4820,10 @@ clear_padding_type (clear_padding_struct *buf, tree type,
 	clear_padding_flush (buf, false);
       if (clear_padding_real_needs_padding_p (type))
 	{
-	  /* Use native_interpret_expr + native_encode_expr to figure out
+	  /* Use native_interpret_real + native_encode_expr to figure out
 	     which bits are padding.  */
 	  memset (buf->buf + buf->size, ~0, sz);
-	  tree cst = native_interpret_expr (type, buf->buf + buf->size, sz);
+	  tree cst = native_interpret_real (type, buf->buf + buf->size, sz);
 	  gcc_assert (cst && TREE_CODE (cst) == REAL_CST);
 	  int len = native_encode_expr (cst, buf->buf + buf->size, sz);
 	  gcc_assert (len > 0 && (size_t) len == (size_t) sz);
@@ -4876,13 +4889,13 @@ static bool
 gimple_fold_builtin_clear_padding (gimple_stmt_iterator *gsi)
 {
   gimple *stmt = gsi_stmt (*gsi);
-  gcc_assert (gimple_call_num_args (stmt) == 3);
+  gcc_assert (gimple_call_num_args (stmt) == 2);
   tree ptr = gimple_call_arg (stmt, 0);
   tree typearg = gimple_call_arg (stmt, 1);
-  /* the 3rd argument of __builtin_clear_padding is to distinguish whether
-     this call is made by the user or by the compiler for automatic variable
-     initialization.  */
-  bool for_auto_init = (bool) TREE_INT_CST_LOW (gimple_call_arg (stmt, 2));
+  /* The 2nd argument of __builtin_clear_padding's value is used to
+     distinguish whether this call is made by the user or by the compiler
+     for automatic variable initialization.  */
+  bool for_auto_init = (bool) TREE_INT_CST_LOW (typearg);
   tree type = TREE_TYPE (TREE_TYPE (typearg));
   location_t loc = gimple_location (stmt);
   clear_padding_struct buf;
@@ -8539,11 +8552,12 @@ arith_code_with_undefined_signed_overflow (tree_code code)
    its operand, carrying out the operation in the corresponding unsigned
    type and converting the result back to the original type.
 
-   Returns a sequence of statements that replace STMT and also contain
-   a modified form of STMT itself.  */
+   If IN_PLACE is true, adjust the stmt in place and return NULL.
+   Otherwise returns a sequence of statements that replace STMT and also
+   contain a modified form of STMT itself.  */
 
 gimple_seq
-rewrite_to_defined_overflow (gimple *stmt)
+rewrite_to_defined_overflow (gimple *stmt, bool in_place /* = false */)
 {
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
@@ -8568,9 +8582,24 @@ rewrite_to_defined_overflow (gimple *stmt)
   if (gimple_assign_rhs_code (stmt) == POINTER_PLUS_EXPR)
     gimple_assign_set_rhs_code (stmt, PLUS_EXPR);
   gimple_set_modified (stmt, true);
-  gimple_seq_add_stmt (&stmts, stmt);
+  if (in_place)
+    {
+      gimple_stmt_iterator gsi = gsi_for_stmt (stmt);
+      if (stmts)
+	gsi_insert_seq_before (&gsi, stmts, GSI_SAME_STMT);
+      stmts = NULL;
+    }
+  else
+    gimple_seq_add_stmt (&stmts, stmt);
   gimple *cvt = gimple_build_assign (lhs, NOP_EXPR, gimple_assign_lhs (stmt));
-  gimple_seq_add_stmt (&stmts, cvt);
+  if (in_place)
+    {
+      gimple_stmt_iterator gsi = gsi_for_stmt (stmt);
+      gsi_insert_after (&gsi, cvt, GSI_SAME_STMT);
+      update_stmt (stmt);
+    }
+  else
+    gimple_seq_add_stmt (&stmts, cvt);
 
   return stmts;
 }
