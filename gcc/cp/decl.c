@@ -5590,7 +5590,7 @@ start_decl (const cp_declarator *declarator,
       && DECL_DECLARED_CONSTEXPR_P (current_function_decl))
     {
       bool ok = false;
-      if (CP_DECL_THREAD_LOCAL_P (decl))
+      if (CP_DECL_THREAD_LOCAL_P (decl) && !DECL_REALLY_EXTERN (decl))
 	error_at (DECL_SOURCE_LOCATION (decl),
 		  "%qD declared %<thread_local%> in %qs function", decl,
 		  DECL_IMMEDIATE_FUNCTION_P (current_function_decl)
@@ -6006,6 +6006,38 @@ layout_var_decl (tree decl)
 	  error_at (DECL_SOURCE_LOCATION (decl),
 		    "storage size of %qD isn%'t constant", decl);
 	  TREE_TYPE (decl) = error_mark_node;
+	  type = error_mark_node;
+	}
+    }
+
+  /* If the final element initializes a flexible array field, add the size of
+     that initializer to DECL's size.  */
+  if (type != error_mark_node
+      && DECL_INITIAL (decl)
+      && TREE_CODE (DECL_INITIAL (decl)) == CONSTRUCTOR
+      && !vec_safe_is_empty (CONSTRUCTOR_ELTS (DECL_INITIAL (decl)))
+      && DECL_SIZE (decl) != NULL_TREE
+      && TREE_CODE (DECL_SIZE (decl)) == INTEGER_CST
+      && TYPE_SIZE (type) != NULL_TREE
+      && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
+      && tree_int_cst_equal (DECL_SIZE (decl), TYPE_SIZE (type)))
+    {
+      constructor_elt &elt = CONSTRUCTOR_ELTS (DECL_INITIAL (decl))->last ();
+      if (elt.index)
+	{
+	  tree itype = TREE_TYPE (elt.index);
+	  tree vtype = TREE_TYPE (elt.value);
+	  if (TREE_CODE (itype) == ARRAY_TYPE
+	      && TYPE_DOMAIN (itype) == NULL
+	      && TREE_CODE (vtype) == ARRAY_TYPE
+	      && COMPLETE_TYPE_P (vtype))
+	    {
+	      DECL_SIZE (decl)
+		= size_binop (PLUS_EXPR, DECL_SIZE (decl), TYPE_SIZE (vtype));
+	      DECL_SIZE_UNIT (decl)
+		= size_binop (PLUS_EXPR, DECL_SIZE_UNIT (decl),
+			      TYPE_SIZE_UNIT (vtype));
+	    }
 	}
     }
 }
@@ -6377,8 +6409,9 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
     {
       tree field_init;
       constructor_elt *old_cur = d->cur;
+      bool direct_desig = false;
 
-      /* Handle designated initializers, as an extension.  */
+      /* Handle C++20 designated initializers.  */
       if (d->cur->index)
 	{
 	  if (d->cur->index == error_mark_node)
@@ -6396,7 +6429,10 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 		}
 	    }
 	  else if (TREE_CODE (d->cur->index) == IDENTIFIER_NODE)
-	    field = get_class_binding (type, d->cur->index);
+	    {
+	      field = get_class_binding (type, d->cur->index);
+	      direct_desig = true;
+	    }
 	  else
 	    {
 	      if (complain & tf_error)
@@ -6404,6 +6440,11 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 		       " for class %qT", d->cur->index, type);
 	      return error_mark_node;
 	    }
+
+	  if (!field && ANON_AGGR_TYPE_P (type))
+	    /* Apparently the designator isn't for a member of this anonymous
+	       struct, so head back to the enclosing class.  */
+	    break;
 
 	  if (!field || TREE_CODE (field) != FIELD_DECL)
 	    {
@@ -6437,6 +6478,7 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 		  break;
 	      gcc_assert (aafield);
 	      field = aafield;
+	      direct_desig = false;
 	    }
 	}
 
@@ -6451,9 +6493,32 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 	   assumed to correspond to no elements of the initializer list.  */
 	goto continue_;
 
-      field_init = reshape_init_r (TREE_TYPE (field), d,
-				   /*first_initializer_p=*/NULL_TREE,
-				   complain);
+      if (direct_desig)
+	{
+	  /* The designated field F is initialized from this one element:
+	     Temporarily clear the designator so a recursive reshape_init_class
+	     doesn't try to find it again in F, and adjust d->end so we don't
+	     try to use the next initializer to initialize another member of F.
+
+	     Note that we don't want these changes if we found the designator
+	     inside an anon aggr above; we leave them alone to implement:
+
+	     "If the element is an anonymous union member and the initializer
+	     list is a brace-enclosed designated- initializer-list, the element
+	     is initialized by the designated-initializer-list { D }, where D
+	     is the designated- initializer-clause naming a member of the
+	     anonymous union member."  */
+	  auto end_ = make_temp_override (d->end, d->cur + 1);
+	  auto idx_ = make_temp_override (d->cur->index, NULL_TREE);
+	  field_init = reshape_init_r (TREE_TYPE (field), d,
+				       /*first_initializer_p=*/NULL_TREE,
+				       complain);
+	}
+      else
+	field_init = reshape_init_r (TREE_TYPE (field), d,
+				     /*first_initializer_p=*/NULL_TREE,
+				     complain);
+
       if (field_init == error_mark_node)
 	return error_mark_node;
 
@@ -6573,7 +6638,8 @@ reshape_init_r (tree type, reshape_iter *d, tree first_initializer_p,
   /* A non-aggregate type is always initialized with a single
      initializer.  */
   if (!CP_AGGREGATE_TYPE_P (type)
-      /* As is an array with dependent bound.  */
+      /* As is an array with dependent bound, which we can see
+	 during C++20 aggregate CTAD.  */
       || (cxx_dialect >= cxx20
 	  && TREE_CODE (type) == ARRAY_TYPE
 	  && uses_template_parms (TYPE_DOMAIN (type))))
@@ -6688,6 +6754,7 @@ reshape_init_r (tree type, reshape_iter *d, tree first_initializer_p,
      initializer already, and there is not a CONSTRUCTOR, it means that there
      is a missing set of braces (that is, we are processing the case for
      which reshape_init exists).  */
+  bool braces_elided_p = false;
   if (!first_initializer_p)
     {
       if (TREE_CODE (stripped_init) == CONSTRUCTOR)
@@ -6703,6 +6770,15 @@ reshape_init_r (tree type, reshape_iter *d, tree first_initializer_p,
 	     to handle initialization of arrays and similar.  */
 	  else if (COMPOUND_LITERAL_P (stripped_init))
 	    gcc_assert (!BRACE_ENCLOSED_INITIALIZER_P (stripped_init));
+	  /* If we have an unresolved designator, we need to find the member it
+	     designates within TYPE, so proceed to the routines below.  For
+	     FIELD_DECL or INTEGER_CST designators, we're already initializing
+	     the designated element.  */
+	  else if (d->cur->index
+		   && TREE_CODE (d->cur->index) == IDENTIFIER_NODE)
+	    /* Brace elision with designators is only permitted for anonymous
+	       aggregates.  */
+	    gcc_checking_assert (ANON_AGGR_TYPE_P (type));
 	  /* A CONSTRUCTOR of the target's type is a previously
 	     digested initializer.  */
 	  else if (same_type_ignoring_top_level_qualifiers_p (type, init_type))
@@ -6723,17 +6799,25 @@ reshape_init_r (tree type, reshape_iter *d, tree first_initializer_p,
 	warning (OPT_Wmissing_braces,
 		 "missing braces around initializer for %qT",
 		 type);
+      braces_elided_p = true;
     }
 
   /* Dispatch to specialized routines.  */
+  tree new_init;
   if (CLASS_TYPE_P (type))
-    return reshape_init_class (type, d, first_initializer_p, complain);
+    new_init = reshape_init_class (type, d, first_initializer_p, complain);
   else if (TREE_CODE (type) == ARRAY_TYPE)
-    return reshape_init_array (type, d, first_initializer_p, complain);
+    new_init = reshape_init_array (type, d, first_initializer_p, complain);
   else if (VECTOR_TYPE_P (type))
-    return reshape_init_vector (type, d, complain);
+    new_init = reshape_init_vector (type, d, complain);
   else
     gcc_unreachable();
+
+  if (braces_elided_p
+      && TREE_CODE (new_init) == CONSTRUCTOR)
+    CONSTRUCTOR_BRACES_ELIDED_P (new_init) = true;
+
+  return new_init;
 }
 
 /* Undo the brace-elision allowed by [dcl.init.aggr] in a
@@ -7039,6 +7123,10 @@ check_initializer (tree decl, tree init, int flags, vec<tree, va_gc> **cleanups)
 	   && !(init && BRACE_ENCLOSED_INITIALIZER_P (init)
 		&& CP_AGGREGATE_TYPE_P (type)
 		&& (CLASS_TYPE_P (type)
+		    /* The call to build_aggr_init below could end up
+		       calling build_vec_init, which may break when we
+		       are processing a template.  */
+		    || processing_template_decl
 		    || !TYPE_NEEDS_CONSTRUCTING (type)
 		    || type_has_extended_temps (type))))
 	  || (DECL_DECOMPOSITION_P (decl) && TREE_CODE (type) == ARRAY_TYPE))
@@ -7198,7 +7286,8 @@ make_rtl_for_nonlocal_decl (tree decl, tree init, const char* asmspec)
 		 This is horrible, as we're affecting a
 		 possibly-shared decl.  Again, a one-true-decl
 		 model breaks down.  */
-	      set_user_assembler_name (ns_decl, asmspec);
+	      if (ns_decl != error_mark_node)
+		set_user_assembler_name (ns_decl, asmspec);
 	}
     }
 
@@ -11190,6 +11279,33 @@ name_unnamed_type (tree type, tree decl)
   gcc_assert (!TYPE_UNNAMED_P (type));
 }
 
+/* Check that decltype(auto) was well-formed: only plain decltype(auto)
+   is allowed.  TYPE might contain a decltype(auto).  Returns true if
+   there was a problem, false otherwise.  */
+
+static bool
+check_decltype_auto (location_t loc, tree type)
+{
+  if (tree a = type_uses_auto (type))
+    {
+      if (AUTO_IS_DECLTYPE (a))
+	{
+	  if (a != type)
+	    {
+	      error_at (loc, "%qT as type rather than plain "
+			"%<decltype(auto)%>", type);
+	      return true;
+	    }
+	  else if (TYPE_QUALS (type) != TYPE_UNQUALIFIED)
+	    {
+	      error_at (loc, "%<decltype(auto)%> cannot be cv-qualified");
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+
 /* Given declspecs and a declarator (abstract or otherwise), determine
    the name and type of the object declared and construct a DECL node
    for it.
@@ -12526,25 +12642,9 @@ grokdeclarator (const cp_declarator *declarator,
 			  "allowed");
 		return error_mark_node;
 	      }
-	    /* Only plain decltype(auto) is allowed.  */
-	    if (tree a = type_uses_auto (type))
-	      {
-		if (AUTO_IS_DECLTYPE (a))
-		  {
-		    if (a != type)
-		      {
-			error_at (typespec_loc, "%qT as type rather than "
-				  "plain %<decltype(auto)%>", type);
-			return error_mark_node;
-		      }
-		    else if (TYPE_QUALS (type) != TYPE_UNQUALIFIED)
-		      {
-			error_at (typespec_loc, "%<decltype(auto)%> cannot be "
-				  "cv-qualified");
-			return error_mark_node;
-		      }
-		  }
-	      }
+
+	    if (check_decltype_auto (typespec_loc, type))
+	      return error_mark_node;
 
 	    if (ctype == NULL_TREE
 		&& decl_context == FIELD
@@ -12903,6 +13003,15 @@ grokdeclarator (const cp_declarator *declarator,
     }
 
   id_loc = declarator ? declarator->id_loc : input_location;
+
+  if (innermost_code != cdk_function
+    /* Don't check this if it can be the artifical decltype(auto)
+       we created when building a constraint in a compound-requirement:
+       that the type-constraint is plain is going to be checked in
+       cp_parser_compound_requirement.  */
+      && decl_context != TYPENAME
+      && check_decltype_auto (id_loc, type))
+    return error_mark_node;
 
   /* A `constexpr' specifier used in an object declaration declares
      the object as `const'.  */
@@ -13789,6 +13898,17 @@ grokdeclarator (const cp_declarator *declarator,
 		    if (declspecs->gnu_thread_keyword_p)
 		      SET_DECL_GNU_TLS_P (decl);
 		  }
+
+		/* Set the constraints on the declaration.  */
+		bool memtmpl = (processing_template_decl
+				> template_class_depth (current_class_type));
+		if (memtmpl)
+		  {
+		    tree tmpl_reqs
+		      = TEMPLATE_PARMS_CONSTRAINTS (current_template_parms);
+		    tree ci = build_constraints (tmpl_reqs, NULL_TREE);
+		    set_constraints (decl, ci);
+		  }
 	      }
 	    else
 	      {
@@ -14178,6 +14298,14 @@ static tree
 local_variable_p_walkfn (tree *tp, int *walk_subtrees,
 			 void * /*data*/)
 {
+  if (unevaluated_p (TREE_CODE (*tp)))
+    {
+      /* DR 2082 permits local variables in unevaluated contexts
+	 within a default argument.  */
+      *walk_subtrees = 0;
+      return NULL_TREE;
+    }
+
   if (local_variable_p (*tp)
       && (!DECL_ARTIFICIAL (*tp) || DECL_NAME (*tp) == this_identifier))
     return *tp;

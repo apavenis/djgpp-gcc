@@ -5605,11 +5605,14 @@ compute_objsize_r (tree ptr, int ostype, access_ref *pref,
 
   if (code == INTEGER_CST)
     {
-      /* Pointer constants other than null are most likely the result
-	 of erroneous null pointer addition/subtraction.  Set size to
-	 zero.  For null pointers, set size to the maximum for now
-	 since those may be the result of jump threading.  */
-      if (integer_zerop (ptr))
+      /* Pointer constants other than null smaller than param_min_pagesize
+	 might be the result of erroneous null pointer addition/subtraction.
+	 Unless zero is a valid address set size to zero.  For null pointers,
+	 set size to the maximum for now since those may be the result of
+	 jump threading.  Similarly, for values >= param_min_pagesize in
+	 order to support (type *) 0x7cdeab00.  */
+      if (integer_zerop (ptr)
+	  || wi::to_widest (ptr) >= param_min_pagesize)
 	pref->set_max_size_range ();
       else
 	pref->sizrng[0] = pref->sizrng[1] = 0;
@@ -7878,12 +7881,10 @@ default_emit_call_builtin___clear_cache (rtx begin, rtx end)
 void
 maybe_emit_call_builtin___clear_cache (rtx begin, rtx end)
 {
-  if ((GET_MODE (begin) != ptr_mode && GET_MODE (begin) != Pmode)
-      || (GET_MODE (end) != ptr_mode && GET_MODE (end) != Pmode))
-    {
-      error ("both arguments to %<__builtin___clear_cache%> must be pointers");
-      return;
-    }
+  gcc_assert ((GET_MODE (begin) == ptr_mode || GET_MODE (begin) == Pmode
+	       || CONST_INT_P (begin))
+	      && (GET_MODE (end) == ptr_mode || GET_MODE (end) == Pmode
+		  || CONST_INT_P (end)));
 
   if (targetm.have_clear_cache ())
     {

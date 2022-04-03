@@ -3553,6 +3553,9 @@ __gnat_get_executable_load_address (void)
 
   return (const void *)map->l_addr;
 
+#elif defined (_WIN32)
+  return GetModuleHandle (NULL);
+
 #else
   return NULL;
 #endif

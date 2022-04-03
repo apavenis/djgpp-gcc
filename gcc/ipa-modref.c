@@ -1621,6 +1621,15 @@ analyze_ssa_name_flags (tree name, vec<modref_lattice> &lattice, int depth,
       else if (gcall *call = dyn_cast <gcall *> (use_stmt))
 	{
 	  tree callee = gimple_call_fndecl (call);
+
+	  /* IPA PTA internally it treats calling a function as "writing" to
+	     the argument space of all functions the function pointer points to
+	     (PR101949).  We can not drop EAF_NOCLOBBER only when ipa-pta
+	     is on since that would allow propagation of this from -fno-ipa-pta
+	     to -fipa-pta functions.  */
+	  if (gimple_call_fn (use_stmt) == name)
+	    lattice[index].merge (~(EAF_NOCLOBBER | EAF_UNUSED));
+
 	  /* Return slot optimization would require bit of propagation;
 	     give up for now.  */
 	  if (gimple_call_return_slot_opt_p (call)
@@ -2387,10 +2396,10 @@ read_modref_records (lto_input_block *ib, struct data_in *data_in,
 	  size_t every_access = streamer_read_uhwi (ib);
 	  size_t naccesses = streamer_read_uhwi (ib);
 
-	  if (nolto_ref_node)
-	    nolto_ref_node->every_access = every_access;
-	  if (lto_ref_node)
-	    lto_ref_node->every_access = every_access;
+	  if (nolto_ref_node && every_access)
+	    nolto_ref_node->collapse ();
+	  if (lto_ref_node && every_access)
+	    lto_ref_node->collapse ();
 
 	  for (size_t k = 0; k < naccesses; k++)
 	    {
@@ -3194,6 +3203,7 @@ ipa_merge_modref_summary_after_inlining (cgraph_edge *edge)
 	    fprintf (dump_file, "Removed mod-ref summary for %s\n",
 		     to->dump_name ());
 	  summaries_lto->remove (to);
+	  to_info_lto = NULL;
 	}
       else if (to_info_lto && dump_file)
 	{
@@ -3201,7 +3211,6 @@ ipa_merge_modref_summary_after_inlining (cgraph_edge *edge)
 	    fprintf (dump_file, "Updated mod-ref summary for %s\n",
 		     to->dump_name ());
 	  to_info_lto->dump (dump_file);
-	  to_info_lto = NULL;
 	}
       if (callee_info_lto)
 	summaries_lto->remove (edge->callee);

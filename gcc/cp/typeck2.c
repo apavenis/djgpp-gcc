@@ -524,7 +524,20 @@ split_nonconstant_init_1 (tree dest, tree init, bool nested)
 		sub = build3 (COMPONENT_REF, inner_type, dest, field_index,
 			      NULL_TREE);
 
-	      if (!split_nonconstant_init_1 (sub, value, true))
+	      if (!split_nonconstant_init_1 (sub, value, true)
+		      /* For flexible array member with initializer we
+			 can't remove the initializer, because only the
+			 initializer determines how many elements the
+			 flexible array member has.  */
+		  || (!array_type_p
+		      && TREE_CODE (inner_type) == ARRAY_TYPE
+		      && TYPE_DOMAIN (inner_type) == NULL
+		      && TREE_CODE (TREE_TYPE (value)) == ARRAY_TYPE
+		      && COMPLETE_TYPE_P (TREE_TYPE (value))
+		      && !integer_zerop (TYPE_SIZE (TREE_TYPE (value)))
+		      && idx == CONSTRUCTOR_NELTS (init) - 1
+		      && TYPE_HAS_TRIVIAL_DESTRUCTOR
+				(strip_array_types (inner_type))))
 		complete_p = false;
 	      else
 		{
@@ -1321,10 +1334,15 @@ massage_init_elt (tree type, tree init, int nested, int flags,
     new_flags |= LOOKUP_AGGREGATE_PAREN_INIT;
   init = digest_init_r (type, init, nested ? 2 : 1, new_flags, complain);
   /* When we defer constant folding within a statement, we may want to
-     defer this folding as well.  */
-  tree t = fold_non_dependent_init (init, complain);
-  if (TREE_CONSTANT (t))
-    init = t;
+     defer this folding as well.  Don't call this on CONSTRUCTORs because
+     their elements have already been folded, and we must avoid folding
+     the result of get_nsdmi.  */
+  if (TREE_CODE (init) != CONSTRUCTOR)
+    {
+      tree t = fold_non_dependent_init (init, complain);
+      if (TREE_CONSTANT (t))
+	init = t;
+    }
   return init;
 }
 
