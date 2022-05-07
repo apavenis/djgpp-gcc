@@ -1,3 +1,52 @@
+2022-05-06  Marcel Vollweiler  <marcel@codesourcery.com>
+
+	* libgomp.map: Added omp_target_is_accessible.
+	* libgomp.texi: Tagged omp_target_is_accessible as supported.
+	* omp.h.in: Added omp_target_is_accessible.
+	* omp_lib.f90.in: Added interface for omp_target_is_accessible.
+	* omp_lib.h.in: Likewise.
+	* target.c (omp_target_is_accessible): Added implementation of
+	omp_target_is_accessible.
+	* testsuite/libgomp.c-c++-common/target-is-accessible-1.c: New test.
+	* testsuite/libgomp.fortran/target-is-accessible-1.f90: New test.
+
+2022-05-05  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* libgomp.texi (OpenMP 5.0): Feature is now fully supported.
+
+2022-05-04  Tobias Burnus  <tobias@codesourcery.com>
+
+	* plugin/plugin-gcn.c (isa_matches_agent): Suggest -foffload-options.
+
+2022-05-04  Tobias Burnus  <tobias@codesourcery.com>
+
+	* testsuite/libgomp.fortran/use_device_addr-5.f90: New test.
+
+2022-05-03  Marcel Vollweiler  <marcel@codesourcery.com>
+
+	* libgomp.map: Added omp_get_mapped_ptr.
+	* libgomp.texi: Tagged omp_get_mapped_ptr as supported.
+	* omp.h.in: Added omp_get_mapped_ptr.
+	* omp_lib.f90.in: Added interface for omp_get_mapped_ptr.
+	* omp_lib.h.in: Likewise.
+	* target.c (omp_get_mapped_ptr): Added implementation of
+	omp_get_mapped_ptr.
+	* testsuite/libgomp.c-c++-common/get-mapped-ptr-1.c: New test.
+	* testsuite/libgomp.c-c++-common/get-mapped-ptr-2.c: New test.
+	* testsuite/libgomp.c-c++-common/get-mapped-ptr-3.c: New test.
+	* testsuite/libgomp.c-c++-common/get-mapped-ptr-4.c: New test.
+	* testsuite/libgomp.fortran/get-mapped-ptr-1.f90: New test.
+	* testsuite/libgomp.fortran/get-mapped-ptr-2.f90: New test.
+	* testsuite/libgomp.fortran/get-mapped-ptr-3.f90: New test.
+	* testsuite/libgomp.fortran/get-mapped-ptr-4.f90: New test.
+
+2022-04-28  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR fortran/104717
+	* testsuite/libgomp.oacc-fortran/print-1.f90: Add OpenACC
+	privatization scanning.  For GCN offloading compilation, raise
+	'-mgang-private-size'.
+
 2022-04-26  Jakub Jelinek  <jakub@redhat.com>
 
 	PR libgomp/105358

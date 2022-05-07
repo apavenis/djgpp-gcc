@@ -1,3 +1,394 @@
+2022-05-06  Jason Merrill  <jason@redhat.com>
+
+	* g++.dg/diagnostic/function-color1.C: New test.
+
+2022-05-06   Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/102059
+	* gcc.target/powerpc/pr102059-4.c: New test.
+
+2022-05-06  Hafiz Abid Qadeer  <abidh@codesourcery.com>
+
+	* c-c++-common/gomp/allocate-2.c: Add tests.
+	* c-c++-common/gomp/allocate-8.c: New test.
+	* gfortran.dg/gomp/allocate-3.f90: Add tests.
+	* gcc.dg/gomp/pr104517.c: Update.
+
+2022-05-05  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/64679
+	* g++.dg/parse/ambig11.C: New test.
+	* g++.dg/parse/ambig12.C: New test.
+	* g++.dg/parse/ambig13.C: New test.
+	* g++.dg/parse/ambig14.C: New test.
+
+2022-05-05  Uroš Bizjak  <ubizjak@gmail.com>
+
+	* gcc.target/i386/pr103611-2.c (dg-do): Compile for target ia32.
+	(dg-options): Remove -m32.
+	* gcc.target/i386/pr105032.c (dg-do): Compile for taget ia32.
+	(dg-additional-options): Remove.
+	* gcc.target/i386/pr104732.c (dg-options): Remove -m32.
+	* gcc.target/i386/pr99753.c (dg-options): Ditto.
+
+2022-05-05  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* c-c++-common/gomp/loop-6.c (f3): New function to test TASKLOOP
+	diagnostics.
+	* gfortran.dg/gomp/collapse1.f90: Update expected messages.
+	* gfortran.dg/gomp/pr85313.f90: Remove dg-error on non-rectangular
+	loops that are now accepted.
+	* gfortran.dg/gomp/non-rectangular-loop.f90: New file.
+	* gfortran.dg/gomp/canonical-loop-1.f90: New file.
+	* gfortran.dg/gomp/canonical-loop-2.f90: New file.
+
+2022-05-05  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/104162
+	* gcc.dg/tree-ssa/ssa-fre-99.c: New testcase.
+	* gcc.dg/asan/pr99673.c: Adjust.
+
+2022-05-05  Roger Sayle  <roger@nextmovesoftware.com>
+
+	PR testsuite/105486
+	* gcc.dg/pr102950.c: Use explicit "signed char" in test case.
+
+2022-05-05  Richard Biener  <rguenther@suse.de>
+
+	PR testsuite/105486
+	* gcc.dg/vect/bb-slp-pr104240.c: Align all data.
+
+2022-05-05  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/105484
+	* gcc.dg/torture/pr105484.c: New testcase.
+
+2022-05-05  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/104595
+	* gcc.dg/vect/pr104595.c: New testcase.
+
+2022-05-04  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/105476
+	* g++.dg/cpp2a/class-deduction-aggr13.C: New test.
+	* g++.dg/cpp2a/class-deduction-aggr13a.C: New test.
+
+2022-05-04  Marek Polacek  <polacek@redhat.com>
+
+	* c-c++-common/Wconversion-1.c: New test.
+
+2022-05-04  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/64679
+	* g++.dg/parse/functor1.C: New test.
+
+2022-05-04  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/105436
+	* g++.dg/parse/template31.C: New test.
+
+2022-05-04  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/104658
+	* gcc.target/i386/pr104658.c: New testcase.
+
+2022-05-04  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/103116
+	* gcc.dg/vect/pr103116-1.c: New testcase.
+	* gcc.dg/vect/pr103116-2.c: Likewise.
+
+2022-05-04  Martin Liska  <mliska@suse.cz>
+
+	* c-c++-common/asan/alloca_loop_unpoisoning.c: Do not combine
+	fake and real stack.
+
+2022-05-04  Jakub Jelinek  <jakub@redhat.com>
+
+	* g++.dg/cpp23/lambda-attr1.C: New test.
+	* g++.dg/cpp23/lambda-attr2.C: New test.
+
+2022-05-04  Martin Liska  <mliska@suse.cz>
+
+	* c-c++-common/hwasan/alloca-outside-caught.c: Update dg-output.
+	* c-c++-common/hwasan/heap-overflow.c: Likewise.
+	* c-c++-common/hwasan/hwasan-thread-access-parent.c: Likewise.
+	* c-c++-common/hwasan/large-aligned-1.c: Likewise.
+	* c-c++-common/hwasan/stack-tagging-basic-1.c: Likewise.
+
+2022-05-03  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/105351
+	* g++.dg/template/sfinae33.C: New test.
+
+2022-05-03  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* gcc.c-torture/compile/attr-complex-method-2.c: Accept both __divdc3
+	and __gnu_divdc3 as valid libgcc function names.
+	* gcc.dg/complex-6.c: Ditto for __mulsc3.
+	* gcc.dg/complex-7.c: Ditto for __muldc3.
+
+2022-05-03  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* gcc.dg/memchr.c: Skip for default_packed targets.
+	* gcc.dg/memcmp-3.c: Ditto.
+
+2022-05-03  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* gcc.dg/Wattributes-8.c: Add annotations for default_packed
+	targets.
+
+2022-05-03  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* gcc.dg/lower-subreg-1.c: Skip for PRU.
+
+2022-05-03  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* gcc.dg/Wno-frame-address.c: Skip for PRU target.
+
+2022-05-03  Roger Sayle  <roger@nextmovesoftware.com>
+
+	PR tree-optimization/102950
+	* gcc.dg/pr102950.c: New test case.
+	* gcc.dg/tree-ssa/evrp10.c: New test case.
+
+2022-05-03  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/105079
+	* gcc.target/i386/pr105079.c: New test.
+	* gcc.target/i386/pr95483-1.c (dg-options): Use -msse4.1.
+
+2022-05-03  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/105461
+	* gcc.dg/pr105461.c: New testcase.
+
+2022-05-03  Alexandre Oliva  <oliva@adacore.com>
+
+	* gcc.dg/vect/costmodel/ppc/costmodel-vect-31a.c: Update
+	the expected message for the case in which unaligned accesses
+	are not allowed.
+
+2022-05-02  Jason Merrill  <jason@redhat.com>
+
+	* g++.dg/cpp2a/lambda-pack-init7.C: Check column number.
+
+2022-05-02  Jason Merrill  <jason@redhat.com>
+
+	* g++.dg/lookup/name-clash13.C: New test.
+	* g++.dg/lookup/name-clash14.C: New test.
+	* g++.dg/lookup/name-clash15.C: New test.
+	* g++.dg/lookup/name-clash16.C: New test.
+
+2022-05-02  H.J. Lu  <hjl.tools@gmail.com>
+
+	PR testsuite/105433
+	* gcc.target/i386/iamcu/asm-support.S: Add .note.GNU-stack.
+	* gcc.target/x86_64/abi/asm-support.S: Likewise.
+	* gcc.target/x86_64/abi/avx/asm-support.S: Likewise.
+	* gcc.target/x86_64/abi/avx512f/asm-support.S: Likewise.
+	* gcc.target/x86_64/abi/avx512fp16/asm-support.S: Likewise.
+	* gcc.target/x86_64/abi/avx512fp16/m256h/asm-support.S: Likewise.
+	* gcc.target/x86_64/abi/avx512fp16/m512h/asm-support.S: Likewise.
+	* gcc.target/x86_64/abi/ms-sysv/do-test.S: Likewise.
+
+2022-05-02  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/104240
+	* gcc.dg/vect/bb-slp-pr104240.c: New testcase.
+
+2022-05-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR debug/105415
+	* gcc.dg/pr105415.c: New test.
+
+2022-05-02  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/105437
+	* g++.dg/vect/pr105437.cc: New testcase.
+
+2022-04-30  Jason Merrill  <jason@redhat.com>
+
+	PR c/100545
+	* c-c++-common/attr-mode-1.c: New test.
+	* c-c++-common/attr-mode-2.c: New test.
+
+2022-04-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/104470
+	* g++.dg/cpp2a/explicit11.C: Second example also ill-formed.
+	* g++.dg/cpp2a/class-deduction-alias12.C: New test.
+
+2022-04-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/67048
+	* g++.dg/cpp0x/enum42.C: New test.
+
+2022-04-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/80351
+	* g++.dg/cpp0x/constexpr-77482.C: Adjust message.
+	* g++.dg/cpp1y/auto-fn27.C: Likewise.
+	* g++.dg/cpp1y/lambda-generic-variadic22.C: Likewise.
+	* g++.dg/cpp1z/decomp54.C: Likewise.
+	* g++.dg/cpp0x/initlist-const1.C: New test.
+	* g++.dg/warn/Wunused-var-37.C: New test.
+	* g++.dg/warn/Wunused-var-38.C: New test.
+	* g++.dg/warn/Wunused-var-39.C: New test.
+
+2022-04-29  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/100413
+	* g++.dg/ipa/pr100413.C: New test.
+
+2022-04-29  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	PR tree-optimization/105219
+	* gcc.dg/vect/pr105219.c: Add aarch64 target option.
+
+2022-04-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/83596
+	* g++.dg/cpp1z/nontype5.C: New test.
+
+2022-04-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/78244
+	* g++.dg/cpp0x/Wnarrowing20.C: New test.
+
+2022-04-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/71424
+	* g++.dg/cpp0x/initlist-array15.C: New test.
+
+2022-04-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/102987
+	* g++.dg/diagnostic/using1.C: Check pretty-printing.
+
+2022-04-29  Jason Merrill  <jason@redhat.com>
+
+	* g++.dg/cpp0x/alias-decl-1.C: Expect qualified name.
+
+2022-04-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/104319
+	* g++.dg/parse/template28.C: Adjust expected diagnostics.
+	* g++.dg/parse/template30.C: New test.
+
+2022-04-29  Uroš Bizjak  <ubizjak@gmail.com>
+
+	PR target/51954
+	* gcc.target/i386/pr51954.c: New test.
+
+2022-04-29  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/105376
+	* gcc.dg/pr105376.c: New testcase.
+
+2022-04-29  Jason Merrill  <jason@redhat.com>
+
+	* g++.dg/ext/unary_trait_incomplete.C: Adjust.
+
+2022-04-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/102651
+	PR c++/49387
+	* g++.dg/rtti/typeid-complete1.C: New test.
+
+2022-04-29  Zhao Wei Liew  <zhaoweiliew@gmail.com>
+
+	PR c++/25689
+	* g++.dg/warn/Wparentheses-31.C: New test.
+
+2022-04-28  Sebastian Huber  <sebastian.huber@embedded-brains.de>
+
+	* gcc.dg/gcov-info-to-gcda.c: Test __gcov_filename_to_gcfn().
+
+2022-04-28  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105285
+	* gcc.dg/analyzer/symbolic-12.c: New test.
+
+2022-04-28  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/105425
+	* g++.dg/template/partial-specialization13.C: New test.
+
+2022-04-28  Jeff Law  <jeffreyalaw@gmail.com>
+
+	* gcc.dg/lto/pr94157_0.c: Revert last change.
+	* lib/prune.exp (prune_gcc_output): Prune new linker warning.
+
+2022-04-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR lto/105399
+	* g++.dg/lto/pr105399_0.C: New test.
+
+2022-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/104051
+	* g++.dg/coroutines/pr104051.C: New test.
+
+2022-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/105301
+	* g++.dg/coroutines/pr105301.C: New test.
+
+2022-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/105287
+	* g++.dg/coroutines/pr105287.C: New test.
+
+2022-04-28  Nathan Sidwell  <nathan@acm.org>
+	    Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/103868
+	* g++.dg/coroutines/pr103868.C: New test.
+
+2022-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* gcc.target/i386/memcpy-strategy-10.c: Account for
+	__USER_LABEL_PREFIX__.
+	* gcc.target/i386/memcpy-strategy-5.c: Likewise.
+	* gcc.target/i386/memset-strategy-5.c: Likewise.
+	* gcc.target/i386/memset-strategy-7.c: Likewise.
+
+2022-04-28  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* g++.target/i386/mv31.C: Add target supports guard for ifuncs.
+
+2022-04-28  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/90107
+	* g++.dg/parse/qualified6.C: New test.
+
+2022-04-28  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/105331
+	* gcc.dg/pr105331.c: New test.
+
+2022-04-28  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/105219
+	* gcc.dg/vect/pr105219.c: New testcase.
+
+2022-04-28  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR target/105334
+	* gcc.target/powerpc/pr105334.c: New test.
+
+2022-04-28  Jia-Wei Chen  <jiawei@iscas.ac.cn>
+
+	PR target/104676
+	* gcc.dg/torture/pr104676.c: Add "{target pthread}" check.
+
+2022-04-28  Xi Ruoyao  <xry111@mengyan1223.wang>
+
+	* gcc.target/loongarch/zero-size-field-pass.c: New test.
+	* gcc.target/loongarch/zero-size-field-ret.c: New test.
+
 2022-04-27  Thomas Koenig  <tkoenig@gcc.gnu.org>
 
 	* gfortran.dg/pr70673.f90: Removed second invalid

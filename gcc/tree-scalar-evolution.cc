@@ -2977,7 +2977,8 @@ gather_stats_on_scev_database (void)
 void
 scev_initialize (void)
 {
-  gcc_assert (! scev_initialized_p ());
+  gcc_assert (! scev_initialized_p ()
+	      && loops_state_satisfies_p (cfun, LOOPS_NORMAL));
 
   scalar_evolution_info = hash_table<scev_info_hasher>::create_ggc (100);
 
@@ -3420,12 +3421,15 @@ expression_expensive_p (tree expr, hash_map<tree, uint64_t> &cache,
 		  break;
 	      return true;
 	    }
+	  break;
+
 	default:
+	  if (cfn == CFN_LAST
+	      || !is_inexpensive_builtin (get_callee_fndecl (expr)))
+	    return true;
 	  break;
 	}
 
-      if (!is_inexpensive_builtin (get_callee_fndecl (expr)))
-	return true;
       FOR_EACH_CALL_EXPR_ARG (arg, iter, expr)
 	if (expression_expensive_p (arg, cache, op_cost))
 	  return true;
