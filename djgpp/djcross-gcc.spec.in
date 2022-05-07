@@ -27,7 +27,7 @@
 %define debug_package %{nil}
 
 %if %include_ada
-%define support_ada 1
+%define support_ada 0
 %endif
 
 %if %include_fortran
@@ -467,6 +467,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Sat May  7 2022 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to gcc-12.1.0
+
 * Tue Apr 27 2021 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to gcc-11.1.0
 - Update to gmp-6.2.1, mpfr-4.1.0, mpc-1.2.1
