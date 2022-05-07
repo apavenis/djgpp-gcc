@@ -5432,6 +5432,22 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	if (notify_temp_creation)
 	  return GS_OK;
 
+	/* Vector types use CONSTRUCTOR all the way through gimple
+	   compilation as a general initializer.  */
+	FOR_EACH_VEC_SAFE_ELT (elts, ix, ce)
+	  {
+	    enum gimplify_status tret;
+	    tret = gimplify_expr (&ce->value, pre_p, post_p, is_gimple_val,
+				  fb_rvalue);
+	    if (tret == GS_ERROR)
+	      ret = GS_ERROR;
+	    else if (TREE_STATIC (ctor)
+		     && !initializer_constant_valid_p (ce->value,
+						       TREE_TYPE (ce->value)))
+	      TREE_STATIC (ctor) = 0;
+	  }
+	recompute_constructor_flags (ctor);
+
 	/* Go ahead and simplify constant constructors to VECTOR_CST.  */
 	if (TREE_CONSTANT (ctor))
 	  {
@@ -5454,25 +5470,8 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 		TREE_OPERAND (*expr_p, 1) = build_vector_from_ctor (type, elts);
 		break;
 	      }
-
-	    TREE_CONSTANT (ctor) = 0;
 	  }
 
-	/* Vector types use CONSTRUCTOR all the way through gimple
-	   compilation as a general initializer.  */
-	FOR_EACH_VEC_SAFE_ELT (elts, ix, ce)
-	  {
-	    enum gimplify_status tret;
-	    tret = gimplify_expr (&ce->value, pre_p, post_p, is_gimple_val,
-				  fb_rvalue);
-	    if (tret == GS_ERROR)
-	      ret = GS_ERROR;
-	    else if (TREE_STATIC (ctor)
-		     && !initializer_constant_valid_p (ce->value,
-						       TREE_TYPE (ce->value)))
-	      TREE_STATIC (ctor) = 0;
-	  }
-	recompute_constructor_flags (ctor);
 	if (!is_gimple_reg (TREE_OPERAND (*expr_p, 0)))
 	  TREE_OPERAND (*expr_p, 1) = get_formal_tmp_var (ctor, pre_p);
       }
@@ -12510,11 +12509,11 @@ gimplify_omp_for (tree *expr_p, gimple_seq *pre_p)
 			       OMP_CLAUSE_SCHEDULE))
 	    error_at (EXPR_LOCATION (for_stmt),
 		      "%qs clause may not appear on non-rectangular %qs",
-		      "schedule", "for");
+		      "schedule", lang_GNU_Fortran () ? "do" : "for");
 	  if (omp_find_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_ORDERED))
 	    error_at (EXPR_LOCATION (for_stmt),
 		      "%qs clause may not appear on non-rectangular %qs",
-		      "ordered", "for");
+		      "ordered", lang_GNU_Fortran () ? "do" : "for");
 	}
       break;
     case OMP_DISTRIBUTE:
@@ -12529,6 +12528,19 @@ gimplify_omp_for (tree *expr_p, gimple_seq *pre_p)
       ort = ORT_ACC;
       break;
     case OMP_TASKLOOP:
+      if (OMP_FOR_NON_RECTANGULAR (inner_for_stmt ? inner_for_stmt : for_stmt))
+	{
+	  if (omp_find_clause (OMP_FOR_CLAUSES (for_stmt),
+			       OMP_CLAUSE_GRAINSIZE))
+	    error_at (EXPR_LOCATION (for_stmt),
+		      "%qs clause may not appear on non-rectangular %qs",
+		      "grainsize", "taskloop");
+	  if (omp_find_clause (OMP_FOR_CLAUSES (for_stmt),
+			       OMP_CLAUSE_NUM_TASKS))
+	    error_at (EXPR_LOCATION (for_stmt),
+		      "%qs clause may not appear on non-rectangular %qs",
+		      "num_tasks", "taskloop");
+	}
       if (omp_find_clause (OMP_FOR_CLAUSES (for_stmt), OMP_CLAUSE_UNTIED))
 	ort = ORT_UNTIED_TASKLOOP;
       else

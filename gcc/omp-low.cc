@@ -195,6 +195,7 @@ static vec<gomp_task *> task_cpyfns;
 
 static void scan_omp (gimple_seq *, omp_context *);
 static tree scan_omp_1_op (tree *, int *, void *);
+static bool omp_maybe_offloaded_ctx (omp_context *ctx);
 
 #define WALK_SUBSTMTS  \
     case GIMPLE_BIND: \
@@ -1154,6 +1155,15 @@ scan_sharing_clauses (tree clauses, omp_context *ctx)
 	    || !integer_onep (OMP_CLAUSE_ALLOCATE_ALLOCATOR (c))
 	    || OMP_CLAUSE_ALLOCATE_ALIGN (c) != NULL_TREE))
       {
+	/* The allocate clauses that appear on a target construct or on
+	   constructs in a target region must specify an allocator expression
+	   unless a requires directive with the dynamic_allocators clause
+	   is present in the same compilation unit.  */
+	if (OMP_CLAUSE_ALLOCATE_ALLOCATOR (c) == NULL_TREE
+	    && ((omp_requires_mask & OMP_REQUIRES_DYNAMIC_ALLOCATORS) == 0)
+	    && omp_maybe_offloaded_ctx (ctx))
+	  error_at (OMP_CLAUSE_LOCATION (c), "%<allocate%> clause must"
+		    " specify an allocator here");
 	if (ctx->allocate_map == NULL)
 	  ctx->allocate_map = new hash_map<tree, tree>;
 	tree val = integer_zero_node;
@@ -3982,11 +3992,13 @@ omp_runtime_api_call (const_tree fndecl)
       "alloc",
       "calloc",
       "free",
+      "get_mapped_ptr",
       "realloc",
       "target_alloc",
       "target_associate_ptr",
       "target_disassociate_ptr",
       "target_free",
+      "target_is_accessible",
       "target_is_present",
       "target_memcpy",
       "target_memcpy_rect",
@@ -6232,7 +6244,7 @@ lower_rec_input_clauses (tree clauses, gimple_seq *ilist, gimple_seq *dlist,
 			  x = lang_hooks.decls.omp_clause_copy_ctor (c, iv, x);
 			  gimplify_and_add (x, ilist);
 			  gimple_stmt_iterator gsi
-			    = gsi_start_1 (gimple_omp_body_ptr (ctx->stmt));
+			    = gsi_start (*gimple_omp_body_ptr (ctx->stmt));
 			  gassign *g
 			    = gimple_build_assign (unshare_expr (lvar), iv);
 			  gsi_insert_before_without_update (&gsi, g,
@@ -6897,7 +6909,7 @@ lower_rec_input_clauses (tree clauses, gimple_seq *ilist, gimple_seq *dlist,
 					      uid, integer_zero_node,
 					      nonconst_simd_if);
       gimple_call_set_lhs (g, sctx.lane);
-      gimple_stmt_iterator gsi = gsi_start_1 (gimple_omp_body_ptr (ctx->stmt));
+      gimple_stmt_iterator gsi = gsi_start (*gimple_omp_body_ptr (ctx->stmt));
       gsi_insert_before_without_update (&gsi, g, GSI_SAME_STMT);
       g = gimple_build_assign (sctx.lane, INTEGER_CST,
 			       build_int_cst (unsigned_type_node, 0));
@@ -10324,7 +10336,7 @@ lower_omp_scan (gimple_stmt_iterator *gsi_p, omp_context *ctx)
   lower_omp (gimple_omp_body_ptr (stmt), octx);
   if (before)
     {
-      gimple_stmt_iterator gsi = gsi_start_1 (gimple_omp_body_ptr (stmt));
+      gimple_stmt_iterator gsi = gsi_start (*gimple_omp_body_ptr (stmt));
       gsi_insert_seq_before (&gsi, before, GSI_SAME_STMT);
     }
 }
@@ -13656,26 +13668,26 @@ lower_omp_target (gimple_stmt_iterator *gsi_p, omp_context *ctx)
 		new_var = lookup_decl (var, ctx);
 		new_var = DECL_VALUE_EXPR (new_var);
 		tree v = new_var;
+		tree v2 = var;
+		if (OMP_CLAUSE_CODE (c) == OMP_CLAUSE_USE_DEVICE_PTR
+		    || OMP_CLAUSE_CODE (c) == OMP_CLAUSE_USE_DEVICE_ADDR)
+		  v2 = maybe_lookup_decl_in_outer_ctx (var, ctx);
 
 		if (is_ref)
 		  {
-		    var = build_fold_indirect_ref (var);
-		    gimplify_expr (&var, &assign_body, NULL, is_gimple_val,
-				   fb_rvalue);
-		    v = create_tmp_var_raw (TREE_TYPE (var), get_name (var));
+		    v2 = build_fold_indirect_ref (v2);
+		    v = create_tmp_var_raw (TREE_TYPE (v2), get_name (var));
 		    gimple_add_tmp_var (v);
 		    TREE_ADDRESSABLE (v) = 1;
-		    gimple_seq_add_stmt (&assign_body,
-					 gimple_build_assign (v, var));
+		    gimplify_assign (v, v2, &assign_body);
 		    tree rhs = build_fold_addr_expr (v);
 		    gimple_seq_add_stmt (&assign_body,
 					 gimple_build_assign (new_var, rhs));
 		  }
 		else
-		  gimple_seq_add_stmt (&assign_body,
-				       gimple_build_assign (new_var, var));
+		  gimplify_assign (new_var, v2, &assign_body);
 
-		tree v2 = lang_hooks.decls.omp_array_data (unshare_expr (v), false);
+		v2 = lang_hooks.decls.omp_array_data (unshare_expr (v), false);
 		gcc_assert (v2);
 		gimplify_expr (&x, &assign_body, NULL, is_gimple_val, fb_rvalue);
 		gimple_seq_add_stmt (&assign_body,

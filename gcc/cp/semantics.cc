@@ -826,6 +826,26 @@ finish_goto_stmt (tree destination)
   return add_stmt (build_stmt (input_location, GOTO_EXPR, destination));
 }
 
+/* Returns true if CALL is a (possibly wrapped) CALL_EXPR or AGGR_INIT_EXPR
+   to operator= () that is written as an operator expression. */
+static bool
+is_assignment_op_expr_p (tree call)
+{
+  if (call == NULL_TREE)
+    return false;
+
+  call = extract_call_expr (call);
+  if (call == NULL_TREE
+      || call == error_mark_node
+      || !CALL_EXPR_OPERATOR_SYNTAX (call))
+    return false;
+
+  tree fndecl = cp_get_callee_fndecl_nofold (call);
+  return fndecl != NULL_TREE
+    && DECL_ASSIGNMENT_OPERATOR_P (fndecl)
+    && DECL_OVERLOADED_OPERATOR_IS (fndecl, NOP_EXPR);
+}
+
 /* COND is the condition-expression for an if, while, etc.,
    statement.  Convert it to a boolean value, if appropriate.
    In addition, verify sequence points if -Wsequence-point is enabled.  */
@@ -847,7 +867,7 @@ maybe_convert_cond (tree cond)
   /* Do the conversion.  */
   cond = convert_from_reference (cond);
 
-  if (TREE_CODE (cond) == MODIFY_EXPR
+  if ((TREE_CODE (cond) == MODIFY_EXPR || is_assignment_op_expr_p (cond))
       && warn_parentheses
       && !warning_suppressed_p (cond, OPT_Wparentheses)
       && warning_at (cp_expr_loc_or_input_loc (cond),
@@ -1218,17 +1238,6 @@ finish_return_stmt (tree expr)
     {
       if (warn_sequence_point)
 	verify_sequence_points (expr);
-
-      if (DECL_DESTRUCTOR_P (current_function_decl)
-	  || (DECL_CONSTRUCTOR_P (current_function_decl)
-	      && targetm.cxx.cdtor_returns_this ()))
-	{
-	  /* Similarly, all destructors must run destructors for
-	     base-classes before returning.  So, all returns in a
-	     destructor get sent to the DTOR_LABEL; finish_function emits
-	     code to return a value there.  */
-	  return finish_goto_stmt (cdtor_label);
-	}
     }
 
   r = build_stmt (input_location, RETURN_EXPR, expr);
@@ -2121,7 +2130,8 @@ finish_parenthesized_expr (cp_expr expr)
    preceded by `.' or `->'.  */
 
 tree
-finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
+finish_non_static_data_member (tree decl, tree object, tree qualifying_scope,
+			       tsubst_flags_t complain /* = tf_warning_or_error */)
 {
   gcc_assert (TREE_CODE (decl) == FIELD_DECL);
   bool try_omp_private = !object && omp_private_member_map;
@@ -2152,12 +2162,15 @@ finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
   if (is_dummy_object (object) && cp_unevaluated_operand == 0
       && (!processing_template_decl || !current_class_ref))
     {
-      if (current_function_decl
-	  && DECL_STATIC_FUNCTION_P (current_function_decl))
-	error ("invalid use of member %qD in static member function", decl);
-      else
-	error ("invalid use of non-static data member %qD", decl);
-      inform (DECL_SOURCE_LOCATION (decl), "declared here");
+      if (complain & tf_error)
+	{
+	  if (current_function_decl
+	      && DECL_STATIC_FUNCTION_P (current_function_decl))
+	    error ("invalid use of member %qD in static member function", decl);
+	  else
+	    error ("invalid use of non-static data member %qD", decl);
+	  inform (DECL_SOURCE_LOCATION (decl), "declared here");
+	}
 
       return error_mark_node;
     }
@@ -2199,8 +2212,9 @@ finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
     {
       tree access_type = TREE_TYPE (object);
 
-      perform_or_defer_access_check (TYPE_BINFO (access_type), decl,
-				     decl, tf_warning_or_error);
+      if (!perform_or_defer_access_check (TYPE_BINFO (access_type), decl,
+					  decl, complain))
+	return error_mark_node;
 
       /* If the data member was named `C::M', convert `*this' to `C'
 	 first.  */
@@ -2214,7 +2228,7 @@ finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
       ret = build_class_member_access_expr (object, decl,
 					    /*access_path=*/NULL_TREE,
 					    /*preserve_reference=*/false,
-					    tf_warning_or_error);
+					    complain);
     }
   if (try_omp_private)
     {
@@ -2376,7 +2390,7 @@ finish_qualified_id_expr (tree qualifying_class,
     {
       push_deferring_access_checks (dk_no_check);
       expr = finish_non_static_data_member (expr, NULL_TREE,
-					    qualifying_class);
+					    qualifying_class, complain);
       pop_deferring_access_checks ();
     }
   else if (BASELINK_P (expr))
@@ -11958,8 +11972,7 @@ check_trait_type (tree type)
     return (check_trait_type (TREE_VALUE (type))
 	    && check_trait_type (TREE_CHAIN (type)));
 
-  if (TREE_CODE (type) == ARRAY_TYPE && !TYPE_DOMAIN (type)
-      && COMPLETE_TYPE_P (TREE_TYPE (type)))
+  if (TREE_CODE (type) == ARRAY_TYPE && !TYPE_DOMAIN (type))
     return true;
 
   if (VOID_TYPE_P (type))

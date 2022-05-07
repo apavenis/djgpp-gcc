@@ -3613,11 +3613,6 @@ check_goto (tree decl)
   if (TREE_CODE (decl) != LABEL_DECL)
     return;
 
-  /* We didn't record any information about this label when we created it,
-     and there's not much point since it's trivial to analyze as a return.  */
-  if (decl == cdtor_label)
-    return;
-
   hashval_t hash = IDENTIFIER_HASH_VALUE (DECL_NAME (decl));
   named_label_entry **slot
     = named_labels->find_slot_with_hash (DECL_NAME (decl), hash, NO_INSERT);
@@ -6636,7 +6631,9 @@ reshape_init_class (tree type, reshape_iter *d, bool first_initializer_p,
 
 	  if (TREE_CODE (d->cur->index) == FIELD_DECL)
 	    {
-	      /* We already reshaped this.  */
+	      /* We already reshaped this; we should have returned early from
+		 reshape_init.  */
+	      gcc_checking_assert (false);
 	      if (field != d->cur->index)
 		{
 		  if (tree id = DECL_NAME (d->cur->index))
@@ -7071,6 +7068,10 @@ reshape_init (tree type, tree init, tsubst_flags_t complain)
   /* An empty constructor does not need reshaping, and it is always a valid
      initializer.  */
   if (vec_safe_is_empty (v))
+    return init;
+
+  if ((*v)[0].index && TREE_CODE ((*v)[0].index) == FIELD_DECL)
+    /* Already reshaped.  */
     return init;
 
   /* Brace elision is not performed for a CONSTRUCTOR representing
@@ -8077,7 +8078,7 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
       && (DECL_INITIAL (decl) || init))
     DECL_INITIALIZED_IN_CLASS_P (decl) = 1;
 
-  if (TREE_CODE (decl) != FUNCTION_DECL
+  if (VAR_P (decl)
       && (auto_node = type_uses_auto (type)))
     {
       tree d_init;
@@ -8105,11 +8106,10 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	  d_init = resolve_nondeduced_context (d_init, tf_warning_or_error);
 	}
       enum auto_deduction_context adc = adc_variable_type;
-      if (VAR_P (decl) && DECL_DECOMPOSITION_P (decl))
+      if (DECL_DECOMPOSITION_P (decl))
 	adc = adc_decomp_type;
       tree outer_targs = NULL_TREE;
       if (PLACEHOLDER_TYPE_CONSTRAINTS_INFO (auto_node)
-	  && VAR_P (decl)
 	  && DECL_LANG_SPECIFIC (decl)
 	  && DECL_TEMPLATE_INFO (decl)
 	  && !DECL_FUNCTION_SCOPE_P (decl))
@@ -8126,6 +8126,17 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	{
 	  error ("initializer for %<decltype(auto) %D%> has function type; "
 		 "did you forget the %<()%>?", decl);
+	  TREE_TYPE (decl) = error_mark_node;
+	  return;
+	}
+      /* As in start_decl_1, complete so TREE_READONLY is set properly.  */
+      if (!processing_template_decl
+	  && !type_uses_auto (type)
+	  && !COMPLETE_TYPE_P (complete_type (type)))
+	{
+	  error_at (location_of (decl),
+		    "deduced type %qT for %qD is incomplete", type, decl);
+	  cxx_incomplete_type_inform (type);
 	  TREE_TYPE (decl) = error_mark_node;
 	  return;
 	}
@@ -14132,15 +14143,6 @@ grokdeclarator (const cp_declarator *declarator,
 		     So set it here.  */
 		  funcdef_flag = true;
 
-		if (template_class_depth (current_class_type) == 0)
-		  {
-		    decl = check_explicit_specialization
-		      (unqualified_id, decl, template_count,
-		       2 * funcdef_flag + 4);
-		    if (decl == error_mark_node)
-		      return error_mark_node;
-		  }
-
 		decl = do_friend (ctype, unqualified_id, decl,
 				  flags, funcdef_flag);
 		return decl;
@@ -17324,14 +17326,6 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
 
   ++function_depth;
 
-  if (DECL_DESTRUCTOR_P (decl1)
-      || (DECL_CONSTRUCTOR_P (decl1)
-	  && targetm.cxx.cdtor_returns_this ()))
-    {
-      cdtor_label = create_artificial_label (input_location);
-      LABEL_DECL_CDTOR (cdtor_label) = true;
-    }
-
   start_fname_decls ();
 
   store_parm_decls (current_function_parms);
@@ -17502,9 +17496,6 @@ finish_constructor_body (void)
 
   if (targetm.cxx.cdtor_returns_this ())
     {
-      /* Any return from a constructor will end up here.  */
-      add_stmt (build_stmt (input_location, LABEL_EXPR, cdtor_label));
-
       val = DECL_ARGUMENTS (current_function_decl);
       suppress_warning (val, OPT_Wuse_after_free);
       val = build2 (MODIFY_EXPR, TREE_TYPE (val),
@@ -17590,10 +17581,6 @@ static void
 finish_destructor_body (void)
 {
   tree exprstmt;
-
-  /* Any return from a destructor will end up here; that way all base
-     and member cleanups will be run when the function returns.  */
-  add_stmt (build_stmt (input_location, LABEL_EXPR, cdtor_label));
 
   if (targetm.cxx.cdtor_returns_this ())
     {

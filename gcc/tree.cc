@@ -70,6 +70,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "escaped_string.h"
 #include "gimple-range.h"
 #include "gomp-constants.h"
+#include "dfp.h"
 
 /* Tree code classes.  */
 
@@ -2380,18 +2381,34 @@ tree
 build_real (tree type, REAL_VALUE_TYPE d)
 {
   tree v;
-  REAL_VALUE_TYPE *dp;
   int overflow = 0;
+
+  /* dconst{1,2,m1,half} are used in various places in
+     the middle-end and optimizers, allow them here
+     even for decimal floating point types as an exception
+     by converting them to decimal.  */
+  if (DECIMAL_FLOAT_MODE_P (TYPE_MODE (type))
+      && d.cl == rvc_normal
+      && !d.decimal)
+    {
+      if (memcmp (&d, &dconst1, sizeof (d)) == 0)
+	decimal_real_from_string (&d, "1");
+      else if (memcmp (&d, &dconst2, sizeof (d)) == 0)
+	decimal_real_from_string (&d, "2");
+      else if (memcmp (&d, &dconstm1, sizeof (d)) == 0)
+	decimal_real_from_string (&d, "-1");
+      else if (memcmp (&d, &dconsthalf, sizeof (d)) == 0)
+	decimal_real_from_string (&d, "0.5");
+      else
+	gcc_unreachable ();
+    }
 
   /* ??? Used to check for overflow here via CHECK_FLOAT_TYPE.
      Consider doing it via real_convert now.  */
 
   v = make_node (REAL_CST);
-  dp = ggc_alloc<real_value> ();
-  memcpy (dp, &d, sizeof (REAL_VALUE_TYPE));
-
   TREE_TYPE (v) = type;
-  TREE_REAL_CST_PTR (v) = dp;
+  memcpy (TREE_REAL_CST_PTR (v), &d, sizeof (REAL_VALUE_TYPE));
   TREE_OVERFLOW (v) = overflow;
   return v;
 }
