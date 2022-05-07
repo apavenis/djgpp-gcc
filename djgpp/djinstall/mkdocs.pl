@@ -162,7 +162,7 @@ sub GuessBuildDir()
 
 sub GuessSourceDir
 {
-    my @fchk = ('gcc/BASE-VER', 'gcc/DATESTAMP', 'gcc/gcc.c', 'gcc/DEV-PHASE');
+    my @fchk = ('gcc/BASE-VER', 'gcc/DATESTAMP', 'gcc/gcc.cc', 'gcc/DEV-PHASE');
     my $cnt = 0;
     my $dn;
     my @dl = glob("../gcc*");
