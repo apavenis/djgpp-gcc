@@ -138,10 +138,6 @@ Wspeculative
 D
 Warn from speculative compiles such as __traits(compiles).
 
-Wtemplates
-D
-; Documented in C
-
 Wunknown-pragmas
 D Var(warn_unknown_pragmas) LangEnabledBy(D, Wextra)
 ; Documented in C
@@ -399,6 +395,10 @@ Compile release version.
 frevert=all
 D RejectNegative
 Turn off all revertable D language features.
+
+frevert=dip1000
+D RejectNegative
+Revert DIP1000: Scoped pointers.
 
 frevert=dip25
 D RejectNegative

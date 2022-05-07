@@ -20041,7 +20041,16 @@ cp_parser_placeholder_type_specifier (cp_parser *parser, location_t loc,
   /* In a template parameter list, a type-parameter can be introduced
      by type-constraints alone.  */
   if (processing_template_parmlist && !placeholder)
-    return build_constrained_parameter (con, proto, args);
+    {
+      /* In a default argument we may not be creating new parameters.  */
+      if (parser->local_variables_forbidden_p & LOCAL_VARS_FORBIDDEN)
+	{
+	  /* If this assert turns out to be false, do error() instead.  */
+	  gcc_assert (tentative);
+	  return error_mark_node;
+	}
+      return build_constrained_parameter (con, proto, args);
+    }
 
   /* Diagnose issues placeholder issues.  */
   if (!flag_concepts_ts
@@ -25924,6 +25933,7 @@ cp_parser_class_specifier_1 (cp_parser* parser)
       case CPP_OPEN_PAREN:
       case CPP_CLOSE_PAREN:
       case CPP_COMMA:
+      case CPP_SCOPE:
         want_semicolon = false;
         break;
 
@@ -29964,7 +29974,8 @@ cp_parser_requires_expression (cp_parser *parser)
       scope_sentinel ()
       {
 	++cp_unevaluated_operand;
-	begin_scope (sk_block, NULL_TREE);
+	begin_scope (sk_function_parms, NULL_TREE);
+	current_binding_level->requires_expression = true;
       }
 
       ~scope_sentinel ()
@@ -48082,7 +48093,7 @@ static tree
 synthesize_implicit_template_parm  (cp_parser *parser, tree constr)
 {
   /* A requires-clause is not a function and cannot have placeholders.  */
-  if (current_binding_level->kind == sk_block)
+  if (current_binding_level->requires_expression)
     {
       error ("placeholder type not allowed in this context");
       return error_mark_node;
