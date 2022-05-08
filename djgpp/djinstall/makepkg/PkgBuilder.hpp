@@ -60,6 +60,8 @@ private:
 
     void write_header_gcc(const std::filesystem::path& header_dir, const std::filesystem::path& orig_rel, const std::filesystem::path& new_rel);
 
+    std::string version_suffix() const;
+
 private:
     const std::regex r_sfn;
     const std::filesystem::path gcc_src_dir;

@@ -308,6 +308,19 @@ void PkgBuilder::remove_files(const std::vector<std::regex> remove_instr)
     }
 }
 
+std::string PkgBuilder::version_suffix() const
+{
+    std::ostringstream s;
+    s << major << minor;
+    if ((revision != "0") or include_datestamp) {
+        s << revision;
+        if (include_datestamp) {
+            s << "_" << date_stamp;
+        }
+    }
+    return s.str();
+}
+
 void PkgBuilder::create_mft()
 {
     ManifestInfo m_ignore(mft_ignore);
@@ -333,8 +346,8 @@ void PkgBuilder::create_mft()
 
 
     const auto mft_path = [&](const std::string& n , const std::string& ext) {
-                              return inst_dir / "manifest" / (n + mft_suffix + "b." + ext);
-                          };
+        return inst_dir / "manifest" / (n + version_suffix() + "b." + ext);
+    };
 
     for (const auto& item : m) {
         if (item.first != "") {
