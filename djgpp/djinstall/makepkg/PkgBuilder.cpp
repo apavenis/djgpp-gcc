@@ -114,7 +114,7 @@ fs::path PkgBuilder::find_source_dir(const fs::path& base_dir)
         if (fs::is_directory(p) and (p.string().substr(0, exp.length()) == exp)) {
             if (fs::is_regular_file(p / "gcc" / "BASE-VER")
                 and fs::is_regular_file(p / "gcc" / "DATESTAMP")
-                and fs::is_regular_file(p / "gcc" / "gcc.c")
+                and fs::is_regular_file(p / "gcc" / "gcc.cc")
                 and fs::is_regular_file(p / "gcc" / "DEV-PHASE")
                 )
             {
