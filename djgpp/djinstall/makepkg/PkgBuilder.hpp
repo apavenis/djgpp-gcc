@@ -62,6 +62,12 @@ private:
 
     std::string version_suffix() const;
 
+    void strip_executables() const;
+
+    void strip_libraries() const;
+
+    void create_binary_packages() const;
+
 private:
     const std::regex r_sfn;
     const std::filesystem::path gcc_src_dir;
@@ -72,6 +78,9 @@ private:
     std::string revision;
     bool include_datestamp;
     std::filesystem::path inst_dir;
+    std::vector<std::filesystem::path> executables;
+    std::vector<std::filesystem::path> libraries;
+    std::string strip_command;
 
 private:
     static const std::map<std::filesystem::path, std::filesystem::path> cpp_rename;
