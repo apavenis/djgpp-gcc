@@ -9,6 +9,8 @@ const std::map<std::filesystem::path, std::filesystem::path> PkgBuilder::c_inc_r
     {"avx512vbmivlintrin.h", "avx512vbmivlintrin.h2"},
     {"avx512vldqintrin.h", "avx512vldqintrin.h2"},
     {"avx512vlintrin.h", "avx512vlintrin.h3"},
+    {"avx512fp16intrin.h","avx512fp16intrin.h1"},
+    {"avx512fp16vlintrin.h","avx512fp16vlintrin.h2"},
     {"avx512vnnivlintrin.h", "avx512vnnivlintrin.h2"},
     {"avx512vp2intersectintrin.h", "avx512vp2intersectintrin.h2"},
     {"avx512vp2intersectvlintrin.h", "avx512vp2intersectvlintrin.h3"},
