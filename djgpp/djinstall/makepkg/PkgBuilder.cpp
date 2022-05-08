@@ -114,7 +114,7 @@ fs::path PkgBuilder::find_source_dir(const fs::path& base_dir)
         if (fs::is_directory(p) and (p.string().substr(0, exp.length()) == exp)) {
             if (fs::is_regular_file(p / "gcc" / "BASE-VER")
                 and fs::is_regular_file(p / "gcc" / "DATESTAMP")
-                and fs::is_regular_file(p / "gcc" / "gcc.c")
+                and fs::is_regular_file(p / "gcc" / "gcc.cc")
                 and fs::is_regular_file(p / "gcc" / "DEV-PHASE")
                 )
             {
@@ -308,6 +308,19 @@ void PkgBuilder::remove_files(const std::vector<std::regex> remove_instr)
     }
 }
 
+std::string PkgBuilder::version_suffix() const
+{
+    std::ostringstream s;
+    s << major << minor;
+    if ((revision != "0") or include_datestamp) {
+        s << revision;
+        if (include_datestamp) {
+            s << "_" << date_stamp;
+        }
+    }
+    return s.str();
+}
+
 void PkgBuilder::create_mft()
 {
     ManifestInfo m_ignore(mft_ignore);
@@ -333,8 +346,8 @@ void PkgBuilder::create_mft()
 
 
     const auto mft_path = [&](const std::string& n , const std::string& ext) {
-                              return inst_dir / "manifest" / (n + mft_suffix + "b." + ext);
-                          };
+        return inst_dir / "manifest" / (n + version_suffix() + "b." + ext);
+    };
 
     for (const auto& item : m) {
         if (item.first != "") {
@@ -374,7 +387,7 @@ void PkgBuilder::create_mft()
 void PkgBuilder::write_ver(const std::string& name, const fs::path& p) const
 {
     std::ostringstream ver;
-    ver << p.filename().replace_extension(".zip") << ": GNU Compiler Collection: ";
+    ver << p.filename().replace_extension(".zip").string() << ": GNU Compiler Collection: ";
     if (name == "gcc") {
         ver << "C compiler";
     } else if (name == "gpp") {
