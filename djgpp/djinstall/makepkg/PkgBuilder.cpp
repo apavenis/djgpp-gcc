@@ -374,7 +374,7 @@ void PkgBuilder::create_mft()
 void PkgBuilder::write_ver(const std::string& name, const fs::path& p) const
 {
     std::ostringstream ver;
-    ver << p.filename().replace_extension(".zip") << ": GNU Compiler Collection: ";
+    ver << p.filename().replace_extension(".zip").string() << ": GNU Compiler Collection: ";
     if (name == "gcc") {
         ver << "C compiler";
     } else if (name == "gpp") {
