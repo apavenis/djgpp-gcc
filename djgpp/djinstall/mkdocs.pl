@@ -8,7 +8,7 @@ my $src_dir = GuessSourceDir();
 my $ver = FindGccVer();
 
 my $ver_s1 = GenVerDJ($ver);
-my $ver_s2 = $ver; $ver_s2 =~ s/\.//g;
+my $ver_s2 = $ver; $ver_s2 =~ s/\.//g; $ver_s2 =~ s/0$//;
 
 my $fd;
 
