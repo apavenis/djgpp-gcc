@@ -87,6 +87,22 @@ PkgBuilder::PkgBuilder(const fs::path& src_search, const fs::path& inst_dir)
     std::cout << "Source directory   : " << gcc_src_dir << std::endl;
     std::cout << "Base version       : " << base_ver << std::endl;
     std::cout << "Doc dir            : " << get_doc_dir() << std::endl;
+
+#ifdef __DJGPP__
+    strip_command = "strip";
+#else
+    std::vector<std::string> strip_alternatives = {
+        "i586-pc-msdosdjgpp-strip",
+        "i686-pc-msdosdjgpp-strip"
+    };
+    for (const std::string& s : strip_alternatives) {
+        if (system((s + " --version >/dev/null 2>&1").c_str()) == 0) {
+            strip_command = s;
+            break;
+        }
+    }
+#endif
+    std::cout << "Strip command      : " << strip_command << std::endl;
 }
 
 PkgBuilder::~PkgBuilder()
@@ -103,6 +119,9 @@ void PkgBuilder::run()
     convert_man_pages();
     sfn_check("../install.gcc");
     create_mft();
+    strip_executables();
+    strip_libraries();
+    create_binary_packages();
 }
 
 fs::path PkgBuilder::find_source_dir(const fs::path& base_dir)
@@ -114,7 +133,7 @@ fs::path PkgBuilder::find_source_dir(const fs::path& base_dir)
         if (fs::is_directory(p) and (p.string().substr(0, exp.length()) == exp)) {
             if (fs::is_regular_file(p / "gcc" / "BASE-VER")
                 and fs::is_regular_file(p / "gcc" / "DATESTAMP")
-                and fs::is_regular_file(p / "gcc" / "gcc.c")
+                and fs::is_regular_file(p / "gcc" / "gcc.cc")
                 and fs::is_regular_file(p / "gcc" / "DEV-PHASE")
                 )
             {
@@ -308,6 +327,19 @@ void PkgBuilder::remove_files(const std::vector<std::regex> remove_instr)
     }
 }
 
+std::string PkgBuilder::version_suffix() const
+{
+    std::ostringstream s;
+    s << major << minor;
+    if ((revision != "0") or include_datestamp) {
+        s << revision;
+        if (include_datestamp) {
+            s << "_" << date_stamp;
+        }
+    }
+    return s.str();
+}
+
 void PkgBuilder::create_mft()
 {
     ManifestInfo m_ignore(mft_ignore);
@@ -333,8 +365,8 @@ void PkgBuilder::create_mft()
 
 
     const auto mft_path = [&](const std::string& n , const std::string& ext) {
-                              return inst_dir / "manifest" / (n + mft_suffix + "b." + ext);
-                          };
+        return inst_dir / "manifest" / (n + version_suffix() + "b." + ext);
+    };
 
     for (const auto& item : m) {
         if (item.first != "") {
@@ -357,7 +389,13 @@ void PkgBuilder::create_mft()
             for (const auto& x : m) {
                 found |= x.second->check_file(pr);
             }
-            if (not found) {
+            if (found) {
+                if (p.string().ends_with(".exe")) {
+                    executables.push_back(p);
+                } else if (p.string().ends_with(".a")) {
+                    libraries.push_back(p);
+                }
+            } else {
                 std::cout << "SKIPPED: " << pr << std::endl;
             }
         }
@@ -374,7 +412,7 @@ void PkgBuilder::create_mft()
 void PkgBuilder::write_ver(const std::string& name, const fs::path& p) const
 {
     std::ostringstream ver;
-    ver << p.filename().replace_extension(".zip") << ": GNU Compiler Collection: ";
+    ver << p.filename().replace_extension(".zip").string() << ": GNU Compiler Collection: ";
     if (name == "gcc") {
         ver << "C compiler";
     } else if (name == "gpp") {
@@ -481,3 +519,40 @@ void PkgBuilder::convert_man_pages()
     }
 }
 
+void PkgBuilder::strip_executables() const
+{
+    for (const auto& p : executables) {
+        const std::string cmd = strip_command + " " + p.string();
+        std::cout << "EXECUTE: " << cmd << std::endl;
+        system(cmd.c_str());
+    }
+}
+
+void PkgBuilder::strip_libraries() const
+{
+    for (const auto& p : executables) {
+        const std::string cmd = strip_command + " -g " + p.string();
+        std::cout << "EXECUTE: " << cmd << std::endl;
+        system(cmd.c_str());
+    }
+}
+
+void PkgBuilder::create_binary_packages() const
+{
+    const std::string v = version_suffix();
+    std::vector<std::string> prefixes = { "gcc", "gpp", "gfor", "objc" };
+    if (fs::exists("bin/gnat.exe")) {
+        prefixes.push_back("ada");
+    }
+    for (const auto& prefix : prefixes) {
+        const std::string fn_mft = "manifest/" + prefix + v + "b.mft";
+        const std::string fn_zip = prefix + v + "b.zip";
+        const std::string cmd = "zip -9@ " + fn_zip + " <" + fn_mft;
+        if (fs::exists(fn_zip)) {
+            std::cout << "REMOVE " << fn_zip << std::endl;
+            fs::remove(fn_zip);
+        }
+        std::cout << "EXECUTE " << cmd << std::endl;
+        system(cmd.c_str());
+    }
+}

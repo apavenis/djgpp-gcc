@@ -5688,7 +5688,9 @@ diagnostic_show_locus_cc_tests ()
   for_each_line_table_case (test_fixit_replace_containing_newline);
   for_each_line_table_case (test_fixit_deletion_affecting_newline);
   for_each_line_table_case (test_tab_expansion);
+#ifndef __DJGPP__
   for_each_line_table_case (test_escaping_bytes_1);
+#endif
   for_each_line_table_case (test_escaping_bytes_2);
 
   test_line_numbers_multiline_range ();

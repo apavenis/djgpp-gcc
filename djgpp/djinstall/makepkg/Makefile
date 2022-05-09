@@ -4,7 +4,7 @@ else
 CXX ?= g++
 endif
 
-CXXFLAGS = -std=c++17 -Og -Wall -g3
+CXXFLAGS = -std=c++20 -Og -Wall -g3
 
 SRCS = \
 	main.cpp \

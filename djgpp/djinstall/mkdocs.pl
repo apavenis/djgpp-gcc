@@ -8,7 +8,7 @@ my $src_dir = GuessSourceDir();
 my $ver = FindGccVer();
 
 my $ver_s1 = GenVerDJ($ver);
-my $ver_s2 = $ver; $ver_s2 =~ s/\.//g;
+my $ver_s2 = $ver; $ver_s2 =~ s/\.//g; $ver_s2 =~ s/0$//;
 
 my $fd;
 
@@ -162,7 +162,7 @@ sub GuessBuildDir()
 
 sub GuessSourceDir
 {
-    my @fchk = ('gcc/BASE-VER', 'gcc/DATESTAMP', 'gcc/gcc.c', 'gcc/DEV-PHASE');
+    my @fchk = ('gcc/BASE-VER', 'gcc/DATESTAMP', 'gcc/gcc.cc', 'gcc/DEV-PHASE');
     my $cnt = 0;
     my $dn;
     my @dl = glob("../gcc*");
