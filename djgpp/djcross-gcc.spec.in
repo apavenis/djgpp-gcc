@@ -467,6 +467,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri Aug 19 2022 Andris Pavenis <andris.pavenis@iki.fi>
+- Update to gcc-12.2.0
+
 * Sat May  7 2022 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to gcc-12.1.0
 
