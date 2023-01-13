@@ -1,5 +1,5 @@
 /* Natural loop functions
-   Copyright (C) 1987-2022 Free Software Foundation, Inc.
+   Copyright (C) 1987-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -148,7 +148,7 @@ public:
   class loop *next;
 
   /* Auxiliary info specific to a pass.  */
-  PTR GTY ((skip (""))) aux;
+  void *GTY ((skip (""))) aux;
 
   /* The number of times the latch of the loop is executed.  This can be an
      INTEGER_CST, or a symbolic expression representing the number of

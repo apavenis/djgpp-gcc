@@ -54,9 +54,17 @@ extern (C++) final class EnumDeclaration : ScopeDsymbol
     Expression maxval;
     Expression minval;
     Expression defaultval;  // default initializer
-    bool isdeprecated;
-    bool added;
-    int inuse;
+
+    // `bool` fields that are compacted into bit fields in a string mixin
+    private extern (D) static struct BitFields
+    {
+        bool isdeprecated;
+        bool added;
+        bool inuse;
+    }
+
+    import dmd.common.bitfields : generateBitFields;
+    mixin(generateBitFields!(BitFields, ubyte));
 
     extern (D) this(const ref Loc loc, Identifier ident, Type memtype)
     {
@@ -80,7 +88,7 @@ extern (C++) final class EnumDeclaration : ScopeDsymbol
         version (none)
         {
             printf("EnumDeclaration::addMember() %s\n", toChars());
-            for (size_t i = 0; i < members.dim; i++)
+            for (size_t i = 0; i < members.length; i++)
             {
                 EnumMember em = (*members)[i].isEnumMember();
                 printf("    member %s\n", em.toChars());
@@ -183,7 +191,7 @@ extern (C++) final class EnumDeclaration : ScopeDsymbol
             return handleErrors();
         }
 
-        foreach (const i; 0 .. members.dim)
+        foreach (const i; 0 .. members.length)
         {
             EnumMember em = (*members)[i].isEnumMember();
             if (em)

@@ -3020,6 +3020,9 @@ warn_hidden (tree t)
 	tree binfo;
 	unsigned j;
 
+	if (IDENTIFIER_CDTOR_P (name))
+	  continue;
+
 	/* Iterate through all of the base classes looking for possibly
 	   hidden functions.  */
 	for (binfo = TYPE_BINFO (t), j = 0;
@@ -3034,31 +3037,43 @@ warn_hidden (tree t)
 	  continue;
 
 	/* Remove any overridden functions.  */
+	bool seen_non_override = false;
 	for (tree fndecl : ovl_range (fns))
 	  {
+	    bool any_override = false;
 	    if (TREE_CODE (fndecl) == FUNCTION_DECL
 		&& DECL_VINDEX (fndecl))
 	      {
 		/* If the method from the base class has the same
 		   signature as the method from the derived class, it
-		   has been overridden.  */
+		   has been overridden.  Note that we can't move on
+		   after finding one match: fndecl might override
+		   multiple base fns.  */
 		for (size_t k = 0; k < base_fndecls.length (); k++)
 		  if (base_fndecls[k]
 		      && same_signature_p (fndecl, base_fndecls[k]))
-		    base_fndecls[k] = NULL_TREE;
+		    {
+		      base_fndecls[k] = NULL_TREE;
+		      any_override = true;
+		    }
 	      }
+	    if (!any_override)
+	      seen_non_override = true;
 	  }
+
+	if (!seen_non_override && warn_overloaded_virtual == 1)
+	  /* All the derived fns override base virtuals.  */
+	  return;
 
 	/* Now give a warning for all base functions without overriders,
 	   as they are hidden.  */
-	tree base_fndecl;
-	FOR_EACH_VEC_ELT (base_fndecls, j, base_fndecl)
+	for (tree base_fndecl : base_fndecls)
 	  if (base_fndecl)
 	    {
 	      auto_diagnostic_group d;
 	      /* Here we know it is a hider, and no overrider exists.  */
 	      if (warning_at (location_of (base_fndecl),
-			      OPT_Woverloaded_virtual,
+			      OPT_Woverloaded_virtual_,
 			      "%qD was hidden", base_fndecl))
 		inform (location_of (fns), "  by %qD", fns);
 	    }
@@ -4780,8 +4795,9 @@ check_methods (tree t)
 
   /* Check whether the eligible special member functions (P0848) are
      user-provided.  add_method arranged that the CLASSTYPE_MEMBER_VEC only
-     has the eligible ones; TYPE_FIELDS also contains ineligible overloads,
-     which is why this needs to be separate from the loop above.  */
+     has the eligible ones, unless none are eligible; TYPE_FIELDS also contains
+     ineligible overloads, which is why this needs to be separate from the loop
+     above.  */
 
   if (tree dtor = CLASSTYPE_DESTRUCTOR (t))
     {
@@ -4804,6 +4820,10 @@ check_methods (tree t)
     {
       if (!user_provided_p (fn))
 	/* Might be trivial.  */;
+      else if (TREE_CODE (fn) == TEMPLATE_DECL)
+	/* Templates are never special members.  */;
+      else if (!constraints_satisfied_p (fn))
+	/* Not eligible.  */;
       else if (copy_fn_p (fn))
 	TYPE_HAS_COMPLEX_COPY_CTOR (t) = true;
       else if (move_fn_p (fn))
@@ -4814,6 +4834,10 @@ check_methods (tree t)
     {
       if (!user_provided_p (fn))
 	/* Might be trivial.  */;
+      else if (TREE_CODE (fn) == TEMPLATE_DECL)
+	/* Templates are never special members.  */;
+      else if (!constraints_satisfied_p (fn))
+	/* Not eligible.  */;
       else if (copy_fn_p (fn))
 	TYPE_HAS_COMPLEX_COPY_ASSIGN (t) = true;
       else if (move_fn_p (fn))
@@ -5494,8 +5518,8 @@ default_init_uninitialized_part (tree type)
       if (r)
 	return r;
     }
-  for (t = next_initializable_field (TYPE_FIELDS (type)); t;
-       t = next_initializable_field (DECL_CHAIN (t)))
+  for (t = next_aggregate_field (TYPE_FIELDS (type)); t;
+       t = next_aggregate_field (DECL_CHAIN (t)))
     if (!DECL_INITIAL (t) && !DECL_ARTIFICIAL (t))
       {
 	r = default_init_uninitialized_part (TREE_TYPE (t));
@@ -5605,7 +5629,7 @@ type_has_virtual_destructor (tree type)
 {
   tree dtor;
 
-  if (!CLASS_TYPE_P (type))
+  if (!NON_UNION_CLASS_TYPE_P (type))
     return false;
 
   gcc_assert (COMPLETE_TYPE_P (type));
@@ -7781,10 +7805,10 @@ finish_struct (tree t, tree attributes)
       bool ok = false;
       if (processing_template_decl)
 	{
-	  tree f = next_initializable_field (TYPE_FIELDS (t));
+	  tree f = next_aggregate_field (TYPE_FIELDS (t));
 	  if (f && TYPE_PTR_P (TREE_TYPE (f)))
 	    {
-	      f = next_initializable_field (DECL_CHAIN (f));
+	      f = next_aggregate_field (DECL_CHAIN (f));
 	      if (f && same_type_p (TREE_TYPE (f), size_type_node))
 		ok = true;
 	    }

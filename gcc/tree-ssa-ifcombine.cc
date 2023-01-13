@@ -1,5 +1,5 @@
 /* Combining of if-expressions on trees.
-   Copyright (C) 2007-2022 Free Software Foundation, Inc.
+   Copyright (C) 2007-2023 Free Software Foundation, Inc.
    Contributed by Richard Guenther <rguenther@suse.de>
 
 This file is part of GCC.
@@ -35,8 +35,8 @@ along with GCC; see the file COPYING3.  If not see
    BRANCH_COST.  */
 #include "fold-const.h"
 #include "cfganal.h"
-#include "gimple-fold.h"
 #include "gimple-iterator.h"
+#include "gimple-fold.h"
 #include "gimplify-me.h"
 #include "tree-cfg.h"
 #include "tree-ssa.h"
@@ -829,7 +829,7 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual unsigned int execute (function *);
+  unsigned int execute (function *) final override;
 
 }; // class pass_tree_ifcombine
 

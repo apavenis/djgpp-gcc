@@ -225,7 +225,7 @@ package void setLengthVarIfKnown(VarDeclaration lengthVar, Expression arr)
     if (auto se = arr.isStringExp())
         len = se.len;
     else if (auto ale = arr.isArrayLiteralExp())
-        len = ale.elements.dim;
+        len = ale.elements.length;
     else
     {
         auto tsa = arr.type.toBasetype().isTypeSArray();
@@ -358,7 +358,7 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
 
     void visitAssocArrayLiteral(AssocArrayLiteralExp e)
     {
-        assert(e.keys.dim == e.values.dim);
+        assert(e.keys.length == e.values.length);
         foreach (i, ref ekey; (*e.keys)[])
         {
             expOptimize(ekey, result & WANTexpand);
@@ -558,6 +558,41 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
         }
         else if (auto ae = e.e1.isIndexExp())
         {
+            if (ae.e2.isIntegerExp() && ae.e1.isIndexExp())
+            {
+                /* Rewrite `(a[i])[index]` to `(&a[i]) + index*size`
+                 */
+                sinteger_t index = ae.e2.toInteger();
+                auto ae1 = ae.e1.isIndexExp();          // ae1 is a[i]
+                if (auto ts = ae1.type.isTypeSArray())
+                {
+                    sinteger_t dim = ts.dim.toInteger();
+
+                    if (index < 0 || index > dim)
+                    {
+                        e.error("array index %lld is out of bounds `[0..%lld]`", index, dim);
+                        return error();
+                    }
+
+                    import core.checkedint : mulu;
+                    bool overflow;
+                    const offset = mulu(index, ts.nextOf().size(e.loc), overflow); // offset = index*size
+                    if (overflow)
+                    {
+                        e.error("array offset overflow");
+                        return error();
+                    }
+
+                    Expression ex = new AddrExp(ae1.loc, ae1);  // &a[i]
+                    ex.type = ae1.type.pointerTo();
+
+                    Expression add = new AddExp(ae.loc, ex, new IntegerExp(ae.loc, offset, e.type));
+                    add.type = e.type;
+                    ret = Expression_optimize(add, result, keepLvalue);
+                    return;
+                }
+            }
+
             // Convert &array[n] to &array+n
             if (ae.e2.isIntegerExp() && ae.e1.isVarExp())
             {
@@ -1085,7 +1120,7 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
                     e.e1 = ci;
             }
         }
-        if (e.e1.op == EXP.string_ || e.e1.op == EXP.arrayLiteral || e.e1.op == EXP.assocArrayLiteral || e.e1.type.toBasetype().ty == Tsarray)
+        if (e.e1.op == EXP.string_ || e.e1.op == EXP.arrayLiteral || e.e1.op == EXP.assocArrayLiteral || e.e1.type.toBasetype().ty == Tsarray || e.e1.op == EXP.null_)
         {
             ret = ArrayLength(e.type, e.e1).copy();
         }

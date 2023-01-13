@@ -1108,6 +1108,12 @@ gfc_add_contiguous (symbol_attribute *attr, const char *name, locus *where)
   if (check_used (attr, name, where))
     return false;
 
+  if (attr->contiguous)
+    {
+      duplicate_attr ("CONTIGUOUS", where);
+      return false;
+    }
+
   attr->contiguous = 1;
   return gfc_check_conflict (attr, name, where);
 }
@@ -4071,7 +4077,13 @@ gfc_free_namespace (gfc_namespace *&ns)
       f = f->next;
       free (current);
     }
-
+  if (ns->omp_assumes)
+    {
+      free (ns->omp_assumes->absent);
+      free (ns->omp_assumes->contains);
+      gfc_free_expr_list (ns->omp_assumes->holds);
+      free (ns->omp_assumes);
+    }
   p = ns->contained;
   free (ns);
   ns = NULL;
@@ -5132,6 +5144,10 @@ gfc_type_compatible (gfc_typespec *ts1, gfc_typespec *ts2)
   bool is_derived2 = (ts2->type == BT_DERIVED);
   bool is_union1 = (ts1->type == BT_UNION);
   bool is_union2 = (ts2->type == BT_UNION);
+
+  /* A boz-literal-constant has no type.  */
+  if (ts1->type == BT_BOZ || ts2->type == BT_BOZ)
+    return false;
 
   if (is_class1
       && ts1->u.derived->components

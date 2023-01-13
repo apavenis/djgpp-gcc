@@ -1,7 +1,7 @@
 /* Data structures and declarations used for reading and writing
    GIMPLE to a file stream.
 
-   Copyright (C) 2009-2022 Free Software Foundation, Inc.
+   Copyright (C) 2009-2023 Free Software Foundation, Inc.
    Contributed by Doug Kwan <dougkwan@google.com>
 
 This file is part of GCC.
@@ -311,6 +311,7 @@ private:
     int line, col;
     bool sysp;
     tree block;
+    unsigned discr;
   };
 
   /* The location cache.  */
@@ -333,6 +334,7 @@ private:
   bool current_sysp;
   location_t current_loc;
   tree current_block;
+  unsigned current_discr;
 };
 
 /* Structure used as buffer for reading an LTO file.  */
@@ -723,6 +725,7 @@ struct output_block
   bool reset_locus;
   bool emit_pwd;
   tree current_block;
+  unsigned current_discr;
 
   /* Cache of nodes written in this section.  */
   struct streamer_tree_cache_d *writer_cache;

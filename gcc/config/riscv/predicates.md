@@ -52,7 +52,7 @@
        (match_test "INTVAL (op) + 1 != 0")))
 
 (define_predicate "const_0_operand"
-  (and (match_code "const_int,const_wide_int,const_double,const_vector")
+  (and (match_code "const_int,const_wide_int,const_vector")
        (match_test "op == CONST0_RTX (GET_MODE (op))")))
 
 (define_predicate "reg_or_0_operand"
@@ -71,12 +71,12 @@
 {
   /* Don't handle multi-word moves this way; we don't want to introduce
      the individual word-mode moves until after reload.  */
-  if (GET_MODE_SIZE (mode) > UNITS_PER_WORD)
+  if (GET_MODE_SIZE (mode).to_constant () > UNITS_PER_WORD)
     return false;
 
   /* Check whether the constant can be loaded in a single
      instruction with zbs extensions.  */
-  if (TARGET_64BIT && TARGET_ZBS && SINGLE_BIT_MASK_OPERAND (INTVAL (op)))
+  if (TARGET_ZBS && SINGLE_BIT_MASK_OPERAND (INTVAL (op)))
     return false;
 
   /* Otherwise check whether the constant can be loaded in a single
@@ -145,6 +145,9 @@
     {
     case CONST_INT:
       return !splittable_const_int_operand (op, mode);
+
+    case CONST_POLY_INT:
+      return known_eq (rtx_to_poly_int64 (op), BYTES_PER_RISCV_VECTOR);
 
     case CONST:
     case SYMBOL_REF:
@@ -226,11 +229,11 @@
 ;; Predicates for the ZBS extension.
 (define_predicate "single_bit_mask_operand"
   (and (match_code "const_int")
-       (match_test "pow2p_hwi (INTVAL (op))")))
+       (match_test "SINGLE_BIT_MASK_OPERAND (UINTVAL (op))")))
 
 (define_predicate "not_single_bit_mask_operand"
   (and (match_code "const_int")
-       (match_test "pow2p_hwi (~INTVAL (op))")))
+       (match_test "SINGLE_BIT_MASK_OPERAND (~UINTVAL (op))")))
 
 (define_predicate "const31_operand"
   (and (match_code "const_int")
@@ -239,3 +242,103 @@
 (define_predicate "const63_operand"
   (and (match_code "const_int")
        (match_test "INTVAL (op) == 63")))
+
+(define_predicate "imm5_operand"
+  (and (match_code "const_int")
+       (match_test "INTVAL (op) < 5")))
+
+;; A const_int for sh1add/sh2add/sh3add
+(define_predicate "imm123_operand"
+  (and (match_code "const_int")
+       (match_test "IN_RANGE (INTVAL (op), 1, 3)")))
+
+;; A CONST_INT operand that consists of a single run of consecutive set bits.
+(define_predicate "consecutive_bits_operand"
+  (match_code "const_int")
+{
+	unsigned HOST_WIDE_INT val = UINTVAL (op);
+	if (exact_log2 ((val >> ctz_hwi (val)) + 1) < 0)
+	        return false;
+
+	return true;
+})
+
+;; Predicates for the V extension.
+(define_special_predicate "vector_length_operand"
+  (ior (match_operand 0 "pmode_register_operand")
+       (match_operand 0 "const_csr_operand")))
+
+(define_predicate "reg_or_mem_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_operand 0 "memory_operand")))
+
+(define_predicate "vector_move_operand"
+  (ior (match_operand 0 "nonimmediate_operand")
+       (match_code "const_vector")))
+
+(define_predicate "vector_mask_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_test "op == CONSTM1_RTX (GET_MODE (op))")))
+
+(define_predicate "vector_merge_operand"
+  (ior (match_operand 0 "memory_operand")
+       (ior (match_operand 0 "register_operand")
+	    (match_test "GET_CODE (op) == UNSPEC
+			 && (XINT (op, 1) == UNSPEC_VUNDEF)"))))
+
+;; The scalar operand can be directly broadcast by RVV instructions.
+(define_predicate "direct_broadcast_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_test "satisfies_constraint_Wdm (op)")))
+
+;; A CONST_INT operand that has exactly two bits cleared.
+(define_predicate "const_nottwobits_operand"
+  (and (match_code "const_int")
+       (match_test "popcount_hwi (~UINTVAL (op)) == 2")))
+
+;; A CONST_INT operand that consists of a single run of 32 consecutive
+;; set bits.
+(define_predicate "consecutive_bits32_operand"
+  (and (match_operand 0 "consecutive_bits_operand")
+       (match_test "popcount_hwi (UINTVAL (op)) == 32")))
+
+;; A CONST_INT operand that, if shifted down to start with its least
+;; significant non-zero bit, is a SMALL_OPERAND (suitable as an
+;; immediate to logical and arithmetic instructions).
+(define_predicate "shifted_const_arith_operand"
+  (and (match_code "const_int")
+       (match_test "ctz_hwi (INTVAL (op)) > 0")
+       (match_test "SMALL_OPERAND (INTVAL (op) >> ctz_hwi (INTVAL (op)))")))
+
+;; A CONST_INT operand that has exactly two bits set.
+(define_predicate "const_twobits_operand"
+  (and (match_code "const_int")
+       (match_test "popcount_hwi (UINTVAL (op)) == 2")))
+
+(define_predicate "const_twobits_not_arith_operand"
+  (and (match_code "const_int")
+       (and (not (match_operand 0 "arith_operand"))
+	    (match_operand 0 "const_twobits_operand"))))
+
+;; A CONST_INT operand that fits into the unsigned half of a
+;; signed-immediate after the top bit has been cleared
+(define_predicate "uimm_extra_bit_operand"
+  (and (match_code "const_int")
+       (match_test "UIMM_EXTRA_BIT_OPERAND (UINTVAL (op))")))
+
+(define_predicate "uimm_extra_bit_or_twobits"
+  (and (match_code "const_int")
+       (ior (match_operand 0 "uimm_extra_bit_operand")
+	    (match_operand 0 "const_twobits_operand"))))
+
+;; A CONST_INT operand that fits into the negative half of a
+;; signed-immediate after a single cleared top bit has been
+;; set: i.e., a bitwise-negated uimm_extra_bit_operand
+(define_predicate "not_uimm_extra_bit_operand"
+  (and (match_code "const_int")
+       (match_test "UIMM_EXTRA_BIT_OPERAND (~UINTVAL (op))")))
+
+(define_predicate "not_uimm_extra_bit_or_nottwobits"
+  (and (match_code "const_int")
+       (ior (match_operand 0 "not_uimm_extra_bit_operand")
+	    (match_operand 0 "const_nottwobits_operand"))))

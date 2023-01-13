@@ -19,6 +19,7 @@ along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
+#define INCLUDE_MEMORY
 #include "system.h"
 #include "coretypes.h"
 #include "tree.h"
@@ -28,9 +29,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-iterator.h"
 #include "diagnostic-core.h"
 #include "pretty-print.h"
-#include "tristate.h"
-#include "selftest.h"
-#include "json.h"
 #include "analyzer/analyzer.h"
 #include "analyzer/analyzer-logging.h"
 #include "options.h"
@@ -228,7 +226,7 @@ region_model::on_asm_stmt (const gasm *stmt, region_model_context *ctxt)
 
       tree src_expr = input_tvec[i];
       const svalue *src_sval = get_rvalue (src_expr, ctxt);
-      check_for_poison (src_sval, src_expr, ctxt);
+      check_for_poison (src_sval, src_expr, NULL, ctxt);
       input_svals.quick_push (src_sval);
       reachable_regs.handle_sval (src_sval);
 

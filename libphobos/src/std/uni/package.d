@@ -426,7 +426,7 @@ $(TR $(TD Building blocks) $(TD
     $(SECTION Construction of lookup tables)
     $(P The Unicode standard describes a set of algorithms that
         depend on having the ability to quickly look up various properties
-        of a code point. Given the the codespace of about 1 million $(CODEPOINTS),
+        of a code point. Given the codespace of about 1 million $(CODEPOINTS),
         it is not a trivial task to provide a space-efficient solution for
         the multitude of properties.
     )
@@ -6271,8 +6271,8 @@ struct UnicodeSetParser(Range)
         {
             if (casefold_)
             {
-                auto range = simpleCaseFoldings(ch);
-                foreach (v; range)
+                auto foldings = simpleCaseFoldings(ch);
+                foreach (v; foldings)
                     set |= v;
             }
             else
@@ -7032,9 +7032,7 @@ template genericDecodeGrapheme(bool getValue)
             case RI:
                 if (isRegionalIndicator(ch))
                     mixin(eat);
-                else
-                    goto L_End_Extend;
-            break;
+                goto L_End_Extend;
             case L:
                 if (isHangL(ch))
                     mixin(eat);
@@ -7166,6 +7164,10 @@ if (isInputRange!Input && is(immutable ElementType!Input == immutable dchar))
     s = "\u11A8\u0308\uAC01";
     assert(equal(decodeGrapheme(s)[], "\u11A8\u0308"));
     assert(equal(decodeGrapheme(s)[], "\uAC01"));
+
+    // Two Union Jacks of the Great Britain
+    s = "\U0001F1EC\U0001F1E7\U0001F1EC\U0001F1E7";
+    assert(equal(decodeGrapheme(s)[], "\U0001F1EC\U0001F1E7"));
 }
 
 /++
@@ -10191,16 +10193,7 @@ bool isAlpha(dchar c)
     // optimization
     if (c < 0xAA)
     {
-        size_t x = c - 'A';
-        if (x <= 'Z' - 'A')
-            return true;
-        else
-        {
-            x = c - 'a';
-            if (x <= 'z'-'a')
-                return true;
-        }
-        return false;
+        return ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
     }
 
     return alphaTrie[c];

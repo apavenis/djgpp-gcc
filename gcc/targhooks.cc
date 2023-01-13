@@ -1,5 +1,5 @@
 /* Default target hook functions.
-   Copyright (C) 2003-2022 Free Software Foundation, Inc.
+   Copyright (C) 2003-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -93,6 +93,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple.h"
 #include "cfgloop.h"
 #include "tree-vectorizer.h"
+#include "options.h"
 
 bool
 default_legitimate_address_p (machine_mode mode ATTRIBUTE_UNUSED,
@@ -1181,9 +1182,21 @@ default_zero_call_used_regs (HARD_REG_SET need_zeroed_hardregs)
       static bool issued_error;
       if (!issued_error)
 	{
+	  const char *name = NULL;
+	  for (unsigned int i = 0; zero_call_used_regs_opts[i].name != NULL;
+	       ++i)
+	    if (flag_zero_call_used_regs == zero_call_used_regs_opts[i].flag)
+	      {
+		name = zero_call_used_regs_opts[i].name;
+		break;
+	      }
+
+	  if (!name)
+	    name = "";
+
 	  issued_error = true;
-	  sorry ("%qs not supported on this target",
-		 "-fzero-call-used-regs");
+	  sorry ("argument %qs is not supported for %qs on this target",
+		 name, "-fzero-call-used-regs");
 	}
     }
 
@@ -1390,6 +1403,26 @@ bool
 default_generate_pic_addr_diff_vec (void)
 {
   return flag_pic;
+}
+
+/* Record an element in the table of global constructors.  SYMBOL is
+   a SYMBOL_REF of the function to be called; PRIORITY is a number
+   between 0 and MAX_INIT_PRIORITY.  */
+
+void
+default_asm_out_constructor (rtx symbol ATTRIBUTE_UNUSED,
+			     int priority ATTRIBUTE_UNUSED)
+{
+  sorry ("global constructors not supported on this target");
+}
+
+/* Likewise for global destructors.  */
+
+void
+default_asm_out_destructor (rtx symbol ATTRIBUTE_UNUSED,
+			    int priority ATTRIBUTE_UNUSED)
+{
+  sorry ("global destructors not supported on this target");
 }
 
 /* By default, do no modification. */
@@ -1807,6 +1840,14 @@ default_have_conditional_execution (void)
   return HAVE_conditional_execution;
 }
 
+/* Default that no division by constant operations are special.  */
+bool
+default_can_special_div_by_const (enum tree_code, tree, wide_int, rtx *, rtx,
+				  rtx)
+{
+  return false;
+}
+
 /* By default we assume that c99 functions are present at the runtime,
    but sincos is not.  */
 bool
@@ -1979,15 +2020,17 @@ default_compare_by_pieces_branch_ratio (machine_mode)
   return 1;
 }
 
-/* Helper for default_print_patchable_function_entry and other
-   print_patchable_function_entry hook implementations.  */
+/* Write PATCH_AREA_SIZE NOPs into the asm outfile FILE around a function
+   entry.  If RECORD_P is true and the target supports named sections,
+   the location of the NOPs will be recorded in a special object section
+   called "__patchable_function_entries".  This routine may be called
+   twice per function to put NOPs before and after the function
+   entry.  */
 
 void
-default_print_patchable_function_entry_1 (FILE *file,
-					  unsigned HOST_WIDE_INT
-					  patch_area_size,
-					  bool record_p,
-					  unsigned int flags)
+default_print_patchable_function_entry (FILE *file,
+					unsigned HOST_WIDE_INT patch_area_size,
+					bool record_p)
 {
   const char *nop_templ = 0;
   int code_num;
@@ -2001,16 +2044,24 @@ default_print_patchable_function_entry_1 (FILE *file,
   if (record_p && targetm_common.have_named_sections)
     {
       char buf[256];
-      static int patch_area_number;
       section *previous_section = in_section;
       const char *asm_op = integer_asm_op (POINTER_SIZE_UNITS, false);
 
       gcc_assert (asm_op != NULL);
-      patch_area_number++;
-      ASM_GENERATE_INTERNAL_LABEL (buf, "LPFE", patch_area_number);
+      /* If SECTION_LINK_ORDER is supported, this internal label will
+	 be filled as the symbol for linked_to section.  */
+      ASM_GENERATE_INTERNAL_LABEL (buf, "LPFE", current_function_funcdef_no);
 
-      switch_to_section (get_section ("__patchable_function_entries",
-				      flags, current_function_decl));
+      unsigned int flags = SECTION_WRITE | SECTION_RELRO;
+      if (HAVE_GAS_SECTION_LINK_ORDER)
+	flags |= SECTION_LINK_ORDER;
+
+      section *sect = get_section ("__patchable_function_entries",
+				  flags, current_function_decl);
+      if (HAVE_COMDAT_GROUP && DECL_COMDAT_GROUP (current_function_decl))
+	switch_to_comdat_section (sect, current_function_decl);
+      else
+	switch_to_section (sect);
       assemble_align (POINTER_SIZE);
       fputs (asm_op, file);
       assemble_name_raw (file, buf);
@@ -2023,25 +2074,6 @@ default_print_patchable_function_entry_1 (FILE *file,
   unsigned i;
   for (i = 0; i < patch_area_size; ++i)
     output_asm_insn (nop_templ, NULL);
-}
-
-/* Write PATCH_AREA_SIZE NOPs into the asm outfile FILE around a function
-   entry.  If RECORD_P is true and the target supports named sections,
-   the location of the NOPs will be recorded in a special object section
-   called "__patchable_function_entries".  This routine may be called
-   twice per function to put NOPs before and after the function
-   entry.  */
-
-void
-default_print_patchable_function_entry (FILE *file,
-					unsigned HOST_WIDE_INT patch_area_size,
-					bool record_p)
-{
-  unsigned int flags = SECTION_WRITE | SECTION_RELRO;
-  if (HAVE_GAS_SECTION_LINK_ORDER)
-    flags |= SECTION_LINK_ORDER;
-  default_print_patchable_function_entry_1 (file, patch_area_size, record_p,
-					    flags);
 }
 
 bool

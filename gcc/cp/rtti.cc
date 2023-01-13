@@ -787,6 +787,10 @@ build_dynamic_cast_1 (location_t loc, tree type, tree expr,
 			       NULL_TREE));
 	      dcast_fn = (build_library_fn_ptr
 			  (fn_name, fn_type, ECF_LEAF | ECF_PURE | ECF_NOTHROW));
+	      /* As with __cxa_atexit in get_atexit_node.  */
+	      DECL_CONTEXT (dcast_fn) = FROB_CONTEXT (current_namespace);
+	      DECL_SOURCE_LOCATION (dcast_fn) = BUILTINS_LOCATION;
+	      dcast_fn = pushdecl (dcast_fn, /*hiding=*/true);
 	      pop_abi_namespace (flags);
 	      dynamic_cast_node = dcast_fn;
 	    }
@@ -1599,7 +1603,9 @@ emit_support_tinfos (void)
     &long_long_integer_type_node, &long_long_unsigned_type_node,
     &float_type_node, &double_type_node, &long_double_type_node,
     &dfloat32_type_node, &dfloat64_type_node, &dfloat128_type_node,
-    &nullptr_type_node,
+    &bfloat16_type_node, &float16_type_node, &float32_type_node,
+    &float64_type_node, &float128_type_node, &float32x_type_node,
+    &float64x_type_node, &float128x_type_node, &nullptr_type_node,
     0
   };
   int ix;

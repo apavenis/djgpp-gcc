@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for ARM.
-   Copyright (C) 1991-2022 Free Software Foundation, Inc.
+   Copyright (C) 1991-2023 Free Software Foundation, Inc.
    Contributed by Pieter `Tiggr' Schoenmakers (rcpieter@win.tue.nl)
    and Martin Simmons (@harleqn.co.uk).
    More major hacks by Richard Earnshaw (rearnsha@arm.com)
@@ -46,10 +46,6 @@ extern char arm_arch_name[];
 
 /* Target CPU builtins.  */
 #define TARGET_CPU_CPP_BUILTINS() arm_cpu_cpp_builtins (pfile)
-
-/* Target hooks for D language.  */
-#define TARGET_D_CPU_VERSIONS arm_d_target_versions
-#define TARGET_D_REGISTER_CPU_TARGET_INFO arm_d_register_target_info
 
 #include "config/arm/arm-opts.h"
 
@@ -1062,7 +1058,7 @@ extern const int arm_arch_cde_coproc_bits[];
 /* VFP (VFP3) adds 32 (64) + 1 VFPCC.  */
 #define FIRST_PSEUDO_REGISTER   107
 
-#define DBX_REGISTER_NUMBER(REGNO) arm_dbx_register_number (REGNO)
+#define DEBUGGER_REGNO(REGNO) arm_debugger_regno (REGNO)
 
 /* Value should be nonzero if functions must have frame pointers.
    Zero means the frame pointer need not be set up (and parms may be accessed

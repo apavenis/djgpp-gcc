@@ -1189,6 +1189,7 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
 	  compare_values (DECL_FIELD_ABI_IGNORED);
 	  compare_values (DECL_FIELD_CXX_ZERO_WIDTH_BIT_FIELD);
 	  compare_values (DECL_OFFSET_ALIGN);
+	  compare_values (DECL_NOT_FLEXARRAY);
 	}
       else if (code == VAR_DECL)
 	{
@@ -1270,6 +1271,7 @@ compare_tree_sccs_1 (tree t1, tree t2, tree **map)
       if (AGGREGATE_TYPE_P (t1))
 	compare_values (TYPE_TYPELESS_STORAGE);
       compare_values (TYPE_EMPTY_P);
+      compare_values (TYPE_NO_NAMED_ARGS_STDARG_P);
       compare_values (TYPE_PACKED);
       compare_values (TYPE_RESTRICT);
       compare_values (TYPE_USER_ALIGN);
@@ -2104,8 +2106,7 @@ lto_resolution_read (splay_tree file_ids, FILE *resolution, lto_file *file)
       char r_str[27];
       enum ld_plugin_symbol_resolution r = (enum ld_plugin_symbol_resolution) 0;
       unsigned int j;
-      unsigned int lto_resolution_str_len
-	= sizeof (lto_resolution_str) / sizeof (char *);
+      unsigned int lto_resolution_str_len = ARRAY_SIZE (lto_resolution_str);
       res_pair rp;
 
       t = fscanf (resolution, "%u " HOST_WIDE_INT_PRINT_HEX_PURE
@@ -2118,6 +2119,17 @@ lto_resolution_read (splay_tree file_ids, FILE *resolution, lto_file *file)
 	  if (strcmp (lto_resolution_str[j], r_str) == 0)
 	    {
 	      r = (enum ld_plugin_symbol_resolution) j;
+	      /* Incremental linking together with -fwhole-program may seem
+		 somewhat contradictionary (as the point of incremental linking
+		 is to allow re-linking with more symbols later) but it is
+		 used to build LTO kernel.  We want to hide all symbols that
+		 are not explicitely marked as exported and thus turn
+		 LDPR_PREVAILING_DEF_IRONLY_EXP
+		 to LDPR_PREVAILING_DEF_IRONLY.  */
+	      if (flag_whole_program
+		  && flag_incremental_link == INCREMENTAL_LINK_NOLTO
+		  && r == LDPR_PREVAILING_DEF_IRONLY_EXP)
+		r = LDPR_PREVAILING_DEF_IRONLY;
 	      break;
 	    }
 	}

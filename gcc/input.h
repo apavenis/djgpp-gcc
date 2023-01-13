@@ -1,6 +1,6 @@
 /* Declarations for variables relating to reading the source file.
    Used by parsers, lexical analyzers, and error message routines.
-   Copyright (C) 1993-2022 Free Software Foundation, Inc.
+   Copyright (C) 1993-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -31,6 +31,9 @@ extern GTY(()) class line_maps *saved_line_table;
 
 /* The location for declarations in "<built-in>" */
 #define BUILTINS_LOCATION ((location_t) 1)
+
+/* Returns the translated string referring to the special location.  */
+const char *special_fname_builtin ();
 
 /* line-map.cc reserves RESERVED_LOCATION_COUNT to the user.  Ensure
    both UNKNOWN_LOCATION and BUILTINS_LOCATION fit into that.  */
@@ -111,6 +114,7 @@ class char_span
 };
 
 extern char_span location_get_source_line (const char *file_path, int line);
+extern char *get_source_text_between (location_t, location_t);
 
 extern bool location_missing_trailing_newline (const char *file_path);
 
@@ -164,6 +168,10 @@ extern location_t expansion_point_location_if_in_system_header (location_t);
 extern location_t expansion_point_location (location_t);
 
 extern location_t input_location;
+
+extern location_t location_with_discriminator (location_t, int);
+extern bool has_discriminator (location_t);
+extern int get_discriminator_from_loc (location_t);
 
 #define LOCATION_FILE(LOC) ((expand_location (LOC)).file)
 #define LOCATION_LINE(LOC) ((expand_location (LOC)).line)

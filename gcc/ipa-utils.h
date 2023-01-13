@@ -1,5 +1,5 @@
 /* Utilities for ipa analysis.
-   Copyright (C) 2004-2022 Free Software Foundation, Inc.
+   Copyright (C) 2004-2023 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
@@ -30,7 +30,7 @@ struct ipa_dfs_info {
   bool new_node;
   bool on_stack;
   struct cgraph_node* next_cycle;
-  PTR aux;
+  void *aux;
 };
 
 

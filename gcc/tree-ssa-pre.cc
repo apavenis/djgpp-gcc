@@ -1,5 +1,5 @@
 /* Full and partial redundancy elimination and code hoisting on SSA GIMPLE.
-   Copyright (C) 2001-2022 Free Software Foundation, Inc.
+   Copyright (C) 2001-2023 Free Software Foundation, Inc.
    Contributed by Daniel Berlin <dan@dberlin.org> and Steven Bosscher
    <stevenb@suse.de>
 
@@ -34,10 +34,10 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-pretty-print.h"
 #include "fold-const.h"
 #include "cfganal.h"
+#include "gimple-iterator.h"
 #include "gimple-fold.h"
 #include "tree-eh.h"
 #include "gimplify.h"
-#include "gimple-iterator.h"
 #include "tree-cfg.h"
 #include "tree-into-ssa.h"
 #include "tree-dfa.h"
@@ -384,18 +384,6 @@ lookup_expression_id (const pre_expr expr)
     }
 }
 
-/* Return the existing expression id for EXPR, or create one if one
-   does not exist yet.  */
-
-static inline unsigned int
-get_or_alloc_expression_id (pre_expr expr)
-{
-  unsigned int id = lookup_expression_id (expr);
-  if (id == 0)
-    return alloc_expression_id (expr);
-  return expr->id = id;
-}
-
 /* Return the expression that has expression id ID */
 
 static inline pre_expr
@@ -729,7 +717,7 @@ add_to_value (unsigned int v, pre_expr e)
 	  set = BITMAP_ALLOC (&grand_bitmap_obstack);
 	  value_expressions[v] = set;
 	}
-      bitmap_set_bit (set, get_or_alloc_expression_id (e));
+      bitmap_set_bit (set, get_expression_id (e));
     }
 }
 
@@ -792,7 +780,7 @@ bitmap_insert_into_set (bitmap_set_t set, pre_expr expr)
          for the same value to appear in a set.  This is needed for
 	 TMP_GEN, PHI_GEN and NEW_SETs.  */
       bitmap_set_bit (&set->values, val);
-      bitmap_set_bit (&set->expressions, get_or_alloc_expression_id (expr));
+      bitmap_set_bit (&set->expressions, get_expression_id (expr));
     }
 }
 
@@ -1030,7 +1018,7 @@ bitmap_value_insert_into_set (bitmap_set_t set, pre_expr expr)
 {
   unsigned int val = get_expr_value_id (expr);
 
-  gcc_checking_assert (expr->id == get_or_alloc_expression_id (expr));
+  gcc_checking_assert (expr->id == get_expression_id (expr));
 
   /* Constant values are always considered to be part of the set.  */
   if (value_id_constant_p (val))
@@ -1248,7 +1236,11 @@ translate_vuse_through_block (vec<vn_reference_op_s> operands,
   if (same_valid)
     *same_valid = true;
 
-  if (gimple_bb (phi) != phiblock)
+  /* If value-numbering provided a memory state for this
+     that dominates PHIBLOCK we can just use that.  */
+  if (gimple_nop_p (phi)
+      || (gimple_bb (phi) != phiblock
+	  && dominated_by_p (CDI_DOMINATORS, phiblock, gimple_bb (phi))))
     return vuse;
 
   /* We have pruned expressions that are killed in PHIBLOCK via
@@ -2043,11 +2035,13 @@ prune_clobbered_mems (bitmap_set_t set, basic_block block)
 	    {
 	      gimple *def_stmt = SSA_NAME_DEF_STMT (ref->vuse);
 	      if (!gimple_nop_p (def_stmt)
-		  && ((gimple_bb (def_stmt) != block
-		       && !dominated_by_p (CDI_DOMINATORS,
-					   block, gimple_bb (def_stmt)))
-		      || (gimple_bb (def_stmt) == block
-			  && value_dies_in_block_x (expr, block))))
+		  /* If value-numbering provided a memory state for this
+		     that dominates BLOCK we're done, otherwise we have
+		     to check if the value dies in BLOCK.  */
+		  && !(gimple_bb (def_stmt) != block
+		       && dominated_by_p (CDI_DOMINATORS,
+					  block, gimple_bb (def_stmt)))
+		  && value_dies_in_block_x (expr, block))
 		to_remove = i;
 	    }
 	  /* If the REFERENCE may trap make sure the block does not contain
@@ -4351,9 +4345,9 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual bool gate (function *)
+  bool gate (function *) final override
     { return flag_tree_pre != 0 || flag_code_hoisting != 0; }
-  virtual unsigned int execute (function *);
+  unsigned int execute (function *) final override;
 
 }; // class pass_pre
 

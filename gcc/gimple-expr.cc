@@ -1,6 +1,6 @@
 /* Gimple decl, type, and expression support functions.
 
-   Copyright (C) 2007-2022 Free Software Foundation, Inc.
+   Copyright (C) 2007-2023 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez <aldyh@redhat.com>
 
 This file is part of GCC.
@@ -614,17 +614,6 @@ is_gimple_condexpr_1 (tree t, bool allow_traps, bool allow_cplx)
 	      && is_gimple_val (TREE_OPERAND (t, 1))));
 }
 
-/* Return true if T is a condition operand in a GIMPLE assignment
-   with a COND_EXPR RHS.  */
-
-bool
-is_gimple_condexpr (tree t)
-{
-  /* Always split out _Complex type compares since complex lowering
-     doesn't handle this case.  */
-  return is_gimple_condexpr_1 (t, true, false);
-}
-
 /* Like is_gimple_condexpr, but does not allow T to trap.  */
 
 bool
@@ -923,7 +912,7 @@ mark_addressable_1 (tree x)
 
 /* Adaptor for mark_addressable_1 for use in hash_set traversal.  */
 
-bool
+static bool
 mark_addressable_2 (tree const &x, void * ATTRIBUTE_UNUSED = NULL)
 {
   mark_addressable_1 (x);

@@ -44,7 +44,7 @@ extern (C++) class Initializer : ASTNode
     Loc loc;
     InitKind kind;
 
-    override DYNCAST dyncast() const nothrow pure
+    override DYNCAST dyncast() const
     {
         return DYNCAST.initializer;
     }
@@ -167,6 +167,7 @@ extern (C++) final class ArrayInitializer : Initializer
     uint dim;               // length of array being initialized
     Type type;              // type that array will be used to initialize
     bool sem;               // true if semantic() is run
+    bool isCarray;          // C array semantics
 
     extern (D) this(const ref Loc loc)
     {
@@ -270,10 +271,10 @@ Initializer syntaxCopy(Initializer inx)
     static Initializer copyStruct(StructInitializer vi)
     {
         auto si = new StructInitializer(vi.loc);
-        assert(vi.field.dim == vi.value.dim);
-        si.field.setDim(vi.field.dim);
-        si.value.setDim(vi.value.dim);
-        foreach (const i; 0 .. vi.field.dim)
+        assert(vi.field.length == vi.value.length);
+        si.field.setDim(vi.field.length);
+        si.value.setDim(vi.value.length);
+        foreach (const i; 0 .. vi.field.length)
         {
             si.field[i] = vi.field[i];
             si.value[i] = vi.value[i].syntaxCopy();
@@ -284,10 +285,10 @@ Initializer syntaxCopy(Initializer inx)
     static Initializer copyArray(ArrayInitializer vi)
     {
         auto ai = new ArrayInitializer(vi.loc);
-        assert(vi.index.dim == vi.value.dim);
-        ai.index.setDim(vi.index.dim);
-        ai.value.setDim(vi.value.dim);
-        foreach (const i; 0 .. vi.value.dim)
+        assert(vi.index.length == vi.value.length);
+        ai.index.setDim(vi.index.length);
+        ai.value.setDim(vi.value.length);
+        foreach (const i; 0 .. vi.value.length)
         {
             ai.index[i] = vi.index[i] ? vi.index[i].syntaxCopy() : null;
             ai.value[i] = vi.value[i].syntaxCopy();

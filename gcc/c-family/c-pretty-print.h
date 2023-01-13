@@ -51,7 +51,7 @@ class c_pretty_printer : public pretty_printer
 {
 public:
   c_pretty_printer ();
-  pretty_printer *clone () const OVERRIDE;
+  pretty_printer *clone () const override;
 
   // Format string, possibly translated.
   void translate_string (const char *);
@@ -119,7 +119,6 @@ void pp_c_space_for_pointer_operator (c_pretty_printer *, tree);
 /* Declarations.  */
 void pp_c_tree_decl_identifier (c_pretty_printer *, tree);
 void pp_c_function_definition (c_pretty_printer *, tree);
-void pp_c_attributes (c_pretty_printer *, tree);
 void pp_c_attributes_display (c_pretty_printer *, tree);
 void pp_c_cv_qualifiers (c_pretty_printer *pp, int qualifiers, bool func_type);
 void pp_c_type_qualifier_list (c_pretty_printer *, tree);

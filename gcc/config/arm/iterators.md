@@ -1,5 +1,5 @@
 ;; Code and mode itertator and attribute definitions for the ARM backend
-;; Copyright (C) 2010-2022 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2023 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 ;;
 ;; This file is part of GCC.
@@ -1149,6 +1149,13 @@
 (define_int_attr vrint_conds [(UNSPEC_VRINTZ "nocond") (UNSPEC_VRINTP "unconditional")
                               (UNSPEC_VRINTA "unconditional") (UNSPEC_VRINTM "unconditional")
                               (UNSPEC_VRINTR "nocond") (UNSPEC_VRINTX "nocond")])
+
+(define_int_attr nvrint_pattern [(UNSPEC_NVRINTZ "btrunc")
+				 (UNSPEC_NVRINTP "ceil")
+				 (UNSPEC_NVRINTA "round")
+				 (UNSPEC_NVRINTM "floor")
+				 (UNSPEC_NVRINTX "rint")
+				 (UNSPEC_NVRINTN "roundeven")])
 
 (define_int_attr nvrint_variant [(UNSPEC_NVRINTZ "z") (UNSPEC_NVRINTP "p")
                                 (UNSPEC_NVRINTA "a") (UNSPEC_NVRINTM "m")

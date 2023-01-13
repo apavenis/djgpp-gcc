@@ -1,5 +1,5 @@
 /* Vectorizer Specific Loop Manipulations
-   Copyright (C) 2003-2022 Free Software Foundation, Inc.
+   Copyright (C) 2003-2023 Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
    and Ira Rosen <irar@il.ibm.com>
 
@@ -312,7 +312,8 @@ interleave_supported_p (vec_perm_indices *indices, tree vectype,
       sel.quick_push (base + i + nelts);
     }
   indices->new_vector (sel, 2, nelts);
-  return can_vec_perm_const_p (TYPE_MODE (vectype), *indices);
+  return can_vec_perm_const_p (TYPE_MODE (vectype), TYPE_MODE (vectype),
+			       *indices);
 }
 
 /* Try to use permutes to define the masks in DEST_RGM using the masks
@@ -919,9 +920,22 @@ vect_set_loop_condition_normal (class loop *loop, tree niters, tree step,
 
   if (final_iv)
     {
-      gassign *assign = gimple_build_assign (final_iv, MINUS_EXPR,
-					     indx_after_incr, init);
-      gsi_insert_on_edge_immediate (single_exit (loop), assign);
+      gassign *assign;
+      edge exit = single_exit (loop);
+      gcc_assert (single_pred_p (exit->dest));
+      tree phi_dest
+	= integer_zerop (init) ? final_iv : copy_ssa_name (indx_after_incr);
+      /* Make sure to maintain LC SSA form here and elide the subtraction
+	 if the value is zero.  */
+      gphi *phi = create_phi_node (phi_dest, exit->dest);
+      add_phi_arg (phi, indx_after_incr, exit, UNKNOWN_LOCATION);
+      if (!integer_zerop (init))
+	{
+	  assign = gimple_build_assign (final_iv, MINUS_EXPR,
+					phi_dest, init);
+	  gimple_stmt_iterator gsi = gsi_after_labels (exit->dest);
+	  gsi_insert_before (&gsi, assign, GSI_SAME_STMT);
+	}
     }
 
   return cond_stmt;
@@ -978,7 +992,7 @@ vect_set_loop_condition (class loop *loop, loop_vec_info loop_vinfo,
 
   if (dump_enabled_p ())
     dump_printf_loc (MSG_NOTE, vect_location, "New loop exit condition: %G",
-		     cond_stmt);
+		     (gimple *) cond_stmt);
 }
 
 /* Helper routine of slpeel_tree_duplicate_loop_to_edge_cfg.
@@ -1318,56 +1332,6 @@ slpeel_can_duplicate_loop_p (const class loop *loop, const_edge e)
   return true;
 }
 
-/* If the loop has a virtual PHI, but exit bb doesn't, create a virtual PHI
-   in the exit bb and rename all the uses after the loop.  This simplifies
-   the *guard[12] routines, which assume loop closed SSA form for all PHIs
-   (but normally loop closed SSA form doesn't require virtual PHIs to be
-   in the same form).  Doing this early simplifies the checking what
-   uses should be renamed.
-
-   If we create a new phi after the loop, return the definition that
-   applies on entry to the loop, otherwise return null.  */
-
-static tree
-create_lcssa_for_virtual_phi (class loop *loop)
-{
-  gphi_iterator gsi;
-  edge exit_e = single_exit (loop);
-
-  for (gsi = gsi_start_phis (loop->header); !gsi_end_p (gsi); gsi_next (&gsi))
-    if (virtual_operand_p (gimple_phi_result (gsi_stmt (gsi))))
-      {
-	gphi *phi = gsi.phi ();
-	for (gsi = gsi_start_phis (exit_e->dest);
-	     !gsi_end_p (gsi); gsi_next (&gsi))
-	  if (virtual_operand_p (gimple_phi_result (gsi_stmt (gsi))))
-	    break;
-	if (gsi_end_p (gsi))
-	  {
-	    tree new_vop = copy_ssa_name (PHI_RESULT (phi));
-	    gphi *new_phi = create_phi_node (new_vop, exit_e->dest);
-	    tree vop = PHI_ARG_DEF_FROM_EDGE (phi, EDGE_SUCC (loop->latch, 0));
-	    imm_use_iterator imm_iter;
-	    gimple *stmt;
-	    use_operand_p use_p;
-
-	    SSA_NAME_OCCURS_IN_ABNORMAL_PHI (new_vop)
-	      = SSA_NAME_OCCURS_IN_ABNORMAL_PHI (vop);
-	    add_phi_arg (new_phi, vop, exit_e, UNKNOWN_LOCATION);
-	    gimple_phi_set_result (new_phi, new_vop);
-	    FOR_EACH_IMM_USE_STMT (stmt, imm_iter, vop)
-	      if (stmt != new_phi
-		  && !flow_bb_inside_loop_p (loop, gimple_bb (stmt)))
-		FOR_EACH_IMM_USE_ON_STMT (use_p, imm_iter)
-		  SET_USE (use_p, new_vop);
-
-	    return PHI_ARG_DEF_FROM_EDGE (phi, loop_preheader_edge (loop));
-	  }
-	break;
-      }
-  return NULL_TREE;
-}
-
 /* Function vect_get_loop_location.
 
    Extract the location of the loop in the source code.
@@ -1449,6 +1413,7 @@ vect_can_advance_ivs_p (loop_vec_info loop_vinfo)
   for (gsi = gsi_start_phis (bb); !gsi_end_p (gsi); gsi_next (&gsi))
     {
       tree evolution_part;
+      enum vect_induction_op_type induction_type;
 
       gphi *phi = gsi.phi ();
       stmt_vec_info phi_info = loop_vinfo->lookup_stmt (phi);
@@ -1465,6 +1430,15 @@ vect_can_advance_ivs_p (loop_vec_info loop_vinfo)
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_NOTE, vect_location,
 			     "reduc or virtual phi. skip.\n");
+	  continue;
+	}
+
+      induction_type = STMT_VINFO_LOOP_PHI_EVOLUTION_TYPE (phi_info);
+      if (induction_type != vect_step_op_add)
+	{
+	  if (!vect_can_peel_nonlinear_iv_p (loop_vinfo, induction_type))
+	    return false;
+
 	  continue;
 	}
 
@@ -1575,7 +1549,8 @@ vect_update_ivs_after_vectorizer (loop_vec_info loop_vinfo,
       stmt_vec_info phi_info = loop_vinfo->lookup_stmt (phi);
       if (dump_enabled_p ())
 	dump_printf_loc (MSG_NOTE, vect_location,
-			 "vect_update_ivs_after_vectorizer: phi: %G", phi);
+			 "vect_update_ivs_after_vectorizer: phi: %G",
+			 (gimple *) phi);
 
       /* Skip reduction and virtual phis.  */
       if (!iv_phi_p (phi_info))
@@ -1595,15 +1570,30 @@ vect_update_ivs_after_vectorizer (loop_vec_info loop_vinfo,
       gcc_assert (!tree_is_chrec (step_expr));
 
       init_expr = PHI_ARG_DEF_FROM_EDGE (phi, loop_preheader_edge (loop));
+      gimple_seq stmts = NULL;
+      enum vect_induction_op_type induction_type
+	= STMT_VINFO_LOOP_PHI_EVOLUTION_TYPE (phi_info);
 
-      off = fold_build2 (MULT_EXPR, TREE_TYPE (step_expr),
-			 fold_convert (TREE_TYPE (step_expr), niters),
-			 step_expr);
-      if (POINTER_TYPE_P (type))
-	ni = fold_build_pointer_plus (init_expr, off);
+      if (induction_type == vect_step_op_add)
+	{
+	  tree stype = TREE_TYPE (step_expr);
+	  off = fold_build2 (MULT_EXPR, stype,
+			     fold_convert (stype, niters), step_expr);
+	  if (POINTER_TYPE_P (type))
+	    ni = fold_build_pointer_plus (init_expr, off);
+	  else
+	    ni = fold_convert (type,
+			       fold_build2 (PLUS_EXPR, stype,
+					    fold_convert (stype, init_expr),
+					    off));
+	}
+      /* Don't bother call vect_peel_nonlinear_iv_init.  */
+      else if (induction_type == vect_step_op_neg)
+	ni = init_expr;
       else
-	ni = fold_build2 (PLUS_EXPR, type,
-			  init_expr, fold_convert (type, off));
+	ni = vect_peel_nonlinear_iv_init (&stmts, init_expr,
+					  niters, step_expr,
+					  induction_type);
 
       var = create_tmp_var (type, "tmp");
 
@@ -1612,9 +1602,15 @@ vect_update_ivs_after_vectorizer (loop_vec_info loop_vinfo,
       ni_name = force_gimple_operand (ni, &new_stmts, false, var);
       /* Exit_bb shouldn't be empty.  */
       if (!gsi_end_p (last_gsi))
-	gsi_insert_seq_after (&last_gsi, new_stmts, GSI_SAME_STMT);
+	{
+	  gsi_insert_seq_after (&last_gsi, stmts, GSI_SAME_STMT);
+	  gsi_insert_seq_after (&last_gsi, new_stmts, GSI_SAME_STMT);
+	}
       else
-	gsi_insert_seq_before (&last_gsi, new_stmts, GSI_SAME_STMT);
+	{
+	  gsi_insert_seq_before (&last_gsi, stmts, GSI_SAME_STMT);
+	  gsi_insert_seq_before (&last_gsi, new_stmts, GSI_SAME_STMT);
+	}
 
       /* Fix phi expressions in the successor bb.  */
       adjust_phi_and_debug_stmts (phi1, update_e, ni_name);
@@ -2014,7 +2010,8 @@ vect_gen_vector_loop_niters (loop_vec_info loop_vinfo, tree niters,
   else
     ni_minus_gap = niters;
 
-  unsigned HOST_WIDE_INT const_vf;
+  /* To silence some unexpected warnings, simply initialize to 0. */
+  unsigned HOST_WIDE_INT const_vf = 0;
   if (vf.is_constant (&const_vf)
       && !LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo))
     {
@@ -2682,40 +2679,26 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
   class loop *first_loop = loop;
   bool irred_flag = loop_preheader_edge (loop)->flags & EDGE_IRREDUCIBLE_LOOP;
 
-  /* We might have a queued need to update virtual SSA form.  As we
-     delete the update SSA machinery below after doing a regular
-     incremental SSA update during loop copying make sure we don't
-     lose that fact.
-     ???  Needing to update virtual SSA form by renaming is unfortunate
-     but not all of the vectorizer code inserting new loads / stores
-     properly assigns virtual operands to those statements.  */
-  update_ssa (TODO_update_ssa_only_virtuals);
+  /* SSA form needs to be up-to-date since we are going to manually
+     update SSA form in slpeel_tree_duplicate_loop_to_edge_cfg and delete all
+     update SSA state after that, so we have to make sure to not lose any
+     pending update needs.  */
+  gcc_assert (!need_ssa_update_p (cfun));
 
-  create_lcssa_for_virtual_phi (loop);
-
-  /* If we're vectorizing an epilogue loop, the update_ssa above will
-     have ensured that the virtual operand is in SSA form throughout the
-     vectorized main loop.  Normally it is possible to trace the updated
+  /* If we're vectorizing an epilogue loop, we have ensured that the
+     virtual operand is in SSA form throughout the vectorized main loop.
+     Normally it is possible to trace the updated
      vector-stmt vdefs back to scalar-stmt vdefs and vector-stmt vuses
      back to scalar-stmt vuses, meaning that the effect of the SSA update
      remains local to the main loop.  However, there are rare cases in
-     which the vectorized loop has vdefs even when the original scalar
+     which the vectorized loop should have vdefs even when the original scalar
      loop didn't.  For example, vectorizing a load with IFN_LOAD_LANES
      introduces clobbers of the temporary vector array, which in turn
      needs new vdefs.  If the scalar loop doesn't write to memory, these
      new vdefs will be the only ones in the vector loop.
-
-     In that case, update_ssa will have added a new virtual phi to the
-     main loop, which previously didn't need one.  Ensure that we (locally)
-     maintain LCSSA form for the virtual operand, just as we would have
-     done if the virtual phi had existed from the outset.  This makes it
-     easier to duplicate the scalar epilogue loop below.  */
-  tree vop_to_rename = NULL_TREE;
-  if (loop_vec_info orig_loop_vinfo = LOOP_VINFO_ORIG_LOOP_INFO (loop_vinfo))
-    {
-      class loop *orig_loop = LOOP_VINFO_LOOP (orig_loop_vinfo);
-      vop_to_rename = create_lcssa_for_virtual_phi (orig_loop);
-    }
+     We are currently defering updating virtual SSA form and creating
+     of a virtual PHI for this case so we do not have to make sure the
+     newly introduced virtual def is in LCSSA form.  */
 
   if (MAY_HAVE_DEBUG_BIND_STMTS)
     {
@@ -2809,9 +2792,20 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
   if (LOOP_VINFO_PEELING_FOR_GAPS (loop_vinfo))
     skip_epilog = false;
 
+  class loop *scalar_loop = LOOP_VINFO_SCALAR_LOOP (loop_vinfo);
+  auto_vec<profile_count> original_counts;
+  basic_block *original_bbs = NULL;
+
   if (skip_vector)
     {
       split_edge (loop_preheader_edge (loop));
+
+      if (epilog_peeling && (vect_epilogues || scalar_loop == NULL))
+	{
+	  original_bbs = get_loop_body (loop);
+	  for (unsigned int i = 0; i < loop->num_nodes; i++)
+	    original_counts.safe_push(original_bbs[i]->count);
+	}
 
       /* Due to the order in which we peel prolog and epilog, we first
 	 propagate probability to the whole loop.  The purpose is to
@@ -2827,7 +2821,6 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
     }
 
   dump_user_location_t loop_loc = find_loop_location (loop);
-  class loop *scalar_loop = LOOP_VINFO_SCALAR_LOOP (loop_vinfo);
   if (vect_epilogues)
     /* Make sure to set the epilogue's epilogue scalar loop, such that we can
        use the original scalar loop as remaining epilogue if necessary.  */
@@ -2926,26 +2919,6 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 	 as the transformations mentioned above make less or no sense when not
 	 vectorizing.  */
       epilog = vect_epilogues ? get_loop_copy (loop) : scalar_loop;
-      if (vop_to_rename)
-	{
-	  /* Vectorizing the main loop can sometimes introduce a vdef to
-	     a loop that previously didn't have one; see the comment above
-	     the definition of VOP_TO_RENAME for details.  The definition
-	     D that holds on E will then be different from the definition
-	     VOP_TO_RENAME that holds during SCALAR_LOOP, so we need to
-	     rename VOP_TO_RENAME to D when copying the loop.
-
-	     The virtual operand is in LCSSA form for the main loop,
-	     and no stmt between the main loop and E needs a vdef,
-	     so we know that D is provided by a phi rather than by a
-	     vdef on a normal gimple stmt.  */
-	  basic_block vdef_bb = e->src;
-	  gphi *vphi;
-	  while (!(vphi = get_virtual_phi (vdef_bb)))
-	    vdef_bb = get_immediate_dominator (CDI_DOMINATORS, vdef_bb);
-	  gcc_assert (vop_to_rename != gimple_phi_result (vphi));
-	  set_current_def (vop_to_rename, gimple_phi_result (vphi));
-	}
       epilog = slpeel_tree_duplicate_loop_to_edge_cfg (loop, epilog, e);
       if (!epilog)
 	{
@@ -2984,16 +2957,19 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 	     a merge point of control flow.  */
 	  guard_to->count = guard_bb->count;
 
-	  /* Scale probability of epilog loop back.
-	     FIXME: We should avoid scaling down and back up.  Profile may
-	     get lost if we scale down to 0.  */
-	  basic_block *bbs = get_loop_body (epilog);
-	  for (unsigned int i = 0; i < epilog->num_nodes; i++)
-	    bbs[i]->count = bbs[i]->count.apply_scale
-				 (bbs[i]->count,
-				  bbs[i]->count.apply_probability
-				    (prob_vector));
-	  free (bbs);
+	  /* Restore the counts of the epilog loop if we didn't use the scalar loop. */
+	  if (vect_epilogues || scalar_loop == NULL)
+	    {
+	      gcc_assert(epilog->num_nodes == loop->num_nodes);
+	      basic_block *bbs = get_loop_body (epilog);
+	      for (unsigned int i = 0; i < epilog->num_nodes; i++)
+		{
+		  gcc_assert(get_bb_original (bbs[i]) == original_bbs[i]);
+		  bbs[i]->count = original_counts[i];
+		}
+	      free (bbs);
+	      free (original_bbs);
+	    }
 	}
 
       basic_block bb_before_epilog = loop_preheader_edge (epilog)->src;
@@ -3682,7 +3658,7 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
 	    }
 	}
 
-      update_ssa (TODO_update_ssa);
+      update_ssa (TODO_update_ssa_no_phi);
     }
 
   /* Split the cost model check off to a separate BB.  Costing assumes

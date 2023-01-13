@@ -1,5 +1,5 @@
 /* Callgraph handling code.
-   Copyright (C) 2003-2022 Free Software Foundation, Inc.
+   Copyright (C) 2003-2023 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -545,12 +545,12 @@ cgraph_node::get_create (tree decl)
       node->order = first_clone->order;
       symtab->symtab_prevail_in_asm_name_hash (node);
       node->decl->decl_with_vis.symtab_node = node;
-      if (dump_file)
+      if (dump_file && symtab->state != PARSING)
 	fprintf (dump_file, "Introduced new external node "
 		 "(%s) and turned into root of the clone tree.\n",
 		 node->dump_name ());
     }
-  else if (dump_file)
+  else if (dump_file && symtab->state != PARSING)
     fprintf (dump_file, "Introduced new external node "
 	     "(%s).\n", node->dump_name ());
   return node;
@@ -1411,7 +1411,6 @@ cgraph_edge::redirect_call_stmt_to_callee (cgraph_edge *e)
 {
   tree decl = gimple_call_fndecl (e->call_stmt);
   gcall *new_stmt;
-  gimple_stmt_iterator gsi;
 
   if (e->speculative)
     {
@@ -1423,7 +1422,7 @@ cgraph_edge::redirect_call_stmt_to_callee (cgraph_edge *e)
       else
 	{
 	  /* Be sure we redirect all speculative targets before poking
-	     abou tindirect edge.  */
+	     about indirect edge.  */
 	  gcc_checking_assert (e->callee);
 	  cgraph_edge *indirect = e->speculative_call_indirect_edge ();
 	  gcall *new_stmt;
@@ -1572,18 +1571,17 @@ cgraph_edge::redirect_call_stmt_to_callee (cgraph_edge *e)
       && (VOID_TYPE_P (TREE_TYPE (gimple_call_fntype (new_stmt)))
 	  || should_remove_lhs_p (lhs)))
     {
+      gimple_call_set_lhs (new_stmt, NULL_TREE);
+      /* We need to fix up the SSA name to avoid checking errors.  */
       if (TREE_CODE (lhs) == SSA_NAME)
 	{
 	  tree var = create_tmp_reg_fn (DECL_STRUCT_FUNCTION (e->caller->decl),
 					TREE_TYPE (lhs), NULL);
-	  var = get_or_create_ssa_default_def
-		  (DECL_STRUCT_FUNCTION (e->caller->decl), var);
-	  gimple *set_stmt = gimple_build_assign (lhs, var);
-	  gsi = gsi_for_stmt (new_stmt);
-	  gsi_insert_before_without_update (&gsi, set_stmt, GSI_SAME_STMT);
-	  update_stmt_fn (DECL_STRUCT_FUNCTION (e->caller->decl), set_stmt);
+	  SET_SSA_NAME_VAR_OR_IDENTIFIER (lhs, var);
+	  SSA_NAME_DEF_STMT (lhs) = gimple_build_nop ();
+	  set_ssa_default_def (DECL_STRUCT_FUNCTION (e->caller->decl),
+			       var, lhs);
 	}
-      gimple_call_set_lhs (new_stmt, NULL_TREE);
       update_stmt_fn (DECL_STRUCT_FUNCTION (e->caller->decl), new_stmt);
     }
 
@@ -2492,7 +2490,6 @@ cgraph_node::make_local (cgraph_node *node, void *)
       node->externally_visible = false;
       node->forced_by_abi = false;
       node->local = true;
-      node->set_section (NULL);
       node->unique_name = ((node->resolution == LDPR_PREVAILING_DEF_IRONLY
 			   || node->resolution == LDPR_PREVAILING_DEF_IRONLY_EXP)
 			   && !flag_incremental_link);
@@ -2935,11 +2932,10 @@ cgraph_edge::maybe_hot_p (void)
     return false;
   if (caller->frequency == NODE_FREQUENCY_EXECUTED_ONCE)
     {
-      if (count.apply_scale (2, 1) < where->count.apply_scale (3, 1))
+      if (count * 2 < where->count * 3)
 	return false;
     }
-  else if (count.apply_scale (param_hot_bb_frequency_fraction , 1)
-	   < where->count)
+  else if (count * param_hot_bb_frequency_fraction < where->count)
     return false;
   return true;
 }
@@ -3752,7 +3748,9 @@ cgraph_node::verify_node (void)
 	   && (!DECL_EXTERNAL (decl) || inlined_to)
 	   && !flag_wpa)
     {
-      if (this_cfun->cfg)
+      if ((this_cfun->curr_properties & PROP_assumptions_done) != 0)
+	;
+      else if (this_cfun->cfg)
 	{
 	  hash_set<gimple *> stmts;
 

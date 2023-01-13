@@ -2892,7 +2892,12 @@ do_subscript (gfc_expr **e)
 
 		  cmp = mpz_cmp (do_end, do_start);
 		  if ((sgn > 0 && cmp < 0) || (sgn < 0 && cmp > 0))
-		    break;
+		    {
+		      mpz_clear (do_start);
+		      mpz_clear (do_end);
+		      mpz_clear (do_step);
+		      break;
+		    }
 		}
 
 	      /* May have to correct the end value if the step does not equal
@@ -2965,6 +2970,12 @@ do_subscript (gfc_expr **e)
 		      mpz_clear (val);
 		    }
 		}
+
+	      if (have_do_start)
+		mpz_clear (do_start);
+	      if (have_do_end)
+		mpz_clear (do_end);
+	      mpz_clear (do_step);
 	    }
 	}
     }
@@ -5654,9 +5665,7 @@ gfc_code_walker (gfc_code **c, walk_code_fn_t codefn, walk_expr_fn_t exprfn,
 		  WALK_SUBEXPR (co->ext.omp_clauses->detach);
 		  for (idx = 0; idx < OMP_IF_LAST; idx++)
 		    WALK_SUBEXPR (co->ext.omp_clauses->if_exprs[idx]);
-		  for (idx = 0;
-		       idx < sizeof (list_types) / sizeof (list_types[0]);
-		       idx++)
+		  for (idx = 0; idx < ARRAY_SIZE (list_types); idx++)
 		    for (n = co->ext.omp_clauses->lists[list_types[idx]];
 			 n; n = n->next)
 		      WALK_SUBEXPR (n->expr);

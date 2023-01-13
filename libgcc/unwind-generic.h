@@ -30,6 +30,7 @@
 
 #if defined (__SEH__) && !defined (__USING_SJLJ_EXCEPTIONS__)
 /* Only for _GCC_specific_handler.  */
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 
@@ -292,6 +293,6 @@ EXCEPTION_DISPOSITION _GCC_specific_handler (PEXCEPTION_RECORD, void *,
 #define _Unwind_Frames_Extra(frames)
 
 /* Increment frame count.  */
-#define _Unwind_Frames_Increment(context, frames) frames++
+#define _Unwind_Frames_Increment(exc, context, frames) frames++
 
 #endif /* unwind.h */

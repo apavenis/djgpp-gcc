@@ -1,5 +1,5 @@
 /* CFG cleanup for trees.
-   Copyright (C) 2001-2022 Free Software Foundation, Inc.
+   Copyright (C) 2001-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -220,9 +220,10 @@ cleanup_call_ctrl_altering_flag (basic_block bb, gimple *bb_end)
     return;
 
   int flags = gimple_call_flags (bb_end);
-  if (((flags & (ECF_CONST | ECF_PURE))
-       && !(flags & ECF_LOOPING_CONST_OR_PURE))
-      || (flags & ECF_LEAF))
+  if (!(flags & ECF_NORETURN)
+      && (((flags & (ECF_CONST | ECF_PURE))
+	   && !(flags & ECF_LOOPING_CONST_OR_PURE))
+	  || (flags & ECF_LEAF)))
     gimple_call_set_ctrl_altering (bb_end, false);
   else
     {
@@ -328,6 +329,10 @@ cleanup_control_flow_bb (basic_block bb)
 	gsi_remove (&gsi, true);
       if (remove_fallthru_edge (bb->succs))
 	retval = true;
+      tree lhs = gimple_call_lhs (stmt);
+      if (!lhs
+	  || !should_remove_lhs_p (lhs))
+	gimple_call_set_ctrl_altering (stmt, true);
     }
 
   return retval;
@@ -445,7 +450,7 @@ tree_forwarder_block_p (basic_block bb, bool phi_wanted)
    those alternatives are equal in each of the PHI nodes, then return
    true, else return false.  */
 
-static bool
+bool
 phi_alternatives_equal (basic_block dest, edge e1, edge e2)
 {
   int n1 = e1->dest_idx;
@@ -1095,7 +1100,11 @@ cleanup_tree_cfg_noloop (unsigned ssa_update_flags)
   /* After doing the above SSA form should be valid (or an update SSA
      should be required).  */
   if (ssa_update_flags)
-    update_ssa (ssa_update_flags);
+    {
+      timevar_pop (TV_TREE_CLEANUP_CFG);
+      update_ssa (ssa_update_flags);
+      timevar_push (TV_TREE_CLEANUP_CFG);
+    }
 
   /* Compute dominator info which we need for the iterative process below.  */
   if (!dom_info_available_p (CDI_DOMINATORS))
@@ -1170,22 +1179,22 @@ static void
 repair_loop_structures (void)
 {
   bitmap changed_bbs;
-  unsigned n_new_loops;
+  unsigned n_new_or_deleted_loops;
 
   calculate_dominance_info (CDI_DOMINATORS);
 
   timevar_push (TV_REPAIR_LOOPS);
   changed_bbs = BITMAP_ALLOC (NULL);
-  n_new_loops = fix_loop_structure (changed_bbs);
+  n_new_or_deleted_loops = fix_loop_structure (changed_bbs);
 
   /* This usually does nothing.  But sometimes parts of cfg that originally
      were inside a loop get out of it due to edge removal (since they
      become unreachable by back edges from latch).  Also a former
      irreducible loop can become reducible - in this case force a full
      rewrite into loop-closed SSA form.  */
-  if (loops_state_satisfies_p (LOOP_CLOSED_SSA))
-    rewrite_into_loop_closed_ssa (n_new_loops ? NULL : changed_bbs,
-				  TODO_update_ssa);
+  if (loops_state_satisfies_p (LOOP_CLOSED_SSA)
+      && (!bitmap_empty_p (changed_bbs) || n_new_or_deleted_loops))
+    rewrite_into_loop_closed_ssa (NULL, TODO_update_ssa);
 
   BITMAP_FREE (changed_bbs);
 
@@ -1406,8 +1415,8 @@ public:
   {}
 
   /* opt_pass methods: */
-  opt_pass * clone () { return new pass_merge_phi (m_ctxt); }
-  virtual unsigned int execute (function *);
+  opt_pass * clone () final override { return new pass_merge_phi (m_ctxt); }
+  unsigned int execute (function *) final override;
 
 }; // class pass_merge_phi
 
@@ -1584,7 +1593,7 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual unsigned int execute (function *)
+  unsigned int execute (function *) final override
     {
       return execute_cleanup_cfg_post_optimizing ();
     }

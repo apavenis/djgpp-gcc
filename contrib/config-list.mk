@@ -40,26 +40,25 @@ LIST = aarch64-elf aarch64-linux-gnu aarch64-rtems \
   arm-symbianelf avr-elf \
   bfin-elf bfin-uclinux bfin-linux-uclibc bfin-rtems bfin-openbsd \
   bpf-unknown-none \
-  c6x-elf c6x-uclinux cr16-elfOPT-enable-obsolete cris-elf \
+  c6x-elf c6x-uclinux cris-elf \
   csky-elf csky-linux-gnu \
   epiphany-elf epiphany-elfOPT-with-stack-offset=16 fido-elf \
   fr30-elf frv-elf frv-linux ft32-elf h8300-elf hppa-linux-gnu \
   hppa-linux-gnuOPT-enable-sjlj-exceptions=yes hppa64-linux-gnu \
-  hppa2.0-hpux10.1OPT-enable-obsolete hppa64-hpux11.3 \
+  hppa64-hpux11.3 \
   hppa64-hpux11.0OPT-enable-sjlj-exceptions=yes \
-  hppa2.0-hpux11.9OPT-enable-obsolete \
   i686-pc-linux-gnu i686-apple-darwin i686-apple-darwin9 i686-apple-darwin10 \
-  i486-freebsd4 i686-freebsd6 i686-kfreebsd-gnu \
+  i686-freebsd6 i686-kfreebsd-gnu \
   i686-netbsdelf9 \
   i686-openbsd i686-elf i686-kopensolaris-gnu i686-symbolics-gnu \
   i686-pc-msdosdjgpp i686-lynxos i686-nto-qnx \
   i686-rtems i686-solaris2.11 i686-wrs-vxworks \
   i686-wrs-vxworksae \
   i686-cygwinOPT-enable-threads=yes i686-mingw32crt ia64-elf \
-  ia64-freebsd6 ia64-linux ia64-hpux ia64-hp-vms iq2000-elf lm32-elf \
+  ia64-linux ia64-hpux ia64-hp-vms iq2000-elf lm32-elf \
   lm32-rtems lm32-uclinux \
   loongarch64-linux-gnuf64 loongarch64-linux-gnuf32 loongarch64-linux-gnusf \
-  m32c-rtems m32c-elf m32r-elf m32rle-elf \
+  m32c-elf m32r-elf m32rle-elf \
   m68k-elf m68k-netbsdelf \
   m68k-uclinux m68k-linux m68k-rtems \
   mcore-elf microblaze-linux microblaze-elf \
@@ -94,10 +93,8 @@ LIST = aarch64-elf aarch64-linux-gnu aarch64-rtems \
   sparc-leon-elf sparc-rtems sparc-linux-gnu \
   sparc-leon3-linux-gnuOPT-enable-target=all sparc-netbsdelf \
   sparc64-sun-solaris2.11OPT-with-gnu-ldOPT-with-gnu-asOPT-enable-threads=posix \
-  sparc-wrs-vxworks sparc64-elf sparc64-rtems sparc64-linux sparc64-freebsd6 \
+  sparc-wrs-vxworks sparc64-elf sparc64-rtems sparc64-linux \
   sparc64-netbsd sparc64-openbsd \
-  tilegx-linux-gnuOPT-enable-obsolete tilegxbe-linux-gnuOPT-enable-obsolete \
-  tilepro-linux-gnuOPT-enable-obsolete \
   v850e1-elf v850e-elf v850-elf v850-rtems vax-linux-gnu \
   vax-netbsdelf visium-elf x86_64-apple-darwin \
   x86_64-pc-linux-gnuOPT-with-fpmath=avx \

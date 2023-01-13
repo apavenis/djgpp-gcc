@@ -2507,8 +2507,8 @@ create_function_arglist (gfc_symbol * sym)
 {
   tree fndecl;
   gfc_formal_arglist *f;
-  tree typelist, hidden_typelist;
-  tree arglist, hidden_arglist;
+  tree typelist, hidden_typelist, optval_typelist;
+  tree arglist, hidden_arglist, optval_arglist;
   tree type;
   tree parm;
 
@@ -2518,6 +2518,7 @@ create_function_arglist (gfc_symbol * sym)
      the new FUNCTION_DECL node.  */
   arglist = NULL_TREE;
   hidden_arglist = NULL_TREE;
+  optval_arglist = NULL_TREE;
   typelist = TYPE_ARG_TYPES (TREE_TYPE (fndecl));
 
   if (sym->attr.entry_master)
@@ -2619,6 +2620,15 @@ create_function_arglist (gfc_symbol * sym)
     if (f->sym != NULL)	/* Ignore alternate returns.  */
       hidden_typelist = TREE_CHAIN (hidden_typelist);
 
+  /* Advance hidden_typelist over optional+value argument presence flags.  */
+  optval_typelist = hidden_typelist;
+  for (f = gfc_sym_get_dummy_args (sym); f; f = f->next)
+    if (f->sym != NULL
+	&& f->sym->attr.optional && f->sym->attr.value
+	&& !f->sym->attr.dimension && f->sym->ts.type != BT_CLASS
+	&& !gfc_bt_struct (f->sym->ts.type))
+      hidden_typelist = TREE_CHAIN (hidden_typelist);
+
   for (f = gfc_sym_get_dummy_args (sym); f; f = f->next)
     {
       char name[GFC_MAX_SYMBOL_LEN + 2];
@@ -2698,28 +2708,30 @@ create_function_arglist (gfc_symbol * sym)
 		type = gfc_sym_type (f->sym);
 	    }
 	}
-      /* For noncharacter scalar intrinsic types, VALUE passes the value,
+      /* For scalar intrinsic types, VALUE passes the value,
 	 hence, the optional status cannot be transferred via a NULL pointer.
 	 Thus, we will use a hidden argument in that case.  */
-      else if (f->sym->attr.optional && f->sym->attr.value
-	       && !f->sym->attr.dimension && f->sym->ts.type != BT_CLASS
-	       && !gfc_bt_struct (f->sym->ts.type))
+      if (f->sym->attr.optional && f->sym->attr.value
+	  && !f->sym->attr.dimension && f->sym->ts.type != BT_CLASS
+	  && !gfc_bt_struct (f->sym->ts.type))
 	{
           tree tmp;
           strcpy (&name[1], f->sym->name);
-          name[0] = '_';
+	  name[0] = '.';
           tmp = build_decl (input_location,
 			    PARM_DECL, get_identifier (name),
 			    boolean_type_node);
 
-          hidden_arglist = chainon (hidden_arglist, tmp);
+	  optval_arglist = chainon (optval_arglist, tmp);
           DECL_CONTEXT (tmp) = fndecl;
           DECL_ARTIFICIAL (tmp) = 1;
           DECL_ARG_TYPE (tmp) = boolean_type_node;
           TREE_READONLY (tmp) = 1;
           gfc_finish_decl (tmp);
 
-	  hidden_typelist = TREE_CHAIN (hidden_typelist);
+	  /* The presence flag must be boolean.  */
+	  gcc_assert (TREE_VALUE (optval_typelist) == boolean_type_node);
+	  optval_typelist = TREE_CHAIN (optval_typelist);
 	}
 
       /* For non-constant length array arguments, make sure they use
@@ -2862,6 +2874,9 @@ create_function_arglist (gfc_symbol * sym)
       arglist = chainon (arglist, parm);
       typelist = TREE_CHAIN (typelist);
     }
+
+  /* Add hidden present status for optional+value arguments.  */
+  arglist = chainon (arglist, optval_arglist);
 
   /* Add the hidden string length parameters, unless the procedure
      is bind(C).  */
@@ -4835,7 +4850,7 @@ gfc_trans_deferred_vars (gfc_symbol * proc_sym, gfc_wrapped_block * block)
       else if ((!sym->attr.dummy || sym->ts.deferred)
 		&& (sym->ts.type == BT_CLASS
 		&& CLASS_DATA (sym)->attr.class_pointer))
-	continue;
+	gfc_trans_class_array (sym, block);
       else if ((!sym->attr.dummy || sym->ts.deferred)
 		&& (sym->attr.allocatable
 		    || (sym->attr.pointer && sym->attr.result)
@@ -4918,6 +4933,10 @@ gfc_trans_deferred_vars (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 		  gfc_restore_backend_locus (&loc);
 		  tmp = NULL_TREE;
 		}
+
+	      /* Initialize descriptor's TKR information.  */
+	      if (sym->ts.type == BT_CLASS)
+		gfc_trans_class_array (sym, block);
 
 	      /* Deallocate when leaving the scope. Nullifying is not
 		 needed.  */
@@ -5529,6 +5548,7 @@ generate_coarray_sym_init (gfc_symbol *sym)
 
   if (sym->attr.dummy || sym->attr.allocatable || !sym->attr.codimension
       || sym->attr.use_assoc || !sym->attr.referenced
+      || sym->attr.associate_var
       || sym->attr.select_type_temporary)
     return;
 
@@ -6474,7 +6494,7 @@ gfc_generate_return (void)
 	     NULL_TREE, and a 'return' is generated without a variable.
 	     The following generates a 'return __result_XXX' where XXX is
 	     the function name.  */
-	  if (sym == sym->result && sym->attr.function)
+	  if (sym == sym->result && sym->attr.function && !flag_f2c)
 	    {
 	      result = gfc_get_fake_result_decl (sym, 0);
 	      result = fold_build2_loc (input_location, MODIFY_EXPR,
@@ -7377,13 +7397,13 @@ done:
   /* Set string length for len=:, only.  */
   if (sym->ts.type == BT_CHARACTER && !sym->ts.u.cl->length)
     {
-      tmp = sym->ts.u.cl->backend_decl;
+      tmp2 = gfc_get_cfi_desc_elem_len (cfi);
+      tmp = fold_convert (TREE_TYPE (tmp2), sym->ts.u.cl->backend_decl);
       if (sym->ts.kind != 1)
 	tmp = fold_build2_loc (input_location, MULT_EXPR,
-			       gfc_array_index_type,
-			       sym->ts.u.cl->backend_decl, tmp);
-      tmp2 = gfc_get_cfi_desc_elem_len (cfi);
-      gfc_add_modify (&block, tmp2, fold_convert (TREE_TYPE (tmp2), tmp));
+			       TREE_TYPE (tmp2), tmp,
+			       build_int_cst (TREE_TYPE (tmp2), sym->ts.kind));
+      gfc_add_modify (&block, tmp2, tmp);
     }
 
   if (!sym->attr.dimension)

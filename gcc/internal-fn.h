@@ -1,5 +1,5 @@
 /* Internal functions.
-   Copyright (C) 2011-2022 Free Software Foundation, Inc.
+   Copyright (C) 2011-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -242,6 +242,8 @@ extern void expand_internal_call (internal_fn, gcall *);
 extern void expand_PHI (internal_fn, gcall *);
 extern void expand_SHUFFLEVECTOR (internal_fn, gcall *);
 extern void expand_SPACESHIP (internal_fn, gcall *);
+extern void expand_TRAP (internal_fn, gcall *);
+extern void expand_ASSUME (internal_fn, gcall *);
 
 extern bool vectorized_internal_fn_supported_p (internal_fn, tree);
 

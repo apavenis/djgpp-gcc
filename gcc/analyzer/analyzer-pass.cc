@@ -19,6 +19,7 @@ along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
+#define INCLUDE_MEMORY
 #include "system.h"
 #include "coretypes.h"
 #include "context.h"
@@ -26,7 +27,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "diagnostic.h"
 #include "options.h"
 #include "tree.h"
-#include "function.h"
 #include "analyzer/analyzer.h"
 #include "analyzer/engine.h"
 
@@ -66,8 +66,8 @@ public:
   {}
 
   /* opt_pass methods: */
-  bool gate (function *) FINAL OVERRIDE;
-  unsigned int execute (function *) FINAL OVERRIDE;
+  bool gate (function *) final override;
+  unsigned int execute (function *) final override;
 }; // class pass_analyzer
 
 /* Only run the analyzer if -fanalyzer.  */
