@@ -1,5 +1,4 @@
 # Specs file to building RPM of Linux to DJGPP cross-compiler
-# Tested on CentOS-6.8, Fedora 25. One may need
 # to modify this file for other RPM based Linux distribution
 
 %define gcc_version @__GCCVER__@
@@ -372,6 +371,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/float.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/gcov.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/iso646.h
+%{_libdir}/gcc/%{target}/%{gcc_version}/include/limits.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/mm3dnow.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/mm_malloc.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdarg.h
@@ -379,6 +379,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdbool.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stddef.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdfix.h
+%{_libdir}/gcc/%{target}/%{gcc_version}/include/syslimits.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/tgmath.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/unwind.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/varargs.h
@@ -410,6 +411,8 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/libsupc++.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++fs.a
 %{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++fs.la
+%{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++exp.a
+%{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++exp.la
 %{_libdir}/gcc/%{target}/%{gcc_version}/libstdc++.a-gdb.py
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1plus
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/g++-mapper-server
@@ -467,6 +470,9 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
+* Fri Jan 13 2022 Andris Pavenis <andris.pavenis@iki.fi>
+- Change to master branch for upcoming gcc-13
+
 * Fri Aug 19 2022 Andris Pavenis <andris.pavenis@iki.fi>
 - Update to gcc-12.2.0
 
