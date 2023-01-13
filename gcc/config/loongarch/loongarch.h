@@ -511,7 +511,7 @@ enum reg_class
 #define REG_CLASS_CONTENTS						\
 {									\
   { 0x00000000, 0x00000000, 0x00000000 },	/* NO_REGS  */		\
-  { 0x001ff000, 0x00000000, 0x00000000 },	/* SIBCALL_REGS  */	\
+  { 0x001fd000, 0x00000000, 0x00000000 },	/* SIBCALL_REGS  */	\
   { 0xff9ffff0, 0x00000000, 0x00000000 },	/* JIRL_REGS  */	\
   { 0xfffffffc, 0x00000000, 0x00000000 },	/* CSR_REGS  */		\
   { 0xffffffff, 0x00000000, 0x00000000 },	/* GR_REGS  */		\
@@ -561,7 +561,8 @@ enum reg_class
   64, 65, 66, 67, 68, 69, 70, 71, 72, 73}
 
 #define IMM_BITS 12
-#define IMM_REACH (1LL << IMM_BITS)
+#define IMM_REACH (HOST_WIDE_INT_1 << IMM_BITS)
+#define HWIT_1U HOST_WIDE_INT_1U
 
 /* True if VALUE is an unsigned 6-bit number.  */
 
@@ -589,18 +590,20 @@ enum reg_class
 /* True if VALUE can be loaded into a register using LU12I.  */
 
 #define LU12I_OPERAND(VALUE) \
-  (((VALUE) | ((1UL << 31) - IMM_REACH)) == ((1UL << 31) - IMM_REACH) \
-   || ((VALUE) | ((1UL << 31) - IMM_REACH)) + IMM_REACH == 0)
+  (((VALUE) | ((HWIT_1U << 31) - IMM_REACH)) == ((HWIT_1U << 31) - IMM_REACH) \
+   || ((VALUE) | ((HWIT_1U << 31) - IMM_REACH)) + IMM_REACH == 0)
 
 /* True if VALUE can be loaded into a register using LU32I.  */
 
 #define LU32I_OPERAND(VALUE) \
-  (((VALUE) | (((1ULL << 19) - 1) << 32)) == (((1ULL << 19) - 1) << 32) \
-   || ((VALUE) | (((1ULL << 19) - 1) << 32)) + (1ULL << 32) == 0)
+  (((VALUE) | (((HWIT_1U << 19) - 1) << 32)) == (((HWIT_1U << 19) - 1) << 32) \
+   || ((VALUE) | (((HWIT_1U << 19) - 1) << 32)) + (HWIT_1U << 32) == 0)
 
 /* True if VALUE can be loaded into a register using LU52I.  */
 
-#define LU52I_OPERAND(VALUE) (((VALUE) | (0xfffULL << 52)) == (0xfffULL << 52))
+#define HWIT_UC_0xFFF HOST_WIDE_INT_UC(0xfff)
+#define LU52I_OPERAND(VALUE) \
+  (((VALUE) | (HWIT_UC_0xFFF << 52)) == (HWIT_UC_0xFFF << 52))
 
 /* Return a value X with the low 12 bits clear, and such that
    VALUE - X is a signed 12-bit value.  */
@@ -614,7 +617,7 @@ enum reg_class
 #define LU12I_INT(X) LU12I_OPERAND (INTVAL (X))
 #define LU32I_INT(X) LU32I_OPERAND (INTVAL (X))
 #define LU52I_INT(X) LU52I_OPERAND (INTVAL (X))
-#define LARCH_U12BIT_OFFSET_P(OFFSET) (IN_RANGE (OFFSET, -2048, 2047))
+#define LARCH_12BIT_OFFSET_P(OFFSET) (IN_RANGE (OFFSET, -2048, 2047))
 #define LARCH_9BIT_OFFSET_P(OFFSET) (IN_RANGE (OFFSET, -256, 255))
 #define LARCH_16BIT_OFFSET_P(OFFSET) (IN_RANGE (OFFSET, -32768, 32767))
 #define LARCH_SHIFT_2_OFFSET_P(OFFSET) (((OFFSET) & 0x3) == 0)
@@ -664,6 +667,10 @@ enum reg_class
 #define OUTGOING_REG_PARM_STACK_SPACE(FNTYPE) 1
 
 #define STACK_BOUNDARY (TARGET_ABI_LP64 ? 128 : 64)
+
+/* This value controls how many pages we manually unroll the loop for when
+   generating stack clash probes.  */
+#define STACK_CLASH_MAX_UNROLL_PAGES 4
 
 /* Symbolic macros for the registers used to return integer and floating
    point values.  */
@@ -1127,8 +1134,13 @@ struct GTY (()) machine_function
 };
 #endif
 
+#ifdef HAVE_AS_EH_FRAME_PCREL_ENCODING_SUPPORT
+#define ASM_PREFERRED_EH_DATA_FORMAT(CODE, GLOBAL) \
+  (((GLOBAL) ? DW_EH_PE_indirect : 0) | DW_EH_PE_pcrel | DW_EH_PE_sdata4)
+#else
 #define ASM_PREFERRED_EH_DATA_FORMAT(CODE, GLOBAL) \
   (((GLOBAL) ? DW_EH_PE_indirect : 0) | DW_EH_PE_absptr)
+#endif
 
 /* Do emit .note.GNU-stack by default.  */
 #ifndef NEED_INDICATE_EXEC_STACK

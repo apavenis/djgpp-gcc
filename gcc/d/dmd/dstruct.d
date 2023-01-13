@@ -192,17 +192,6 @@ enum StructFlags : int
  */
 extern (C++) class StructDeclaration : AggregateDeclaration
 {
-    bool zeroInit;              // !=0 if initialize with 0 fill
-    bool hasIdentityAssign;     // true if has identity opAssign
-    bool hasBlitAssign;         // true if opAssign is a blit
-    bool hasIdentityEquals;     // true if has identity opEquals
-    bool hasNoFields;           // has no fields
-    bool hasCopyCtor;           // copy constructor
-    // Even if struct is defined as non-root symbol, some built-in operations
-    // (e.g. TypeidExp, NewExp, ArrayLiteralExp, etc) request its TypeInfo.
-    // For those, today TypeInfo_Struct is generated in COMDAT.
-    bool requestTypeInfo;
-
     FuncDeclarations postblits; // Array of postblit functions
     FuncDeclaration postblit;   // aggregate postblit
 
@@ -212,11 +201,34 @@ extern (C++) class StructDeclaration : AggregateDeclaration
     extern (C++) __gshared FuncDeclaration xerreq;   // object.xopEquals
     extern (C++) __gshared FuncDeclaration xerrcmp;  // object.xopCmp
 
+    // ABI-specific type(s) if the struct can be passed in registers
+    TypeTuple argTypes;
+
     structalign_t alignment;    // alignment applied outside of the struct
     ThreeState ispod;           // if struct is POD
 
-    // ABI-specific type(s) if the struct can be passed in registers
-    TypeTuple argTypes;
+    // `bool` fields that are compacted into bit fields in a string mixin
+    private extern (D) static struct BitFields
+    {
+        bool zeroInit;              // !=0 if initialize with 0 fill
+        bool hasIdentityAssign;     // true if has identity opAssign
+        bool hasBlitAssign;         // true if opAssign is a blit
+        bool hasIdentityEquals;     // true if has identity opEquals
+        bool hasNoFields;           // has no fields
+        bool hasCopyCtor;           // copy constructor
+        bool hasPointerField;       // members with indirections
+        bool hasVoidInitPointers;   // void-initialized unsafe fields
+        bool hasSystemFields;      // @system members
+        bool hasFieldWithInvariant; // invariants
+        bool computedTypeProperties;// the above 3 fields are computed
+        // Even if struct is defined as non-root symbol, some built-in operations
+        // (e.g. TypeidExp, NewExp, ArrayLiteralExp, etc) request its TypeInfo.
+        // For those, today TypeInfo_Struct is generated in COMDAT.
+        bool requestTypeInfo;
+    }
+
+    import dmd.common.bitfields : generateBitFields;
+    mixin(generateBitFields!(BitFields, ushort));
 
     extern (D) this(const ref Loc loc, Identifier id, bool inObject)
     {
@@ -280,14 +292,14 @@ extern (C++) class StructDeclaration : AggregateDeclaration
         }
         sizeok = Sizeok.inProcess;
 
-        //printf("+StructDeclaration::finalizeSize() %s, fields.dim = %d, sizeok = %d\n", toChars(), fields.dim, sizeok);
+        //printf("+StructDeclaration::finalizeSize() %s, fields.length = %d, sizeok = %d\n", toChars(), fields.length, sizeok);
 
         fields.setDim(0);   // workaround
 
         // Set the offsets of the fields and determine the size of the struct
         FieldState fieldState;
         bool isunion = isUnionDeclaration() !is null;
-        for (size_t i = 0; i < members.dim; i++)
+        for (size_t i = 0; i < members.length; i++)
         {
             Dsymbol s = (*members)[i];
             s.setFieldOffset(this, fieldState, isunion);
@@ -341,7 +353,7 @@ extern (C++) class StructDeclaration : AggregateDeclaration
 
         sizeok = Sizeok.done;
 
-        //printf("-StructDeclaration::finalizeSize() %s, fields.dim = %d, structsize = %d\n", toChars(), fields.dim, structsize);
+        //printf("-StructDeclaration::finalizeSize() %s, fields.length = %d, structsize = %d\n", toChars(), fields.length, structsize);
 
         if (errors)
             return;
@@ -384,7 +396,33 @@ extern (C++) class StructDeclaration : AggregateDeclaration
             }
         }
 
+
         argTypes = target.toArgTypes(type);
+    }
+
+    /// Compute cached type properties for `TypeStruct`
+    extern(D) final void determineTypeProperties()
+    {
+        if (computedTypeProperties)
+            return;
+        foreach (vd; fields)
+        {
+            if (vd.storage_class & STC.ref_ || vd.hasPointers())
+                hasPointerField = true;
+
+            if (vd._init && vd._init.isVoidInitializer() && vd.type.hasPointers())
+                hasVoidInitPointers = true;
+
+            if (vd.storage_class & STC.system || vd.type.hasSystemFields())
+                hasSystemFields = true;
+
+            if (!vd._init && vd.type.hasVoidInitPointers())
+                hasVoidInitPointers = true;
+
+            if (vd.type.hasInvariant())
+                hasFieldWithInvariant = true;
+        }
+        computedTypeProperties = true;
     }
 
     /***************************************
@@ -416,7 +454,7 @@ extern (C++) class StructDeclaration : AggregateDeclaration
         }
 
         // Recursively check all fields are POD.
-        for (size_t i = 0; i < fields.dim; i++)
+        for (size_t i = 0; i < fields.length; i++)
         {
             VarDeclaration v = fields[i];
             if (v.storage_class & STC.ref_)
@@ -453,7 +491,7 @@ extern (C++) class StructDeclaration : AggregateDeclaration
 
     final uint numArgTypes() const
     {
-        return argTypes && argTypes.arguments ? cast(uint) argTypes.arguments.dim : 0;
+        return argTypes && argTypes.arguments ? cast(uint) argTypes.arguments.length : 0;
     }
 
     final Type argType(uint index)
@@ -532,7 +570,7 @@ private bool _isZeroInit(Expression exp)
         case EXP.structLiteral:
         {
             auto sle = cast(StructLiteralExp) exp;
-            foreach (i; 0 .. sle.sd.fields.dim)
+            foreach (i; 0 .. sle.sd.fields.length)
             {
                 auto field = sle.sd.fields[i];
                 if (field.type.size(field.loc))
@@ -550,7 +588,7 @@ private bool _isZeroInit(Expression exp)
         {
             auto ale = cast(ArrayLiteralExp)exp;
 
-            const dim = ale.elements ? ale.elements.dim : 0;
+            const dim = ale.elements ? ale.elements.length : 0;
 
             if (ale.type.toBasetype().ty == Tarray) // if initializing a dynamic array
                 return dim == 0;

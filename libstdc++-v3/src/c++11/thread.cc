@@ -24,6 +24,7 @@
 
 
 #define _GLIBCXX_THREAD_ABI_COMPAT 1
+#define _GLIBCXX_THREAD_IMPL 1
 #include <memory> // include this first so <thread> can use shared_ptr
 #include <thread>
 #include <system_error>
@@ -33,7 +34,8 @@
 #ifndef _GLIBCXX_USE_NANOSLEEP
 # ifdef _GLIBCXX_HAVE_SLEEP
 #  include <unistd.h>
-# elif defined(_GLIBCXX_HAVE_WIN32_SLEEP)
+# elif defined(_GLIBCXX_USE_WIN32_SLEEP)
+#  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 # elif defined _GLIBCXX_NO_SLEEP && defined _GLIBCXX_HAS_GTHREADS
 // We expect to be able to sleep for targets that support multiple threads:
@@ -61,12 +63,32 @@ static inline int get_nprocs()
  return 0;
 }
 # define _GLIBCXX_NPROCS get_nprocs()
+#elif defined(_GLIBCXX_USE_GET_NPROCS_WIN32)
+# define WIN32_LEAN_AND_MEAN
+# include <windows.h>
+static inline int get_nprocs()
+{
+  SYSTEM_INFO sysinfo;
+  GetSystemInfo (&sysinfo);
+  return (int)sysinfo.dwNumberOfProcessors;
+}
+# define _GLIBCXX_NPROCS get_nprocs()
 #elif defined(_GLIBCXX_USE_SC_NPROCESSORS_ONLN)
 # include <unistd.h>
 # define _GLIBCXX_NPROCS sysconf(_SC_NPROCESSORS_ONLN)
 #elif defined(_GLIBCXX_USE_SC_NPROC_ONLN)
 # include <unistd.h>
 # define _GLIBCXX_NPROCS sysconf(_SC_NPROC_ONLN)
+#elif defined(_WIN32)
+# define WIN32_LEAN_AND_MEAN
+# include <windows.h>
+static inline int get_nprocs()
+{
+  SYSTEM_INFO sysinfo;
+  GetSystemInfo(&sysinfo);
+  return (int) sysinfo.dwNumberOfProcessors;
+}
+# define _GLIBCXX_NPROCS get_nprocs()
 #else
 # define _GLIBCXX_NPROCS 0
 #endif
@@ -244,7 +266,7 @@ namespace this_thread
 	__s = chrono::duration_cast<chrono::seconds>(target - now);
 	__ns = chrono::duration_cast<chrono::nanoseconds>(target - (now + __s));
     }
-#elif defined(_GLIBCXX_HAVE_WIN32_SLEEP)
+#elif defined(_GLIBCXX_USE_WIN32_SLEEP)
     unsigned long ms = __ns.count() / 1000000;
     if (__ns.count() > 0 && ms == 0)
       ms = 1;

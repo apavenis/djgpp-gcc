@@ -1334,6 +1334,12 @@ gfc_check_dummy_characteristics (gfc_symbol *s1, gfc_symbol *s2,
   if (s1 == NULL || s2 == NULL)
     return s1 == s2 ? true : false;
 
+  if (s1->attr.proc == PROC_ST_FUNCTION || s2->attr.proc == PROC_ST_FUNCTION)
+    {
+      strncpy (errmsg, "Statement function", err_len);
+      return false;
+    }
+
   /* Check type and rank.  */
   if (type_must_agree)
     {
@@ -2692,7 +2698,8 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
      - if the actual argument is (a substring of) an element of a
        non-assumed-shape/non-pointer/non-polymorphic array; or
      - (F2003) if the actual argument is of type character of default/c_char
-       kind.  */
+       kind.
+     - (F2018) if the dummy argument is type(*).  */
 
   is_pointer = actual->expr_type == EXPR_VARIABLE
 	       ? actual->symtree->n.sym->attr.pointer : false;
@@ -2759,6 +2766,14 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
 
   if (ref == NULL && actual->expr_type != EXPR_NULL)
     {
+      if (actual->rank == 0
+	  && formal->ts.type == BT_ASSUMED
+	  && formal->as
+	  && formal->as->type == AS_ASSUMED_SIZE)
+	/* This is new in F2018, type(*) is new in TS29113, but gfortran does
+	   not differentiate.  Thus, if type(*) exists, it is valid;
+	   otherwise, type(*) is already rejected.  */
+	return true;
       if (where
 	  && (!formal->attr.artificial || (!formal->maybe_array
 					   && !maybe_dummy_array_arg (actual))))
@@ -2792,7 +2807,8 @@ get_sym_storage_size (gfc_symbol *sym)
   if (sym->ts.type == BT_CHARACTER)
     {
       if (sym->ts.u.cl && sym->ts.u.cl->length
-          && sym->ts.u.cl->length->expr_type == EXPR_CONSTANT)
+	  && sym->ts.u.cl->length->expr_type == EXPR_CONSTANT
+	  && sym->ts.u.cl->length->ts.type == BT_INTEGER)
 	strlen = mpz_get_ui (sym->ts.u.cl->length->value.integer);
       else
 	return 0;
@@ -2809,7 +2825,9 @@ get_sym_storage_size (gfc_symbol *sym)
   for (i = 0; i < sym->as->rank; i++)
     {
       if (sym->as->upper[i]->expr_type != EXPR_CONSTANT
-	  || sym->as->lower[i]->expr_type != EXPR_CONSTANT)
+	  || sym->as->lower[i]->expr_type != EXPR_CONSTANT
+	  || sym->as->upper[i]->ts.type != BT_INTEGER
+	  || sym->as->lower[i]->ts.type != BT_INTEGER)
 	return 0;
 
       elements *= mpz_get_si (sym->as->upper[i]->value.integer)
@@ -3261,9 +3279,11 @@ gfc_compare_actual_formal (gfc_actual_arglist **ap, gfc_formal_arglist *formal,
       if (a->expr->ts.type == BT_CHARACTER
 	  && a->expr->ts.u.cl && a->expr->ts.u.cl->length
 	  && a->expr->ts.u.cl->length->expr_type == EXPR_CONSTANT
+	  && a->expr->ts.u.cl->length->ts.type == BT_INTEGER
 	  && f->sym->ts.type == BT_CHARACTER && f->sym->ts.u.cl
 	  && f->sym->ts.u.cl->length
 	  && f->sym->ts.u.cl->length->expr_type == EXPR_CONSTANT
+	  && f->sym->ts.u.cl->length->ts.type == BT_INTEGER
 	  && (f->sym->attr.pointer || f->sym->attr.allocatable
 	      || (f->sym->as && f->sym->as->type == AS_ASSUMED_SHAPE))
 	  && (mpz_cmp (a->expr->ts.u.cl->length->value.integer,
@@ -3465,25 +3485,39 @@ gfc_compare_actual_formal (gfc_actual_arglist **ap, gfc_formal_arglist *formal,
 	  goto match;
 	}
 
-      if (a->expr->expr_type != EXPR_NULL
-	  && compare_pointer (f->sym, a->expr) == 0)
+      if (a->expr->expr_type != EXPR_NULL)
 	{
-	  if (where)
-	    gfc_error ("Actual argument for %qs must be a pointer at %L",
-		       f->sym->name, &a->expr->where);
-	  ok = false;
-	  goto match;
-	}
+	  int cmp = compare_pointer (f->sym, a->expr);
+	  bool pre2008 = ((gfc_option.allow_std & GFC_STD_F2008) == 0);
 
-      if (a->expr->expr_type != EXPR_NULL
-	  && (gfc_option.allow_std & GFC_STD_F2008) == 0
-	  && compare_pointer (f->sym, a->expr) == 2)
-	{
-	  if (where)
-	    gfc_error ("Fortran 2008: Non-pointer actual argument at %L to "
-		       "pointer dummy %qs", &a->expr->where,f->sym->name);
-	  ok = false;
-	  goto match;
+	  if (pre2008 && cmp == 0)
+	    {
+	      if (where)
+		gfc_error ("Actual argument for %qs at %L must be a pointer",
+			   f->sym->name, &a->expr->where);
+	      ok = false;
+	      goto match;
+	    }
+
+	  if (pre2008 && cmp == 2)
+	    {
+	      if (where)
+		gfc_error ("Fortran 2008: Non-pointer actual argument at %L to "
+			   "pointer dummy %qs", &a->expr->where, f->sym->name);
+	      ok = false;
+	      goto match;
+	    }
+
+	  if (!pre2008 && cmp == 0)
+	    {
+	      if (where)
+		gfc_error ("Actual argument for %qs at %L must be a pointer "
+			   "or a valid target for the dummy pointer in a "
+			   "pointer assignment statement",
+			   f->sym->name, &a->expr->where);
+	      ok = false;
+	      goto match;
+	    }
 	}
 
 
@@ -4130,6 +4164,14 @@ gfc_procedure_use (gfc_symbol *sym, gfc_actual_arglist **ap, locus *where)
 	    {
 	      gfc_error ("MOLD argument to NULL required at %L",
 			 &a->expr->where);
+	      a->expr->error = 1;
+	      return false;
+	    }
+
+	  if (a->expr && a->expr->expr_type == EXPR_NULL)
+	    {
+	      gfc_error ("Passing intrinsic NULL as actual argument at %L "
+			 "requires an explicit interface", &a->expr->where);
 	      a->expr->error = 1;
 	      return false;
 	    }

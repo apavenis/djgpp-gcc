@@ -1,5 +1,5 @@
 /* MD reader definitions.
-   Copyright (C) 1987-2022 Free Software Foundation, Inc.
+   Copyright (C) 1987-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -330,7 +330,7 @@ class noop_reader : public md_reader
   noop_reader () : md_reader (false) {}
 
   /* A dummy implementation which skips unknown directives.  */
-  void handle_unknown_directive (file_location, const char *);
+  void handle_unknown_directive (file_location, const char *) override;
 };
 
 /* An md_reader subclass that actually handles full hierarchical

@@ -1,5 +1,5 @@
 /* Data structure definitions for a generic GCC target.
-   Copyright (C) 2001-2022 Free Software Foundation, Inc.
+   Copyright (C) 2001-2023 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
@@ -51,6 +51,7 @@
 #include "insn-codes.h"
 #include "tm.h"
 #include "hard-reg-set.h"
+#include "tree-core.h"
 
 #if CHECKING_P
 

@@ -514,7 +514,7 @@ gfc_resolve_formal_arglist (gfc_symbol *proc)
 	    {
 	      /* F03:C1263 (R1238) The function-name and each dummy-arg-name
 		 shall be specified, explicitly or implicitly, to be scalar.  */
-	      gfc_error ("Argument '%s' of statement function '%s' at %L "
+	      gfc_error ("Argument %qs of statement function %qs at %L "
 			 "must be scalar", sym->name, proc->name,
 			 &proc->declared_at);
 	      continue;
@@ -4381,8 +4381,8 @@ resolve_operator (gfc_expr *e)
 	  guessed = lookup_uop_fuzzy (name, e->value.op.uop->ns->uop_root);
 	  if (guessed)
 	    snprintf (msg, sizeof (msg),
-		      _("Unknown operator %%<%s%%> at %%L; did you mean '%s'?"),
-		      name, guessed);
+		      _("Unknown operator %%<%s%%> at %%L; did you mean "
+			"%%<%s%%>?"), name, guessed);
 	  else
 	    snprintf (msg, sizeof (msg), _("Unknown operator %%<%s%%> at %%L"),
 		      name);
@@ -4976,7 +4976,7 @@ gfc_resolve_dim_arg (gfc_expr *dim)
 static void
 resolve_assoc_var (gfc_symbol* sym, bool resolve_target);
 
-static void
+static bool
 find_array_spec (gfc_expr *e)
 {
   gfc_array_spec *as;
@@ -5004,7 +5004,12 @@ find_array_spec (gfc_expr *e)
       {
       case REF_ARRAY:
 	if (as == NULL)
-	  gfc_internal_error ("find_array_spec(): Missing spec");
+	  {
+	    locus loc = ref->u.ar.where.lb ? ref->u.ar.where : e->where;
+	    gfc_error ("Invalid array reference of a non-array entity at %L",
+		       &loc);
+	    return false;
+	  }
 
 	ref->u.ar.as = as;
 	as = NULL;
@@ -5028,6 +5033,8 @@ find_array_spec (gfc_expr *e)
 
   if (as != NULL)
     gfc_internal_error ("find_array_spec(): unused as(2)");
+
+  return true;
 }
 
 
@@ -5346,7 +5353,8 @@ gfc_resolve_ref (gfc_expr *expr)
   for (ref = expr->ref; ref; ref = ref->next)
     if (ref->type == REF_ARRAY && ref->u.ar.as == NULL)
       {
-	find_array_spec (expr);
+	if (!find_array_spec (expr))
+	  return false;
 	break;
       }
 
@@ -7528,7 +7536,8 @@ derived_inaccessible (gfc_symbol *sym)
   for (c = sym->components; c; c = c->next)
     {
 	/* Prevent an infinite loop through this function.  */
-	if (c->ts.type == BT_DERIVED && c->attr.pointer
+	if (c->ts.type == BT_DERIVED
+	    && (c->attr.pointer || c->attr.allocatable)
 	    && sym == c->ts.u.derived)
 	  continue;
 
@@ -7562,7 +7571,7 @@ resolve_deallocate_expr (gfc_expr *e)
   sym = e->symtree->n.sym;
   unlimited = UNLIMITED_POLY(sym);
 
-  if (sym->ts.type == BT_CLASS)
+  if (sym->ts.type == BT_CLASS && sym->attr.class_ok && CLASS_DATA (sym))
     {
       allocatable = CLASS_DATA (sym)->attr.allocatable;
       pointer = CLASS_DATA (sym)->attr.class_pointer;
@@ -8204,7 +8213,7 @@ check_symbols:
 	{
 	  if (i == (ar->dimen + ar->codimen - 1))
 	    {
-	      gfc_error ("Expected '*' in coindex specification in ALLOCATE "
+	      gfc_error ("Expected %<*%> in coindex specification in ALLOCATE "
 			 "statement at %L", &e->where);
 	      goto failure;
 	    }
@@ -10010,6 +10019,7 @@ resolve_transfer (gfc_code *code)
 
   if (exp == NULL || (exp->expr_type != EXPR_VARIABLE
 		      && exp->expr_type != EXPR_FUNCTION
+		      && exp->expr_type != EXPR_ARRAY
 		      && exp->expr_type != EXPR_STRUCTURE))
     return;
 
@@ -10023,6 +10033,7 @@ resolve_transfer (gfc_code *code)
 
   const gfc_typespec *ts = exp->expr_type == EXPR_STRUCTURE
 			|| exp->expr_type == EXPR_FUNCTION
+			|| exp->expr_type == EXPR_ARRAY
 			 ? &exp->ts : &exp->symtree->n.sym->ts;
 
   /* Go to actual component transferred.  */
@@ -10119,6 +10130,9 @@ resolve_transfer (gfc_code *code)
     }
 
   if (exp->expr_type == EXPR_STRUCTURE)
+    return;
+
+  if (exp->expr_type == EXPR_ARRAY)
     return;
 
   sym = exp->symtree->n.sym;
@@ -10895,6 +10909,7 @@ gfc_resolve_blocks (gfc_code *b, gfc_namespace *ns)
 	case EXEC_OACC_ENTER_DATA:
 	case EXEC_OACC_EXIT_DATA:
 	case EXEC_OACC_ROUTINE:
+	case EXEC_OMP_ASSUME:
 	case EXEC_OMP_CRITICAL:
 	case EXEC_OMP_DISTRIBUTE:
 	case EXEC_OMP_DISTRIBUTE_PARALLEL_DO:
@@ -11172,7 +11187,7 @@ resolve_ordinary_assign (gfc_code *code, gfc_namespace *ns)
     {
       gfc_error ("Nonallocatable variable must not be polymorphic in intrinsic "
 		 "assignment at %L - check that there is a matching specific "
-		 "subroutine for '=' operator", &lhs->where);
+		 "subroutine for %<=%> operator", &lhs->where);
       return false;
     }
 
@@ -11796,6 +11811,7 @@ deferred_op_assign (gfc_code **code, gfc_namespace *ns)
 
   if (!((*code)->expr1->ts.type == BT_CHARACTER
 	 && (*code)->expr1->ts.deferred && (*code)->expr1->rank
+	 && (*code)->expr2->ts.type == BT_CHARACTER
 	 && (*code)->expr2->expr_type == EXPR_OP))
     return false;
 
@@ -11826,6 +11842,23 @@ deferred_op_assign (gfc_code **code, gfc_namespace *ns)
 
   this_code->next = (*code)->next;
   (*code)->next = this_code;
+
+  return true;
+}
+
+
+static bool
+check_team (gfc_expr *team, const char *intrinsic)
+{
+  if (team->rank != 0
+      || team->ts.type != BT_DERIVED
+      || team->ts.u.derived->from_intmod != INTMOD_ISO_FORTRAN_ENV
+      || team->ts.u.derived->intmod_sym_id != ISOFORTRAN_TEAM_TYPE)
+    {
+      gfc_error ("TEAM argument to %qs at %L must be a scalar expression "
+		 "of type TEAM_TYPE", intrinsic, &team->where);
+      return false;
+    }
 
   return true;
 }
@@ -11999,10 +12032,25 @@ start:
 	  break;
 
 	case EXEC_FAIL_IMAGE:
+	  break;
+
 	case EXEC_FORM_TEAM:
+	  if (code->expr1 != NULL
+	      && (code->expr1->ts.type != BT_INTEGER || code->expr1->rank))
+	    gfc_error ("TEAM NUMBER argument to FORM TEAM at %L must be "
+		       "a scalar INTEGER", &code->expr1->where);
+	  check_team (code->expr2, "FORM TEAM");
+	  break;
+
 	case EXEC_CHANGE_TEAM:
+	  check_team (code->expr1, "CHANGE TEAM");
+	  break;
+
 	case EXEC_END_TEAM:
+	  break;
+
 	case EXEC_SYNC_TEAM:
+	  check_team (code->expr1, "SYNC TEAM");
 	  break;
 
 	case EXEC_ENTRY:
@@ -12336,6 +12384,7 @@ start:
 	  gfc_resolve_oacc_directive (code, ns);
 	  break;
 
+	case EXEC_OMP_ASSUME:
 	case EXEC_OMP_ATOMIC:
 	case EXEC_OMP_BARRIER:
 	case EXEC_OMP_CANCEL:
@@ -12920,6 +12969,7 @@ resolve_fl_var_and_proc (gfc_symbol *sym, int mp_flag)
 	  && sym->ts.u.derived
 	  && !sym->attr.select_type_temporary
 	  && !UNLIMITED_POLY (sym)
+	  && CLASS_DATA (sym)->ts.u.derived
 	  && !gfc_type_is_extensible (CLASS_DATA (sym)->ts.u.derived))
 	{
 	  gfc_error ("Type %qs of CLASS variable %qs at %L is not extensible",
@@ -15473,6 +15523,13 @@ resolve_symbol (gfc_symbol *sym)
   if (sym->attr.unlimited_polymorphic)
     return;
 
+  if (UNLIKELY (flag_openmp && strcmp (sym->name, "omp_all_memory") == 0))
+    {
+      gfc_error ("%<omp_all_memory%>, declared at %L, may only be used in "
+		 "the OpenMP DEPEND clause", &sym->declared_at);
+      return;
+    }
+
   if (sym->attr.flavor == FL_UNKNOWN
       || (sym->attr.flavor == FL_PROCEDURE && !sym->attr.intrinsic
 	  && !sym->attr.generic && !sym->attr.external
@@ -17164,6 +17221,7 @@ resolve_equivalence (gfc_equiv *eq)
 	    "statement at %L with different type objects";
       if ((object ==2
 	   && last_eq_type == SEQ_MIXED
+	   && last_where
 	   && !gfc_notify_std (GFC_STD_GNU, msg, first_sym->name, last_where))
 	  || (eq_type == SEQ_MIXED
 	      && !gfc_notify_std (GFC_STD_GNU, msg, sym->name, &e->where)))
@@ -17173,6 +17231,7 @@ resolve_equivalence (gfc_equiv *eq)
 	    "statement at %L with objects of different type";
       if ((object ==2
 	   && last_eq_type == SEQ_NONDEFAULT
+	   && last_where
 	   && !gfc_notify_std (GFC_STD_GNU, msg, first_sym->name, last_where))
 	  || (eq_type == SEQ_NONDEFAULT
 	      && !gfc_notify_std (GFC_STD_GNU, msg, sym->name, &e->where)))
@@ -17603,6 +17662,9 @@ gfc_resolve (gfc_namespace *ns)
   resolve_types (ns);
   component_assignment_level = 0;
   resolve_codes (ns);
+
+  if (ns->omp_assumes)
+    gfc_resolve_omp_assumptions (ns->omp_assumes);
 
   gfc_current_ns = old_ns;
   cs_base = old_cs_base;

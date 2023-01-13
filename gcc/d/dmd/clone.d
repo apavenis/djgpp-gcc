@@ -105,8 +105,7 @@ FuncDeclaration hasIdentityOpAssign(AggregateDeclaration ad, Scope* sc)
         scope er = new NullExp(ad.loc, ad.type);    // dummy rvalue
         scope el = new IdentifierExp(ad.loc, Id.p); // dummy lvalue
         el.type = ad.type;
-        Expressions a;
-        a.setDim(1);
+        auto a = Expressions(1);
         const errors = global.startGagging(); // Do not report errors, even if the template opAssign fbody makes it.
         sc = sc.push();
         sc.tinst = null;
@@ -301,7 +300,7 @@ FuncDeclaration buildOpAssign(StructDeclaration sd, Scope* sc)
     auto tf = new TypeFunction(ParameterList(fparams), sd.handleType(), LINK.d, stc | STC.ref_);
     auto fop = new FuncDeclaration(declLoc, Loc.initial, Id.assign, stc, tf);
     fop.storage_class |= STC.inference;
-    fop.flags  |= FUNCFLAG.generated;
+    fop.isGenerated = true;
     Expression e;
     if (stc & STC.disable)
     {
@@ -404,7 +403,12 @@ bool needOpEquals(StructDeclaration sd)
 {
     //printf("StructDeclaration::needOpEquals() %s\n", sd.toChars());
     if (sd.isUnionDeclaration())
-        goto Ldontneed;
+    {
+        /* If a union has only one field, treat it like a struct
+         */
+        if (sd.fields.length != 1)
+            goto Ldontneed;
+    }
     if (sd.hasIdentityEquals)
         goto Lneed;
     /* If any of the fields has an opEquals, then we
@@ -421,7 +425,7 @@ bool needOpEquals(StructDeclaration sd)
         if (tvbase.ty == Tstruct)
         {
             TypeStruct ts = cast(TypeStruct)tvbase;
-            if (ts.sym.isUnionDeclaration())
+            if (ts.sym.isUnionDeclaration() && ts.sym.fields.length != 1)
                 continue;
             if (needOpEquals(ts.sym))
                 goto Lneed;
@@ -460,8 +464,7 @@ private FuncDeclaration hasIdentityOpEquals(AggregateDeclaration ad, Scope* sc)
          */
         scope er = new NullExp(ad.loc, null); // dummy rvalue
         scope el = new IdentifierExp(ad.loc, Id.p); // dummy lvalue
-        Expressions a;
-        a.setDim(1);
+        auto a = Expressions(1);
 
         bool hasIt(Type tthis)
         {
@@ -563,9 +566,12 @@ FuncDeclaration buildXopEquals(StructDeclaration sd, Scope* sc)
         e = new DotIdExp(sd.loc, e, Id.object);
         e = new DotIdExp(sd.loc, e, id);
         e = e.expressionSemantic(sc);
-        Dsymbol s = getDsymbol(e);
-        assert(s);
-        sd.xerreq = s.isFuncDeclaration();
+        if (!e.isErrorExp())
+        {
+            Dsymbol s = getDsymbol(e);
+            assert(s);
+            sd.xerreq = s.isFuncDeclaration();
+        }
     }
     Loc declLoc; // loc is unnecessary so __xopEquals is never called directly
     Loc loc; // loc is unnecessary so errors are gagged
@@ -575,7 +581,7 @@ FuncDeclaration buildXopEquals(StructDeclaration sd, Scope* sc)
     tf = tf.addSTC(STC.const_).toTypeFunction();
     Identifier id = Id.xopEquals;
     auto fop = new FuncDeclaration(declLoc, Loc.initial, id, 0, tf);
-    fop.flags |= FUNCFLAG.generated;
+    fop.isGenerated = true;
     fop.parent = sd;
     Expression e1 = new IdentifierExp(loc, Id.This);
     Expression e2 = new IdentifierExp(loc, Id.p);
@@ -684,9 +690,12 @@ FuncDeclaration buildXopCmp(StructDeclaration sd, Scope* sc)
         e = new DotIdExp(sd.loc, e, Id.object);
         e = new DotIdExp(sd.loc, e, id);
         e = e.expressionSemantic(sc);
-        Dsymbol s = getDsymbol(e);
-        assert(s);
-        sd.xerrcmp = s.isFuncDeclaration();
+        if (!e.isErrorExp())
+        {
+            Dsymbol s = getDsymbol(e);
+            assert(s);
+            sd.xerrcmp = s.isFuncDeclaration();
+        }
     }
     Loc declLoc; // loc is unnecessary so __xopCmp is never called directly
     Loc loc; // loc is unnecessary so errors are gagged
@@ -696,7 +705,7 @@ FuncDeclaration buildXopCmp(StructDeclaration sd, Scope* sc)
     tf = tf.addSTC(STC.const_).toTypeFunction();
     Identifier id = Id.xopCmp;
     auto fop = new FuncDeclaration(declLoc, Loc.initial, id, 0, tf);
-    fop.flags |= FUNCFLAG.generated;
+    fop.isGenerated = true;
     fop.parent = sd;
     Expression e1 = new IdentifierExp(loc, Id.This);
     Expression e2 = new IdentifierExp(loc, Id.p);
@@ -814,7 +823,7 @@ FuncDeclaration buildXtoHash(StructDeclaration sd, Scope* sc)
     auto tf = new TypeFunction(ParameterList(parameters), Type.thash_t, LINK.d, STC.nothrow_ | STC.trusted);
     Identifier id = Id.xtoHash;
     auto fop = new FuncDeclaration(declLoc, Loc.initial, id, STC.static_, tf);
-    fop.flags |= FUNCFLAG.generated;
+    fop.isGenerated = true;
 
     /* Do memberwise hashing.
      *
@@ -861,17 +870,17 @@ void buildDtors(AggregateDeclaration ad, Scope* sc)
         return;                    // unions don't have destructors
 
     StorageClass stc = STC.safe | STC.nothrow_ | STC.pure_ | STC.nogc;
-    Loc declLoc = ad.userDtors.dim ? ad.userDtors[0].loc : ad.loc;
+    Loc declLoc = ad.userDtors.length ? ad.userDtors[0].loc : ad.loc;
     Loc loc; // internal code should have no loc to prevent coverage
     FuncDeclaration xdtor_fwd = null;
 
     // Build the field destructor (`ad.fieldDtor`), if needed.
     // If the user dtor is an extern(C++) prototype, then we expect it performs a full-destruction and skip building.
-    const bool dtorIsCppPrototype = ad.userDtors.dim && ad.userDtors[0].linkage == LINK.cpp && !ad.userDtors[0].fbody;
+    const bool dtorIsCppPrototype = ad.userDtors.length && ad.userDtors[0]._linkage == LINK.cpp && !ad.userDtors[0].fbody;
     if (!dtorIsCppPrototype)
     {
         Expression e = null;
-        for (size_t i = 0; i < ad.fields.dim; i++)
+        for (size_t i = 0; i < ad.fields.length; i++)
         {
             auto v = ad.fields[i];
             if (v.storage_class & STC.ref_)
@@ -952,7 +961,7 @@ void buildDtors(AggregateDeclaration ad, Scope* sc)
         {
             //printf("Building __fieldDtor(), %s\n", e.toChars());
             auto dd = new DtorDeclaration(declLoc, Loc.initial, stc, Id.__fieldDtor);
-            dd.flags |= FUNCFLAG.generated;
+            dd.isGenerated = true;
             dd.storage_class |= STC.inference;
             dd.fbody = new ExpStatement(loc, e);
             ad.members.push(dd);
@@ -976,7 +985,7 @@ void buildDtors(AggregateDeclaration ad, Scope* sc)
     }
 
     // Set/build `ad.aggrDtor`
-    switch (dtors.dim)
+    switch (dtors.length)
     {
     case 0:
         break;
@@ -1008,7 +1017,7 @@ void buildDtors(AggregateDeclaration ad, Scope* sc)
             e = Expression.combine(e, ce);
         }
         auto dd = new DtorDeclaration(declLoc, Loc.initial, stc, Id.__aggrDtor);
-        dd.flags |= FUNCFLAG.generated;
+        dd.isGenerated = true;
         dd.storage_class |= STC.inference;
         dd.fbody = new ExpStatement(loc, e);
         ad.members.push(dd);
@@ -1019,7 +1028,7 @@ void buildDtors(AggregateDeclaration ad, Scope* sc)
 
     // Set/build `ad.dtor`.
     // On Windows, the dtor in the vtable is a shim with different signature.
-    ad.dtor = (ad.aggrDtor && ad.aggrDtor.linkage == LINK.cpp && !target.cpp.twoDtorInVtable)
+    ad.dtor = (ad.aggrDtor && ad.aggrDtor._linkage == LINK.cpp && !target.cpp.twoDtorInVtable)
         ? buildWindowsCppDtor(ad, ad.aggrDtor, sc)
         : ad.aggrDtor;
 
@@ -1079,7 +1088,7 @@ private DtorDeclaration buildWindowsCppDtor(AggregateDeclaration ad, DtorDeclara
     stmts.push(new ExpStatement(loc, call));
     stmts.push(new ReturnStatement(loc, new CastExp(loc, new ThisExp(loc), Type.tvoidptr)));
     func.fbody = new CompoundStatement(loc, stmts);
-    func.flags |= FUNCFLAG.generated;
+    func.isGenerated = true;
 
     auto sc2 = sc.push();
     sc2.stc &= ~STC.static_; // not a static destructor
@@ -1110,6 +1119,10 @@ private DtorDeclaration buildExternDDtor(AggregateDeclaration ad, Scope* sc)
     if (!dtor)
         return null;
 
+    // Don't try to call `@disable`d dtors
+    if (dtor.storage_class & STC.disable)
+        return null;
+
     // Generate shim only when ABI incompatible on target platform
     if (ad.classKind != ClassKind.cpp || !target.cpp.wrapDtorInExternD)
         return dtor;
@@ -1127,7 +1140,7 @@ private DtorDeclaration buildExternDDtor(AggregateDeclaration ad, Scope* sc)
     auto call = new CallExp(dtor.loc, dtor, null);
     call.directcall = true;                   // non-virtual call Class.__dtor();
     func.fbody = new ExpStatement(dtor.loc, call);
-    func.flags |= FUNCFLAG.generated;
+    func.isGenerated = true;
     func.storage_class |= STC.inference;
 
     auto sc2 = sc.push();
@@ -1155,7 +1168,7 @@ private DtorDeclaration buildExternDDtor(AggregateDeclaration ad, Scope* sc)
  */
 FuncDeclaration buildInv(AggregateDeclaration ad, Scope* sc)
 {
-    switch (ad.invs.dim)
+    switch (ad.invs.length)
     {
     case 0:
         return null;
@@ -1212,11 +1225,11 @@ FuncDeclaration buildPostBlit(StructDeclaration sd, Scope* sc)
     if (sd.isUnionDeclaration())
         return null;
 
-    const hasUserDefinedPosblit = sd.postblits.dim && !sd.postblits[0].isDisabled ? true : false;
+    const hasUserDefinedPosblit = sd.postblits.length && !sd.postblits[0].isDisabled ? true : false;
 
     // by default, the storage class of the created postblit
     StorageClass stc = STC.safe | STC.nothrow_ | STC.pure_ | STC.nogc;
-    Loc declLoc = sd.postblits.dim ? sd.postblits[0].loc : sd.loc;
+    Loc declLoc = sd.postblits.length ? sd.postblits[0].loc : sd.loc;
     Loc loc; // internal code should have no loc to prevent coverage
 
     // if any of the postblits are disabled, then the generated postblit
@@ -1227,7 +1240,7 @@ FuncDeclaration buildPostBlit(StructDeclaration sd, Scope* sc)
     VarDeclaration[] fieldsToDestroy;
     auto postblitCalls = new Statements();
     // iterate through all the struct fields that are not disabled
-    for (size_t i = 0; i < sd.fields.dim && !(stc & STC.disable); i++)
+    for (size_t i = 0; i < sd.fields.length && !(stc & STC.disable); i++)
     {
         auto structField = sd.fields[i];
         if (structField.storage_class & STC.ref_)
@@ -1398,12 +1411,12 @@ FuncDeclaration buildPostBlit(StructDeclaration sd, Scope* sc)
     }
 
     // Build our own "postblit" which executes a, but only if needed.
-    if (postblitCalls.dim || (stc & STC.disable))
+    if (postblitCalls.length || (stc & STC.disable))
     {
         //printf("Building __fieldPostBlit()\n");
         checkShared();
         auto dd = new PostBlitDeclaration(declLoc, Loc.initial, stc, Id.__fieldPostblit);
-        dd.flags |= FUNCFLAG.generated;
+        dd.isGenerated = true;
         dd.storage_class |= STC.inference | STC.scope_;
         dd.fbody = (stc & STC.disable) ? null : new CompoundStatement(loc, postblitCalls);
         sd.postblits.shift(dd);
@@ -1413,7 +1426,7 @@ FuncDeclaration buildPostBlit(StructDeclaration sd, Scope* sc)
 
     // create __xpostblit, which is the generated postblit
     FuncDeclaration xpostblit = null;
-    switch (sd.postblits.dim)
+    switch (sd.postblits.length)
     {
     case 0:
         break;
@@ -1441,7 +1454,7 @@ FuncDeclaration buildPostBlit(StructDeclaration sd, Scope* sc)
 
         checkShared();
         auto dd = new PostBlitDeclaration(declLoc, Loc.initial, stc, Id.__aggrPostblit);
-        dd.flags |= FUNCFLAG.generated;
+        dd.isGenerated = true;
         dd.storage_class |= STC.inference;
         dd.fbody = new ExpStatement(loc, e);
         sd.members.push(dd);
@@ -1504,7 +1517,7 @@ private CtorDeclaration generateCopyCtorDeclaration(StructDeclaration sd, const 
     auto ccd = new CtorDeclaration(sd.loc, Loc.initial, STC.ref_, tf, true);
     ccd.storage_class |= funcStc;
     ccd.storage_class |= STC.inference;
-    ccd.flags |= FUNCFLAG.generated;
+    ccd.isGenerated = true;
     return ccd;
 }
 

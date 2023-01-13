@@ -1,5 +1,5 @@
 /* Redundant Extension Elimination pass for the GNU compiler.
-   Copyright (C) 2010-2022 Free Software Foundation, Inc.
+   Copyright (C) 2010-2023 Free Software Foundation, Inc.
    Contributed by Ilya Enkovich (ilya.enkovich@intel.com)
 
    Based on the Redundant Zero-extension elimination pass contributed by
@@ -1403,8 +1403,11 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual bool gate (function *) { return (optimize > 0 && flag_ree); }
-  virtual unsigned int execute (function *) { return rest_of_handle_ree (); }
+  bool gate (function *) final override { return (optimize > 0 && flag_ree); }
+  unsigned int execute (function *) final override
+  {
+    return rest_of_handle_ree ();
+  }
 
 }; // class pass_ree
 

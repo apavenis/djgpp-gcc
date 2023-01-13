@@ -1,5 +1,5 @@
 /* Dwarf2 Call Frame Information helper routines.
-   Copyright (C) 1992-2022 Free Software Foundation, Inc.
+   Copyright (C) 1992-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -3788,8 +3788,11 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual bool gate (function *);
-  virtual unsigned int execute (function *) { return execute_dwarf2_frame (); }
+  bool gate (function *) final override;
+  unsigned int execute (function *) final override
+  {
+    return execute_dwarf2_frame ();
+  }
 
 }; // class pass_dwarf2_frame
 

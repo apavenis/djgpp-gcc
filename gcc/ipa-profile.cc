@@ -1,5 +1,5 @@
 /* Basic IPA optimizations based on profile.
-   Copyright (C) 2003-2022 Free Software Foundation, Inc.
+   Copyright (C) 2003-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -198,9 +198,9 @@ public:
   {}
 
   /* Duplicate info when an edge is cloned.  */
-  virtual void duplicate (cgraph_edge *, cgraph_edge *,
-			  speculative_call_summary *old_sum,
-			  speculative_call_summary *new_sum);
+  void duplicate (cgraph_edge *, cgraph_edge *,
+		  speculative_call_summary *old_sum,
+		  speculative_call_summary *new_sum) final override;
 };
 
 static ipa_profile_call_summaries *call_sums = NULL;
@@ -1053,8 +1053,8 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual bool gate (function *) { return flag_ipa_profile || in_lto_p; }
-  virtual unsigned int execute (function *) { return ipa_profile (); }
+  bool gate (function *) final override { return flag_ipa_profile || in_lto_p; }
+  unsigned int execute (function *) final override { return ipa_profile (); }
 
 }; // class pass_ipa_profile
 

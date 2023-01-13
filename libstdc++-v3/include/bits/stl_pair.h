@@ -180,6 +180,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  @tparam _T2  Type of second object.
    *
    *  <https://gcc.gnu.org/onlinedocs/libstdc++/manual/utilities.html>
+   *
+   * @headerfile utility
    */
   template<typename _T1, typename _T2>
     struct pair
@@ -209,6 +211,25 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	swap(first, __p.first);
 	swap(second, __p.second);
       }
+
+#if __cplusplus > 202002L
+      // As an extension, we constrain the const swap member function in order
+      // to continue accepting explicit instantiation of pairs whose elements
+      // are not all const swappable.  Without this constraint, such an
+      // explicit instantiation would also instantiate the ill-formed body of
+      // this function and yield a hard error.  This constraint shouldn't
+      // affect the behavior of valid programs.
+      constexpr void
+      swap(const pair& __p) const
+      noexcept(__and_v<__is_nothrow_swappable<const _T1>,
+		       __is_nothrow_swappable<const _T2>>)
+      requires is_swappable_v<const _T1> && is_swappable_v<const _T2>
+      {
+	using std::swap;
+	swap(first, __p.first);
+	swap(second, __p.second);
+      }
+#endif // C++23
 
     private:
       template<typename... _Args1, size_t... _Indexes1,
@@ -281,7 +302,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	: first(std::forward<_U1>(__x)), second(std::forward<_U2>(__y))
 	{ }
 
-      /// Converting constructor from a `pair<U1, U2>` lvalue
+      /// Converting constructor from a const `pair<U1, U2>` lvalue
       template<typename _U1, typename _U2>
 	requires (_S_constructible<const _U1&, const _U2&>())
 	constexpr explicit(!_S_convertible<const _U1&, const _U2&>())
@@ -290,7 +311,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	: first(__p.first), second(__p.second)
 	{ }
 
-      /// Converting constructor from a `pair<U1, U2>` rvalue
+      /// Converting constructor from a non-const `pair<U1, U2>` rvalue
       template<typename _U1, typename _U2>
 	requires (_S_constructible<_U1, _U2>())
 	constexpr explicit(!_S_convertible<_U1, _U2>())
@@ -299,6 +320,27 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	: first(std::forward<_U1>(__p.first)),
 	  second(std::forward<_U2>(__p.second))
 	{ }
+
+#if __cplusplus > 202002L
+      /// Converting constructor from a non-const `pair<U1, U2>` lvalue
+      template<typename _U1, typename _U2>
+	requires (_S_constructible<_U1&, _U2&>())
+	constexpr explicit(!_S_convertible<_U1&, _U2&>())
+	pair(pair<_U1, _U2>& __p)
+	noexcept(_S_nothrow_constructible<_U1&, _U2&>())
+	: first(__p.first), second(__p.second)
+	{ }
+
+      /// Converting constructor from a const `pair<U1, U2>` rvalue
+      template<typename _U1, typename _U2>
+	requires (_S_constructible<const _U1, const _U2>())
+	constexpr explicit(!_S_convertible<const _U1, const _U2>())
+	pair(const pair<_U1, _U2>&& __p)
+	noexcept(_S_nothrow_constructible<const _U1, const _U2>())
+	: first(std::forward<const _U1>(__p.first)),
+	  second(std::forward<const _U2>(__p.second))
+	{ }
+#endif // C++23
 
   private:
       /// @cond undocumented
@@ -347,7 +389,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	return *this;
       }
 
-      /// Converting assignment from a `pair<U1, U2>` lvalue
+      /// Converting assignment from a const `pair<U1, U2>` lvalue
       template<typename _U1, typename _U2>
 	constexpr pair&
 	operator=(const pair<_U1, _U2>& __p)
@@ -359,7 +401,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  return *this;
 	}
 
-      /// Converting assignment from a `pair<U1, U2>` rvalue
+      /// Converting assignment from a non-const `pair<U1, U2>` rvalue
       template<typename _U1, typename _U2>
 	constexpr pair&
 	operator=(pair<_U1, _U2>&& __p)
@@ -370,7 +412,55 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  second = std::forward<_U2>(__p.second);
 	  return *this;
 	}
-#else
+
+#if __cplusplus > 202002L
+      /// Copy assignment operator (const)
+      constexpr const pair&
+      operator=(const pair& __p) const
+      requires is_copy_assignable_v<const first_type>
+	&& is_copy_assignable_v<const second_type>
+      {
+	first = __p.first;
+	second = __p.second;
+	return *this;
+      }
+
+      /// Move assignment operator (const)
+      constexpr const pair&
+      operator=(pair&& __p) const
+      requires is_assignable_v<const first_type&, first_type>
+	&& is_assignable_v<const second_type&, second_type>
+      {
+	first = std::forward<first_type>(__p.first);
+	second = std::forward<second_type>(__p.second);
+	return *this;
+      }
+
+      /// Converting assignment from a const `pair<U1, U2>` lvalue
+      template<typename _U1, typename _U2>
+	constexpr const pair&
+	operator=(const pair<_U1, _U2>& __p) const
+	requires is_assignable_v<const first_type&, const _U1&>
+	  && is_assignable_v<const second_type&, const _U2&>
+	{
+	  first = __p.first;
+	  second = __p.second;
+	  return *this;
+	}
+
+      /// Converting assignment from a non-const `pair<U1, U2>` rvalue
+      template<typename _U1, typename _U2>
+	constexpr const pair&
+	operator=(pair<_U1, _U2>&& __p) const
+	requires is_assignable_v<const first_type&, _U1>
+	  && is_assignable_v<const second_type&, _U2>
+	{
+	  first = std::forward<_U1>(__p.first);
+	  second = std::forward<_U2>(__p.second);
+	  return *this;
+	}
+#endif // C++23
+#else // !__cpp_lib_concepts
       // C++11/14/17 implementation using enable_if, partially constexpr.
 
       /** The default constructor creates @c first and @c second using their
@@ -708,6 +798,15 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     noexcept(noexcept(__x.swap(__y)))
     { __x.swap(__y); }
 
+#if __cplusplus > 202002L
+  template<typename _T1, typename _T2>
+    requires is_swappable_v<const _T1> && is_swappable_v<const _T2>
+    constexpr void
+    swap(const pair<_T1, _T2>& __x, const pair<_T1, _T2>& __y)
+    noexcept(noexcept(__x.swap(__y)))
+    { __x.swap(__y); }
+#endif // C++23
+
 #if __cplusplus > 201402L || !defined(__STRICT_ANSI__) // c++1z or gnu++11
   template<typename _T1, typename _T2>
     typename enable_if<!__and_<__is_swappable<_T1>,
@@ -757,9 +856,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 #if __cplusplus >= 201103L
   // Various functions which give std::pair a tuple-like interface.
 
+  /// @cond undocumented
   template<typename _T1, typename _T2>
     struct __is_tuple_like_impl<pair<_T1, _T2>> : true_type
     { };
+  /// @endcond
 
   /// Partial specialization for std::pair
   template<class _Tp1, class _Tp2>
@@ -788,9 +889,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   template<typename _Tp, typename _Up>
     inline constexpr bool __is_pair<pair<_Tp, _Up>> = true;
-
-  template<typename _Tp, typename _Up>
-    inline constexpr bool __is_pair<const pair<_Tp, _Up>> = true;
 #endif
 
   /// @cond undocumented
@@ -913,6 +1011,23 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     constexpr const _Tp&&
     get(const pair<_Up, _Tp>&& __p) noexcept
     { return std::move(__p.second); }
+
+#if __cplusplus > 202002L
+  template<typename _T1, typename _T2, typename _U1, typename _U2,
+	   template<typename> class _TQual, template<typename> class _UQual>
+    requires requires { typename pair<common_reference_t<_TQual<_T1>, _UQual<_U1>>,
+				      common_reference_t<_TQual<_T2>, _UQual<_U2>>>; }
+  struct basic_common_reference<pair<_T1, _T2>, pair<_U1, _U2>, _TQual, _UQual>
+  {
+    using type = pair<common_reference_t<_TQual<_T1>, _UQual<_U1>>,
+		      common_reference_t<_TQual<_T2>, _UQual<_U2>>>;
+  };
+
+  template<typename _T1, typename _T2, typename _U1, typename _U2>
+    requires requires { typename pair<common_type_t<_T1, _U1>, common_type_t<_T2, _U2>>; }
+  struct common_type<pair<_T1, _T2>, pair<_U1, _U2>>
+  { using type = pair<common_type_t<_T1, _U1>, common_type_t<_T2, _U2>>; };
+#endif // C++23
 
 #endif // C++14
   /// @}

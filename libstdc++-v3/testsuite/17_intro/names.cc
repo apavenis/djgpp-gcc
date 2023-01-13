@@ -20,6 +20,8 @@
 
 // Define macros for some common variables names that we must not use for
 // naming variables, parameters etc. in the library.
+// N.B. we cannot use '#pragma GCC poison A' because that also prevents using
+// these names even as macro arguments, e.g. #define FOO(A) BAR(A)
 #define A (
 #define B (
 #define C (
@@ -110,6 +112,7 @@
 #define tmp (
 #define sz (
 #define token (
+#define value_t (
 
 #if __cplusplus < 201103L
 #define uses_allocator  (
@@ -126,9 +129,16 @@
 #define ptr (
 #endif
 
-// This clashes with newlib so don't use it.
+// These clash with newlib so don't use them.
 # define __lockable		cannot be used as an identifier
+# define __packed		cannot be used as an identifier
+# define __unused		cannot be used as an identifier
+# define __used			cannot be used as an identifier
 
+#ifndef __APPLE__
+#define __weak   predefined qualifier on darwin
+#define __strong predefined qualifier on darwin
+#endif
 
 // Common template parameter names
 #define OutputIterator		OutputIterator is not a reserved name
@@ -195,6 +205,17 @@
 #define ValueT			ValueT is not a reserved name
 #define ValueType		ValueType is not a reserved name
 
+#ifndef _WIN32
+// Windows SAL annotations
+#define _In_			cannot be used as an identifier
+#define _Inout_			cannot be used as an identifier
+#define _Out_			cannot be used as an identifier
+#define _Reserved_		cannot be used as an identifier
+#define __inout			cannot be used as an identifier
+#define __in_opt		cannot be used as an identifier
+#define __out_opt		cannot be used as an identifier
+#endif
+
 #ifdef _AIX
 // See https://gcc.gnu.org/ml/libstdc++/2017-03/msg00015.html
 #undef f
@@ -231,9 +252,19 @@
 #undef y
 #endif
 
+#ifdef __GLIBC_PREREQ
+#if ! __GLIBC_PREREQ(2, 19)
+// Glibc defines this prior to 2.19
+#undef __unused
+#endif
+#endif
+
 #if __has_include(<newlib.h>)
-// newlib's <sys/cdefs.h> defines __lockable as a macro.
+// newlib's <sys/cdefs.h> defines these as macros.
 #undef __lockable
+#undef __packed
+#undef __unused
+#undef __used
 // newlib's <time.h> defines __tzrule_type with these members.
 #undef d
 #undef m

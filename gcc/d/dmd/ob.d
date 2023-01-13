@@ -565,7 +565,7 @@ void toObNodes(ref ObNodes obnodes, Statement s)
              */
             mystate.defaultBlock = s.sdefault ? newNode() : mystate.breakBlock;
 
-            const numcases = s.cases ? s.cases.dim : 0;
+            const numcases = s.cases ? s.cases.length : 0;
 
             /* allocate a block for each case
              */
@@ -1407,16 +1407,7 @@ void genKill(ref ObState obstate, ObNode* ob)
                     }
                     else if (auto td = s.isTupleDeclaration())
                     {
-                        foreach (o; *td.objects)
-                        {
-                            if (auto eo = o.isExpression())
-                            {
-                                if (auto se = eo.isDsymbolExp())
-                                {
-                                    Dsymbol_visit(se.s);
-                                }
-                            }
-                        }
+                        td.foreachVar(&Dsymbol_visit);
                     }
                 }
 
@@ -2107,16 +2098,7 @@ void checkObErrors(ref ObState obstate)
                     }
                     else if (auto td = s.isTupleDeclaration())
                     {
-                        foreach (o; *td.objects)
-                        {
-                            if (auto eo = o.isExpression())
-                            {
-                                if (auto se = eo.isDsymbolExp())
-                                {
-                                    Dsymbol_visit(se.s);
-                                }
-                            }
-                        }
+                        td.foreachVar(&Dsymbol_visit);
                     }
                 }
 

@@ -1,5 +1,5 @@
 /* Loop versioning pass.
-   Copyright (C) 2018-2022 Free Software Foundation, Inc.
+   Copyright (C) 2018-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -258,7 +258,7 @@ private:
   public:
     lv_dom_walker (loop_versioning &);
 
-    edge before_dom_children (basic_block) FINAL OVERRIDE;
+    edge before_dom_children (basic_block) final override;
 
   private:
     /* The parent pass.  */
@@ -271,7 +271,7 @@ private:
   {
   public:
     name_prop (loop_info &li) : m_li (li) {}
-    tree value_of_expr (tree name, gimple *) FINAL OVERRIDE;
+    tree value_of_expr (tree name, gimple *) final override;
 
   private:
     /* Information about the versioning we've performed on the loop.  */
@@ -940,7 +940,7 @@ loop_versioning::analyze_term_using_scevs (address_info &address,
 	{
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_NOTE, address.stmt,
-			     "looking through %G", assign);
+			     "looking through %G", (gimple *) assign);
 	  stride = strip_casts (gimple_assign_rhs1 (assign));
 	}
 
@@ -1782,8 +1782,11 @@ public:
   {}
 
   /* opt_pass methods: */
-  virtual bool gate (function *) { return flag_version_loops_for_strides; }
-  virtual unsigned int execute (function *);
+  bool gate (function *) final override
+  {
+    return flag_version_loops_for_strides;
+  }
+  unsigned int execute (function *) final override;
 };
 
 unsigned int

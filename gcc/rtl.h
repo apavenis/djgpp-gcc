@@ -1,5 +1,5 @@
 /* Register Transfer Language (RTL) definitions for GCC
-   Copyright (C) 1987-2022 Free Software Foundation, Inc.
+   Copyright (C) 1987-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -3369,6 +3369,7 @@ extern int insn_line (const rtx_insn *);
 extern const char * insn_file (const rtx_insn *);
 extern tree insn_scope (const rtx_insn *);
 extern expanded_location insn_location (const rtx_insn *);
+extern int insn_discriminator (const rtx_insn *);
 extern location_t prologue_location, epilogue_location;
 
 /* In jump.cc */
@@ -3712,7 +3713,6 @@ extern unsigned hash_rtx_cb (const_rtx, machine_mode, int *, int *,
 extern rtx regno_use_in (unsigned int, rtx);
 extern int auto_inc_p (const_rtx);
 extern bool in_insn_list_p (const rtx_insn_list *, const rtx_insn *);
-extern void remove_node_from_expr_list (const_rtx, rtx_expr_list **);
 extern void remove_node_from_insn_list (const rtx_insn *, rtx_insn_list **);
 extern int loc_mentioned_in_p (rtx *, const_rtx);
 extern rtx_insn *find_first_parameter_load (rtx_insn *, rtx_insn *);

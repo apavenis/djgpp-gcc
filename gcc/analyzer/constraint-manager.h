@@ -138,6 +138,9 @@ public:
 
   static int cmp (const bounded_ranges *a, const bounded_ranges *b);
 
+  unsigned get_count () const { return m_ranges.length (); }
+  const bounded_range &get_range (unsigned idx) const { return m_ranges[idx]; }
+
 private:
   void canonicalize ();
   void validate () const;
@@ -483,6 +486,9 @@ public:
   void validate () const;
 
   bounded_ranges_manager *get_range_manager () const;
+
+  bool replay_call_summary (call_summary_replay &r,
+			    const constraint_manager &summary);
 
   auto_delete_vec<equiv_class> m_equiv_classes;
   auto_vec<constraint> m_constraints;

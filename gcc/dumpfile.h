@@ -1,5 +1,5 @@
 /* Definitions for the shared dumpfile.
-   Copyright (C) 2004-2022 Free Software Foundation, Inc.
+   Copyright (C) 2004-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -574,7 +574,7 @@ extern void dump_printf (const dump_metadata_t &, const char *, ...)
 
 extern void dump_printf_loc (const dump_metadata_t &, const dump_user_location_t &,
 			     const char *, ...)
-  ATTRIBUTE_GCC_DUMP_PRINTF (3, 0);
+  ATTRIBUTE_GCC_DUMP_PRINTF (3, 4);
 extern void dump_function (int phase, tree fn);
 extern void dump_basic_block (dump_flags_t, basic_block, int);
 extern void dump_generic_expr_loc (const dump_metadata_t &,
