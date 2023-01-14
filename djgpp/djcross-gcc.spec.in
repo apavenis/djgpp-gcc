@@ -470,7 +470,7 @@ rm -fr %{buildroot}
 %endif
 
 %changelog
-* Fri Jan 13 2022 Andris Pavenis <andris.pavenis@iki.fi>
+* Fri Jan 13 2023 Andris Pavenis <andris.pavenis@iki.fi>
 - Change to master branch for upcoming gcc-13
 
 * Fri Aug 19 2022 Andris Pavenis <andris.pavenis@iki.fi>
