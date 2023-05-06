@@ -1,5 +1,5 @@
 /* Unicode characters and various properties.
-   Copyright (C) 2003-2022 Free Software Foundation, Inc.
+   Copyright (C) 2003-2023 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the
@@ -16,7 +16,7 @@
    <http://www.gnu.org/licenses/>.
 
 
-   Copyright (C) 1991-2005 Unicode, Inc.  All rights reserved.
+   Copyright (C) 1991-2022 Unicode, Inc.  All rights reserved.
    Distributed under the Terms of Use in
    http://www.unicode.org/copyright.html.
 

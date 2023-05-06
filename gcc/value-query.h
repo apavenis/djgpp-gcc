@@ -25,7 +25,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "value-relation.h"
 
 // The value_query class is used by optimization passes that require
-// valueizing SSA names in terms of a tree value, but have no neeed
+// valueizing SSA names in terms of a tree value, but have no need
 // for ranges.
 //
 // value_of_expr must be provided.  The default for value_on_edge and
@@ -140,9 +140,11 @@ get_global_range_query ()
 ATTRIBUTE_RETURNS_NONNULL inline range_query *
 get_range_query (const struct function *fun)
 {
-  return fun->x_range_query ? fun->x_range_query : &global_ranges;
+  return (fun && fun->x_range_query) ? fun->x_range_query : &global_ranges;
 }
 
-extern void gimple_range_global (vrange &v, tree name);
+// Query the global range of NAME in function F.  Default to cfun.
+extern void gimple_range_global (vrange &v, tree name,
+				 struct function *f = cfun);
 
 #endif // GCC_QUERY_H

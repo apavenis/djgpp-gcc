@@ -1,5 +1,5 @@
 /* toir.cc -- Lower D frontend statements to GCC trees.
-   Copyright (C) 2006-2022 Free Software Foundation, Inc.
+   Copyright (C) 2006-2023 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -582,8 +582,9 @@ public:
     tree ifbody = void_node;
     tree elsebody = void_node;
 
-    /* Build the `then' branch.  */
-    if (s->ifbody)
+    /* Build the `then' branch, don't do code generation when the condition
+       is `if (__ctfe)', as that is always false at run-time.  */
+    if (s->ifbody && !s->isIfCtfeBlock ())
       {
 	push_stmt_list ();
 	this->build_stmt (s->ifbody);

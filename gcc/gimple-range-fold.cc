@@ -137,7 +137,7 @@ fur_edge::get_operand (vrange &r, tree expr)
 bool
 fur_edge::get_phi_operand (vrange &r, tree expr, edge e)
 {
-  // Edge to edge recalculations not supoprted yet, until we sort it out.
+  // Edge to edge recalculations not supported yet, until we sort it out.
   gcc_checking_assert (e == m_edge);
   return m_query->range_on_edge (r, e, expr);
 }
@@ -149,7 +149,7 @@ fur_stmt::fur_stmt (gimple *s, range_query *q) : fur_source (q)
   m_stmt = s;
 }
 
-// Retreive range of EXPR as it occurs as a use on stmt M_STMT.
+// Retrieve range of EXPR as it occurs as a use on stmt M_STMT.
 
 bool
 fur_stmt::get_operand (vrange &r, tree expr)
@@ -438,7 +438,7 @@ adjust_realpart_expr (vrange &res, const gimple *stmt)
 }
 
 // This function looks for situations when walking the use/def chains
-// may provide additonal contextual range information not exposed on
+// may provide additional contextual range information not exposed on
 // this statement.
 
 static void
@@ -795,9 +795,28 @@ fold_using_range::range_of_phi (vrange &r, gphi *phi, fur_source &src)
     // If the PHI boils down to a single effective argument, look at it.
     if (single_arg)
       {
-	// Symbolic arguments are equivalences.
+	// Symbolic arguments can be equivalences.
 	if (gimple_range_ssa_p (single_arg))
-	  src.register_relation (phi, VREL_EQ, phi_def, single_arg);
+	  {
+	    // Only allow the equivalence if the PHI definition does not
+	    // dominate any incoming edge for SINGLE_ARG.
+	    // See PR 108139 and 109462.
+	    basic_block bb = gimple_bb (phi);
+	    if (!dom_info_available_p (CDI_DOMINATORS))
+	      single_arg = NULL;
+	    else
+	      for (x = 0; x < gimple_phi_num_args (phi); x++)
+		if (gimple_phi_arg_def (phi, x) == single_arg
+		    && dominated_by_p (CDI_DOMINATORS,
+					gimple_phi_arg_edge (phi, x)->src,
+					bb))
+		  {
+		    single_arg = NULL;
+		    break;
+		  }
+	    if (single_arg)
+	      src.register_relation (phi, VREL_EQ, phi_def, single_arg);
+	  }
 	else if (src.get_operand (arg_range, single_arg)
 		 && arg_range.singleton_p ())
 	  {
@@ -809,7 +828,7 @@ fold_using_range::range_of_phi (vrange &r, gphi *phi, fur_source &src)
 	  }
       }
 
-  // If SCEV is available, query if this PHI has any knonwn values.
+  // If SCEV is available, query if this PHI has any known values.
   if (scev_initialized_p ()
       && !POINTER_TYPE_P (TREE_TYPE (phi_def)))
     {
@@ -1039,6 +1058,9 @@ fold_using_range::relation_fold_and_or (irange& lhs_range, gimple *s,
   if (!ssa1_dep1 || !ssa1_dep2 || !ssa2_dep1 || !ssa2_dep2)
     return;
 
+  if (HONOR_NANS (TREE_TYPE (ssa1_dep1)))
+    return;
+
   // Make sure they are the same dependencies, and detect the order of the
   // relationship.
   bool reverse_op2 = true;
@@ -1061,7 +1083,7 @@ fold_using_range::relation_fold_and_or (irange& lhs_range, gimple *s,
   if (is_and && relation_intersect (relation1, relation2) == VREL_UNDEFINED)
     lhs_range = int_range<2> (boolean_false_node, boolean_false_node);
   // x || y is true if the union of the true cases is NO-RELATION..
-  // ie, one or the other being true covers the full range of possibilties.
+  // ie, one or the other being true covers the full range of possibilities.
   else if (!is_and && relation_union (relation1, relation2) == VREL_VARYING)
     lhs_range = bool_one;
   else

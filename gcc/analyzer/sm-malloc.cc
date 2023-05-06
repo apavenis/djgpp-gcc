@@ -1,5 +1,5 @@
 /* A state machine for detecting misuses of the malloc/free API.
-   Copyright (C) 2019-2022 Free Software Foundation, Inc.
+   Copyright (C) 2019-2023 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -45,6 +45,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "attribs.h"
 #include "analyzer/function-set.h"
 #include "analyzer/program-state.h"
+#include "analyzer/checker-event.h"
+#include "analyzer/exploded-graph.h"
 
 #if ENABLE_ANALYZER
 
@@ -1148,6 +1150,8 @@ public:
     return OPT_Wanalyzer_null_dereference;
   }
 
+  bool terminate_path_p () const final override { return true; }
+
   bool emit (rich_location *rich_loc) final override
   {
     /* CWE-476: NULL Pointer Dereference.  */
@@ -1200,6 +1204,8 @@ public:
   {
     return OPT_Wanalyzer_null_argument;
   }
+
+  bool terminate_path_p () const final override { return true; }
 
   bool emit (rich_location *rich_loc) final override
   {
@@ -1490,8 +1496,13 @@ class deref_before_check : public malloc_diagnostic
 {
 public:
   deref_before_check (const malloc_state_machine &sm, tree arg)
-  : malloc_diagnostic (sm, arg)
-  {}
+  : malloc_diagnostic (sm, arg),
+    m_deref_enode (NULL),
+    m_deref_expr (NULL),
+    m_check_enode (NULL)
+  {
+    gcc_assert (arg);
+  }
 
   const char *get_kind () const final override { return "deref_before_check"; }
 
@@ -1502,15 +1513,82 @@ public:
 
   bool emit (rich_location *rich_loc) final override
   {
-    if (m_arg)
-      return warning_at (rich_loc, get_controlling_option (),
-			 "check of %qE for NULL after already"
-			 " dereferencing it",
-			 m_arg);
-    else
-      return warning_at (rich_loc, get_controlling_option (),
-			 "check of pointer for NULL after already"
-			 " dereferencing it");
+    /* Don't emit the warning if we can't show where the deref
+       and the check occur.  */
+    if (!m_deref_enode)
+      return false;
+    if (!m_check_enode)
+      return false;
+    /* Only emit the warning for intraprocedural cases.  */
+    const program_point &deref_point = m_deref_enode->get_point ();
+    const program_point &check_point = m_check_enode->get_point ();
+
+    if (!program_point::effectively_intraprocedural_p (deref_point,
+						       check_point))
+      return false;
+
+    /* Reject the warning if the check occurs within a macro defintion.
+       This avoids false positives for such code as:
+
+	#define throw_error \
+	   do {             \
+	     if (p)         \
+	       cleanup (p); \
+	     return;        \
+	   } while (0)
+
+	if (p->idx >= n)
+	  throw_error ();
+
+       where the usage of "throw_error" implicitly adds a check
+       on 'p'.
+
+       We do warn when the check is in a macro expansion if we can get
+       at the location of the condition and it is't part of the
+       definition, so that we warn for checks such as:
+	   if (words[0][0] == '@')
+	     return;
+	   g_assert(words[0] != NULL); <--- here
+       Unfortunately we don't have locations for individual gimple
+       arguments, so in:
+	   g_assert (ptr);
+       we merely have a gimple_cond
+	   if (p_2(D) == 0B)
+       with no way of getting at the location of the condition separately
+       from that of the gimple_cond (where the "if" is within the macro
+       definition).  We reject the warning for such cases.
+
+       We do warn when the *deref* occurs in a macro, since this can be
+       a source of real bugs; see e.g. PR 77425.  */
+    location_t check_loc = m_check_enode->get_point ().get_location ();
+    if (linemap_location_from_macro_definition_p (line_table, check_loc))
+      return false;
+
+    /* Reject if m_deref_expr is sufficiently different from m_arg
+       for cases where the dereference is spelled differently from
+       the check, which is probably two different ways to get the
+       same svalue, and thus not worth reporting.  */
+    if (!m_deref_expr)
+      return false;
+    if (!sufficiently_similar_p (m_deref_expr, m_arg))
+      return false;
+
+    /* Reject the warning if the deref's BB doesn't dominate that
+       of the check, so that we don't warn e.g. for shared cleanup
+       code that checks a pointer for NULL, when that code is sometimes
+       used before a deref and sometimes after.
+       Using the dominance code requires setting cfun.  */
+    auto_cfun sentinel (m_deref_enode->get_function ());
+    calculate_dominance_info (CDI_DOMINATORS);
+    if (!dominated_by_p (CDI_DOMINATORS,
+			 m_check_enode->get_supernode ()->m_bb,
+			 m_deref_enode->get_supernode ()->m_bb))
+      return false;
+
+    return warning_at (rich_loc, get_controlling_option (),
+		       "check of %qE for NULL after already"
+		       " dereferencing it",
+		       m_arg);
   }
 
   label_text describe_state_change (const evdesc::state_change &change)
@@ -1520,42 +1598,45 @@ public:
 	&& assumed_non_null_p (change.m_new_state))
       {
 	m_first_deref_event = change.m_event_id;
-	if (m_arg)
-	  return change.formatted_print ("pointer %qE is dereferenced here",
-					 m_arg);
-	else
-	  return label_text::borrow ("pointer is dereferenced here");
+	m_deref_enode = change.m_event.get_exploded_node ();
+	m_deref_expr = change.m_expr;
+	return change.formatted_print ("pointer %qE is dereferenced here",
+				       m_arg);
       }
     return malloc_diagnostic::describe_state_change (change);
   }
 
   label_text describe_final_event (const evdesc::final_event &ev) final override
   {
+    m_check_enode = ev.m_event.get_exploded_node ();
     if (m_first_deref_event.known_p ())
-      {
-	if (m_arg)
-	  return ev.formatted_print ("pointer %qE is checked for NULL here but"
-				     " it was already dereferenced at %@",
-				     m_arg, &m_first_deref_event);
-	else
-	  return ev.formatted_print ("pointer is checked for NULL here but"
-				     " it was already dereferenced at %@",
-				     &m_first_deref_event);
-      }
+      return ev.formatted_print ("pointer %qE is checked for NULL here but"
+				 " it was already dereferenced at %@",
+				 m_arg, &m_first_deref_event);
     else
-      {
-	if (m_arg)
-	  return ev.formatted_print ("pointer %qE is checked for NULL here but"
-				     " it was already dereferenced",
-				     m_arg);
-	else
-	  return ev.formatted_print ("pointer is checked for NULL here but"
-				     " it was already dereferenced");
-      }
+      return ev.formatted_print ("pointer %qE is checked for NULL here but"
+				 " it was already dereferenced",
+				 m_arg);
   }
 
 private:
+  static bool sufficiently_similar_p (tree expr_a, tree expr_b)
+  {
+    pretty_printer *pp_a = global_dc->printer->clone ();
+    pretty_printer *pp_b = global_dc->printer->clone ();
+    pp_printf (pp_a, "%qE", expr_a);
+    pp_printf (pp_b, "%qE", expr_b);
+    bool result = (strcmp (pp_formatted_text (pp_a), pp_formatted_text (pp_b))
+		   == 0);
+    delete pp_a;
+    delete pp_b;
+    return result;
+  }
+
   diagnostic_event_id_t m_first_deref_event;
+  const exploded_node *m_deref_enode;
+  tree m_deref_expr;
+  const exploded_node *m_check_enode;
 };
 
 /* struct allocation_state : public state_machine::state.  */
@@ -2067,9 +2148,10 @@ maybe_complain_about_deref_before_check (sm_context *sm_ctxt,
     return;
 
   tree diag_ptr = sm_ctxt->get_diagnostic_tree (ptr);
-  sm_ctxt->warn
-    (node, stmt, ptr,
-     make_unique<deref_before_check> (*this, diag_ptr));
+  if (diag_ptr)
+    sm_ctxt->warn
+      (node, stmt, ptr,
+       make_unique<deref_before_check> (*this, diag_ptr));
   sm_ctxt->set_next_state (stmt, ptr, m_stop);
 }
 

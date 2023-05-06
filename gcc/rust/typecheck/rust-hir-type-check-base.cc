@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -17,13 +17,21 @@
 // <http://www.gnu.org/licenses/>.
 
 #include "rust-hir-type-check-base.h"
+#include "rust-hir-type-check-item.h"
 #include "rust-hir-type-check-type.h"
 #include "rust-hir-type-check-expr.h"
+#include "rust-hir-type-check-implitem.h"
 #include "rust-coercion.h"
+#include "rust-unify.h"
 #include "rust-casts.h"
 
 namespace Rust {
 namespace Resolver {
+
+TypeCheckBase::TypeCheckBase ()
+  : mappings (Analysis::Mappings::get ()), resolver (Resolver::get ()),
+    context (TypeCheckContext::get ())
+{}
 
 bool
 TypeCheckBase::check_for_unconstrained (
@@ -32,6 +40,13 @@ TypeCheckBase::check_for_unconstrained (
   const TyTy::SubstitutionArgumentMappings &constraint_b,
   const TyTy::BaseType *reference)
 {
+  bool check_result = false;
+  bool check_completed
+    = context->have_checked_for_unconstrained (reference->get_ref (),
+					       &check_result);
+  if (check_completed)
+    return check_result;
+
   std::set<HirId> symbols_to_constrain;
   std::map<HirId, Location> symbol_to_location;
   for (const auto &p : params_to_constrain)
@@ -81,6 +96,10 @@ TypeCheckBase::check_for_unconstrained (
 	  unconstrained = true;
 	}
     }
+
+  context->insert_unconstrained_check_marker (reference->get_ref (),
+					      unconstrained);
+
   return unconstrained;
 }
 
@@ -332,9 +351,26 @@ TypeCheckBase::parse_repr_options (const AST::AttrVec &attrs, Location locus)
 }
 
 TyTy::BaseType *
-TypeCheckBase::coercion_site (HirId id, TyTy::BaseType *expected,
-			      TyTy::BaseType *expr, Location locus)
+TypeCheckBase::unify_site (HirId id, TyTy::TyWithLocation lhs,
+			   TyTy::TyWithLocation rhs, Location unify_locus)
 {
+  TyTy::BaseType *expected = lhs.get_ty ();
+  TyTy::BaseType *expr = rhs.get_ty ();
+
+  rust_debug ("unify_site id={%u} expected={%s} expr={%s}", id,
+	      expected->debug_str ().c_str (), expr->debug_str ().c_str ());
+
+  return UnifyRules::Resolve (lhs, rhs, unify_locus, true /*commit*/,
+			      true /*emit_error*/);
+}
+
+TyTy::BaseType *
+TypeCheckBase::coercion_site (HirId id, TyTy::TyWithLocation lhs,
+			      TyTy::TyWithLocation rhs, Location locus)
+{
+  TyTy::BaseType *expected = lhs.get_ty ();
+  TyTy::BaseType *expr = rhs.get_ty ();
+
   rust_debug ("coercion_site id={%u} expected={%s} expr={%s}", id,
 	      expected->debug_str ().c_str (), expr->debug_str ().c_str ());
 
@@ -355,7 +391,9 @@ TypeCheckBase::coercion_site (HirId id, TyTy::BaseType *expected,
 
   rust_debug ("coerce_default_unify(a={%s}, b={%s})",
 	      receiver->debug_str ().c_str (), expected->debug_str ().c_str ());
-  TyTy::BaseType *coerced = expected->unify (receiver);
+  TyTy::BaseType *coerced
+    = unify_site (id, lhs, TyTy::TyWithLocation (receiver, rhs.get_locus ()),
+		  locus);
   context->insert_autoderef_mappings (id, std::move (result.adjustments));
   return coerced;
 }
@@ -385,7 +423,11 @@ TypeCheckBase::cast_site (HirId id, TyTy::TyWithLocation from,
   rust_debug ("cast_default_unify(a={%s}, b={%s})",
 	      casted_result->debug_str ().c_str (),
 	      to.get_ty ()->debug_str ().c_str ());
-  TyTy::BaseType *casted = to.get_ty ()->unify (casted_result);
+
+  TyTy::BaseType *casted
+    = unify_site (id, to,
+		  TyTy::TyWithLocation (casted_result, from.get_locus ()),
+		  cast_locus);
   context->insert_cast_autoderef_mappings (id, std::move (result.adjustments));
   return casted;
 }
@@ -403,6 +445,7 @@ TypeCheckBase::resolve_generic_params (
 	  // FIXME: Skipping Lifetime completely until better
 	  // handling.
 	  break;
+
 	  case HIR::GenericParam::GenericKind::CONST: {
 	    auto param
 	      = static_cast<HIR::ConstGenericParam *> (generic_param.get ());
@@ -414,7 +457,12 @@ TypeCheckBase::resolve_generic_params (
 		auto expr_type = TypeCheckExpr::Resolve (
 		  param->get_default_expression ().get ());
 
-		specified_type->unify (expr_type);
+		coercion_site (
+		  param->get_mappings ().get_hirid (),
+		  TyTy::TyWithLocation (specified_type),
+		  TyTy::TyWithLocation (
+		    expr_type, param->get_default_expression ()->get_locus ()),
+		  param->get_locus ());
 	      }
 
 	    context->insert_type (generic_param->get_mappings (),

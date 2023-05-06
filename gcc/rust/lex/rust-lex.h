@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -22,6 +22,7 @@
 #include "rust-linemap.h"
 #include "rust-buffered-queue.h"
 #include "rust-token.h"
+#include "rust-optional.h"
 
 namespace Rust {
 // Simple wrapper for FILE* that simplifies destruction.
@@ -37,13 +38,37 @@ private:
       fclose (file);
   }
 
+  static bool allowed_filetype (const struct stat &statbuf)
+  {
+    // The file could be either
+    // - a regular file
+    // - a char device (/dev/null...)
+    return S_ISREG (statbuf.st_mode) || S_ISCHR (statbuf.st_mode);
+  }
+
 public:
   RAIIFile (const char *filename) : filename (filename)
   {
     if (strcmp (filename, "-") == 0)
-      file = stdin;
+      {
+	file = stdin;
+      }
     else
-      file = fopen (filename, "r");
+      {
+	struct stat statbuf;
+	if (!(file = fopen (filename, "r")))
+	  {
+	    return;
+	  }
+
+	if (-1 == fstat (fileno (file), &statbuf)
+	    || !allowed_filetype (statbuf))
+	  {
+	    fclose (file);
+	    file = nullptr;
+	    errno = EISDIR;
+	  }
+      }
   }
 
   /**
@@ -108,7 +133,7 @@ private:
   std::pair<std::string, int> parse_in_exponent_part ();
   std::pair<PrimitiveCoreType, int> parse_in_type_suffix ();
   std::tuple<char, int, bool> parse_escape (char opening_char);
-  std::tuple<Codepoint, int, bool> parse_utf8_escape (char opening_char);
+  std::tuple<Codepoint, int, bool> parse_utf8_escape ();
   int parse_partial_string_continue ();
   std::pair<long, int> parse_partial_hex_escape ();
   std::pair<Codepoint, int> parse_partial_unicode_escape ();
@@ -139,7 +164,9 @@ private:
 
 public:
   // Construct lexer with input file and filename provided
-  Lexer (const char *filename, RAIIFile input, Linemap *linemap);
+  Lexer (const char *filename, RAIIFile input, Linemap *linemap,
+	 Optional<std::ofstream &> dump_lex_opt
+	 = Optional<std::ofstream &>::none ());
 
   // Lex the contents of a string instead of a file
   Lexer (const std::string &input);
@@ -161,9 +188,12 @@ public:
   const_TokenPtr peek_token () { return peek_token (0); }
 
   // Advances current token to n + 1 tokens ahead of current position.
-  void skip_token (int n) { token_queue.skip (n); }
+  void skip_token (int n);
   // Skips the current token.
   void skip_token () { skip_token (0); }
+
+  // Dumps and advances by n + 1 tokens.
+  void dump_and_skip (int n);
 
   // Replaces the current token with a specified token.
   void replace_current_token (TokenPtr replacement);
@@ -196,6 +226,8 @@ private:
   /* Max column number that can be quickly allocated - higher may require
    * allocating new linemap */
   static const int max_column_hint = 80;
+
+  Optional<std::ofstream &> dump_lex_out;
 
   // Input source wrapper thing.
   class InputSource

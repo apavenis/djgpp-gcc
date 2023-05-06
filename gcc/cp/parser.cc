@@ -1,5 +1,5 @@
 /* -*- C++ -*- Parser.
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2023 Free Software Foundation, Inc.
    Written by Mark Mitchell <mark@codesourcery.com>.
 
    This file is part of GCC.
@@ -705,7 +705,7 @@ cp_lexer_new_main (void)
   /* It's possible that parsing the first pragma will load a PCH file,
      which is a GC collection point.  So we have to do that before
      allocating any memory.  */
-  cp_lexer_get_preprocessor_token (0, &token);
+  cp_lexer_get_preprocessor_token (C_LEX_STRING_NO_JOIN, &token);
   cp_parser_initial_pragma (&token);
   c_common_no_more_pch ();
 
@@ -2227,16 +2227,8 @@ pop_unparsed_function_queues (cp_parser *parser)
 
 /* Lexical conventions [gram.lex]  */
 
-static cp_expr cp_parser_identifier
-  (cp_parser *);
-static cp_expr cp_parser_string_literal
-  (cp_parser *, bool, bool, bool);
-static cp_expr cp_parser_userdef_char_literal
-  (cp_parser *);
-static tree cp_parser_userdef_string_literal
+static tree finish_userdef_string_literal
   (tree);
-static cp_expr cp_parser_userdef_numeric_literal
-  (cp_parser *);
 
 /* Basic concepts [gram.basic]  */
 
@@ -4408,11 +4400,15 @@ cp_parser_identifier (cp_parser* parser)
     return error_mark_node;
 }
 
-/* Parse a sequence of adjacent string constants.  Returns a
+/* Worker for cp_parser_string_literal and cp_parser_userdef_string_literal.
+   Do not call this directly; use either of the above.
+
+   Parse a sequence of adjacent string constants.  Return a
    TREE_STRING representing the combined, nul-terminated string
    constant.  If TRANSLATE is true, translate the string to the
    execution character set.  If WIDE_OK is true, a wide string is
-   invalid here.
+   valid here.  If UDL_OK is true, a string literal with user-defined
+   suffix can be used in this context.
 
    C++98 [lex.string] says that if a narrow string literal token is
    adjacent to a wide string literal token, the behavior is undefined.
@@ -4422,9 +4418,11 @@ cp_parser_identifier (cp_parser* parser)
    This code is largely lifted from lex_string() in c-lex.cc.
 
    FUTURE: ObjC++ will need to handle @-strings here.  */
+
 static cp_expr
-cp_parser_string_literal (cp_parser *parser, bool translate, bool wide_ok,
-			  bool lookup_udlit = true)
+cp_parser_string_literal_common (cp_parser *parser, bool translate,
+				 bool wide_ok, bool udl_ok,
+				 bool lookup_udlit)
 {
   tree value;
   size_t count;
@@ -4449,6 +4447,12 @@ cp_parser_string_literal (cp_parser *parser, bool translate, bool wide_ok,
 
   if (cpp_userdef_string_p (tok->type))
     {
+      if (!udl_ok)
+	{
+	  error_at (loc, "string literal with user-defined suffix "
+		    "is invalid in this context");
+	  return error_mark_node;
+	}
       string_tree = USERDEF_LITERAL_VALUE (tok->u.value);
       curr_type = cpp_userdef_string_remove_type (tok->type);
       curr_tok_is_userdef_p = true;
@@ -4539,6 +4543,12 @@ cp_parser_string_literal (cp_parser *parser, bool translate, bool wide_ok,
 	  tok = cp_lexer_peek_token (parser->lexer);
 	  if (cpp_userdef_string_p (tok->type))
 	    {
+	      if (!udl_ok)
+		{
+		  error_at (loc, "string literal with user-defined suffix "
+			    "is invalid in this context");
+		  return error_mark_node;
+		}
 	      string_tree = USERDEF_LITERAL_VALUE (tok->u.value);
 	      curr_type = cpp_userdef_string_remove_type (tok->type);
 	      curr_tok_is_userdef_p = true;
@@ -4608,7 +4618,7 @@ cp_parser_string_literal (cp_parser *parser, bool translate, bool wide_ok,
 	  tree literal = build_userdef_literal (suffix_id, value,
 						OT_NONE, NULL_TREE);
 	  if (lookup_udlit)
-	    value = cp_parser_userdef_string_literal (literal);
+	    value = finish_userdef_string_literal (literal);
 	  else
 	    value = literal;
 	}
@@ -4624,6 +4634,37 @@ cp_parser_string_literal (cp_parser *parser, bool translate, bool wide_ok,
     }
 
   return cp_expr (value, loc);
+}
+
+/* Parse a sequence of adjacent string constants.  Return a TREE_STRING
+   representing the combined, nul-terminated string constant.  If
+   TRANSLATE is true, translate the string to the execution character set.
+   If WIDE_OK is true, a wide string is valid here.
+
+   This function issues an error if a user defined string literal is
+   encountered; use cp_parser_userdef_string_literal if UDLs are allowed.  */
+
+static inline cp_expr
+cp_parser_string_literal (cp_parser *parser, bool translate, bool wide_ok)
+{
+  return cp_parser_string_literal_common (parser, translate, wide_ok,
+					  /*udl_ok=*/false,
+					  /*lookup_udlit=*/false);
+}
+
+/* Parse a string literal or user defined string literal.
+
+   user-defined-string-literal :
+     string-literal ud-suffix
+
+   If LOOKUP_UDLIT, perform a lookup for a suitable template function.  */
+
+static inline cp_expr
+cp_parser_userdef_string_literal (cp_parser *parser, bool lookup_udlit)
+{
+  return cp_parser_string_literal_common (parser, /*translate=*/true,
+					  /*wide_ok=*/true, /*udl_ok=*/true,
+					  lookup_udlit);
 }
 
 /* Look up a literal operator with the name and the exact arguments.  */
@@ -4923,7 +4964,7 @@ cp_parser_userdef_numeric_literal (cp_parser *parser)
    as arguments.  */
 
 static tree
-cp_parser_userdef_string_literal (tree literal)
+finish_userdef_string_literal (tree literal)
 {
   tree suffix_id = USERDEF_LITERAL_SUFFIX_ID (literal);
   tree name = cp_literal_operator_id (IDENTIFIER_POINTER (suffix_id));
@@ -5663,10 +5704,15 @@ cp_parser_primary_expression (cp_parser *parser,
       /* ??? Should wide strings be allowed when parser->translate_strings_p
 	 is false (i.e. in attributes)?  If not, we can kill the third
 	 argument to cp_parser_string_literal.  */
-      return (cp_parser_string_literal (parser,
-					parser->translate_strings_p,
-					true)
-	      .maybe_add_location_wrapper ());
+      if (parser->translate_strings_p)
+	return (cp_parser_userdef_string_literal (parser,
+						  /*lookup_udlit=*/true)
+		.maybe_add_location_wrapper ());
+      else
+	return (cp_parser_string_literal (parser,
+					  /*translate=*/false,
+					  /*wide_ok=*/true)
+		.maybe_add_location_wrapper ());
 
     case CPP_OPEN_PAREN:
       /* If we see `( { ' then we are looking at the beginning of
@@ -10243,6 +10289,7 @@ cp_parser_binary_expression (cp_parser* parser, bool cast_p,
 	  (current.lhs.get_location (),
 	   tree_strip_any_location_wrapper (current.lhs),
 	   current.loc,
+	   rhs.get_location (),
 	   tree_strip_any_location_wrapper (rhs));
 
       overload = NULL;
@@ -10914,10 +10961,22 @@ cp_parser_trait (cp_parser* parser, enum rid keyword)
   matching_parens parens;
   parens.require_open (parser);
 
-  {
-    type_id_in_expr_sentinel s (parser);
-    type1 = cp_parser_type_id (parser);
-  }
+  if (kind == CPTK_IS_DEDUCIBLE)
+    {
+      const cp_token* token = cp_lexer_peek_token (parser->lexer);
+      type1 = cp_parser_id_expression (parser,
+				       /*template_keyword_p=*/false,
+				       /*check_dependency_p=*/true,
+				       nullptr,
+				       /*declarator_p=*/false,
+				       /*optional_p=*/false);
+      type1 = cp_parser_lookup_name_simple (parser, type1, token->location);
+    }
+  else
+    {
+      type_id_in_expr_sentinel s (parser);
+      type1 = cp_parser_type_id (parser);
+    }
 
   if (type1 == error_mark_node)
     return error_mark_node;
@@ -16222,15 +16281,14 @@ cp_parser_function_specifier_opt (cp_parser* parser,
 static void
 cp_parser_linkage_specification (cp_parser* parser, tree prefix_attr)
 {
-  tree linkage;
-
   /* Look for the `extern' keyword.  */
   cp_token *extern_token
     = cp_parser_require_keyword (parser, RID_EXTERN, RT_EXTERN);
 
   /* Look for the string-literal.  */
   cp_token *string_token = cp_lexer_peek_token (parser->lexer);
-  linkage = cp_parser_string_literal (parser, false, false);
+  tree linkage = cp_parser_string_literal (parser, /*translate=*/false,
+					   /*wide_ok=*/false);
 
   /* Transform the literal into an identifier.  If the literal is a
      wide-character string, or contains embedded NULs, then we can't
@@ -16360,9 +16418,8 @@ cp_parser_static_assert(cp_parser *parser, bool member_p)
       cp_parser_require (parser, CPP_COMMA, RT_COMMA);
 
       /* Parse the string-literal message.  */
-      message = cp_parser_string_literal (parser,
-                                	  /*translate=*/false,
-                                	  /*wide_ok=*/true);
+      message = cp_parser_string_literal (parser, /*translate=*/false,
+					  /*wide_ok=*/true);
 
       /* A `)' completes the static assertion.  */
       if (!parens.require_close (parser))
@@ -17410,7 +17467,6 @@ cp_parser_operator (cp_parser* parser, location_t start_loc)
     case CPP_STRING16_USERDEF:
     case CPP_STRING32_USERDEF:
       {
-	cp_expr str;
 	tree string_tree;
 	int sz, len;
 
@@ -17418,8 +17474,8 @@ cp_parser_operator (cp_parser* parser, location_t start_loc)
 	  maybe_warn_cpp0x (CPP0X_USER_DEFINED_LITERALS);
 
 	/* Consume the string.  */
-	str = cp_parser_string_literal (parser, /*translate=*/true,
-				      /*wide_ok=*/true, /*lookup_udlit=*/false);
+	cp_expr str = cp_parser_userdef_string_literal (parser,
+							/*lookup_udlit=*/false);
 	if (str == error_mark_node)
 	  return error_mark_node;
 	else if (TREE_CODE (str) == USERDEF_LITERAL)
@@ -22072,7 +22128,6 @@ cp_parser_using_directive (cp_parser* parser)
 static void
 cp_parser_asm_definition (cp_parser* parser)
 {
-  tree string;
   tree outputs = NULL_TREE;
   tree inputs = NULL_TREE;
   tree clobbers = NULL_TREE;
@@ -22180,7 +22235,8 @@ cp_parser_asm_definition (cp_parser* parser)
   if (!cp_parser_require (parser, CPP_OPEN_PAREN, RT_OPEN_PAREN))
     return;
   /* Look for the string.  */
-  string = cp_parser_string_literal (parser, false, false);
+  tree string = cp_parser_string_literal (parser, /*translate=*/false,
+					  /*wide_ok=*/false);
   if (string == error_mark_node)
     {
       cp_parser_skip_to_closing_parenthesis (parser, true, false,
@@ -26096,6 +26152,11 @@ cp_parser_class_specifier (cp_parser* parser)
   saved_in_unbraced_linkage_specification_p
     = parser->in_unbraced_linkage_specification_p;
   parser->in_unbraced_linkage_specification_p = false;
+  /* 'this' from an enclosing non-static member function is unavailable.  */
+  tree saved_ccp = current_class_ptr;
+  tree saved_ccr = current_class_ref;
+  current_class_ptr = NULL_TREE;
+  current_class_ref = NULL_TREE;
 
   /* Start the class.  */
   if (nested_name_specifier_p)
@@ -26314,8 +26375,6 @@ cp_parser_class_specifier (cp_parser* parser)
       /* If there are noexcept-specifiers that have not yet been processed,
 	 take care of them now.  Do this before processing NSDMIs as they
 	 may depend on noexcept-specifiers already having been processed.  */
-      tree save_ccp = current_class_ptr;
-      tree save_ccr = current_class_ref;
       FOR_EACH_VEC_SAFE_ELT (unparsed_noexcepts, ix, decl)
 	{
 	  tree ctx = DECL_CONTEXT (decl);
@@ -26380,11 +26439,12 @@ cp_parser_class_specifier (cp_parser* parser)
       /* Now parse any NSDMIs.  */
       FOR_EACH_VEC_SAFE_ELT (unparsed_nsdmis, ix, decl)
 	{
-	  if (class_type != DECL_CONTEXT (decl))
+	  tree ctx = type_context_for_name_lookup (decl);
+	  if (class_type != ctx)
 	    {
 	      if (pushed_scope)
 		pop_scope (pushed_scope);
-	      class_type = DECL_CONTEXT (decl);
+	      class_type = ctx;
 	      pushed_scope = push_scope (class_type);
 	    }
 	  inject_this_parameter (class_type, TYPE_UNQUALIFIED);
@@ -26441,8 +26501,8 @@ cp_parser_class_specifier (cp_parser* parser)
 	}
       vec_safe_truncate (unparsed_contracts, 0);
 
-      current_class_ptr = save_ccp;
-      current_class_ref = save_ccr;
+      current_class_ptr = NULL_TREE;
+      current_class_ref = NULL_TREE;
       if (pushed_scope)
 	pop_scope (pushed_scope);
 
@@ -26474,6 +26534,8 @@ cp_parser_class_specifier (cp_parser* parser)
     = saved_num_template_parameter_lists;
   parser->in_unbraced_linkage_specification_p
     = saved_in_unbraced_linkage_specification_p;
+  current_class_ptr = saved_ccp;
+  current_class_ref = saved_ccr;
 
   return type;
 }
@@ -28655,11 +28717,8 @@ cp_parser_yield_expression (cp_parser* parser)
 static tree
 cp_parser_asm_specification_opt (cp_parser* parser)
 {
-  cp_token *token;
-  tree asm_specification;
-
   /* Peek at the next token.  */
-  token = cp_lexer_peek_token (parser->lexer);
+  cp_token *token = cp_lexer_peek_token (parser->lexer);
   /* If the next token isn't the `asm' keyword, then there's no
      asm-specification.  */
   if (!cp_parser_is_keyword (token, RID_ASM))
@@ -28672,7 +28731,9 @@ cp_parser_asm_specification_opt (cp_parser* parser)
   parens.require_open (parser);
 
   /* Look for the string-literal.  */
-  asm_specification = cp_parser_string_literal (parser, false, false);
+  tree asm_specification = cp_parser_string_literal (parser,
+						     /*translate=*/false,
+						     /*wide_ok=*/false);
 
   /* Look for the `)'.  */
   parens.require_close (parser);
@@ -28705,8 +28766,6 @@ cp_parser_asm_operand_list (cp_parser* parser)
 
   while (true)
     {
-      tree string_literal;
-      tree expression;
       tree name;
 
       if (cp_lexer_next_token_is (parser->lexer, CPP_OPEN_SQUARE))
@@ -28724,13 +28783,15 @@ cp_parser_asm_operand_list (cp_parser* parser)
       else
 	name = NULL_TREE;
       /* Look for the string-literal.  */
-      string_literal = cp_parser_string_literal (parser, false, false);
+      tree string_literal = cp_parser_string_literal (parser,
+						      /*translate=*/false,
+						      /*wide_ok=*/false);
 
       /* Look for the `('.  */
       matching_parens parens;
       parens.require_open (parser);
       /* Parse the expression.  */
-      expression = cp_parser_expression (parser);
+      tree expression = cp_parser_expression (parser);
       /* Look for the `)'.  */
       parens.require_close (parser);
 
@@ -28770,10 +28831,10 @@ cp_parser_asm_clobber_list (cp_parser* parser)
 
   while (true)
     {
-      tree string_literal;
-
       /* Look for the string literal.  */
-      string_literal = cp_parser_string_literal (parser, false, false);
+      tree string_literal = cp_parser_string_literal (parser,
+						      /*translate=*/false,
+						      /*wide_ok=*/false);
       /* Add it to the list.  */
       clobbers = tree_cons (NULL_TREE, string_literal, clobbers);
       /* If the next token is not a `,', then the list is
@@ -33398,10 +33459,12 @@ cp_parser_set_decl_spec_type (cp_decl_specifier_seq *decl_specs,
      C++-safe.  */
   if (decl_spec_seq_has_spec_p (decl_specs, ds_typedef)
       && !type_definition_p
+      && TYPE_P (type_spec)
       && (type_spec == boolean_type_node
 	  || type_spec == char8_type_node
 	  || type_spec == char16_type_node
 	  || type_spec == char32_type_node
+	  || extended_float_type_p (type_spec)
 	  || type_spec == wchar_type_node)
       && (decl_specs->type
 	  || decl_spec_seq_has_spec_p (decl_specs, ds_long)
@@ -34431,14 +34494,32 @@ class_decl_loc_t::diag_mismatched_tags (tree type_decl)
 	 be (and inevitably is) at index zero.  */
       tree spec = specialization_of (type);
       cdlguide = class2loc.get (spec);
+      /* It's possible that we didn't find SPEC.  Consider:
+
+	   template<typename T> struct A {
+	     template<typename U> struct W { };
+	   };
+	   struct A<int>::W<int> w; // #1
+
+	 where while parsing A and #1 we've stashed
+	   A<T>
+	   A<T>::W<U>
+	   A<int>::W<int>
+	 into CLASS2LOC.  If TYPE is A<int>::W<int>, specialization_of
+	 will yield A<int>::W<U> which may be in CLASS2LOC if we had
+	 an A<int> class specialization, but otherwise won't be in it.
+	 So try to look up A<T>::W<U>.  */
+      if (!cdlguide)
+	{
+	  spec = DECL_TEMPLATE_RESULT (most_general_template (spec));
+	  cdlguide = class2loc.get (spec);
+	}
+      /* Now we really should have found something.  */
       gcc_assert (cdlguide != NULL);
     }
-  else
-    {
-      /* Skip declarations that consistently use the same class-key.  */
-      if (def_class_key != none_type)
-	return;
-    }
+  /* Skip declarations that consistently use the same class-key.  */
+  else if (def_class_key != none_type)
+    return;
 
   /* Set if a definition for the class has been seen.  */
   const bool def_p = cdlguide->def_p ();
@@ -41441,43 +41522,106 @@ cp_parser_omp_structured_block (cp_parser *parser, bool *if_p)
   return finish_omp_structured_block (stmt);
 }
 
-/* OpenMP 5.0:
-   # pragma omp allocate (list)  [allocator(allocator)]  */
+/* OpenMP 5.x:
+   # pragma omp allocate (list)  clauses
+
+   OpenMP 5.0 clause:
+   allocator (omp_allocator_handle_t expression)
+
+   OpenMP 5.1 additional clause:
+   align (constant-expression)]  */
 
 static void
 cp_parser_omp_allocate (cp_parser *parser, cp_token *pragma_tok)
 {
   tree allocator = NULL_TREE;
+  tree alignment = NULL_TREE;
   location_t loc = pragma_tok->location;
   tree nl = cp_parser_omp_var_list (parser, OMP_CLAUSE_ALLOCATE, NULL_TREE);
 
-  if (cp_lexer_next_token_is (parser->lexer, CPP_COMMA)
-      && cp_lexer_nth_token_is (parser->lexer, 2, CPP_NAME))
-    cp_lexer_consume_token (parser->lexer);
-
-  if (cp_lexer_next_token_is (parser->lexer, CPP_NAME))
+  do
     {
+      if (cp_lexer_next_token_is (parser->lexer, CPP_COMMA)
+	  && cp_lexer_nth_token_is (parser->lexer, 2, CPP_NAME))
+	cp_lexer_consume_token (parser->lexer);
+
+      if (!cp_lexer_next_token_is (parser->lexer, CPP_NAME))
+	break;
       matching_parens parens;
       tree id = cp_lexer_peek_token (parser->lexer)->u.value;
       const char *p = IDENTIFIER_POINTER (id);
       location_t cloc = cp_lexer_peek_token (parser->lexer)->location;
       cp_lexer_consume_token (parser->lexer);
-      if (strcmp (p, "allocator") != 0)
-	error_at (cloc, "expected %<allocator%>");
-      else if (parens.require_open (parser))
+      if (strcmp (p, "allocator") != 0 && strcmp (p, "align") != 0)
 	{
-	  allocator = cp_parser_assignment_expression (parser);
-	  if (allocator == error_mark_node)
-	    allocator = NULL_TREE;
-	  parens.require_close (parser);
+	  error_at (cloc, "expected %<allocator%> or %<align%>");
+	  break;
 	}
-    }
+      if (!parens.require_open (parser))
+	break;
+      tree expr = cp_parser_assignment_expression (parser);
+      if (p[2] == 'i' && alignment)
+	{
+	  error_at (cloc, "too many %qs clauses", "align");
+	  break;
+	}
+      else if (p[2] == 'i')
+	{
+	  if (expr != error_mark_node)
+	    alignment = expr;
+	  /* FIXME: Remove when adding check to semantics.cc; cf FIXME below. */
+	  if (alignment
+	      && !type_dependent_expression_p (alignment)
+	      && !INTEGRAL_TYPE_P (TREE_TYPE (alignment)))
+	    {
+	      error_at (cloc, "%<align%> clause argument needs to be "
+			      "positive constant power of two integer "
+			      "expression");
+	      alignment = NULL_TREE;
+	    }
+	  else if (alignment)
+	    {
+	      alignment = mark_rvalue_use (alignment);
+	      if (!processing_template_decl)
+		{
+		  alignment = maybe_constant_value (alignment);
+		  if (TREE_CODE (alignment) != INTEGER_CST
+		      || !tree_fits_uhwi_p (alignment)
+		      || !integer_pow2p (alignment))
+		    {
+		      error_at (cloc, "%<align%> clause argument needs to be "
+				      "positive constant power of two integer "
+				      "expression");
+		      alignment = NULL_TREE;
+		    }
+		}
+	    }
+	}
+      else if (allocator)
+	{
+	  error_at (cloc, "too many %qs clauses", "allocator");
+	  break;
+	}
+      else
+	{
+	  if (expr != error_mark_node)
+	    allocator = expr;
+	}
+      parens.require_close (parser);
+    } while (true);
   cp_parser_require_pragma_eol (parser, pragma_tok);
 
-  if (allocator)
+  if (allocator || alignment)
     for (tree c = nl; c != NULL_TREE; c = OMP_CLAUSE_CHAIN (c))
-      OMP_CLAUSE_ALLOCATE_ALLOCATOR (c) = allocator;
+      {
+	OMP_CLAUSE_ALLOCATE_ALLOCATOR (c) = allocator;
+	OMP_CLAUSE_ALLOCATE_ALIGN (c) = alignment;
+      }
 
+  /* FIXME: When implementing properly, delete the align/allocate expr error
+     check above and add one in semantics.cc (to properly handle templates).
+     Base this on the allocator/align modifiers check for the 'allocate' clause
+     in semantics.cc's finish_omp_clauses.  */
   sorry_at (loc, "%<#pragma omp allocate%> not yet supported");
 }
 
@@ -43039,6 +43183,7 @@ cp_convert_omp_range_for (tree &this_pre_body, vec<tree, va_gc> *for_block,
 {
   tree begin, end, range_temp_decl = NULL_TREE;
   tree iter_type, begin_expr, end_expr;
+  bool clear_has_value_expr = false;
 
   if (processing_template_decl)
     {
@@ -43185,6 +43330,8 @@ cp_convert_omp_range_for (tree &this_pre_body, vec<tree, va_gc> *for_block,
 	      ++processing_template_decl;
 	      cp_finish_decomp (orig_decl, decomp_first_name, decomp_cnt);
 	      --processing_template_decl;
+	      if (!processing_template_decl)
+		clear_has_value_expr = true;
 	    }
 	}
     }
@@ -43193,8 +43340,22 @@ cp_convert_omp_range_for (tree &this_pre_body, vec<tree, va_gc> *for_block,
   TREE_VEC_ELT (v, 0) = range_temp_decl;
   TREE_VEC_ELT (v, 1) = end;
   TREE_VEC_ELT (v, 2) = orig_decl;
+  if (clear_has_value_expr)
+    TREE_PUBLIC (v) = 1;
   for (unsigned i = 0; i < decomp_cnt; i++)
     {
+      if (clear_has_value_expr)
+	{
+	  /* If cp_finish_decomp was called with processing_template_decl
+	     temporarily set to 1, then decomp names will have deduced
+	     name but the DECL_VALUE_EXPR will be dependent.  Hide those
+	     from folding of other loop initializers e.g. for warning
+	     purposes until cp_finish_omp_range_for.  */
+	  gcc_checking_assert (DECL_HAS_VALUE_EXPR_P (decomp_first_name)
+			       || (TREE_TYPE (decomp_first_name)
+				   == error_mark_node));
+	  DECL_HAS_VALUE_EXPR_P (decomp_first_name) = 0;
+	}
       TREE_VEC_ELT (v, i + 3) = decomp_first_name;
       decomp_first_name = DECL_CHAIN (decomp_first_name);
     }
@@ -43217,6 +43378,19 @@ cp_finish_omp_range_for (tree orig, tree begin)
     {
       decomp_first_name = TREE_VEC_ELT (TREE_CHAIN (orig), 3);
       decomp_cnt = TREE_VEC_LENGTH (TREE_CHAIN (orig)) - 3;
+      if (TREE_PUBLIC (TREE_CHAIN (orig)))
+	{
+	  /* Undo temporary clearing of DECL_HAS_VALUE_EXPR_P done
+	     by cp_convert_omp_range_for above.  */
+	  TREE_PUBLIC (TREE_CHAIN (orig)) = 0;
+	  tree d = decomp_first_name;
+	  for (unsigned i = 0; i < decomp_cnt; i++)
+	    {
+	      if (TREE_TYPE (d) != error_mark_node)
+		DECL_HAS_VALUE_EXPR_P (d) = 1;
+	      d = DECL_CHAIN (d);
+	    }
+	}
       cp_maybe_mangle_decomp (decl, decomp_first_name, decomp_cnt);
     }
 
@@ -46345,7 +46519,9 @@ cp_parser_omp_context_selector (cp_parser *parser, tree set, bool has_parms_p)
 		      cp_lexer_consume_token (parser->lexer);
 		    }
 		  else if (cp_lexer_next_token_is (parser->lexer, CPP_STRING))
-		    value = cp_parser_string_literal (parser, false, false);
+		    value = cp_parser_string_literal (parser,
+						      /*translate=*/false,
+						      /*wide_ok=*/false);
 		  else
 		    {
 		      cp_parser_error (parser, "expected identifier or "
@@ -49367,7 +49543,8 @@ pragma_lex (tree *value, location_t *loc)
   if (ret == CPP_PRAGMA_EOL)
     ret = CPP_EOF;
   else if (ret == CPP_STRING)
-    *value = cp_parser_string_literal (the_parser, false, false);
+    *value = cp_parser_string_literal (the_parser, /*translate=*/false,
+				       /*wide_ok=*/false);
   else
     {
       if (ret == CPP_KEYWORD)

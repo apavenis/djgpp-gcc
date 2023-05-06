@@ -1,4 +1,4 @@
-#   Copyright (C) 1999-2022 Free Software Foundation, Inc.
+#   Copyright (C) 1999-2023 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -59,6 +59,10 @@ proc check_compile {basename type contents args} {
     } else {
 	set options ""
     }
+    # Silence "command-line option [...] is valid for [...] but not for [...]"
+    # that we may easily run into here, if more than one language is involved.
+    lappend options additional_flags=-Wno-complain-wrong-lang
+
     switch -glob -- $contents {
 	"*/\\* Assembly*" { set src ${basename}[pid].S }
 	"*! Fortran*" { set src ${basename}[pid].f90 }
@@ -83,6 +87,7 @@ proc check_compile {basename type contents args} {
 	assembly { set output ${basename}[pid].s }
 	object { set output ${basename}[pid].o }
 	executable { set output ${basename}[pid].exe }
+	"tree-*" -
 	"rtl-*" {
 	    set output ${basename}[pid].s
 	    lappend options "additional_flags=-fdump-$type"
@@ -103,6 +108,9 @@ proc check_compile {basename type contents args} {
     # file is created won't work.
     if [regexp "rtl-(.*)" $type dummy rtl_type] {
 	set scan_output "[glob $src.\[0-9\]\[0-9\]\[0-9\]r.$rtl_type]"
+	file delete $output
+    } elseif [regexp "tree-(.*)" $type dummy tree_type] {
+	set scan_output "[glob $src.\[0-9\]\[0-9\]\[0-9\]t.$tree_type]"
 	file delete $output
     }
 
@@ -348,6 +356,18 @@ proc check_weak_available { } {
     }
 }
 
+# return options to add to enable weak undefined symbols.
+
+proc add_options_for_weak_undefined { flags } {
+    if { [istarget *-*-darwin*] } {
+	lappend flags "-Wl,-undefined,dynamic_lookup"
+	if { [istarget *-*-darwin\[89\]*] } {
+	    lappend flags "-Wl,-flat_namespace"
+	}
+    }
+    return $flags
+}
+
 # return 1 if weak undefined symbols are supported.
 
 proc check_effective_target_weak_undefined { } {
@@ -357,7 +377,7 @@ proc check_effective_target_weak_undefined { } {
     return [check_runtime weak_undefined {
 	extern void foo () __attribute__((weak));
 	int main (void) { if (foo) return 1; return 0; }
-    } ""]
+    } [add_options_for_weak_undefined ""]]
 }
 
 ###############################
@@ -869,8 +889,8 @@ proc check_effective_target_pcc_bitfield_type_matters { } {
 # Add to FLAGS all the target-specific flags needed to use thread-local storage.
 
 proc add_options_for_tls { flags } {
-    # On Solaris 9, __tls_get_addr/___tls_get_addr only lives in
-    # libthread, so always pass -pthread for native TLS. Same for AIX.
+    # On AIX, __tls_get_addr/___tls_get_addr only lives in
+    # libthread, so always pass -pthread for native TLS.
     # Need to duplicate native TLS check from
     # check_effective_target_tls_native to avoid recursion.
     if { ([istarget powerpc-ibm-aix*]) &&
@@ -1144,6 +1164,16 @@ proc add_options_for_dlopen { flags } {
 # Return 1 if the target supports clone, 0 otherwise.
 proc check_effective_target_clone {} {
     return [check_function_available "clone"]
+}
+
+# Return 1 if the target supports posix_memalign, 0 otherwise.
+proc check_effective_target_posix_memalign {} {
+    if { [istarget *-*-vxworks*] } {
+	# VxWorks doesn't have posix_memalign but our way to test
+	# can't tell as we're doing partial links for kernel modules.
+	return 0
+    }
+    return [check_function_available "posix_memalign"]
 }
 
 # Return 1 if the target supports setrlimit, 0 otherwise.
@@ -1749,6 +1779,18 @@ proc check_linker_plugin_available { } {
   return [check_no_compiler_messages_nocache linker_plugin executable {
      int main() { return 0; }
   } "-flto -fuse-linker-plugin"]
+}
+
+# Return 1 if the target has RISC-V vector extension, 0 otherwise.
+# Cache the result.
+
+proc check_effective_target_riscv_vector { } {
+    # Check that we are compiling for v by checking the __riscv_v marco.
+    return [check_no_compiler_messages riscv_vector assembly {
+       #if !defined(__riscv_v)
+       #error "__riscv_v not defined!"
+       #endif
+    }]
 }
 
 # Return 1 if the target is RV32, 0 otherwise.  Cache the result.
@@ -2871,7 +2913,13 @@ proc check_fork_available {} {
 	# VxWorks doesn't have fork but our way to test can't
 	# tell as we're doing partial links for kernel modules.
 	return 0
-     }    
+    }
+    if { [istarget cris-*-*] } {
+	# Compiling and linking works, and an executable running e.g.
+	# gcc.dg/torture/ftrapv-1.c works on now-historical hardware,
+	# but the GNU simulator emits an error for the fork syscall.
+	return [check_effective_target_hw]
+    }
     return [check_function_available "fork"]
 }
 
@@ -5218,6 +5266,32 @@ proc check_effective_target_arm_cmse_clear_ok {} {
     } "-mcmse"];
 }
 
+# Return 1 if this is an ARM target supporting
+# -mbranch-protection=standard, 0 otherwise.
+
+proc check_effective_target_mbranch_protection_ok {} {
+
+    return [check_no_compiler_messages mbranch_protection_ok object {
+	int main (void) { return 0; }
+    } "-mbranch-protection=standard"]
+}
+
+# Return 1 if the target supports executing PACBTI instructions, 0
+# otherwise.
+
+proc check_effective_target_arm_pacbti_hw {} {
+    return [check_runtime arm_pacbti_hw_available {
+	__attribute__ ((naked)) int
+	main (void)
+	{
+	  asm ("pac r12, lr, sp");
+	  asm ("mov r0, #0");
+	  asm ("autg r12, lr, sp");
+	  asm ("bx lr");
+	}
+    } "-march=armv8.1-m.main+pacbti+fp -mbranch-protection=standard -mthumb -mfloat-abi=hard"]
+}
+
 # Return 1 if this compilation turns on string_ops_prefer_neon on.
 
 proc check_effective_target_arm_tune_string_ops_prefer_neon { } {
@@ -7099,7 +7173,8 @@ proc check_effective_target_vect_long_long { } {
 		 && [check_effective_target_s390_vx])
 	     || ([istarget powerpc*-*-*]
 		 && ![istarget powerpc-*-linux*paired*]
-		 && [check_effective_target_has_arch_pwr8]) }}]
+		 && [check_effective_target_has_arch_pwr8])
+	     || [istarget aarch64*-*-*] }}]
 }
 
 
@@ -7747,7 +7822,8 @@ proc check_effective_target_vect_fully_masked { } {
 # @code{len_store} optabs.
 
 proc check_effective_target_vect_len_load_store { } {
-    return [check_effective_target_has_arch_pwr9]
+    return [expr { [check_effective_target_has_arch_pwr9]
+      || [check_effective_target_s390_vx] }]
 }
 
 # Return the value of parameter vect-partial-vector-usage specified for
@@ -8708,6 +8784,72 @@ proc check_effective_target_popcount { } {
     } "" ]
 }
 
+# Return 1 if the target supports clz on int.
+
+proc check_effective_target_clz { } {
+    return [check_no_messages_and_pattern clz "!\\(call" rtl-expand {
+        int foo (int b)
+          {
+            return __builtin_clz (b);
+          }
+    } "" ]
+}
+
+# Return 1 if the target supports clz on long.
+
+proc check_effective_target_clzl { } {
+    return [check_no_messages_and_pattern clzl "!\\(call" rtl-expand {
+	int foo (long b)
+	  {
+	    return __builtin_clzl (b);
+	  }
+    } "" ]
+}
+
+# Return 1 if the target supports clz on long long.
+
+proc check_effective_target_clzll { } {
+    return [check_no_messages_and_pattern clzll "!\\(call" rtl-expand {
+        int foo (long long b)
+          {
+            return __builtin_clzll (b);
+          }
+    } "" ]
+}
+
+# Return 1 if the target supports ctz on int.
+
+proc check_effective_target_ctz { } {
+    return [check_no_messages_and_pattern ctz "!\\(call" rtl-expand {
+        int foo (int b)
+          {
+            return __builtin_ctz (b);
+          }
+    } "" ]
+}
+
+# Return 1 if the target supports ctz on long.
+
+proc check_effective_target_ctzl { } {
+    return [check_no_messages_and_pattern ctzl "!\\(call" rtl-expand {
+	int foo (long b)
+	  {
+	    return __builtin_ctzl (b);
+	  }
+    } "" ]
+}
+
+# Return 1 if the target supports ctz on long long.
+
+proc check_effective_target_ctzll { } {
+    return [check_no_messages_and_pattern ctzll "!\\(call" rtl-expand {
+        int foo (long long b)
+          {
+            return __builtin_ctzll (b);
+          }
+    } "" ]
+}
+
 # Return 1 if the target supports atomic operations on "long long"
 # and can execute them.
 #
@@ -9606,6 +9748,17 @@ proc check_effective_target_raoint { } {
 	  return __builtin_ia32_aadd32((int *)__A, __B);
 	}
     } "-mraoint" ]
+}
+
+# Return 1 if amx-complex instructions can be compiled.
+proc check_effective_target_amx_complex { } {
+    return [check_no_compiler_messages amx_complex object {
+	void
+	foo ()
+	{
+	  __asm__ volatile ("tcmmimfp16ps\t%%tmm1, %%tmm2, %%tmm3" ::);
+	}
+    } "-mamx-complex" ]
 }
 
 # Return 1 if sse instructions can be compiled.
@@ -10716,7 +10869,7 @@ proc check_vect_support_and_set_flags { } {
         } else {
             set dg-do-what-default compile
         }
-    } elseif [istarget "aarch64*-*-*"] {
+    } elseif [istarget aarch64*-*-*] {
         set dg-do-what-default run
     } elseif [istarget s390*-*-*] {
 	# The S/390 backend set a default of 2 for that value.
@@ -11582,6 +11735,15 @@ proc check_effective_target_frame_pointer_for_non_leaf { } {
   return 0
 }
 
+# Return 1 if the target can perform tail-call optimizations of the
+# most trivial type.
+proc check_effective_target_tail_call { } {
+    return [check_no_messages_and_pattern tail_call ",SIBCALL" rtl-expand {
+	__attribute__((__noipa__)) void foo (void) { }
+	__attribute__((__noipa__)) void bar (void) { foo(); }
+    } {-O2 -fdump-rtl-expand-all}] ;# The "SIBCALL" note requires a detailed dump.
+}
+
 # Return 1 if the target's calling sequence or its ABI
 # create implicit stack probes at or prior to function entry.
 proc check_effective_target_caller_implicit_probes { } {
@@ -12099,7 +12261,7 @@ proc check_effective_target_o_flag_in_section { } {
 # return 1 if LRA is supported.
 
 proc check_effective_target_lra { } {
-    if { [istarget hppa*-*-*] } {
+    if { [istarget hppa*-*-*] || [istarget cris-*-*] } {
 	return 0
     }
     return 1
@@ -12202,4 +12364,14 @@ proc check_is_prog_name_available { prog } {
     }
 
     return 1
+}
+
+# returns 1 if target does selects a readonly section for const volatile variables.
+proc check_effective_target_const_volatile_readonly_section { } {
+
+    if { [istarget powerpc-*-*]
+    	  || [check-flags { "" { powerpc64-*-* } { -m32 } }] } {
+	return 0
+    }
+  return 1
 }

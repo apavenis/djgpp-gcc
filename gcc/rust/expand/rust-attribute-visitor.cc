@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -1122,7 +1122,7 @@ AttrVisitor::visit (AST::CallExpr &expr)
 
       stmt->accept_vis (*this);
 
-      auto final_fragment = expand_macro_fragment_recursive ();
+      auto final_fragment = expander.take_expanded_fragment ();
       if (final_fragment.should_expand ())
 	{
 	  // Remove the current expanded invocation
@@ -2662,7 +2662,7 @@ AttrVisitor::visit (AST::InherentImpl &impl)
   for (auto &param : impl.get_generic_params ())
     param->accept_vis (*this);
 
-  expander.push_context (MacroExpander::ContextType::TYPE);
+  expander.push_context (MacroExpander::ContextType::ITEM);
 
   auto &type = impl.get_type ();
   type->accept_vis (*this);
@@ -2706,7 +2706,7 @@ AttrVisitor::visit (AST::TraitImpl &impl)
   for (auto &param : impl.get_generic_params ())
     param->accept_vis (*this);
 
-  expander.push_context (MacroExpander::ContextType::TYPE);
+  expander.push_context (MacroExpander::ContextType::ITEM);
 
   auto &type = impl.get_type ();
   type->accept_vis (*this);
@@ -2877,16 +2877,6 @@ AttrVisitor::visit (AST::MacroRulesDefinition &rules_def)
       rules_def.mark_for_strip ();
       return;
     }
-
-  // I don't think any macro rules can be stripped in any way
-
-  auto path = Resolver::CanonicalPath::new_seg (rules_def.get_node_id (),
-						rules_def.get_rule_name ());
-  expander.resolver->get_macro_scope ().insert (path, rules_def.get_node_id (),
-						rules_def.get_locus ());
-  expander.mappings->insert_macro_def (&rules_def);
-  rust_debug_loc (rules_def.get_locus (), "inserting macro def: [%s]",
-		  path.get ().c_str ());
 }
 
 void
@@ -3162,6 +3152,20 @@ AttrVisitor::visit (AST::SlicePattern &pattern)
       // TODO: quit stripping now? or keep going?
     }
 }
+void
+AttrVisitor::visit (AST::AltPattern &pattern)
+{
+  // can't strip individual patterns, only sub-patterns
+  for (auto &alt : pattern.get_alts ())
+    {
+      alt->accept_vis (*this);
+
+      if (alt->is_marked_for_strip ())
+	rust_error_at (alt->get_locus (),
+		       "cannot strip pattern in this position");
+      // TODO: quit stripping now? or keep going?
+    }
+}
 
 void
 AttrVisitor::visit (AST::EmptyStmt &)
@@ -3427,19 +3431,22 @@ AttrVisitor::visit (AST::BareFunctionType &type)
 
   // no where clause, apparently
 }
+
 void
 AttrVisitor::maybe_expand_expr (std::unique_ptr<AST::Expr> &expr)
 {
-  auto final_fragment = expand_macro_fragment_recursive ();
-  if (final_fragment.should_expand ())
+  auto final_fragment = expander.take_expanded_fragment ();
+  if (final_fragment.should_expand ()
+      && final_fragment.is_expression_fragment ())
     expr = final_fragment.take_expression_fragment ();
 }
 
 void
 AttrVisitor::maybe_expand_type (std::unique_ptr<AST::Type> &type)
 {
-  auto final_fragment = expand_macro_fragment_recursive ();
-  if (final_fragment.should_expand ())
+  auto final_fragment = expander.take_expanded_fragment ();
+  if (final_fragment.should_expand () && final_fragment.is_type_fragment ())
     type = final_fragment.take_type_fragment ();
 }
+
 } // namespace Rust

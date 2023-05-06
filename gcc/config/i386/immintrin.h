@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2022 Free Software Foundation, Inc.
+/* Copyright (C) 2008-2023 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -131,6 +131,8 @@
 #include <amxint8intrin.h>
 
 #include <amxbf16intrin.h>
+
+#include <amxcomplexintrin.h>
 
 #include <prfchwintrin.h>
 

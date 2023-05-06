@@ -70,7 +70,7 @@ gimple_infer_range::check_assume_func (gcall *call)
   struct function *fun = DECL_STRUCT_FUNCTION (assume_id);
   if (!fun)
     return;
-  // Loop over arguments, matching them to the assume paramters.
+  // Loop over arguments, matching them to the assume parameters.
   for (arg = DECL_ARGUMENTS (assume_id), i = 1;
        arg && i < gimple_call_num_args (call);
        i++, arg = DECL_CHAIN (arg))
@@ -84,7 +84,7 @@ gimple_infer_range::check_assume_func (gcall *call)
 	    continue;
 	  // Query the global range of the default def in the assume function.
 	  Value_Range assume_range (type);
-	  global_ranges.range_of_expr (assume_range, default_def);
+	  gimple_range_global (assume_range, default_def, fun);
 	  // If there is a non-varying result, add it as an inferred range.
 	  if (!assume_range.varying_p ())
 	    {
@@ -175,7 +175,7 @@ gimple_infer_range::gimple_infer_range (gimple *s)
 
 // -------------------------------------------------------------------------
 
-// This class is an element in the list of infered ranges.
+// This class is an element in the list of inferred ranges.
 
 class exit_range
 {

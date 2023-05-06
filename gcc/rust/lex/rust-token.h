@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -171,7 +171,7 @@ enum PrimitiveCoreType
   RS_TOKEN_KEYWORD (IN, "in")                                                  \
   RS_TOKEN_KEYWORD (LET, "let")                                                \
   RS_TOKEN_KEYWORD (LOOP, "loop")                                              \
-  RS_TOKEN_KEYWORD (MACRO, "macro") /* unused */                               \
+  RS_TOKEN_KEYWORD (MACRO, "macro")                                            \
   RS_TOKEN_KEYWORD (MATCH_TOK, "match")                                        \
   RS_TOKEN_KEYWORD (MOD, "mod")                                                \
   RS_TOKEN_KEYWORD (MOVE, "move")                                              \

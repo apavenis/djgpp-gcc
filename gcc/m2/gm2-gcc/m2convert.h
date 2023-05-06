@@ -1,6 +1,6 @@
 /* m2convert.h header file for m2convert.cc.
 
-Copyright (C) 2012-2022 Free Software Foundation, Inc.
+Copyright (C) 2012-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -36,7 +36,7 @@ along with GNU Modula-2; see the file COPYING3.  If not see
 #endif /* m2convert_c.  */
 
 EXTERN tree m2convert_BuildConvert (location_t location, tree type, tree value,
-                                    int checkOverflow);
+                                    bool checkOverflow);
 EXTERN tree m2convert_ConvertToPtr (location_t location_t, tree p);
 EXTERN tree m2convert_ConvertString (tree type, tree expr);
 EXTERN tree m2convert_ConvertConstantAndCheck (location_t location, tree type,

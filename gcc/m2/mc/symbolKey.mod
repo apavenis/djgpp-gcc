@@ -1,6 +1,6 @@
 (* symbolKey.mod provides binary tree operations for storing symbols.
 
-Copyright (C) 2015-2022 Free Software Foundation, Inc.
+Copyright (C) 2015-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -116,7 +116,7 @@ BEGIN
       child^.key  := key ;
       child^.name := name
    ELSE
-      Halt ('symbol already stored', __LINE__, __FILE__)
+      Halt ('symbol already stored', __FILE__, __FUNCTION__, __LINE__)
    END
 END putSymKey ;
 
@@ -183,7 +183,7 @@ BEGIN
       END
    ELSE
       Halt ('trying to delete a symbol that is not in the tree - the compiler never expects this to occur',
-            __LINE__, __FILE__)
+            __FILE__, __FUNCTION__, __LINE__)
    END
 END delSymKey ;
 
@@ -200,7 +200,7 @@ BEGIN
    father := t ;
    IF t=NIL
    THEN
-      Halt ('parameter t should never be NIL', __LINE__, __FILE__)
+      Halt ('parameter t should never be NIL', __FILE__, __FUNCTION__, __LINE__)
    END ;
    child := t^.left ;
    IF child#NIL

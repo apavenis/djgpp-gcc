@@ -1,6 +1,6 @@
 // Allocators -*- C++ -*-
 
-// Copyright (C) 2001-2022 Free Software Foundation, Inc.
+// Copyright (C) 2001-2023 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -62,7 +62,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   // Since C++20 the primary template should be used for allocator<void>,
   // but then it would have a non-trivial default ctor and dtor for C++20,
-  // but trivial for C++98-17, which would be an ABI incompatibiliy between
+  // but trivial for C++98-17, which would be an ABI incompatibility between
   // different standard dialects. So C++20 still uses the allocator<void>
   // explicit specialization, with the historical ABI properties, but with
   // the same members that are present in the primary template.

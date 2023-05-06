@@ -1,5 +1,5 @@
 /* Backend function setup
-   Copyright (C) 2002-2022 Free Software Foundation, Inc.
+   Copyright (C) 2002-2023 Free Software Foundation, Inc.
    Contributed by Paul Brook
 
 This file is part of GCC.
@@ -742,6 +742,7 @@ gfc_finish_var_decl (tree decl, gfc_symbol * sym)
   /* Keep variables larger than max-stack-var-size off stack.  */
   if (!(sym->ns->proc_name && sym->ns->proc_name->attr.recursive)
       && !sym->attr.automatic
+      && !sym->attr.associate_var
       && sym->attr.save != SAVE_EXPLICIT
       && sym->attr.save != SAVE_IMPLICIT
       && INTEGER_CST_P (DECL_SIZE_UNIT (decl))
@@ -812,6 +813,10 @@ gfc_finish_var_decl (tree decl, gfc_symbol * sym)
   if (sym->attr.threadprivate
       && (TREE_STATIC (decl) || DECL_EXTERNAL (decl)))
     set_decl_tls_model (decl, decl_default_tls_model (decl));
+
+  /* Mark weak variables.  */
+  if (sym->attr.ext_attr & (1 << EXT_ATTR_WEAK))
+    declare_weak (decl);
 
   gfc_finish_decl_attrs (decl, &sym->attr);
 }
@@ -1786,6 +1791,9 @@ gfc_get_symbol_decl (gfc_symbol * sym)
       return decl;
     }
 
+  if (sym->ts.type == BT_UNKNOWN)
+    gfc_fatal_error ("%s at %C has no default type", sym->name);
+
   if (sym->attr.intrinsic)
     gfc_internal_error ("intrinsic variable which isn't a procedure");
 
@@ -2337,7 +2345,7 @@ module_sym:
     }
 
   /* Mark non-returning functions.  */
-  if (sym->attr.noreturn)
+  if (sym->attr.noreturn || sym->attr.ext_attr & (1 << EXT_ATTR_NORETURN))
       TREE_THIS_VOLATILE(fndecl) = 1;
 
   sym->backend_decl = fndecl;
@@ -2481,6 +2489,17 @@ build_function_decl (gfc_symbol * sym, bool global)
       TREE_SIDE_EFFECTS (fndecl) = 0;
     }
 
+  /* Mark noinline functions.  */
+  if (attr.ext_attr & (1 << EXT_ATTR_NOINLINE))
+    DECL_UNINLINABLE (fndecl) = 1;
+
+  /* Mark noreturn functions.  */
+  if (attr.ext_attr & (1 << EXT_ATTR_NORETURN))
+    TREE_THIS_VOLATILE (fndecl) = 1;
+
+  /* Mark weak functions.  */
+  if (attr.ext_attr & (1 << EXT_ATTR_WEAK))
+    declare_weak (fndecl);
 
   /* Layout the function declaration and put it in the binding level
      of the current function.  */
@@ -4329,6 +4348,8 @@ init_intent_out_dt (gfc_symbol * proc_sym, gfc_wrapped_block * block)
   gfc_formal_arglist *f;
   tree tmp;
   tree present;
+  gfc_symbol *s;
+  bool dealloc_with_value = false;
 
   gfc_init_block (&init);
   for (f = gfc_sym_get_dummy_args (proc_sym); f; f = f->next)
@@ -4336,42 +4357,52 @@ init_intent_out_dt (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 	&& !f->sym->attr.pointer
 	&& f->sym->ts.type == BT_DERIVED)
       {
+	s = f->sym;
 	tmp = NULL_TREE;
 
 	/* Note: Allocatables are excluded as they are already handled
 	   by the caller.  */
 	if (!f->sym->attr.allocatable
-	    && gfc_is_finalizable (f->sym->ts.u.derived, NULL))
+	    && gfc_is_finalizable (s->ts.u.derived, NULL))
 	  {
 	    stmtblock_t block;
 	    gfc_expr *e;
 
 	    gfc_init_block (&block);
-	    f->sym->attr.referenced = 1;
-	    e = gfc_lval_expr_from_sym (f->sym);
+	    s->attr.referenced = 1;
+	    e = gfc_lval_expr_from_sym (s);
 	    gfc_add_finalizer_call (&block, e);
 	    gfc_free_expr (e);
 	    tmp = gfc_finish_block (&block);
 	  }
 
-	if (tmp == NULL_TREE && !f->sym->attr.allocatable
-	    && f->sym->ts.u.derived->attr.alloc_comp && !f->sym->value)
-	  tmp = gfc_deallocate_alloc_comp (f->sym->ts.u.derived,
-					   f->sym->backend_decl,
-					   f->sym->as ? f->sym->as->rank : 0);
-
-	if (tmp != NULL_TREE && (f->sym->attr.optional
-				 || f->sym->ns->proc_name->attr.entry_master))
+	/* Note: Allocatables are excluded as they are already handled
+	   by the caller.  */
+	if (tmp == NULL_TREE && !s->attr.allocatable
+	    && s->ts.u.derived->attr.alloc_comp)
 	  {
-	    present = gfc_conv_expr_present (f->sym);
+	    tmp = gfc_deallocate_alloc_comp (s->ts.u.derived,
+					     s->backend_decl,
+					     s->as ? s->as->rank : 0);
+	    dealloc_with_value = s->value;
+	  }
+
+	if (tmp != NULL_TREE && (s->attr.optional
+				 || s->ns->proc_name->attr.entry_master))
+	  {
+	    present = gfc_conv_expr_present (s);
 	    tmp = build3_loc (input_location, COND_EXPR, TREE_TYPE (tmp),
 			      present, tmp, build_empty_stmt (input_location));
 	  }
 
-	if (tmp != NULL_TREE)
+	if (tmp != NULL_TREE && !dealloc_with_value)
 	  gfc_add_expr_to_block (&init, tmp);
-	else if (f->sym->value && !f->sym->attr.allocatable)
-	  gfc_init_default_dt (f->sym, &init, true);
+	else if (s->value && !s->attr.allocatable)
+	  {
+	    gfc_add_expr_to_block (&init, tmp);
+	    gfc_init_default_dt (s, &init, false);
+	    dealloc_with_value = false;
+	  }
       }
     else if (f->sym && f->sym->attr.intent == INTENT_OUT
 	     && f->sym->ts.type == BT_CLASS
@@ -4395,10 +4426,8 @@ init_intent_out_dt (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 			      present, tmp,
 			      build_empty_stmt (input_location));
 	  }
-
 	gfc_add_expr_to_block (&init, tmp);
       }
-
   gfc_add_init_cleanup (block, gfc_finish_block (&init), NULL_TREE);
 }
 
@@ -5350,7 +5379,11 @@ gfc_trans_use_stmts (gfc_namespace * ns)
 	      /* Sometimes, generic interfaces wind up being over-ruled by a
 		 local symbol (see PR41062).  */
 	      if (!st->n.sym->attr.use_assoc)
-		continue;
+		{
+		  *slot = error_mark_node;
+		  entry->decls->clear_slot (slot);
+		  continue;
+		}
 
 	      if (st->n.sym->backend_decl
 		  && DECL_P (st->n.sym->backend_decl)
@@ -5868,6 +5901,16 @@ generate_local_decl (gfc_symbol * sym)
 
       if (!sym->attr.dummy && !sym->ns->proc_name->attr.entry_master)
 	generate_dependency_declarations (sym);
+
+      if (sym->attr.ext_attr & (1 << EXT_ATTR_WEAK))
+	{
+	  if (sym->attr.dummy)
+	    gfc_error ("Symbol %qs at %L has the WEAK attribute but is a "
+		       "dummy argument", sym->name, &sym->declared_at);
+	  else
+	    gfc_error ("Symbol %qs at %L has the WEAK attribute but is a "
+		       "local variable", sym->name, &sym->declared_at);
+	}
 
       if (sym->attr.referenced)
 	gfc_get_symbol_decl (sym);
@@ -7125,9 +7168,6 @@ gfc_conv_cfi_to_gfc (stmtblock_t *init, stmtblock_t *finally,
 			   size_var, LT_EXPR, build_int_cst (TREE_TYPE (idx), 1),
 			   gfc_finish_block (&loop_body));
       /* if (cond) { block2 }  */
-      tmp = fold_build2_loc (input_location, MODIFY_EXPR, void_type_node,
-			     data, fold_convert (TREE_TYPE (data),
-						 null_pointer_node));
       tmp = build3_v (COND_EXPR, cond_var, gfc_finish_block (&block2),
 		      build_empty_stmt (input_location));
       gfc_add_expr_to_block (&block, tmp);
@@ -7501,6 +7541,7 @@ gfc_generate_function_code (gfc_namespace * ns)
     }
 
   trans_function_start (sym);
+  gfc_current_locus = sym->declared_at;
 
   gfc_init_block (&init);
   gfc_init_block (&cleanup);

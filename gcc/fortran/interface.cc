@@ -1,5 +1,5 @@
 /* Deal with interfaces.
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2023 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -2349,6 +2349,7 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
   char err[200];
   gfc_component *ppc;
   bool codimension = false;
+  gfc_array_spec *formal_as;
 
   /* If the formal arg has type BT_VOID, it's to one of the iso_c_binding
      procs c_f_pointer or c_f_procpointer, and we need to accept most
@@ -2360,7 +2361,23 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
       && formal->ts.u.derived && formal->ts.u.derived->ts.is_iso_c
       && actual->ts.type == BT_DERIVED
       && actual->ts.u.derived && actual->ts.u.derived->ts.is_iso_c)
-    return true;
+    {
+      if (formal->ts.u.derived->intmod_sym_id
+	  != actual->ts.u.derived->intmod_sym_id)
+	return false;
+
+      if (ranks_must_agree
+	  && symbol_rank (formal) != actual->rank
+	  && symbol_rank (formal) != -1)
+	{
+	  if (where)
+	    argument_rank_mismatch (formal->name, &actual->where,
+				    symbol_rank (formal), actual->rank,
+				    NULL);
+	  return false;
+	}
+      return true;
+    }
 
   if (formal->ts.type == BT_CLASS && actual->ts.type == BT_DERIVED)
     /* Make sure the vtab symbol is present when
@@ -2540,6 +2557,9 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
       return false;
     }
 
+  formal_as = (formal->ts.type == BT_CLASS
+	       ? CLASS_DATA (formal)->as : formal->as);
+
   if (codimension && formal->attr.allocatable)
     {
       gfc_ref *last = NULL;
@@ -2650,10 +2670,10 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
   if (symbol_rank (formal) == actual->rank || symbol_rank (formal) == -1)
     return true;
 
-  rank_check = where != NULL && !is_elemental && formal->as
-	       && (formal->as->type == AS_ASSUMED_SHAPE
-		   || formal->as->type == AS_DEFERRED)
-	       && actual->expr_type != EXPR_NULL;
+  rank_check = where != NULL && !is_elemental && formal_as
+    && (formal_as->type == AS_ASSUMED_SHAPE
+	|| formal_as->type == AS_DEFERRED)
+    && actual->expr_type != EXPR_NULL;
 
   /* Skip rank checks for NO_ARG_CHECK.  */
   if (formal->attr.ext_attr & (1 << EXT_ATTR_NO_ARG_CHECK))
@@ -2662,14 +2682,20 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
   /* Scalar & coindexed, see: F2008, Section 12.5.2.4.  */
   if (rank_check || ranks_must_agree
       || (formal->attr.pointer && actual->expr_type != EXPR_NULL)
-      || (actual->rank != 0 && !(is_elemental || formal->attr.dimension))
+      || (actual->rank != 0
+	  && !(is_elemental || formal->attr.dimension
+	       || (formal->ts.type == BT_CLASS
+		   && CLASS_DATA (formal)->attr.dimension)))
       || (actual->rank == 0
 	  && ((formal->ts.type == BT_CLASS
 	       && CLASS_DATA (formal)->as->type == AS_ASSUMED_SHAPE)
 	      || (formal->ts.type != BT_CLASS
 		   && formal->as->type == AS_ASSUMED_SHAPE))
 	  && actual->expr_type != EXPR_NULL)
-      || (actual->rank == 0 && formal->attr.dimension
+      || (actual->rank == 0
+	  && (formal->attr.dimension
+	      || (formal->ts.type == BT_CLASS
+		  && CLASS_DATA (formal)->attr.dimension))
 	  && gfc_is_coindexed (actual))
       /* Assumed-rank actual argument; F2018 C838.  */
       || actual->rank == -1)
@@ -2690,7 +2716,10 @@ compare_parameter (gfc_symbol *formal, gfc_expr *actual,
 	}
       return false;
     }
-  else if (actual->rank != 0 && (is_elemental || formal->attr.dimension))
+  else if (actual->rank != 0
+	   && (is_elemental || formal->attr.dimension
+	       || (formal->ts.type == BT_CLASS
+		   && CLASS_DATA (formal)->attr.dimension)))
     return true;
 
   /* At this point, we are considering a scalar passed to an array.   This
@@ -2858,7 +2887,8 @@ get_expr_storage_size (gfc_expr *e)
   if (e->ts.type == BT_CHARACTER)
     {
       if (e->ts.u.cl && e->ts.u.cl->length
-          && e->ts.u.cl->length->expr_type == EXPR_CONSTANT)
+	  && e->ts.u.cl->length->expr_type == EXPR_CONSTANT
+	  && e->ts.u.cl->length->ts.type == BT_INTEGER)
 	strlen = mpz_get_si (e->ts.u.cl->length->value.integer);
       else if (e->expr_type == EXPR_CONSTANT
 	       && (e->ts.u.cl == NULL || e->ts.u.cl->length == NULL))
@@ -2909,7 +2939,8 @@ get_expr_storage_size (gfc_expr *e)
 
 	    if (ref->u.ar.stride[i])
 	      {
-		if (ref->u.ar.stride[i]->expr_type == EXPR_CONSTANT)
+		if (ref->u.ar.stride[i]->expr_type == EXPR_CONSTANT
+		    && ref->u.ar.stride[i]->ts.type == BT_INTEGER)
 		  stride = mpz_get_si (ref->u.ar.stride[i]->value.integer);
 		else
 		  return 0;
@@ -2917,26 +2948,30 @@ get_expr_storage_size (gfc_expr *e)
 
 	    if (ref->u.ar.start[i])
 	      {
-		if (ref->u.ar.start[i]->expr_type == EXPR_CONSTANT)
+		if (ref->u.ar.start[i]->expr_type == EXPR_CONSTANT
+		    && ref->u.ar.start[i]->ts.type == BT_INTEGER)
 		  start = mpz_get_si (ref->u.ar.start[i]->value.integer);
 		else
 		  return 0;
 	      }
 	    else if (ref->u.ar.as->lower[i]
-		     && ref->u.ar.as->lower[i]->expr_type == EXPR_CONSTANT)
+		     && ref->u.ar.as->lower[i]->expr_type == EXPR_CONSTANT
+		     && ref->u.ar.as->lower[i]->ts.type == BT_INTEGER)
 	      start = mpz_get_si (ref->u.ar.as->lower[i]->value.integer);
 	    else
 	      return 0;
 
 	    if (ref->u.ar.end[i])
 	      {
-		if (ref->u.ar.end[i]->expr_type == EXPR_CONSTANT)
+		if (ref->u.ar.end[i]->expr_type == EXPR_CONSTANT
+		    && ref->u.ar.end[i]->ts.type == BT_INTEGER)
 		  end = mpz_get_si (ref->u.ar.end[i]->value.integer);
 		else
 		  return 0;
 	      }
 	    else if (ref->u.ar.as->upper[i]
-		     && ref->u.ar.as->upper[i]->expr_type == EXPR_CONSTANT)
+		     && ref->u.ar.as->upper[i]->expr_type == EXPR_CONSTANT
+		     && ref->u.ar.as->upper[i]->ts.type == BT_INTEGER)
 	      end = mpz_get_si (ref->u.ar.as->upper[i]->value.integer);
 	    else
 	      return 0;
@@ -2977,7 +3012,9 @@ get_expr_storage_size (gfc_expr *e)
 		  || ref->u.ar.as->upper[i] == NULL
 		  || ref->u.ar.as->lower[i] == NULL
 		  || ref->u.ar.as->upper[i]->expr_type != EXPR_CONSTANT
-		  || ref->u.ar.as->lower[i]->expr_type != EXPR_CONSTANT)
+		  || ref->u.ar.as->lower[i]->expr_type != EXPR_CONSTANT
+		  || ref->u.ar.as->upper[i]->ts.type != BT_INTEGER
+		  || ref->u.ar.as->lower[i]->ts.type != BT_INTEGER)
 		return 0;
 
 	      elements
@@ -2999,7 +3036,9 @@ get_expr_storage_size (gfc_expr *e)
 	    {
 	      if (!as->upper[i] || !as->lower[i]
 		  || as->upper[i]->expr_type != EXPR_CONSTANT
-		  || as->lower[i]->expr_type != EXPR_CONSTANT)
+		  || as->lower[i]->expr_type != EXPR_CONSTANT
+		  || as->upper[i]->ts.type != BT_INTEGER
+		  || as->lower[i]->ts.type != BT_INTEGER)
 		return 0;
 
 	      elements = elements

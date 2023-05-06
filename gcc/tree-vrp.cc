@@ -75,7 +75,7 @@ public:
   ~remove_unreachable () { m_list.release (); }
   void maybe_register_block (basic_block bb);
   bool remove_and_update_globals (bool final_p);
-  vec<edge> m_list;
+  vec<std::pair<int, int> > m_list;
   gimple_ranger &m_ranger;
 };
 
@@ -103,9 +103,9 @@ remove_unreachable::maybe_register_block (basic_block bb)
     return;
 
   if (un0)
-    m_list.safe_push (e1);
+    m_list.safe_push (std::make_pair (e1->src->index, e1->dest->index));
   else
-    m_list.safe_push (e0);
+    m_list.safe_push (std::make_pair (e0->src->index, e0->dest->index));
 }
 
 // Process the edges in the list, change the conditions and removing any
@@ -121,6 +121,10 @@ remove_unreachable::remove_and_update_globals (bool final_p)
   if (m_list.length () == 0)
     return false;
 
+  // Ensure the cache in SCEV has been cleared before processing
+  // globals to be removed.
+  scev_reset ();
+
   bool change = false;
   tree name;
   unsigned i;
@@ -128,7 +132,12 @@ remove_unreachable::remove_and_update_globals (bool final_p)
   auto_bitmap all_exports;
   for (i = 0; i < m_list.length (); i++)
     {
-      edge e = m_list[i];
+      auto eb = m_list[i];
+      basic_block src = BASIC_BLOCK_FOR_FN (cfun, eb.first);
+      basic_block dest = BASIC_BLOCK_FOR_FN (cfun, eb.second);
+      if (!src || !dest)
+	continue;
+      edge e = find_edge (src, dest);
       gimple *s = gimple_outgoing_range_stmt_p (e->src);
       gcc_checking_assert (gimple_code (s) == GIMPLE_COND);
       bool lhs_p = TREE_CODE (gimple_cond_lhs (s)) == SSA_NAME;
@@ -152,7 +161,7 @@ remove_unreachable::remove_and_update_globals (bool final_p)
 	  m_ranger.range_on_entry (ex, EXIT_BLOCK_PTR_FOR_FN (cfun), name);
 	  // If the range produced by this __builtin_unreachacble expression
 	  // is not fully reflected in the range at exit, then it does not
-	  // dominate the exit of the funciton.
+	  // dominate the exit of the function.
 	  if (ex.intersect (r))
 	    dominate_exit_p = false;
 	}
@@ -175,7 +184,7 @@ remove_unreachable::remove_and_update_globals (bool final_p)
 
   if (bitmap_empty_p (all_exports))
     return false;
-  // Invoke DCE on all exported names to elimnate dead feeding defs
+  // Invoke DCE on all exported names to eliminate dead feeding defs.
   auto_bitmap dce;
   bitmap_copy (dce, all_exports);
   // Don't attempt to DCE parameters.
@@ -229,7 +238,7 @@ remove_unreachable::remove_and_update_globals (bool final_p)
   return change;
 }
 
-/* VR_TYPE describes a range with mininum value *MIN and maximum
+/* VR_TYPE describes a range with minimum value *MIN and maximum
    value *MAX.  Restrict the range to the set of values that have
    no bits set outside NONZERO_BITS.  Update *MIN and *MAX and
    return the new range type.

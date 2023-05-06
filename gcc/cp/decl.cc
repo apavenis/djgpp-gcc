@@ -1,5 +1,5 @@
 /* Process declarations and variables for -*- C++ -*- compiler.
-   Copyright (C) 1988-2022 Free Software Foundation, Inc.
+   Copyright (C) 1988-2023 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -693,6 +693,7 @@ poplevel (int keep, int reverse, int functionbody)
 		else
 		  warning_at (DECL_SOURCE_LOCATION (decl),
 			      OPT_Wunused_variable, "unused variable %qD", decl);
+		suppress_warning (decl, OPT_Wunused_variable);
 	      }
 	    else if (DECL_CONTEXT (decl) == current_function_decl
 		     // For -Wunused-but-set-variable leave references alone.
@@ -4305,9 +4306,20 @@ make_typename_type (tree context, tree name, enum tag_types tag_type,
      member of the current instantiation or a non-dependent base;
      lookup will stop when we hit a dependent base.  */
   if (!dependent_scope_p (context))
-    /* We should only set WANT_TYPE when we're a nested typename type.
-       Then we can give better diagnostics if we find a non-type.  */
-    t = lookup_field (context, name, 2, /*want_type=*/true);
+    {
+      /* We generally don't ignore non-types during TYPENAME_TYPE lookup
+	 (as per [temp.res.general]/3), unless
+	   - the tag corresponds to a class-key or 'enum' so
+	     [basic.lookup.elab] applies, or
+	   - the tag corresponds to scope_type or tf_qualifying_scope is
+	     set so [basic.lookup.qual]/1 applies.
+	 TODO: If we'd set/track the scope_type tag thoroughly on all
+	 TYPENAME_TYPEs that are followed by :: then we wouldn't need the
+	 tf_qualifying_scope flag.  */
+      bool want_type = (tag_type != none_type && tag_type != typename_type)
+	|| (complain & tf_qualifying_scope);
+      t = lookup_member (context, name, /*protect=*/2, want_type, complain);
+    }
   else
     t = NULL_TREE;
 
@@ -4359,7 +4371,7 @@ make_typename_type (tree context, tree name, enum tag_types tag_type,
       else
 	{
 	  if (complain & tf_error)
-	    error ("%<typename %T::%D%> names %q#T, which is not a type",
+	    error ("%<typename %T::%D%> names %q#D, which is not a type",
 		   context, name, t);
 	  return error_mark_node;
 	}
@@ -8274,7 +8286,20 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	      return;
 	    }
 
-	  gcc_assert (CLASS_PLACEHOLDER_TEMPLATE (auto_node));
+	  if (CLASS_PLACEHOLDER_TEMPLATE (auto_node))
+	    /* Class deduction with no initializer is OK.  */;
+	  else
+	    {
+	      /* Ordinary auto deduction without an initializer, a situation
+		 which grokdeclarator already detects and rejects for the most
+		 part.  But we can still get here if we're instantiating a
+		 variable template before we've fully parsed (and attached) its
+		 initializer, e.g. template<class> auto x = x<int>;  */
+	      error_at (DECL_SOURCE_LOCATION (decl),
+			"declaration of %q#D has no initializer", decl);
+	      TREE_TYPE (decl) = error_mark_node;
+	      return;
+	    }
 	}
       d_init = init;
       if (d_init)
@@ -8407,7 +8432,7 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
       if (!DECL_EXTERNAL (decl)
 	  && !TREE_STATIC (decl)
 	  && decl == tree_strip_any_location_wrapper (init)
-	  && !warn_init_self)
+	  && !warning_enabled_at (DECL_SOURCE_LOCATION (decl), OPT_Winit_self))
 	suppress_warning (decl, OPT_Winit_self);
     }
 
@@ -8683,8 +8708,10 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 
       if (var_definition_p
 	  /* With -fmerge-all-constants, gimplify_init_constructor
-	     might add TREE_STATIC to the variable.  */
-	  && (TREE_STATIC (decl) || flag_merge_constants >= 2))
+	     might add TREE_STATIC to aggregate variables.  */
+	  && (TREE_STATIC (decl)
+	      || (flag_merge_constants >= 2
+		  && AGGREGATE_TYPE_P (type))))
 	{
 	  /* If a TREE_READONLY variable needs initialization
 	     at runtime, it is no longer readonly and we need to
@@ -8701,6 +8728,18 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	  /* Likewise if it needs destruction.  */
 	  if (!decl_maybe_constant_destruction (decl, type))
 	    TREE_READONLY (decl) = 0;
+	}
+      else if (VAR_P (decl)
+	       && CP_DECL_THREAD_LOCAL_P (decl)
+	       && (!DECL_EXTERNAL (decl) || flag_extern_tls_init)
+	       && (was_readonly || TREE_READONLY (decl))
+	       && var_needs_tls_wrapper (decl))
+	{
+	  /* TLS variables need dynamic initialization by the TLS wrapper
+	     function, we don't want to hoist accesses to it before the
+	     wrapper.  */
+	  was_readonly = 0;
+	  TREE_READONLY (decl) = 0;
 	}
 
       make_rtl_for_nonlocal_decl (decl, init, asmspec);
@@ -11372,7 +11411,7 @@ compute_array_index_type_loc (location_t name_loc, tree name, tree size,
 				    cp_convert (ssizetype, integer_one_node,
 						complain),
 				    complain);
-	itype = maybe_constant_value (itype, NULL_TREE, true);
+	itype = maybe_constant_value (itype, NULL_TREE, mce_true);
       }
 
       if (!TREE_CONSTANT (itype))
@@ -12439,10 +12478,15 @@ grokdeclarator (const cp_declarator *declarator,
 	{
 	  if (typedef_decl)
 	    {
-	      pedwarn (loc, OPT_Wpedantic, "%qs specified with %qT",
-		       key, type);
+	      pedwarn (loc, OPT_Wpedantic, "%qs specified with %qD",
+		       key, typedef_decl);
 	      ok = !flag_pedantic_errors;
-	      type = DECL_ORIGINAL_TYPE (typedef_decl);
+	      if (is_typedef_decl (typedef_decl))
+		type = DECL_ORIGINAL_TYPE (typedef_decl);
+	      else
+		/* PR108099: __int128_t comes from c_common_nodes_and_builtins,
+		   and is not built as a typedef.  */
+		type = TREE_TYPE (typedef_decl);
 	      typedef_decl = NULL_TREE;
 	    }
 	  else if (declspecs->decltype_p)
@@ -14384,7 +14428,8 @@ grokdeclarator (const cp_declarator *declarator,
 		cplus_decl_attributes (&decl, *attrlist, 0);
 		*attrlist = NULL_TREE;
 
-		decl = do_friend (ctype, unqualified_id, decl,
+		tree scope = ctype ? ctype : in_namespace;
+		decl = do_friend (scope, unqualified_id, decl,
 				  flags, funcdef_flag);
 		return decl;
 	      }
@@ -14776,7 +14821,9 @@ grokdeclarator (const cp_declarator *declarator,
       {
 	/* If we saw a return type, record its location.  */
 	location_t loc = declspecs->locations[ds_type_spec];
-	if (loc != UNKNOWN_LOCATION)
+	if (loc == UNKNOWN_LOCATION)
+	  /* Build DECL_RESULT in start_preparsed_function.  */;
+	else if (!DECL_RESULT (decl))
 	  {
 	    tree restype = TREE_TYPE (TREE_TYPE (decl));
 	    tree resdecl = build_decl (loc, RESULT_DECL, 0, restype);
@@ -14784,6 +14831,8 @@ grokdeclarator (const cp_declarator *declarator,
 	    DECL_IGNORED_P (resdecl) = 1;
 	    DECL_RESULT (decl) = resdecl;
 	  }
+	else if (funcdef_flag)
+	  DECL_SOURCE_LOCATION (DECL_RESULT (decl)) = loc;
       }
 
     /* Record constancy and volatility on the DECL itself .  There's

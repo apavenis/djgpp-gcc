@@ -160,6 +160,38 @@ range_operator::wi_fold (irange &r, tree type,
   r.set_varying (type);
 }
 
+// Call wi_fold when both op1 and op2 are equivalent. Further split small
+// subranges into constants.  This can provide better precision.
+// For x + y,  when x == y with a range of [0,4] instead of [0, 8] produce
+// [0,0][2, 2][4,4][6, 6][8, 8]
+// LIMIT is the maximum number of elements in range allowed before we
+// do not process them individually.
+
+void
+range_operator::wi_fold_in_parts_equiv (irange &r, tree type,
+					const wide_int &lh_lb,
+					const wide_int &lh_ub,
+					unsigned limit) const
+{
+  int_range_max tmp;
+  widest_int lh_range = wi::sub (widest_int::from (lh_ub, TYPE_SIGN (type)),
+				 widest_int::from (lh_lb, TYPE_SIGN (type)));
+  // if there are 1 to 8 values in the LH range, split them up.
+  r.set_undefined ();
+  if (lh_range >= 0 && lh_range < limit)
+    {
+      for (unsigned x = 0; x <= lh_range; x++)
+	{
+	  wide_int val = lh_lb + x;
+	  wi_fold (tmp, type, val, val, val, val);
+	  r.union_ (tmp);
+	}
+    }
+  // Otherwise just call wi_fold.
+  else
+    wi_fold (r, type, lh_lb, lh_ub, lh_lb, lh_ub);
+}
+
 // Call wi_fold, except further split small subranges into constants.
 // This can provide better precision. For something   8 >> [0,1]
 // Instead of [8, 16], we will produce [8,8][16,16]
@@ -194,7 +226,7 @@ range_operator::wi_fold_in_parts (irange &r, tree type,
       wi_fold_in_parts (tmp, type, lh_lb, lh_ub, rh_ub, rh_ub);
       r.union_ (tmp);
     }
-  // Otherise check for 2, 3, or 4 values in the LH range and split them up.
+  // Otherwise check for 2, 3, or 4 values in the LH range and split them up.
   // The RH side has been checked, so no recursion needed.
   else if (lh_range > 0 && lh_range < 4)
     {
@@ -233,6 +265,28 @@ range_operator::fold_range (irange &r, tree type,
   relation_kind rel = trio.op1_op2 ();
   unsigned num_lh = lh.num_pairs ();
   unsigned num_rh = rh.num_pairs ();
+
+  // If op1 and op2 are equivalences, then we don't need a complete cross
+  // product, just pairs of matching elements.
+  if (relation_equiv_p (rel) && lh == rh)
+    {
+      int_range_max tmp;
+      r.set_undefined ();
+      for (unsigned x = 0; x < num_lh; ++x)
+	{
+	  // If the number of subranges is too high, limit subrange creation.
+	  unsigned limit = (r.num_pairs () > 32) ? 0 : 8;
+	  wide_int lh_lb = lh.lower_bound (x);
+	  wide_int lh_ub = lh.upper_bound (x);
+	  wi_fold_in_parts_equiv (tmp, type, lh_lb, lh_ub, limit);
+	  r.union_ (tmp);
+	  if (r.varying_p ())
+	    break;
+	}
+      op1_op2_relation_effect (r, type, lh, rh, rel);
+      update_known_bitmask (r, m_code, lh, rh);
+      return true;
+    }
 
   // If both ranges are single pairs, fold directly into the result range.
   // If the number of subranges grows too high, produce a summary result as the
@@ -457,7 +511,7 @@ create_possibly_reversed_range (irange &r, tree type,
 				const wide_int &new_lb, const wide_int &new_ub)
 {
   signop s = TYPE_SIGN (type);
-  // If the bounds are swapped, treat the result as if an overflow occured.
+  // If the bounds are swapped, treat the result as if an overflow occurred.
   if (wi::gt_p (new_lb, new_ub, s))
     value_range_from_overflowed_bounds (r, type, new_lb, new_ub);
   else
@@ -588,7 +642,8 @@ operator_equal::op1_range (irange &r, tree type,
     case BRS_FALSE:
       // If the result is false, the only time we know anything is
       // if OP2 is a constant.
-      if (wi::eq_p (op2.lower_bound(), op2.upper_bound()))
+      if (!op2.undefined_p ()
+	  && wi::eq_p (op2.lower_bound(), op2.upper_bound()))
 	{
 	  r = op2;
 	  r.invert ();
@@ -701,7 +756,8 @@ operator_not_equal::op1_range (irange &r, tree type,
     case BRS_TRUE:
       // If the result is true, the only time we know anything is if
       // OP2 is a constant.
-      if (wi::eq_p (op2.lower_bound(), op2.upper_bound()))
+      if (!op2.undefined_p ()
+	  && wi::eq_p (op2.lower_bound(), op2.upper_bound()))
 	{
 	  r = op2;
 	  r.invert ();
@@ -866,6 +922,9 @@ operator_lt::op1_range (irange &r, tree type,
 			const irange &op2,
 			relation_trio) const
 {
+  if (op2.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -888,6 +947,9 @@ operator_lt::op2_range (irange &r, tree type,
 			const irange &op1,
 			relation_trio) const
 {
+  if (op1.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -977,6 +1039,9 @@ operator_le::op1_range (irange &r, tree type,
 			const irange &op2,
 			relation_trio) const
 {
+  if (op2.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -999,6 +1064,9 @@ operator_le::op2_range (irange &r, tree type,
 			const irange &op1,
 			relation_trio) const
 {
+  if (op1.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -1087,6 +1155,9 @@ operator_gt::op1_range (irange &r, tree type,
 			const irange &lhs, const irange &op2,
 			relation_trio) const
 {
+  if (op2.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -1109,6 +1180,9 @@ operator_gt::op2_range (irange &r, tree type,
 			const irange &op1,
 			relation_trio) const
 {
+  if (op1.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -1198,6 +1272,9 @@ operator_ge::op1_range (irange &r, tree type,
 			const irange &op2,
 			relation_trio) const
 {
+  if (op2.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -1220,6 +1297,9 @@ operator_ge::op2_range (irange &r, tree type,
 			const irange &op1,
 			relation_trio) const
 {
+  if (op1.undefined_p ())
+    return false;
+
   switch (get_bool_state (r, lhs, type))
     {
     case BRS_TRUE:
@@ -1412,7 +1492,7 @@ plus_minus_ranges (irange &r_ov, irange &r_normal, const irange &offset,
 // a_2 = b_3 + 1  with a_2 < b_3 can refine the range of b_3 to [INF, INF]
 // and that further refines a_2 to [0, 0].
 // R is the value of op1, OP2 is the offset being added/subtracted, REL is the
-// relation between LHS relatoin OP1  and ADD_P is true for PLUS, false for
+// relation between LHS relation OP1  and ADD_P is true for PLUS, false for
 // MINUS.    IF any adjustment can be made, R will reflect it.
 
 static void
@@ -1460,7 +1540,7 @@ operator_plus::op1_range (irange &r, tree type,
   if (!minus)
     return false;
   bool res = minus.fold_range (r, type, lhs, op2);
-  relation_kind rel = trio.lhs_op2 ();
+  relation_kind rel = trio.lhs_op1 ();
   // Check for a relation refinement.
   if (res)
     adjust_op1_for_overflow (r, op2, rel, true /* PLUS_EXPR */);
@@ -1476,6 +1556,73 @@ operator_plus::op2_range (irange &r, tree type,
   return op1_range (r, type, lhs, op1, rel.swap_op1_op2 ());
 }
 
+class operator_widen_plus_signed : public range_operator
+{
+public:
+  virtual void wi_fold (irange &r, tree type,
+			const wide_int &lh_lb,
+			const wide_int &lh_ub,
+			const wide_int &rh_lb,
+			const wide_int &rh_ub) const;
+} op_widen_plus_signed;
+range_operator *ptr_op_widen_plus_signed = &op_widen_plus_signed;
+
+void
+operator_widen_plus_signed::wi_fold (irange &r, tree type,
+				     const wide_int &lh_lb,
+				     const wide_int &lh_ub,
+				     const wide_int &rh_lb,
+				     const wide_int &rh_ub) const
+{
+   wi::overflow_type ov_lb, ov_ub;
+   signop s = TYPE_SIGN (type);
+
+   wide_int lh_wlb
+     = wide_int::from (lh_lb, wi::get_precision (lh_lb) * 2, SIGNED);
+   wide_int lh_wub
+     = wide_int::from (lh_ub, wi::get_precision (lh_ub) * 2, SIGNED);
+   wide_int rh_wlb = wide_int::from (rh_lb, wi::get_precision (rh_lb) * 2, s);
+   wide_int rh_wub = wide_int::from (rh_ub, wi::get_precision (rh_ub) * 2, s);
+
+   wide_int new_lb = wi::add (lh_wlb, rh_wlb, s, &ov_lb);
+   wide_int new_ub = wi::add (lh_wub, rh_wub, s, &ov_ub);
+
+   r = int_range<2> (type, new_lb, new_ub);
+}
+
+class operator_widen_plus_unsigned : public range_operator
+{
+public:
+  virtual void wi_fold (irange &r, tree type,
+			const wide_int &lh_lb,
+			const wide_int &lh_ub,
+			const wide_int &rh_lb,
+			const wide_int &rh_ub) const;
+} op_widen_plus_unsigned;
+range_operator *ptr_op_widen_plus_unsigned = &op_widen_plus_unsigned;
+
+void
+operator_widen_plus_unsigned::wi_fold (irange &r, tree type,
+				       const wide_int &lh_lb,
+				       const wide_int &lh_ub,
+				       const wide_int &rh_lb,
+				       const wide_int &rh_ub) const
+{
+   wi::overflow_type ov_lb, ov_ub;
+   signop s = TYPE_SIGN (type);
+
+   wide_int lh_wlb
+     = wide_int::from (lh_lb, wi::get_precision (lh_lb) * 2, UNSIGNED);
+   wide_int lh_wub
+     = wide_int::from (lh_ub, wi::get_precision (lh_ub) * 2, UNSIGNED);
+   wide_int rh_wlb = wide_int::from (rh_lb, wi::get_precision (rh_lb) * 2, s);
+   wide_int rh_wub = wide_int::from (rh_ub, wi::get_precision (rh_ub) * 2, s);
+
+   wide_int new_lb = wi::add (lh_wlb, rh_wlb, s, &ov_lb);
+   wide_int new_ub = wi::add (lh_wub, rh_wub, s, &ov_ub);
+
+   r = int_range<2> (type, new_lb, new_ub);
+}
 
 class operator_minus : public range_operator
 {
@@ -1632,7 +1779,7 @@ operator_minus::op1_range (irange &r, tree type,
   if (!minus)
     return false;
   bool res = minus.fold_range (r, type, lhs, op2);
-  relation_kind rel = trio.lhs_op2 ();
+  relation_kind rel = trio.lhs_op1 ();
   if (res)
     adjust_op1_for_overflow (r, op2, rel, false /* PLUS_EXPR */);
   return res;
@@ -1878,7 +2025,7 @@ operator_mult::wi_fold (irange &r, tree type,
   // This test requires 2*prec bits if both operands are signed and
   // 2*prec + 2 bits if either is not.  Therefore, extend the values
   // using the sign of the result to PREC2.  From here on out,
-  // everthing is just signed math no matter what the input types
+  // everything is just signed math no matter what the input types
   // were.
 
   signop sign = TYPE_SIGN (type);
@@ -1951,6 +2098,70 @@ operator_mult::wi_fold (irange &r, tree type,
     }
 }
 
+class operator_widen_mult_signed : public range_operator
+{
+public:
+  virtual void wi_fold (irange &r, tree type,
+			const wide_int &lh_lb,
+			const wide_int &lh_ub,
+			const wide_int &rh_lb,
+			const wide_int &rh_ub)
+    const;
+} op_widen_mult_signed;
+range_operator *ptr_op_widen_mult_signed = &op_widen_mult_signed;
+
+void
+operator_widen_mult_signed::wi_fold (irange &r, tree type,
+				     const wide_int &lh_lb,
+				     const wide_int &lh_ub,
+				     const wide_int &rh_lb,
+				     const wide_int &rh_ub) const
+{
+  signop s = TYPE_SIGN (type);
+
+  wide_int lh_wlb = wide_int::from (lh_lb, wi::get_precision (lh_lb) * 2, SIGNED);
+  wide_int lh_wub = wide_int::from (lh_ub, wi::get_precision (lh_ub) * 2, SIGNED);
+  wide_int rh_wlb = wide_int::from (rh_lb, wi::get_precision (rh_lb) * 2, s);
+  wide_int rh_wub = wide_int::from (rh_ub, wi::get_precision (rh_ub) * 2, s);
+
+  /* We don't expect a widening multiplication to be able to overflow but range
+     calculations for multiplications are complicated.  After widening the
+     operands lets call the base class.  */
+  return op_mult.wi_fold (r, type, lh_wlb, lh_wub, rh_wlb, rh_wub);
+}
+
+
+class operator_widen_mult_unsigned : public range_operator
+{
+public:
+  virtual void wi_fold (irange &r, tree type,
+			const wide_int &lh_lb,
+			const wide_int &lh_ub,
+			const wide_int &rh_lb,
+			const wide_int &rh_ub)
+    const;
+} op_widen_mult_unsigned;
+range_operator *ptr_op_widen_mult_unsigned = &op_widen_mult_unsigned;
+
+void
+operator_widen_mult_unsigned::wi_fold (irange &r, tree type,
+				       const wide_int &lh_lb,
+				       const wide_int &lh_ub,
+				       const wide_int &rh_lb,
+				       const wide_int &rh_ub) const
+{
+  signop s = TYPE_SIGN (type);
+
+  wide_int lh_wlb = wide_int::from (lh_lb, wi::get_precision (lh_lb) * 2, UNSIGNED);
+  wide_int lh_wub = wide_int::from (lh_ub, wi::get_precision (lh_ub) * 2, UNSIGNED);
+  wide_int rh_wlb = wide_int::from (rh_lb, wi::get_precision (rh_lb) * 2, s);
+  wide_int rh_wub = wide_int::from (rh_ub, wi::get_precision (rh_ub) * 2, s);
+
+  /* We don't expect a widening multiplication to be able to overflow but range
+     calculations for multiplications are complicated.  After widening the
+     operands lets call the base class.  */
+  return op_mult.wi_fold (r, type, lh_wlb, lh_wub, rh_wlb, rh_wub);
+}
 
 class operator_div : public cross_product_operator
 {
@@ -2077,7 +2288,7 @@ operator_exact_divide::op1_range (irange &r, tree type,
   // [2, 4] = op1 / [3,3]   since its exact divide, no need to worry about
   // remainders in the endpoints, so op1 = [2,4] * [3,3] = [6,12].
   // We wont bother trying to enumerate all the in between stuff :-P
-  // TRUE accuraacy is [6,6][9,9][12,12].  This is unlikely to matter most of
+  // TRUE accuracy is [6,6][9,9][12,12].  This is unlikely to matter most of
   // the time however.
   // If op2 is a multiple of 2, we would be able to set some non-zero bits.
   if (op2.singleton_p (&offset)
@@ -2166,7 +2377,7 @@ operator_lshift::fold_range (irange &r, tree type,
       if (op2.undefined_p ())
 	r.set_undefined ();
       else
-	r.set_varying (type);
+	r.set_zero (type);
       return true;
     }
 
@@ -2440,7 +2651,7 @@ operator_rshift::fold_range (irange &r, tree type,
       if (op2.undefined_p ())
 	r.set_undefined ();
       else
-	r.set_varying (type);
+	r.set_zero (type);
       return true;
     }
 
@@ -2498,7 +2709,7 @@ operator_cast::lhs_op1_relation (const irange &lhs,
   if (TYPE_SIGN (op1.type ()) == SIGNED && lhs_prec > op1_prec)
     {
       // If the result is sign extended, and the LHS is larger than op1,
-      // check if op1's range can be negative as the sign extention will
+      // check if op1's range can be negative as the sign extension will
       // cause the upper bits to be 1 instead of 0, invalidating the PE.
       int_range<3> negs = range_negatives (op1.type ());
       negs.intersect (op1);
@@ -2554,7 +2765,7 @@ operator_cast::fold_pair (irange &r, unsigned index,
   wide_int inner_ub = inner.upper_bound (index);
   if (truncating_cast_p (inner, outer))
     {
-      // We may be able to accomodate a truncating cast if the
+      // We may be able to accommodate a truncating cast if the
       // resulting range can be represented in the target type...
       if (wi::rshift (wi::sub (inner_ub, inner_lb),
 		      wi::uhwi (outer_prec, TYPE_PRECISION (inner.type ())),
@@ -2591,7 +2802,7 @@ operator_cast::fold_range (irange &r, tree type ATTRIBUTE_UNUSED,
   // Avoid a temporary by folding the first pair directly into the result.
   fold_pair (r, 0, inner, outer);
 
-  // Then process any additonal pairs by unioning with their results.
+  // Then process any additional pairs by unioning with their results.
   for (unsigned x = 1; x < inner.num_pairs (); ++x)
     {
       int_range_max tmp;
@@ -3948,7 +4159,7 @@ operator_abs::wi_fold (irange &r, tree type,
   if (wi::eq_p (lh_lb, min_value))
     {
       // ABS ([-MIN, -MIN]) isn't representable, but we have traditionally
-      // returned [-MIN,-MIN] so this preserves that behaviour.  PR37078
+      // returned [-MIN,-MIN] so this preserves that behavior.  PR37078
       if (wi::eq_p (lh_ub, min_value))
 	{
 	  r = int_range<1> (type, min_value, min_value);
@@ -4158,6 +4369,10 @@ public:
 		        const wide_int &lh_ub,
 		        const wide_int &rh_lb,
 		        const wide_int &rh_ub) const;
+  virtual bool op2_range (irange &r, tree type,
+			  const irange &lhs,
+			  const irange &op1,
+			  relation_trio = TRIO_VARYING) const;
 } op_pointer_plus;
 
 void
@@ -4204,6 +4419,25 @@ pointer_plus_operator::wi_fold (irange &r, tree type,
    r.set_varying (type);
 }
 
+bool
+pointer_plus_operator::op2_range (irange &r, tree type,
+				  const irange &lhs ATTRIBUTE_UNUSED,
+				  const irange &op1 ATTRIBUTE_UNUSED,
+				  relation_trio trio) const
+{
+  relation_kind rel = trio.lhs_op1 ();
+  r.set_varying (type);
+
+  // If the LHS and OP1 are equal, the op2 must be zero.
+  if (rel == VREL_EQ)
+    r.set_zero (type);
+  // If the LHS and OP1 are not equal, the offset must be non-zero.
+  else if (rel == VREL_NE)
+    r.set_nonzero (type);
+  else
+    return false;
+  return true;
+}
 
 class pointer_min_max_operator : public range_operator
 {
@@ -4744,7 +4978,7 @@ range_op_cast_tests ()
   range_cast (r0, unsigned_char_type_node);
   ASSERT_TRUE (r0 == rold);
 
-  // Test casting a wider signed [-MIN,MAX] to a nar`rower unsigned.
+  // Test casting a wider signed [-MIN,MAX] to a narrower unsigned.
   r0 = int_range<1> (TYPE_MIN_VALUE (long_long_integer_type_node),
 	       TYPE_MAX_VALUE (long_long_integer_type_node));
   range_cast (r0, short_unsigned_type_node);
@@ -4827,7 +5061,7 @@ range_op_lshift_tests ()
   // signed VARYING = op1 << 1 should be VARYING.
   if (TYPE_PRECISION (integer_type_node) > 31)
     {
-      // unsigned VARYING = op1 << 1  hould be VARYING.
+      // unsigned VARYING = op1 << 1 should be VARYING.
       int_range<2> lhs (integer_type_node);
       int_range<2> shift (INT (1), INT (1));
       int_range_max op1;
@@ -4841,7 +5075,7 @@ range_op_lshift_tests ()
       // Remove the [0,0] range.
       op1.intersect (zero);
       ASSERT_TRUE (op1.num_pairs () == 1);
-      //  op1 << 1   shuould be [0x8000,0x8000] << 1,
+      //  op1 << 1   should be [0x8000,0x8000] << 1,
       //  which should result in [0,0].
       int_range_max result;
       op_lshift.fold_range (result, unsigned_type_node, op1, shift);

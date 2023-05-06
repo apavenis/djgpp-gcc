@@ -1,6 +1,6 @@
 /* m2linemap.h header file for m2linemap.cc.
 
-Copyright (C) 2012-2022 Free Software Foundation, Inc.
+Copyright (C) 2012-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -59,7 +59,7 @@ EXTERN void m2linemap_ErrorAtf (location_t location, const char *message);
 EXTERN void m2linemap_WarningAtf (location_t location, const char *message);
 EXTERN void m2linemap_NoteAtf (location_t location, const char *message);
 EXTERN void m2linemap_internal_error (const char *message);
-
+EXTERN void m2linemap_internal_error_at (location_t location, const char *fmt, ...);
 
 EXTERN location_t UnknownLocation (void);
 EXTERN location_t BuiltinsLocation (void);

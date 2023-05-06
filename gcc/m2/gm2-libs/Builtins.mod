@@ -1,6 +1,6 @@
 (* Builtins.mod provides access to all built-in functions.
 
-Copyright (C) 2001-2021 Free Software Foundation, Inc.
+Copyright (C) 2001-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -57,19 +57,19 @@ BEGIN
    RETURN cbuiltin.memcpy (dest, src, nbytes)
 END memcpy ;
 
-PROCEDURE __ATTRIBUTE__  __BUILTIN__ ((__builtin_isfinite)) isfinitef (x: SHORTREAL) : BOOLEAN ;
+PROCEDURE __ATTRIBUTE__  __BUILTIN__ ((__builtin_isfinite)) isfinitef (x: SHORTREAL) : INTEGER ;
 BEGIN
-   RETURN wrapc.isfinitef (x)=1
+   RETURN wrapc.isfinitef (x)
 END isfinitef ;
 
-PROCEDURE __ATTRIBUTE__  __BUILTIN__ ((__builtin_isfinite)) isfinite (x: REAL) : BOOLEAN ;
+PROCEDURE __ATTRIBUTE__  __BUILTIN__ ((__builtin_isfinite)) isfinite (x: REAL) : INTEGER ;
 BEGIN
-   RETURN wrapc.isfinite (x)=1
+   RETURN wrapc.isfinite (x)
 END isfinite ;
 
-PROCEDURE __ATTRIBUTE__  __BUILTIN__ ((__builtin_isfinite)) isfinitel (x: LONGREAL) : BOOLEAN ;
+PROCEDURE __ATTRIBUTE__  __BUILTIN__ ((__builtin_isfinite)) isfinitel (x: LONGREAL) : INTEGER ;
 BEGIN
-   RETURN wrapc.isfinitel (x)=1
+   RETURN wrapc.isfinitel (x)
 END isfinitel ;
 
 PROCEDURE __ATTRIBUTE__  __BUILTIN__ ((__builtin_sin)) sin (x: REAL) : REAL ;

@@ -1,5 +1,5 @@
 /* Classes for modeling the state of memory.
-   Copyright (C) 2019-2022 Free Software Foundation, Inc.
+   Copyright (C) 2019-2023 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -341,7 +341,8 @@ class region_model
   function * get_current_function () const;
   void pop_frame (tree result_lvalue,
 		  const svalue **out_result,
-		  region_model_context *ctxt);
+		  region_model_context *ctxt,
+		  bool eval_return_svalue = true);
   int get_stack_depth () const;
   const frame_region *get_frame_at_index (int index) const;
 

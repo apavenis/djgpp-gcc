@@ -2284,14 +2284,25 @@ struct floatn_type_info {
 /* Matrix describing the structures contained in a given tree code.  */
 extern bool tree_contains_struct[MAX_TREE_CODES][64];
 
+/* Class of tree given its code.  */
 #define DEFTREECODE(SYM, NAME, TYPE, LENGTH) TYPE,
 #define END_OF_BASE_TREE_CODES tcc_exceptional,
 
+#if __cpp_inline_variables < 201606L
+template <int N>
+struct tree_code_type_tmpl {
+  static constexpr enum tree_code_class tree_code_type[] = {
+#include "all-tree.def"
+  };
+};
 
-/* Class of tree given its code.  */
-constexpr enum tree_code_class tree_code_type[] = {
+template <int N>
+constexpr enum tree_code_class tree_code_type_tmpl<N>::tree_code_type[];
+#else
+constexpr inline enum tree_code_class tree_code_type[] = {
 #include "all-tree.def"
 };
+#endif
 
 #undef DEFTREECODE
 #undef END_OF_BASE_TREE_CODES
@@ -2304,9 +2315,22 @@ extern const char *const tree_code_class_strings[];
 
 #define DEFTREECODE(SYM, NAME, TYPE, LENGTH) LENGTH,
 #define END_OF_BASE_TREE_CODES 0,
-constexpr unsigned char tree_code_length[] = {
+
+#if __cpp_inline_variables < 201606L
+template <int N>
+struct tree_code_length_tmpl {
+  static constexpr unsigned char tree_code_length[] = {
+#include "all-tree.def"
+  };
+};
+
+template <int N>
+constexpr unsigned char tree_code_length_tmpl<N>::tree_code_length[];
+#else
+constexpr inline unsigned char tree_code_length[] = {
 #include "all-tree.def"
 };
+#endif
 
 #undef DEFTREECODE
 #undef END_OF_BASE_TREE_CODES

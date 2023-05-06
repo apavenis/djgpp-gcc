@@ -1,5 +1,5 @@
 /* gfortran header file
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2023 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -838,6 +838,9 @@ typedef enum
   EXT_ATTR_FASTCALL,
   EXT_ATTR_NO_ARG_CHECK,
   EXT_ATTR_DEPRECATED,
+  EXT_ATTR_NOINLINE,
+  EXT_ATTR_NORETURN,
+  EXT_ATTR_WEAK,
   EXT_ATTR_LAST, EXT_ATTR_NUM = EXT_ATTR_LAST
 }
 ext_attr_id_t;
@@ -3002,6 +3005,8 @@ typedef struct gfc_code
       /* Take the array specification from expr3 to allocate arrays
 	 without an explicit array specification.  */
       unsigned arr_spec_from_expr3:1;
+      /* expr3 is not explicit  */
+      unsigned expr3_not_explicit:1;
     }
     alloc;
 
@@ -3273,7 +3278,7 @@ void gfc_done_2 (void);
 int get_c_kind (const char *, CInteropKind_t *);
 
 const char *gfc_closest_fuzzy_match (const char *, char **);
-static inline void
+inline void
 vec_push (char **&optr, size_t &osz, const char *elt)
 {
   /* {auto,}vec.safe_push () replacement.  Don't ask..  */
@@ -3328,6 +3333,7 @@ void gfc_internal_error (const char *, ...) ATTRIBUTE_NORETURN ATTRIBUTE_GCC_GFC
 void gfc_clear_error (void);
 bool gfc_error_check (void);
 bool gfc_error_flag_test (void);
+bool gfc_buffered_p (void);
 
 notification gfc_notification_std (int);
 bool gfc_notify_std (int, const char *, ...) ATTRIBUTE_GCC_GFC(2,3);
@@ -3549,7 +3555,7 @@ void gfc_intrinsic_done_1 (void);
 
 char gfc_type_letter (bt, bool logical_equals_int = false);
 int gfc_type_abi_kind (bt, int);
-static inline int
+inline int
 gfc_type_abi_kind (gfc_typespec *ts)
 {
   return gfc_type_abi_kind (ts->type, ts->kind);
@@ -3928,6 +3934,7 @@ gfc_typebound_proc* gfc_find_typebound_intrinsic_op (gfc_symbol*, bool*,
 						     locus*);
 gfc_symtree* gfc_get_tbp_symtree (gfc_symtree**, const char*);
 bool gfc_is_finalizable (gfc_symbol *, gfc_expr **);
+bool gfc_may_be_finalized (gfc_typespec);
 
 #define CLASS_DATA(sym) sym->ts.u.derived->components
 #define UNLIMITED_POLY(sym) \

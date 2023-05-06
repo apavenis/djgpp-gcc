@@ -1,6 +1,6 @@
 /* gcc-consolidation.h provides a single header for required gcc headers.
 
-Copyright (C) 2012-2022 Free Software Foundation, Inc.
+Copyright (C) 2012-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -90,3 +90,4 @@ along with GNU Modula-2; see the file COPYING3.  If not see
 #include "ipa-ref.h"
 #include "cgraph.h"
 #include "stmt.h"
+#include <stdbool.h>

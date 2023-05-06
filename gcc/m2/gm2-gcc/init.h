@@ -1,6 +1,6 @@
 /* init.h header file for init.cc.
 
-Copyright (C) 2012-2022 Free Software Foundation, Inc.
+Copyright (C) 2012-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -24,12 +24,13 @@ along with GNU Modula-2; see the file COPYING3.  If not see
 
 #if defined(init_cpp)
 extern "C" {
+#endif
+
 void init_FrontEndInit (void);
 void init_PerCompilationInit (const char *filename);
+
+#if defined(init_cpp)
 }
-#else /* !init_cpp.  */
-void init_FrontEndInit (void);
-void init_PerCompilationInit (const char *filename);
 #endif /* !init_cpp.  */
 
 #endif /*! init_h.  */

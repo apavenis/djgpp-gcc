@@ -196,12 +196,12 @@ static const struct option merge_options[] =
 static void ATTRIBUTE_NORETURN
 merge_usage (void)
 {
-  fnotice (stderr, "Merge subcomand usage:");
+  fnotice (stderr, "Merge subcommand usage:");
   print_merge_usage_message (true);
   exit (FATAL_EXIT_CODE);
 }
 
-/* Driver for profile merge sub-command.  */
+/* Driver for profile merge subcommand.  */
 
 static int
 do_merge (int argc, char **argv)
@@ -266,12 +266,12 @@ static const struct option merge_stream_options[] =
 static void ATTRIBUTE_NORETURN
 merge_stream_usage (void)
 {
-  fnotice (stderr, "Merge-stream subcomand usage:");
+  fnotice (stderr, "Merge-stream subcommand usage:");
   print_merge_stream_usage_message (true);
   exit (FATAL_EXIT_CODE);
 }
 
-/* Driver for profile merge-stream sub-command.  */
+/* Driver for profile merge-stream subcommand.  */
 
 static int
 do_merge_stream (int argc, char **argv)
@@ -369,7 +369,7 @@ rewrite_usage (void)
   exit (FATAL_EXIT_CODE);
 }
 
-/* Driver for profile rewrite sub-command. */
+/* Driver for profile rewrite subcommand.  */
 
 static int
 do_rewrite (int argc, char **argv)
@@ -518,7 +518,7 @@ static const struct option overlap_options[] =
 static void ATTRIBUTE_NORETURN
 overlap_usage (void)
 {
-  fnotice (stderr, "Overlap subcomand usage:");
+  fnotice (stderr, "Overlap subcommand usage:");
   print_overlap_usage_message (true);
   exit (FATAL_EXIT_CODE);
 }
@@ -529,7 +529,7 @@ int overlap_hot_only;
 int overlap_use_fullname;
 double overlap_hot_threshold = 0.005;
 
-/* Driver for profile overlap sub-command.  */
+/* Driver for profile overlap subcommand.  */
 
 static int
 do_overlap (int argc, char **argv)

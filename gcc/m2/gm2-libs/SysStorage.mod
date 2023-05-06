@@ -1,6 +1,6 @@
 (* SysStorage.mod provides dynamic allocation for the system components.
 
-Copyright (C) 2001-2021 Free Software Foundation, Inc.
+Copyright (C) 2001-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -33,8 +33,8 @@ FROM SYSTEM IMPORT ADR ;
 
 CONST
    enableDeallocation =  TRUE ;
-   enableZero         = FALSE ;
-   enableTrace        = FALSE ;
+   enableZero         =  TRUE ;
+   enableTrace        =  FALSE ;
 
 VAR
    callno: CARDINAL ;
@@ -47,7 +47,8 @@ BEGIN
    a := malloc (size) ;
    IF a = NIL
    THEN
-      Halt ('out of memory error', __LINE__, __FILE__)
+      Halt ('out of memory error',
+            __FILE__, __FUNCTION__, __LINE__)
    END ;
    IF enableTrace AND trace
    THEN
@@ -73,7 +74,8 @@ BEGIN
       END ;
       IF memset (a, 0, size) # a
       THEN
-         Halt ('memset should have returned the first parameter', __LINE__, __FILE__)
+         Halt ('memset should have returned the first parameter',
+               __FILE__, __FUNCTION__, __LINE__)
       END
    END ;
    IF enableDeallocation
@@ -116,7 +118,8 @@ BEGIN
       a := realloc (a, size) ;
       IF a = NIL
       THEN
-         Halt ('out of memory error', __LINE__, __FILE__)
+         Halt ('out of memory error',
+               __FILE__, __FUNCTION__, __LINE__)
       END ;
       IF enableTrace AND trace
       THEN

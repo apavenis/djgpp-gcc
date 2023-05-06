@@ -1,6 +1,6 @@
 (* decl.mod declaration nodes used to create the AST.
 
-Copyright (C) 2015-2022 Free Software Foundation, Inc.
+Copyright (C) 2015-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -22,7 +22,7 @@ along with GNU Modula-2; see the file COPYING3.  If not see
 IMPLEMENTATION MODULE decl ; (*!m2pim*)
 
 FROM ASCII IMPORT lf, tab ;
-FROM symbolKey IMPORT symbolTree, initTree, getSymKey, putSymKey, foreachNodeDo ;
+FROM symbolKey IMPORT NulKey, symbolTree, initTree, getSymKey, putSymKey, foreachNodeDo ;
 FROM mcDebug IMPORT assert ;
 FROM Storage IMPORT ALLOCATE, DEALLOCATE ;
 FROM nameKey IMPORT NulName, makeKey, lengthKey, makekey, keyToCharStar ;
@@ -30,7 +30,12 @@ FROM SFIO IMPORT OpenToWrite, WriteS ;
 FROM FIO IMPORT File, Close, FlushBuffer, StdOut, WriteLine, WriteChar ;
 FROM DynamicStrings IMPORT String, InitString, EqualArray, InitStringCharStar, KillString, ConCat, Mark, RemoveWhitePostfix, RemoveWhitePrefix ;
 FROM StringConvert IMPORT CardinalToString, ostoc ;
-FROM mcOptions IMPORT getOutputFile, getDebugTopological, getHPrefix, getIgnoreFQ, getExtendedOpaque, writeGPLheader, getGccConfigSystem, getScaffoldDynamic, getScaffoldMain ;
+
+FROM mcOptions IMPORT getOutputFile, getDebugTopological, getHPrefix, getIgnoreFQ,
+                      getExtendedOpaque, writeGPLheader, getGccConfigSystem,
+                      getScaffoldDynamic, getScaffoldMain, getSuppressNoReturn,
+                      useBool ;
+
 FROM FormatStrings IMPORT Sprintf0, Sprintf1, Sprintf2, Sprintf3 ;
 FROM libc IMPORT printf, memset ;
 FROM mcMetaError IMPORT metaError1, metaError2, metaError3, metaErrors1, metaErrors2 ;
@@ -2936,7 +2941,7 @@ BEGIN
                (* ensure that field, n, is in the parents Local Symbols.  *)
                IF tag#NulName
                THEN
-                  IF getSymKey (recordF.localSymbols, tag) = NulName
+                  IF getSymKey (recordF.localSymbols, tag) = NulKey
                   THEN
                      putSymKey (recordF.localSymbols, tag, n)
                   ELSE
@@ -6302,7 +6307,12 @@ END outNull ;
 PROCEDURE outTrue (p: pretty) ;
 BEGIN
    keyc.useTrue ;
-   outText (p, 'TRUE')
+   IF useBool () AND (lang = ansiCP)
+   THEN
+      outText (p, 'true')
+   ELSE
+      outText (p, 'TRUE')
+   END
 END outTrue ;
 
 
@@ -6313,7 +6323,12 @@ END outTrue ;
 PROCEDURE outFalse (p: pretty) ;
 BEGIN
    keyc.useFalse ;
-   outText (p, 'FALSE')
+   IF useBool () AND (lang = ansiCP)
+   THEN
+      outText (p, 'false')
+   ELSE
+      outText (p, 'FALSE')
+   END
 END outFalse ;
 
 
@@ -7831,6 +7846,21 @@ END isBase ;
 
 
 (*
+   doBoolC -
+*)
+
+PROCEDURE doBoolC (p: pretty) ;
+BEGIN
+   IF useBool ()
+   THEN
+      outText (p, 'bool')
+   ELSE
+      outText (p, 'unsigned int')
+   END
+END doBoolC ;
+
+
+(*
    doBaseC -
 *)
 
@@ -7852,7 +7882,7 @@ BEGIN
    longreal    :  outText (p, 'long double') |
    shortreal   :  outText (p, 'float') |
    bitset      :  outText (p, 'unsigned int') |
-   boolean     :  outText (p, 'unsigned int') |
+   boolean     :  doBoolC (p) |
    proc        :  outText (p, 'PROC')
 
    END ;
@@ -8421,7 +8451,7 @@ BEGIN
       outText (doP, "void")
    END ;
    print (doP, ")") ;
-   IF n^.procedureF.noreturn AND prototype
+   IF n^.procedureF.noreturn AND prototype AND (NOT getSuppressNoReturn ())
    THEN
       setNeedSpace (doP) ;
       outText (doP, "__attribute__ ((noreturn))")
@@ -14129,7 +14159,7 @@ BEGIN
    setNeedSpace (p) ;
    outText (p, "_M2_") ;
    doFQNameC (p, n) ;
-   outText (p, "_finish") ;
+   outText (p, "_fini") ;
    setNeedSpace (p) ;
    outText (p, "(__attribute__((unused)) int argc") ;
    outText (p, ",__attribute__((unused)) char *argv[]") ;
@@ -14487,7 +14517,7 @@ BEGIN
    setNeedSpace (p) ;
    outText (p, "_M2_") ;
    doFQNameC (p, n) ;
-   outText (p, "_finish") ;
+   outText (p, "_fini") ;
    setNeedSpace (p) ;
    outText (p, "(__attribute__((unused)) int argc") ;
    outText (p, ",__attribute__((unused)) char *argv[]") ;

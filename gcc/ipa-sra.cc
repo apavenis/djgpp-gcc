@@ -2529,7 +2529,8 @@ process_scan_results (cgraph_node *node, struct function *fun,
      TODO: Measure the overhead and the effect of just being pessimistic.
      Maybe this is only -O3 material?  */
 
-  bool pdoms_calculated = false;
+  hash_map<gimple *, bool> analyzed_stmts;
+  bitmap always_executed_bbs = NULL;
   if (check_pass_throughs)
     for (cgraph_edge *cs = node->callees; cs; cs = cs->next_callee)
       {
@@ -2566,27 +2567,46 @@ process_scan_results (cgraph_node *node, struct function *fun,
 		continue;
 	      }
 
-	    /* Post-dominator check placed last, hoping that it usually won't
-	       be needed.  */
-	    if (!pdoms_calculated)
+	    /* Walk basic block and see if its execution can terminate earlier.
+	       Keep the info for later re-use to avoid quadratic behavoiur here.  */
+	    gimple_stmt_iterator gsi = gsi_for_stmt (call_stmt);
+	    bool safe = true;
+	    int n = 0;
+	    for (gsi_prev (&gsi); !gsi_end_p (gsi); gsi_prev (&gsi))
 	      {
-		gcc_checking_assert (cfun);
-		connect_infinite_loops_to_exit ();
-		calculate_dominance_info (CDI_POST_DOMINATORS);
-		pdoms_calculated = true;
+		bool *b = analyzed_stmts.get (gsi_stmt (gsi));
+		if (b)
+		  {
+		    safe = *b;
+		    gsi_next (&gsi);
+		    break;
+		  }
+		n++;
+		if (stmt_may_terminate_function_p (fun, gsi_stmt (gsi), false))
+		  {
+		    safe = false;
+		    break;
+		  }
 	      }
-	    if (dominated_by_p (CDI_POST_DOMINATORS,
-				gimple_bb (call_stmt),
-				single_succ (ENTRY_BLOCK_PTR_FOR_FN (fun))))
+	    if (n)
+	      {
+		if (gsi_end_p (gsi))
+		  gsi = gsi_start_bb (gimple_bb (call_stmt));
+		for (; gsi_stmt (gsi) != call_stmt; gsi_next (&gsi))
+		  analyzed_stmts.get_or_insert (gsi_stmt (gsi)) = safe;
+	      }
+
+	    if (safe && !always_executed_bbs)
+	      {
+		mark_dfs_back_edges ();
+		always_executed_bbs = find_always_executed_bbs (fun, false);
+	      }
+	    if (safe && bitmap_bit_p (always_executed_bbs, gimple_bb (call_stmt)->index))
 	      csum->m_arg_flow[argidx].safe_to_import_accesses = true;
 	  }
 
       }
-  if (pdoms_calculated)
-    {
-      free_dominance_info (CDI_POST_DOMINATORS);
-      remove_fake_exit_edges ();
-    }
+  BITMAP_FREE (always_executed_bbs);
 
   /* TODO: Add early exit if we disqualified everything.  This also requires
      that we either relax the restriction that
@@ -3969,9 +3989,7 @@ push_param_adjustments_for_index (isra_func_summary *ifs, unsigned base_index,
 	{
 	  ipa_argagg_value_list avl (ipcp_ts);
 	  tree value = avl.get_value (base_index, pa->unit_offset);
-	  if (value
-	      && (tree_to_uhwi (TYPE_SIZE (TREE_TYPE (value))) / BITS_PER_UNIT
-		  == pa->unit_size))
+	  if (value && !AGGREGATE_TYPE_P (pa->type))
 	    {
 	      if (dump_file)
 		fprintf (dump_file, "    - omitting component at byte "
@@ -4010,6 +4028,70 @@ mark_callers_calls_comdat_local (struct cgraph_node *node, void *)
   return false;
 }
 
+/* Remove any IPA-CP results stored in TS that are associated with removed
+   parameters as marked in IFS. */
+
+static void
+zap_useless_ipcp_results (const isra_func_summary *ifs, ipcp_transformation *ts)
+{
+  unsigned ts_len = vec_safe_length (ts->m_agg_values);
+
+  if (ts_len == 0)
+    return;
+
+  bool removed_item = false;
+  unsigned dst_index = 0;
+
+  for (unsigned i = 0; i < ts_len; i++)
+    {
+      ipa_argagg_value *v = &(*ts->m_agg_values)[i];
+      const isra_param_desc *desc = &(*ifs->m_parameters)[v->index];
+
+      if (!desc->locally_unused)
+	{
+	  if (removed_item)
+	    (*ts->m_agg_values)[dst_index] = *v;
+	  dst_index++;
+	}
+      else
+	removed_item = true;
+    }
+  if (dst_index == 0)
+    {
+      ggc_free (ts->m_agg_values);
+      ts->m_agg_values = NULL;
+    }
+  else if (removed_item)
+    ts->m_agg_values->truncate (dst_index);
+
+  bool useful_bits = false;
+  unsigned count = vec_safe_length (ts->bits);
+  for (unsigned i = 0; i < count; i++)
+    if ((*ts->bits)[i])
+    {
+      const isra_param_desc *desc = &(*ifs->m_parameters)[i];
+      if (desc->locally_unused)
+	(*ts->bits)[i] = NULL;
+      else
+	useful_bits = true;
+    }
+  if (!useful_bits)
+    ts->bits = NULL;
+
+  bool useful_vr = false;
+  count = vec_safe_length (ts->m_vr);
+  for (unsigned i = 0; i < count; i++)
+    if ((*ts->m_vr)[i].known)
+      {
+	const isra_param_desc *desc = &(*ifs->m_parameters)[i];
+	if (desc->locally_unused)
+	  (*ts->m_vr)[i].known = false;
+	else
+	  useful_vr = true;
+      }
+  if (!useful_vr)
+    ts->m_vr = NULL;
+}
 
 /* Do final processing of results of IPA propagation regarding NODE, clone it
    if appropriate.  */
@@ -4062,6 +4144,8 @@ process_isra_node_results (cgraph_node *node,
     }
 
   ipcp_transformation *ipcp_ts = ipcp_get_transformation_summary (node);
+  if (ipcp_ts)
+    zap_useless_ipcp_results (ifs, ipcp_ts);
   vec<ipa_adjusted_param, va_gc> *new_params = NULL;
   if (ipa_param_adjustments *old_adjustments
 	 = cinfo ? cinfo->param_adjustments : NULL)
@@ -4110,6 +4194,22 @@ process_isra_node_results (cgraph_node *node,
   callers.release ();
 }
 
+/* If INDICES is not empty, dump a combination of NODE's dump_name and MSG
+   followed by the list of numbers in INDICES.  */
+
+static void
+dump_list_of_param_indices (const cgraph_node *node, const char* msg,
+			    const vec<unsigned> &indices)
+{
+  if (indices.is_empty ())
+    return;
+  fprintf (dump_file, "The following parameters of %s %s:", node->dump_name (),
+	   msg);
+  for (unsigned i : indices)
+    fprintf (dump_file, " %u", i);
+  fprintf (dump_file, "\n");
+}
+
 /* Check which parameters of NODE described by IFS have survived until IPA-SRA
    and disable transformations for those which have not or which should not
    transformed because the associated debug counter reached its limit.  Return
@@ -4133,6 +4233,7 @@ adjust_parameter_descriptions (cgraph_node *node, isra_func_summary *ifs)
       check_surviving = true;
       cinfo->param_adjustments->get_surviving_params (&surviving_params);
     }
+  ipcp_transformation *ipcp_ts = ipcp_get_transformation_summary (node);
   auto_vec <unsigned> dump_dead_indices;
   auto_vec <unsigned> dump_bad_cond_indices;
   for (unsigned i = 0; i < len; i++)
@@ -4182,27 +4283,40 @@ adjust_parameter_descriptions (cgraph_node *node, isra_func_summary *ifs)
 	      if (size_would_violate_limit_p (desc, desc->size_reached))
 		desc->split_candidate = false;
 	    }
+
+	  /* Avoid ICEs on size-mismatched VIEW_CONVERT_EXPRs when callers and
+	     callees don't agree on types in aggregates and we try to do both
+	     IPA-CP and IPA-SRA.  */
+	  if (ipcp_ts && desc->split_candidate)
+	    {
+	      ipa_argagg_value_list avl (ipcp_ts);
+	      for (const param_access *pa : desc->accesses)
+		{
+		  if (!pa->certain)
+		    continue;
+		  tree value = avl.get_value (i, pa->unit_offset);
+		  if (value
+		      && ((tree_to_uhwi (TYPE_SIZE (TREE_TYPE (value)))
+			   / BITS_PER_UNIT)
+			  != pa->unit_size))
+		    {
+		      desc->split_candidate = false;
+		      if (dump_file && (dump_flags & TDF_DETAILS))
+			dump_dead_indices.safe_push (i);
+		      break;
+		    }
+		}
+	    }
+
 	  if (desc->locally_unused || desc->split_candidate)
 	    ret = false;
 	}
     }
 
-  if (!dump_dead_indices.is_empty ())
-    {
-      fprintf (dump_file, "The following parameters of %s are dead on arrival:",
-	       node->dump_name ());
-      for (unsigned i : dump_dead_indices)
-	fprintf (dump_file, " %u", i);
-      fprintf (dump_file, "\n");
-    }
-  if (!dump_bad_cond_indices.is_empty ())
-    {
-      fprintf (dump_file, "The following parameters of %s are not safe to "
-	       "derefernce in all callers:", node->dump_name ());
-      for (unsigned i : dump_bad_cond_indices)
-	fprintf (dump_file, " %u", i);
-      fprintf (dump_file, "\n");
-    }
+  dump_list_of_param_indices (node, "are dead on arrival or have a type "
+			      "mismatch with IPA-CP", dump_dead_indices);
+  dump_list_of_param_indices (node, "are not safe to dereference in all "
+			      "callers", dump_bad_cond_indices);
 
   return ret;
 }

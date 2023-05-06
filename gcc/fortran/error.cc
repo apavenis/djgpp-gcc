@@ -1,5 +1,5 @@
 /* Handle errors.
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2023 Free Software Foundation, Inc.
    Contributed by Andy Vaught & Niels Kristian Bech Jensen
 
 This file is part of GCC.
@@ -48,6 +48,13 @@ static gfc_error_buffer error_buffer;
    the pretty-printer.  */
 static output_buffer *pp_error_buffer, *pp_warning_buffer;
 static int warningcount_buffered, werrorcount_buffered;
+
+/* Return buffered_p.  */
+bool
+gfc_buffered_p (void)
+{
+  return buffered_p;
+}
 
 /* Return true if there output_buffer is empty.  */
 

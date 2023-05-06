@@ -1,5 +1,5 @@
 ;; Machine description for AArch64 AdvSIMD architecture.
-;; Copyright (C) 2011-2022 Free Software Foundation, Inc.
+;; Copyright (C) 2011-2023 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 ;;
 ;; This file is part of GCC.
@@ -840,7 +840,7 @@
 )
 
 ;; The intrinsic version of integer ABS must not be allowed to
-;; combine with any operation with an integerated ABS step, such
+;; combine with any operation with an integrated ABS step, such
 ;; as SABD.
 (define_insn "aarch64_abs<mode>"
   [(set (match_operand:VSDQ_I_DI 0 "register_operand" "=w")
@@ -1064,7 +1064,7 @@
 		(match_operand:<VEL> 1 "aarch64_simd_nonimmediate_operand" "w,?r,Utv"))
 	    (match_operand:VALL_F16 3 "register_operand" "0,0,0")
 	    (match_operand:SI 2 "immediate_operand" "i,i,i")))]
-  "TARGET_SIMD"
+  "TARGET_SIMD && exact_log2 (INTVAL (operands[2])) >= 0"
   {
    int elt = ENDIAN_LANE_N (<nunits>, exact_log2 (INTVAL (operands[2])));
    operands[2] = GEN_INT ((HOST_WIDE_INT) 1 << elt);
@@ -1093,7 +1093,7 @@
 		  [(match_operand:SI 4 "immediate_operand" "i")])))
 	    (match_operand:VALL_F16 1 "register_operand" "0")
 	    (match_operand:SI 2 "immediate_operand" "i")))]
-  "TARGET_SIMD"
+  "TARGET_SIMD && exact_log2 (INTVAL (operands[2])) >= 0"
   {
     int elt = ENDIAN_LANE_N (<nunits>, exact_log2 (INTVAL (operands[2])));
     operands[2] = GEN_INT (HOST_WIDE_INT_1 << elt);
@@ -1114,7 +1114,7 @@
 		  [(match_operand:SI 4 "immediate_operand" "i")])))
 	    (match_operand:VALL_F16_NO_V2Q 1 "register_operand" "0")
 	    (match_operand:SI 2 "immediate_operand" "i")))]
-  "TARGET_SIMD"
+  "TARGET_SIMD && exact_log2 (INTVAL (operands[2])) >= 0"
   {
     int elt = ENDIAN_LANE_N (<nunits>, exact_log2 (INTVAL (operands[2])));
     operands[2] = GEN_INT (HOST_WIDE_INT_1 << elt);
@@ -4867,60 +4867,27 @@
   }
 )
 
-;; div optimizations using narrowings
-;; we can do the division e.g. shorts by 255 faster by calculating it as
-;; (x + ((x + 257) >> 8)) >> 8 assuming the operation is done in
-;; double the precision of x.
-;;
-;; If we imagine a short as being composed of two blocks of bytes then
-;; adding 257 or 0b0000_0001_0000_0001 to the number is equivalent to
-;; adding 1 to each sub component:
-;;
-;;      short value of 16-bits
-;; ┌──────────────┬────────────────┐
-;; │              │                │
-;; └──────────────┴────────────────┘
-;;   8-bit part1 ▲  8-bit part2   ▲
-;;               │                │
-;;               │                │
-;;              +1               +1
-;;
-;; after the first addition, we have to shift right by 8, and narrow the
-;; results back to a byte.  Remember that the addition must be done in
-;; double the precision of the input.  Since 8 is half the size of a short
-;; we can use a narrowing halfing instruction in AArch64, addhn which also
-;; does the addition in a wider precision and narrows back to a byte.  The
-;; shift itself is implicit in the operation as it writes back only the top
-;; half of the result. i.e. bits 2*esize-1:esize.
-;;
-;; Since we have narrowed the result of the first part back to a byte, for
-;; the second addition we can use a widening addition, uaddw.
-;;
-;; For the final shift, since it's unsigned arithmetic we emit an ushr by 8.
-;;
-;; The shift is later optimized by combine to a uzp2 with movi #0.
-(define_expand "@aarch64_bitmask_udiv<mode>3"
-  [(match_operand:VQN 0 "register_operand")
-   (match_operand:VQN 1 "register_operand")
-   (match_operand:VQN 2 "immediate_operand")]
+;; Optimize ((a + b) >> n) + c where n is half the bitsize of the vector
+(define_insn_and_split "*bitmask_shift_plus<mode>"
+  [(set (match_operand:VQN 0 "register_operand" "=&w")
+	(plus:VQN
+	  (lshiftrt:VQN
+	    (plus:VQN (match_operand:VQN 1 "register_operand" "w")
+		      (match_operand:VQN 2 "register_operand" "w"))
+	    (match_operand:VQN 3 "aarch64_simd_shift_imm_vec_exact_top" ""))
+	  (match_operand:VQN 4 "register_operand" "w")))]
   "TARGET_SIMD"
+  "#"
+  "&& true"
+  [(const_int 0)]
 {
-  unsigned HOST_WIDE_INT size
-    = (1ULL << GET_MODE_UNIT_BITSIZE (<VNARROWQ>mode)) - 1;
-  rtx elt = unwrap_const_vec_duplicate (operands[2]);
-  if (!CONST_INT_P (elt) || UINTVAL (elt) != size)
-    FAIL;
-
-  rtx addend = gen_reg_rtx (<MODE>mode);
-  rtx val = aarch64_simd_gen_const_vector_dup (<VNARROWQ2>mode, 1);
-  emit_move_insn (addend, lowpart_subreg (<MODE>mode, val, <VNARROWQ2>mode));
-  rtx tmp1 = gen_reg_rtx (<VNARROWQ>mode);
-  rtx tmp2 = gen_reg_rtx (<MODE>mode);
-  emit_insn (gen_aarch64_addhn<mode> (tmp1, operands[1], addend));
-  unsigned bitsize = GET_MODE_UNIT_BITSIZE (<VNARROWQ>mode);
-  rtx shift_vector = aarch64_simd_gen_const_vector_dup (<MODE>mode, bitsize);
-  emit_insn (gen_aarch64_uaddw<Vnarrowq> (tmp2, operands[1], tmp1));
-  emit_insn (gen_aarch64_simd_lshr<mode> (operands[0], tmp2, shift_vector));
+  rtx tmp;
+  if (can_create_pseudo_p ())
+    tmp = gen_reg_rtx (<VNARROWQ>mode);
+  else
+    tmp = gen_rtx_REG (<VNARROWQ>mode, REGNO (operands[0]));
+  emit_insn (gen_aarch64_addhn<mode> (tmp, operands[1], operands[2]));
+  emit_insn (gen_aarch64_uaddw<Vnarrowq> (operands[0], operands[4], tmp));
   DONE;
 })
 
@@ -9153,7 +9120,7 @@
   [(set (match_operand:V4SF 0 "register_operand" "=w")
         (plus: V4SF (match_operand:V4SF 1 "register_operand" "0")
                     (unspec:V4SF [(match_operand:V8BF 2 "register_operand" "w")
-                                  (match_operand:VBF 3 "register_operand" "w")
+                                  (match_operand:VBF 3 "register_operand" "x")
                                   (match_operand:SI 4 "const_int_operand" "n")]
                      BF_MLA)))]
   "TARGET_BF16_SIMD"

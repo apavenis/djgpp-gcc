@@ -1,6 +1,6 @@
 (* DynamicStrings.mod provides a dynamic string type and procedures.
 
-Copyright (C) 2001-2021 Free Software Foundation, Inc.
+Copyright (C) 2001-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -129,8 +129,6 @@ END writeNspace ;
 *)
 
 PROCEDURE DumpStringInfo (s: String; i: CARDINAL) ;
-VAR
-   t: String ;
 BEGIN
    IF s # NIL
    THEN
@@ -153,8 +151,8 @@ END stop ;
 
 (*
    PopAllocationExemption - test to see that all strings are deallocated, except
-                            string, e, since the last push.
-                            Then it pops to the previous allocation/deallocation
+                            string e since the last push.
+                            Post-condition: it pops to the previous allocation/deallocation
                             lists.
 
                             If halt is true then the application terminates
@@ -164,7 +162,6 @@ END stop ;
 PROCEDURE PopAllocationExemption (halt: BOOLEAN; e: String) : String ;
 VAR
    s: String ;
-   f: frame ;
    b: BOOLEAN ;
 BEGIN
    Init ;
@@ -173,8 +170,8 @@ BEGIN
       IF frameHead = NIL
       THEN
          stop ;
-         Halt (__FILE__, __LINE__, __FUNCTION__,
-               "mismatched number of PopAllocation's compared to PushAllocation's")
+         Halt ("mismatched number of PopAllocation's compared to PushAllocation's",
+               __FILE__, __FUNCTION__, __LINE__) ;
          (* writeString ("mismatched number of PopAllocation's compared to PushAllocation's") *)
       ELSE
          IF frameHead^.alloc # NIL
@@ -1215,14 +1212,6 @@ BEGIN
          i := 0 ;
          Assert (a^.contents.len = b^.contents.len) ;
          WHILE i<a^.contents.len DO
-            IF a^.contents.buf[i] # a^.contents.buf[i]
-            THEN
-               HALT
-            END ;
-            IF b^.contents.buf[i] # b^.contents.buf[i]
-            THEN
-               HALT
-            END ;
             IF a^.contents.buf[i] # b^.contents.buf[i]
             THEN
                RETURN FALSE

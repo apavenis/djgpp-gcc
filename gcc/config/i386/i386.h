@@ -1,5 +1,5 @@
 /* Definitions of target machine for GCC for IA-32.
-   Copyright (C) 1988-2022 Free Software Foundation, Inc.
+   Copyright (C) 1988-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -397,10 +397,16 @@ extern unsigned char ix86_tune_features[X86_TUNE_LAST];
 	ix86_tune_features[X86_TUNE_AVOID_4BYTE_PREFIXES]
 #define TARGET_USE_GATHER_2PARTS \
 	ix86_tune_features[X86_TUNE_USE_GATHER_2PARTS]
+#define TARGET_USE_SCATTER_2PARTS \
+	ix86_tune_features[X86_TUNE_USE_SCATTER_2PARTS]
 #define TARGET_USE_GATHER_4PARTS \
 	ix86_tune_features[X86_TUNE_USE_GATHER_4PARTS]
+#define TARGET_USE_SCATTER_4PARTS \
+	ix86_tune_features[X86_TUNE_USE_SCATTER_4PARTS]
 #define TARGET_USE_GATHER \
 	ix86_tune_features[X86_TUNE_USE_GATHER]
+#define TARGET_USE_SCATTER \
+	ix86_tune_features[X86_TUNE_USE_SCATTER]
 #define TARGET_FUSE_CMP_AND_BRANCH_32 \
 	ix86_tune_features[X86_TUNE_FUSE_CMP_AND_BRANCH_32]
 #define TARGET_FUSE_CMP_AND_BRANCH_64 \
@@ -2355,7 +2361,7 @@ constexpr wide_int_bitmask PTA_ALDERLAKE = PTA_TREMONT | PTA_ADX | PTA_AVX
 constexpr wide_int_bitmask PTA_SIERRAFOREST = PTA_ALDERLAKE | PTA_AVXIFMA
   | PTA_AVXVNNIINT8 | PTA_AVXNECONVERT | PTA_CMPCCXADD;
 constexpr wide_int_bitmask PTA_GRANITERAPIDS = PTA_SAPPHIRERAPIDS | PTA_AMX_FP16
-  | PTA_PREFETCHI;
+  | PTA_PREFETCHI | PTA_AMX_COMPLEX;
 constexpr wide_int_bitmask PTA_GRANDRIDGE = PTA_SIERRAFOREST | PTA_RAOINT;
 constexpr wide_int_bitmask PTA_KNM = PTA_KNL | PTA_AVX5124VNNIW
   | PTA_AVX5124FMAPS | PTA_AVX512VPOPCNTDQ;

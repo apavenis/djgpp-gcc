@@ -1,3 +1,148 @@
+2023-04-08  Tetsuma Hoshino  <t-hoshino@pony-e.jp>
+
+	PR target/109402
+	* config/v850/lib1funcs.S (___muldi3): Remove unnecessary
+	stack manipulations.
+
+2023-04-05  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR target/109374
+	* config/pa/milli64.S (RETURN_COLUMN): Define.
+	($$divI): Add CFI directives.
+	($$divU): Likewise.
+	($$remI): Likewise.
+	($$remU): Likewise.
+
+2023-03-19  Stafford Horne  <shorne@gmail.com>
+
+	* config/or1k/sfp-machine.h (FP_HANDLE_EXCEPTIONS): Remove
+	statement clearing existing exceptions.
+
+2023-03-13  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* config/xtensa/crti.S: Add .note.GNU-stack section on linux.
+	* config/xtensa/crtn.S: Likewise.
+	* config/xtensa/lib1funcs.S: Likewise.
+	* config/xtensa/lib2funcs.S: Likewise.
+
+2023-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/aarch64/t-softfp (softfp_extensions): Add bfsf.
+	(softfp_truncations): Add tfbf dfbf sfbf hfbf.
+	(softfp_extras): Add floatdibf floatundibf floattibf floatuntibf.
+	* config/aarch64/libgcc-softfp.ver (GCC_13.0.0): Export
+	__extendbfsf2 and __trunc{s,d,t,h}fbf2.
+	* config/aarch64/sfp-machine.h (_FP_NANFRAC_B, _FP_NANSIGN_B): Define.
+	* soft-fp/floatundibf.c: New file.
+	* soft-fp/floatdibf.c: New file.
+
+2023-03-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/107703
+	* soft-fp/floattibf.c: New file.
+	* soft-fp/floatuntibf.c: New file.
+	* config/i386/libgcc-glibc.ver: Export __float{,un}tibf @ GCC_13.0.0.
+	* config/i386/64/t-softfp (softfp_extras): Add floattibf and
+	floatuntibf.
+	(CFLAGS-floattibf.c, CFLAGS-floatunstibf.c): Add -msse2.
+
+2023-03-08  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR libgcc/108727
+	* config/rs6000/morestack.S (__morestack): Use PARAMS for new stack
+	bump size.
+
+2023-03-06   Michael Meissner  <meissner@linux.ibm.com>
+
+	PR target/107299
+	* config/rs6000/_divkc3.c (COPYSIGN): Use the correct built-in based on
+	whether long double is IBM or IEEE.
+	(INFINITY): Likewise.
+	(FABS): Likewise.
+	* config/rs6000/_mulkc3.c (COPYSIGN): Likewise.
+	(INFINITY): Likewise.
+	* config/rs6000/quad-float128.h (TF): Remove definition.
+	(TFtype): Define to be long double or _Float128.
+	(TCtype): Define to be _Complex long double or _Complex _Float128.
+	* libgcc2.h (TFtype): Allow machine config files to override this.
+	(TCtype): Likewise.
+	* soft-fp/quad.h (TFtype): Likewise.
+
+2023-02-13  Kito Cheng  <kito.cheng@sifive.com>
+
+	* config.host (riscv*-*-*): Add config/riscv/value-unwind.h.
+	* config/riscv/value-unwind.h: New.
+
+2023-02-03  Christophe Lyon  <christophe.lyon@arm.com>
+
+	* config/arm/pr-support.c (__gnu_unwind_execute): Use
+	TARGET_HAVE_PACBTI to define set_pac and set_pac_sp.
+
+2023-01-30  Flavio Cruz  <flaviocruz@gmail.com>
+
+	* config.host: Recognize x86_64-*-gnu* targets.
+	* config/i386/gnu-unwind.h: Update to handle __x86_64__ with a
+	TODO for now.
+
+2023-01-23  Srinath Parvathaneni  <srinath.parvathaneni@arm.com>
+
+	* config/arm/pr-support.c (__gnu_unwind_execute): Decode opcode
+	"0xb5".
+
+2023-01-23  Andrea Corallo  <andrea.corallo@arm.com>
+	    Tejas Belagod   <tbelagod@arm.com>
+	    Srinath Parvathaneni  <srinath.parvathaneni@arm.com>
+
+	* config/arm/pr-support.c (__gnu_unwind_execute): Decode
+	exception opcode (0xb4) for saving RA_AUTH_CODE and authenticate
+	with AUTG if found.
+	* config/arm/unwind-arm.c (struct pseudo_regs): New.
+	(phase1_vrs): Introduce new field to store pseudo-reg state.
+	(phase2_vrs): Likewise.
+	(_Unwind_VRS_Get): Load pseudo register state from virtual reg set.
+	(_Unwind_VRS_Set): Store pseudo register state to virtual reg set.
+	(_Unwind_VRS_Pop): Load pseudo register value from stack into VRS.
+
+2023-01-18  Wilco Dijkstra  <wilco.dijkstra@arm.com>
+
+	PR target/107678
+	* unwind-dw2.h (REG_UNSAVED_ARCHEXT): Add new enum.
+	* unwind-dw2.c (uw_update_context_1): Add REG_UNSAVED_ARCHEXT case.
+	* unwind-dw2-execute_cfa.h: Use REG_UNSAVED_ARCHEXT/REG_UNSAVED to
+	encode the return address signing state.
+	* config/aarch64/aarch64-unwind.h (aarch64_demangle_return_addr)
+	Check current return address signing state.
+	(aarch64_frob_update_contex): Remove.
+
+2023-01-13  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config.host (hppa*64*-*-linux*): Adjust tmake_file to use
+	pa/t-pa64-linux.
+	(hppa*64*-*-hpux11*): Adjust tmake_file to use pa/t-pa64-hpux
+	instead of pa/t-hpux and pa/t-pa64.
+	* config/pa/linux-atomic.c: Define u32 type.
+	(ATOMIC_LOAD): Define new macro to implement atomic_load_1,
+	atomic_load_2, atomic_load_4 and atomic_load_8.  Update sync
+	defines to use atomic_load calls for type.
+	(SYNC_LOCK_LOAD_2): New macro to implement __sync_lock_load_8.
+	* config/pa/sync-libfuncs.c: New file.
+	* config/pa/t-netbsd (LIB2ADD_ST): Define.
+	* config/pa/t-openbsd (LIB2ADD_ST): Define.
+	* config/pa/t-pa64-hpux: New file.
+	* config/pa/t-pa64-linux: New file.
+
+2023-01-13  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/108331
+	* config/i386/gthr-win32.h (__gthr_win32_legacy_mutex_t): New
+	struct matching the previous __gthread_mutex_t struct.
+	(__GTHREAD_LEGACY_MUTEX_T): Define.
+
+2023-01-13  Seija Kijin  <doremylover456@gmail.com>
+
+	* config/arm/lib1funcs.S (clear_cache): Use SVC to conform to
+	unified syntax.
+
 2023-01-07  LIU Hao  <lh_mouse@126.com>
 
 	PR middle-end/108300

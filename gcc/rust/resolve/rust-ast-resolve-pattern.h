@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -55,9 +55,9 @@ class PatternDeclaration : public ResolverBase
   using Rust::Resolver::ResolverBase::visit;
 
 public:
-  static void go (AST::Pattern *pattern)
+  static void go (AST::Pattern *pattern, Rib::ItemType type)
   {
-    PatternDeclaration resolver;
+    PatternDeclaration resolver (type);
     pattern->accept_vis (resolver);
   };
 
@@ -67,14 +67,12 @@ public:
     // as new refs to this decl will match back here so it is ok to overwrite
     resolver->get_name_scope ().insert (
       CanonicalPath::new_seg (pattern.get_node_id (), pattern.get_ident ()),
-      pattern.get_node_id (), pattern.get_locus ());
+      pattern.get_node_id (), pattern.get_locus (), type);
   }
 
-  void visit (AST::WildcardPattern &pattern) override
+  void visit (AST::GroupedPattern &pattern) override
   {
-    resolver->get_name_scope ().insert (
-      CanonicalPath::new_seg (pattern.get_node_id (), "_"),
-      pattern.get_node_id (), pattern.get_locus ());
+    pattern.get_pattern_in_parens ()->accept_vis (*this);
   }
 
   // cases in a match expression
@@ -89,7 +87,9 @@ public:
   void visit (AST::RangePattern &pattern) override;
 
 private:
-  PatternDeclaration () : ResolverBase () {}
+  PatternDeclaration (Rib::ItemType type) : ResolverBase (), type (type) {}
+
+  Rib::ItemType type;
 };
 
 } // namespace Resolver

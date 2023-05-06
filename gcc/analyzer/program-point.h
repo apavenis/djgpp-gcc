@@ -1,5 +1,5 @@
 /* Classes for representing locations within the program.
-   Copyright (C) 2019-2022 Free Software Foundation, Inc.
+   Copyright (C) 2019-2023 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -298,6 +298,9 @@ public:
   void next_stmt () { m_function_point.next_stmt (); }
 
   program_point get_next () const;
+
+  static bool effectively_intraprocedural_p (const program_point &point_a,
+					     const program_point &point_b);
 
  private:
   program_point (const function_point &fn_point)

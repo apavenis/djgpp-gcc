@@ -1,6 +1,6 @@
 // thread -*- C++ -*-
 
-// Copyright (C) 2008-2022 Free Software Foundation, Inc.
+// Copyright (C) 2008-2023 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -154,8 +154,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   }
 
   void
-  thread::_M_start_thread(_State_ptr state, void (*)())
+  thread::_M_start_thread(_State_ptr state, void (*depend)())
   {
+    // Make sure it's not optimized out, not even with LTO.
+    asm ("" : : "rm" (depend));
+
     if (!__gthread_active_p())
       {
 #if __cpp_exceptions
@@ -190,8 +193,11 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   }
 
   void
-  thread::_M_start_thread(__shared_base_type __b, void (*)())
+  thread::_M_start_thread(__shared_base_type __b, void (*depend)())
   {
+    // Make sure it's not optimized out, not even with LTO.
+    asm ("" : : "rm" (depend));
+
     auto ptr = __b.get();
     // Create a reference cycle that will be broken in the new thread.
     ptr->_M_this_ptr = std::move(__b);

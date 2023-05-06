@@ -1,6 +1,6 @@
 (* FormatStrings.mod provides a pseudo printf capability.
 
-Copyright (C) 2005-2021 Free Software Foundation, Inc.
+Copyright (C) 2005-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -301,8 +301,7 @@ VAR
    c,
    width,
    nextperc,
-   afterperc,
-   endpos   : INTEGER ;
+   afterperc: INTEGER ;
    leader,
    ch, ch2  : CHAR ;
    p        : String ;
@@ -444,7 +443,6 @@ END Copy ;
 PROCEDURE HandlePercent (fmt, s: String; startpos: INTEGER) : String ;
 VAR
    prevpos: INTEGER ;
-   result : String ;
 BEGIN
    IF (startpos = VAL (INTEGER, Length (fmt))) OR (startpos < 0)
    THEN

@@ -1,5 +1,5 @@
 # Make-lang.in -- Top level -*- makefile -*- fragment for the D frontend.
-# Copyright (C) 2006-2022 Free Software Foundation, Inc.
+# Copyright (C) 2006-2023 Free Software Foundation, Inc.
 
 # GCC is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -124,6 +124,7 @@ D_FRONTEND_OBJS = \
 	d/dversion.o \
 	d/entity.o \
 	d/errors.o \
+	d/errorsink.o \
 	d/escape.o \
 	d/expression.o \
 	d/expressionsem.o \
@@ -147,6 +148,7 @@ D_FRONTEND_OBJS = \
 	d/json.o \
 	d/lambdacomp.o \
 	d/lexer.o \
+	d/location.o \
 	d/mtype.o \
 	d/mustuse.o \
 	d/nogc.o \

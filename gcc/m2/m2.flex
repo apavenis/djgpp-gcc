@@ -1,7 +1,7 @@
 %{
 /* m2.flex implements lexical analysis for Modula-2.
 
-Copyright (C) 2004-2022 Free Software Foundation, Inc.
+Copyright (C) 2004-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -27,6 +27,7 @@ along with GNU Modula-2; see the file COPYING3.  If not see
 #include "input.h"
 #include "m2options.h"
 
+static int cpreprocessor = 0;  /* Replace this with correct getter.  */
 
 #if defined(GM2USEGGC)
 #  include "ggc.h"
@@ -56,26 +57,27 @@ along with GNU Modula-2; see the file COPYING3.  If not see
     int              nextpos;          /* position after token */
     int              lineno;           /* line number of this line */
     int              column;           /* first column number of token on this line */
-    int              inuse;            /* do we need to keep this line info? */
+    bool             inuse;            /* do we need to keep this line info? */
     location_t       location;         /* the corresponding gcc location_t */
     struct lineInfo *next;
   };
 
   struct functionInfo {
     char                *name;         /* function name */
-    int                  module;       /* is it really a module? */
+    bool                 module;       /* is it really a module? */
     struct functionInfo *next;         /* list of nested functions */
   };
 
   static int                  lineno      =1;   /* a running count of the file line number */
   static char                *filename    =NULL;
   static int                  commentLevel=0;
+  static int                  commentCLevel=0;
   static struct lineInfo     *currentLine=NULL;
   static struct functionInfo *currentFunction=NULL;
-  static int                  seenFunctionStart=FALSE;
-  static int                  seenEnd=FALSE;
-  static int                  seenModuleStart=FALSE;
-  static int                  isDefinitionModule=FALSE;
+  static bool                 seenFunctionStart=false;
+  static bool                 seenEnd=false;
+  static bool                 seenModuleStart=false;
+  static bool                 isDefinitionModule=false;
   static int                  totalLines=0;
 
 static  void pushLine                 (void);
@@ -87,18 +89,20 @@ static  void updatepos                (void);
 static  void skippos                  (void);
 static  void poperrorskip             (const char *);
 static  void endOfComment             (void);
+static  void endOfCComment            (void);
+static  void splitSlashStar           (void);
 static  void handleDate               (void);
 static  void handleLine               (void);
 static  void handleFile               (void);
 static  void handleFunction           (void);
 static  void handleColumn             (void);
-static  void pushFunction             (char *function, int module);
+static  void pushFunction             (char *function, bool module);
 static  void popFunction              (void);
 static  void checkFunction            (void);
 EXTERN  void m2flex_M2Error           (const char *);
 EXTERN  location_t m2flex_GetLocation (void);
 EXTERN  int  m2flex_GetColumnNo       (void);
-EXTERN  int  m2flex_OpenSource        (char *s);
+EXTERN  bool m2flex_OpenSource        (char *s);
 EXTERN  int  m2flex_GetLineNo         (void);
 EXTERN  void m2flex_CloseSource       (void);
 EXTERN  char *m2flex_GetToken         (void);
@@ -106,18 +110,11 @@ EXTERN  void _M2_m2flex_init          (void);
 EXTERN  int  m2flex_GetTotalLines     (void);
 extern  void  yylex                   (void);
 
-#if !defined(TRUE)
-#    define TRUE  (1==1)
-#endif
-#if !defined(FALSE)
-#    define FALSE (1==0)
-#endif
-
 #define YY_DECL void yylex (void)
 %}
 
 %option nounput
-%x COMMENT COMMENT1 LINE0 LINE1 LINE2
+%x COMMENT COMMENT1 COMMENTC LINE0 LINE1 LINE2
 
 %%
 
@@ -131,8 +128,9 @@ extern  void  yylex                   (void);
                                pushLine();
                                skippos();
                                BEGIN COMMENT1;
-                             } else
+                             } else {
                                updatepos(); skippos();
+			     }
                            }
 <COMMENT>\n.*              { consumeLine(); }
 <COMMENT>.                 { updatepos(); skippos(); }
@@ -144,6 +142,24 @@ extern  void  yylex                   (void);
 <COMMENT1><<EOF>>          { poperrorskip("unterminated source code directive, missing *>"); BEGIN COMMENT; }
 <COMMENT><<EOF>>           { poperrorskip("unterminated comment found at the end of the file, missing *)"); BEGIN INITIAL; }
 
+"/*"                       { /* Possibly handle C preprocessor comment.  */
+                             if (cpreprocessor)
+			       {
+				 updatepos ();
+				 commentCLevel++;
+				 if (commentCLevel == 1)
+				   {
+				     pushLine ();
+				     skippos ();
+				   }
+				 BEGIN COMMENTC;
+			       }
+			     else
+			       splitSlashStar ();
+                           }
+<COMMENTC>.                { updatepos(); skippos(); }
+<COMMENTC>\n.*             { consumeLine(); }
+<COMMENTC>"*/"             { endOfCComment(); }
 ^\#.*                      { consumeLine(); /* printf("found: %s\n", currentLine->linebuf); */ BEGIN LINE0; }
 \n\#.*                     { consumeLine(); /* printf("found: %s\n", currentLine->linebuf); */ BEGIN LINE0; }
 <LINE0>\#[ \t]*            { updatepos(); }
@@ -226,13 +242,13 @@ BEGIN                      { updatepos(); M2LexBuf_AddTok(M2Reserved_begintok); 
 BY                         { updatepos(); M2LexBuf_AddTok(M2Reserved_bytok); return; }
 CASE                       { updatepos(); M2LexBuf_AddTok(M2Reserved_casetok); return; }
 CONST                      { updatepos(); M2LexBuf_AddTok(M2Reserved_consttok); return; }
-DEFINITION                 { updatepos(); isDefinitionModule = TRUE;
+DEFINITION                 { updatepos(); isDefinitionModule = true;
                              M2LexBuf_AddTok(M2Reserved_definitiontok); return; }
 DIV                        { updatepos(); M2LexBuf_AddTok(M2Reserved_divtok); return; }
 DO                         { updatepos(); M2LexBuf_AddTok(M2Reserved_dotok); return; }
 ELSE                       { updatepos(); M2LexBuf_AddTok(M2Reserved_elsetok); return; }
 ELSIF                      { updatepos(); M2LexBuf_AddTok(M2Reserved_elsiftok); return; }
-END                        { updatepos(); seenEnd=TRUE;
+END                        { updatepos(); seenEnd=true;
                              M2LexBuf_AddTok(M2Reserved_endtok); return; }
 EXCEPT                     { updatepos(); M2LexBuf_AddTok(M2Reserved_excepttok); return; }
 EXIT                       { updatepos(); M2LexBuf_AddTok(M2Reserved_exittok); return; }
@@ -246,14 +262,14 @@ IMPORT                     { updatepos(); M2LexBuf_AddTok(M2Reserved_importtok);
 IN                         { updatepos(); M2LexBuf_AddTok(M2Reserved_intok); return; }
 LOOP                       { updatepos(); M2LexBuf_AddTok(M2Reserved_looptok); return; }
 MOD                        { updatepos(); M2LexBuf_AddTok(M2Reserved_modtok); return; }
-MODULE                     { updatepos(); seenModuleStart=TRUE;
+MODULE                     { updatepos(); seenModuleStart=true;
                              M2LexBuf_AddTok(M2Reserved_moduletok); return; }
 NOT                        { updatepos(); M2LexBuf_AddTok(M2Reserved_nottok); return; }
 OF                         { updatepos(); M2LexBuf_AddTok(M2Reserved_oftok); return; }
 OR                         { updatepos(); M2LexBuf_AddTok(M2Reserved_ortok); return; }
 PACKEDSET                  { updatepos(); M2LexBuf_AddTok(M2Reserved_packedsettok); return; }
 POINTER                    { updatepos(); M2LexBuf_AddTok(M2Reserved_pointertok); return; }
-PROCEDURE                  { updatepos(); seenFunctionStart=TRUE;
+PROCEDURE                  { updatepos(); seenFunctionStart=true;
                              M2LexBuf_AddTok(M2Reserved_proceduretok); return; }
 QUALIFIED                  { updatepos(); M2LexBuf_AddTok(M2Reserved_qualifiedtok); return; }
 UNQUALIFIED                { updatepos(); M2LexBuf_AddTok(M2Reserved_unqualifiedtok); return; }
@@ -387,7 +403,7 @@ static void handleFunction (void)
  *  pushFunction - pushes the function name onto the stack.
  */
 
-static void pushFunction (char *function, int module)
+static void pushFunction (char *function, bool module)
 {
   if (currentFunction == NULL) {
     currentFunction = (struct functionInfo *)xmalloc (sizeof (struct functionInfo));
@@ -433,6 +449,19 @@ static void endOfComment (void)
     finishedLine();
   } else
     popLine();
+}
+
+/*
+ *  endOfCComment - handles the end of C comment.
+ */
+
+static void endOfCComment (void)
+{
+  commentCLevel = 0;
+  updatepos();
+  skippos();
+  BEGIN INITIAL;
+  finishedLine();
 }
 
 /*
@@ -504,15 +533,48 @@ static void assert_location (location_t location ATTRIBUTE_UNUSED)
 }
 
 /*
+ *  splitSlashStar - called if we are not tokenizing source code after it
+ *                   has been preprocessed by cpp.  It is only called
+ *                   if the current token was a / immediately followed by * and
+ *                   therefore it will be split into two m2 tokens:  / and *.
+ */
+
+static void splitSlashStar (void)
+{
+  seenFunctionStart    = false;
+  seenEnd              = false;
+  seenModuleStart      = false;
+  currentLine->nextpos = currentLine->tokenpos+1;  /* "/".  */
+  currentLine->toklen  = 1;
+  currentLine->column = currentLine->tokenpos+1;
+  currentLine->location =
+    M2Options_OverrideLocation (GET_LOCATION (currentLine->column,
+                                              currentLine->column+currentLine->toklen-1));
+  assert_location (GET_LOCATION (currentLine->column,
+                                 currentLine->column+currentLine->toklen-1));
+  M2LexBuf_AddTok (M2Reserved_dividetok);
+  currentLine->nextpos = currentLine->tokenpos+1;  /* "*".  */
+  currentLine->toklen  = 1;
+  currentLine->column = currentLine->tokenpos+1;
+  currentLine->location =
+    M2Options_OverrideLocation (GET_LOCATION (currentLine->column,
+                                              currentLine->column+currentLine->toklen-1));
+  assert_location (GET_LOCATION (currentLine->column,
+                                 currentLine->column+currentLine->toklen-1));
+  M2LexBuf_AddTok (M2Reserved_timestok);
+}
+
+
+/*
  *  updatepos - updates the current token position.
  *              Should be used when a rule matches a token.
  */
 
 static void updatepos (void)
 {
-  seenFunctionStart    = FALSE;
-  seenEnd              = FALSE;
-  seenModuleStart      = FALSE;
+  seenFunctionStart    = false;
+  seenEnd              = false;
+  seenModuleStart      = false;
   currentLine->nextpos = currentLine->tokenpos+yyleng;
   currentLine->toklen  = yyleng;
   /* if (currentLine->column == 0) */
@@ -540,9 +602,9 @@ static void checkFunction (void)
 	(strcmp(currentFunction->name, yytext) == 0))
       popFunction();
   }
-  seenFunctionStart = FALSE;
-  seenEnd           = FALSE;
-  seenModuleStart   = FALSE;
+  seenFunctionStart = false;
+  seenEnd           = false;
+  seenModuleStart   = false;
 }
 
 /*
@@ -572,7 +634,7 @@ static void initLine (void)
   currentLine->nextpos    = 0;
   currentLine->lineno = lineno;
   currentLine->column     = 0;
-  currentLine->inuse      = TRUE;
+  currentLine->inuse      = true;
   currentLine->next       = NULL;
 }
 
@@ -602,7 +664,7 @@ static void pushLine (void)
       l->next       = currentLine;
       currentLine   = l;
   }
-  currentLine->inuse = TRUE;
+  currentLine->inuse = true;
 }
 
 /*
@@ -632,13 +694,13 @@ static void resetpos (void)
 }
 
 /*
- *  finishedLine - indicates that the current line does not need to be preserved when a pushLine
- *                 occurs.
+ *  finishedLine - indicates that the current line does not need to be
+ *                 preserved when a pushLine occurs.
  */
 
 static void finishedLine (void)
 {
-  currentLine->inuse = FALSE;
+  currentLine->inuse = false;
 }
 
 /*
@@ -666,18 +728,18 @@ EXTERN void m2flex_CloseSource (void)
 }
 
 /*
- *  OpenSource - returns TRUE if file s can be opened and
+ *  OpenSource - returns true if file s can be opened and
  *               all tokens are taken from this file.
  */
 
-EXTERN int m2flex_OpenSource (char *s)
+EXTERN bool m2flex_OpenSource (char *s)
 {
   FILE *f = fopen(s, "r");
 
   if (f == NULL)
-    return( FALSE );
+    return( false );
   else {
-    isDefinitionModule = FALSE;
+    isDefinitionModule = false;
     while (currentFunction != NULL)
       {
 	struct functionInfo *f = currentFunction;
@@ -696,7 +758,7 @@ EXTERN int m2flex_OpenSource (char *s)
       currentLine->lineno = lineno;
     START_FILE (filename, lineno);
     BEGIN INITIAL; resetpos ();
-    return TRUE;
+    return true;
   }
 }
 
@@ -757,4 +819,4 @@ int yywrap (void)
 }
 
 EXTERN void _M2_m2flex_init (void) {}
-EXTERN void _M2_m2flex_finish (void) {}
+EXTERN void _M2_m2flex_fini (void) {}

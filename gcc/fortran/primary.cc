@@ -1,5 +1,5 @@
 /* Primary expression subroutines
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2023 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -2640,7 +2640,6 @@ gfc_variable_attr (gfc_expr *expr, gfc_typespec *ts)
       codimension = CLASS_DATA (sym)->attr.codimension;
       pointer = CLASS_DATA (sym)->attr.class_pointer;
       allocatable = CLASS_DATA (sym)->attr.allocatable;
-      optional |= CLASS_DATA (sym)->attr.optional;
     }
   else
     {
@@ -2770,7 +2769,7 @@ gfc_expr_attr (gfc_expr *e)
 	{
 	  gfc_symbol *sym = e->value.function.esym->result;
 	  attr = sym->attr;
-	  if (sym->ts.type == BT_CLASS)
+	  if (sym->ts.type == BT_CLASS && sym->attr.class_ok)
 	    {
 	      attr.dimension = CLASS_DATA (sym)->attr.dimension;
 	      attr.pointer = CLASS_DATA (sym)->attr.class_pointer;
@@ -4076,8 +4075,14 @@ match_variable (gfc_expr **result, int equiv_flag, int host_flag)
 	  gfc_error ("Named constant at %C in an EQUIVALENCE");
 	  return MATCH_ERROR;
 	}
-      /* Otherwise this is checked for and an error given in the
-	 variable definition context checks.  */
+      if (gfc_in_match_data())
+	{
+	  gfc_error ("PARAMETER %qs shall not appear in a DATA statement at %C",
+		      sym->name);
+	  return MATCH_ERROR;
+	}
+	/* Otherwise this is checked for an error given in the
+	   variable definition context checks.  */
       break;
 
     case FL_PROCEDURE:

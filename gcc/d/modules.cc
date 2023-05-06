@@ -1,5 +1,5 @@
 /* modules.cc -- D module initialization and termination.
-   Copyright (C) 2013-2022 Free Software Foundation, Inc.
+   Copyright (C) 2013-2023 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -530,11 +530,7 @@ layout_moduleinfo_fields (Module *decl, tree type)
 
   /* Array of local ClassInfo decls are laid out in the same way.  */
   ClassDeclarations aclasses;
-  for (size_t i = 0; i < decl->members->length; i++)
-    {
-      Dsymbol *member = (*decl->members)[i];
-      member->addLocalClass (&aclasses);
-    }
+  getLocalClasses (decl, aclasses);
 
   if (aclasses.length)
     {
@@ -564,11 +560,7 @@ layout_moduleinfo (Module *decl)
   ClassDeclarations aclasses;
   FuncDeclaration *sgetmembers;
 
-  for (size_t i = 0; i < decl->members->length; i++)
-    {
-      Dsymbol *member = (*decl->members)[i];
-      member->addLocalClass (&aclasses);
-    }
+  getLocalClasses (decl, aclasses);
 
   size_t aimports_dim = decl->aimports.length;
   for (size_t i = 0; i < decl->aimports.length; i++)

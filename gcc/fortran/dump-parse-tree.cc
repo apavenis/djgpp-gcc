@@ -1,5 +1,5 @@
 /* Parse tree dumper
-   Copyright (C) 2003-2022 Free Software Foundation, Inc.
+   Copyright (C) 2003-2023 Free Software Foundation, Inc.
    Contributed by Steven Bosscher
 
 This file is part of GCC.
@@ -3696,7 +3696,12 @@ get_c_type_name (gfc_typespec *ts, gfc_array_spec *as, const char **pre,
 	  if (c_interop_kinds_table[i].f90_type == ts->type
 	      && c_interop_kinds_table[i].value == ts->kind)
 	    {
+	      /* Skip over 'c_'. */
 	      *type_name = c_interop_kinds_table[i].name + 2;
+	      if (strcmp (*type_name, "long_long") == 0)
+		*type_name = "long long";
+	      if (strcmp (*type_name, "long_double") == 0)
+		*type_name = "long double";
 	      if (strcmp (*type_name, "signed_char") == 0)
 		*type_name = "signed char";
 	      else if (strcmp (*type_name, "size_t") == 0)
@@ -3909,7 +3914,7 @@ write_proc (gfc_symbol *sym, bool bind_c)
       if (sym->formal)
 	fputs (", ", dumpfile);
     }
-      
+
   for (f = sym->formal; f; f = f->next)
     {
       gfc_symbol *s;

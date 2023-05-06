@@ -1,5 +1,5 @@
 /* Maintain binary trees of symbols.
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2023 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -3761,7 +3761,11 @@ free_old_symbol (gfc_symbol *sym)
   if (sym->old_symbol == NULL)
     return;
 
-  if (sym->old_symbol->as != sym->as)
+  if (sym->old_symbol->as != NULL
+      && sym->old_symbol->as != sym->as
+      && !(sym->ts.type == BT_CLASS
+	   && sym->ts.u.derived->attr.is_class
+	   && sym->old_symbol->as == CLASS_DATA (sym)->as))
     gfc_free_array_spec (sym->old_symbol->as);
 
   if (sym->old_symbol->value != sym->value)

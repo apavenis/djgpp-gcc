@@ -1,6 +1,6 @@
 // chrono::duration and chrono::time_point -*- C++ -*-
 
-// Copyright (C) 2008-2022 Free Software Foundation, Inc.
+// Copyright (C) 2008-2023 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -244,7 +244,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       using __disable_if_is_duration
 	= typename enable_if<!__is_duration<_Tp>::value, _Tp>::type;
 
-#if __cpp_variable_templates
+#if __cplusplus >= 201703L
     template<typename _Tp>
       inline constexpr bool __is_duration_v = false;
     template<typename _Rep, typename _Period>

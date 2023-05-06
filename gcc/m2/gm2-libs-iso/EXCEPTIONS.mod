@@ -1,6 +1,6 @@
 (* EXCEPTIONS.mod implement the ISO EXCEPTIONS specification.
 
-Copyright (C) 2003-2021 Free Software Foundation, Inc.
+Copyright (C) 2003-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -64,7 +64,8 @@ BEGIN
    RTExceptions.SetExceptionBlock(source^.eh) ;
    RTExceptions.Raise(number, ADR(__FILE__), __LINE__, __COLUMN__, ADR(__FUNCTION__), ADR(message)) ;
    (* we should never reach here as Raise should jump to the exception handler *)
-   M2RTS.Halt(__FILE__, __LINE__, __FUNCTION__, 'should never return from RTException.Raise')
+   M2RTS.Halt('should never return from RTException.Raise',
+              __FILE__, __FUNCTION__, __LINE__)
 END RAISE ;
 
 
