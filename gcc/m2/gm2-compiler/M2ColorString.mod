@@ -1,6 +1,6 @@
 (* M2ColorString.mod provides procedures for obtaining GCC color strings.
 
-Copyright (C) 2019-2022 Free Software Foundation, Inc.
+Copyright (C) 2019-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -27,6 +27,7 @@ FROM DynamicStrings IMPORT InitString, InitStringCharStar,
                            Dup, char, Length, Mult ;
 FROM StrLib IMPORT StrLen ;
 FROM libc IMPORT printf ;
+FROM SYSTEM IMPORT ADR ;
 
 
 VAR
@@ -57,7 +58,7 @@ PROCEDURE append (s: String; name: ARRAY OF CHAR) : String ;
 VAR
    c: String ;
 BEGIN
-   c := InitStringCharStar (colorize_start (EnableColor, name, StrLen (name))) ;
+   c := InitStringCharStar (colorize_start (EnableColor, ADR (name), StrLen (name))) ;
    s := ConCat (s, c) ;
    c := KillString (c) ;
    RETURN s

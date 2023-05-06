@@ -1,4 +1,4 @@
-;; Copyright (C) 2016-2022 Free Software Foundation, Inc.
+;; Copyright (C) 2016-2023 Free Software Foundation, Inc.
 
 ;; This file is free software; you can redistribute it and/or modify it under
 ;; the terms of the GNU General Public License as published by the Free
@@ -78,6 +78,13 @@
   UNSPEC_PLUS_CARRY_DPP_SHR UNSPEC_PLUS_CARRY_IN_DPP_SHR
   UNSPEC_AND_DPP_SHR UNSPEC_IOR_DPP_SHR UNSPEC_XOR_DPP_SHR
   UNSPEC_MOV_DPP_SHR
+  UNSPEC_MOV_DPP_SWAP_PAIRS
+  UNSPEC_MOV_DPP_DISTRIBUTE_EVEN
+  UNSPEC_MOV_DPP_DISTRIBUTE_ODD
+  UNSPEC_CMUL UNSPEC_CMUL_CONJ
+  UNSPEC_CMUL_ADD UNSPEC_CMUL_SUB
+  UNSPEC_CADD90
+  UNSPEC_CADD270
   UNSPEC_GATHER
   UNSPEC_SCATTER
   UNSPEC_RCP

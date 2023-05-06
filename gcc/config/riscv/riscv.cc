@@ -1,5 +1,5 @@
 /* Subroutines used for code generation for RISC-V.
-   Copyright (C) 2011-2022 Free Software Foundation, Inc.
+   Copyright (C) 2011-2023 Free Software Foundation, Inc.
    Contributed by Andrew Waterman (andrew@sifive.com).
    Based on MIPS target for GNU compiler.
 
@@ -293,7 +293,7 @@ const enum reg_class riscv_regno_to_class[FIRST_PSEUDO_REGISTER] = {
   FP_REGS,	FP_REGS,	FP_REGS,	FP_REGS,
   FP_REGS,	FP_REGS,	FP_REGS,	FP_REGS,
   FP_REGS,	FP_REGS,	FP_REGS,	FP_REGS,
-  FRAME_REGS,	FRAME_REGS,	VL_REGS,	VTYPE_REGS,
+  FRAME_REGS,	FRAME_REGS,	NO_REGS,	NO_REGS,
   NO_REGS,	NO_REGS,	NO_REGS,	NO_REGS,
   NO_REGS,	NO_REGS,	NO_REGS,	NO_REGS,
   NO_REGS,	NO_REGS,	NO_REGS,	NO_REGS,
@@ -1000,6 +1000,40 @@ riscv_v_adjust_nunits (machine_mode mode, int scale)
 {
   if (riscv_v_ext_vector_mode_p (mode))
     return riscv_vector_chunks * scale;
+  return scale;
+}
+
+/* Call from ADJUST_BYTESIZE in riscv-modes.def.  Return the correct
+   BYTE size for corresponding machine_mode.  */
+
+poly_int64
+riscv_v_adjust_bytesize (machine_mode mode, int scale)
+{
+  if (riscv_v_ext_vector_mode_p (mode))
+  {
+    poly_uint16 mode_size = GET_MODE_SIZE (mode);
+
+    if (maybe_eq (mode_size, (uint16_t)-1))
+      mode_size = riscv_vector_chunks * scale;
+
+    if (known_gt (mode_size, BYTES_PER_RISCV_VECTOR))
+      mode_size = BYTES_PER_RISCV_VECTOR;
+
+    return mode_size;
+  }
+
+  return scale;
+}
+
+/* Call from ADJUST_PRECISION in riscv-modes.def.  Return the correct
+   PRECISION size for corresponding machine_mode.  */
+
+poly_int64
+riscv_v_adjust_precision (machine_mode mode, int scale)
+{
+  if (riscv_v_ext_vector_mode_p (mode))
+    return riscv_vector_chunks * scale;
+
   return scale;
 }
 
@@ -2300,8 +2334,8 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
       return false;
 
     case IF_THEN_ELSE:
-      if (TARGET_SFB_ALU
-	  && register_operand (XEXP (x, 1), mode)
+      if ((TARGET_SFB_ALU || TARGET_XTHEADCONDMOV)
+	  && reg_or_0_operand (XEXP (x, 1), mode)
 	  && sfb_alu_operand (XEXP (x, 2), mode)
 	  && comparison_operator (XEXP (x, 0), VOIDmode))
 	{
@@ -2400,10 +2434,19 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 	  *total = COSTS_N_INSNS (SINGLE_SHIFT_COST);
 	  return true;
 	}
-      /* bext pattern for zbs.  */
-      if (TARGET_ZBS && outer_code == SET
+      /* bit extraction pattern (zbs:bext, xtheadbs:tst).  */
+      if ((TARGET_ZBS || TARGET_XTHEADBS) && outer_code == SET
 	  && GET_CODE (XEXP (x, 1)) == CONST_INT
 	  && INTVAL (XEXP (x, 1)) == 1)
+	{
+	  *total = COSTS_N_INSNS (SINGLE_SHIFT_COST);
+	  return true;
+	}
+      gcc_fallthrough ();
+    case SIGN_EXTRACT:
+      if (TARGET_XTHEADBB && outer_code == SET
+	  && CONST_INT_P (XEXP (x, 1))
+	  && CONST_INT_P (XEXP (x, 2)))
 	{
 	  *total = COSTS_N_INSNS (SINGLE_SHIFT_COST);
 	  return true;
@@ -2527,7 +2570,8 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 	  && GET_CODE (XEXP (x, 0)) == MULT
 	  && REG_P (XEXP (XEXP (x, 0), 0))
 	  && CONST_INT_P (XEXP (XEXP (x, 0), 1))
-	  && IN_RANGE (pow2p_hwi (INTVAL (XEXP (XEXP (x, 0), 1))), 1, 3))
+	  && pow2p_hwi (INTVAL (XEXP (XEXP (x, 0), 1)))
+	  && IN_RANGE (exact_log2 (INTVAL (XEXP (XEXP (x, 0), 1))), 1, 3))
 	{
 	  *total = COSTS_N_INSNS (1);
 	  return true;
@@ -2745,11 +2789,29 @@ riscv_split_64bit_move_p (rtx dest, rtx src)
 void
 riscv_split_doubleword_move (rtx dest, rtx src)
 {
-  rtx low_dest;
+  /* XTheadFmv has instructions for accessing the upper bits of a double.  */
+  if (!TARGET_64BIT && TARGET_XTHEADFMV)
+    {
+      if (FP_REG_RTX_P (dest))
+	{
+	  rtx low_src = riscv_subword (src, false);
+	  rtx high_src = riscv_subword (src, true);
+	  emit_insn (gen_th_fmv_hw_w_x (dest, high_src, low_src));
+	  return;
+	}
+      if (FP_REG_RTX_P (src))
+	{
+	  rtx low_dest = riscv_subword (dest, false);
+	  rtx high_dest = riscv_subword (dest, true);
+	  emit_insn (gen_th_fmv_x_w (low_dest, src));
+	  emit_insn (gen_th_fmv_x_hw (high_dest, src));
+	  return;
+	}
+    }
 
    /* The operation can be split into two normal moves.  Decide in
       which order to do them.  */
-   low_dest = riscv_subword (dest, false);
+   rtx low_dest = riscv_subword (dest, false);
    if (REG_P (low_dest) && reg_overlap_mentioned_p (low_dest, src))
      {
        riscv_emit_move (riscv_subword (dest, true), riscv_subword (src, true));
@@ -3089,13 +3151,30 @@ riscv_extend_comparands (rtx_code code, rtx *op0, rtx *op1)
     }
 }
 
-/* Convert a comparison into something that can be used in a branch.  On
-   entry, *OP0 and *OP1 are the values being compared and *CODE is the code
-   used to compare them.  Update them to describe the final comparison.  */
+/* Convert a comparison into something that can be used in a branch or
+   conditional move.  On entry, *OP0 and *OP1 are the values being
+   compared and *CODE is the code used to compare them.
+
+   Update *CODE, *OP0 and *OP1 so that they describe the final comparison.
+   If NEED_EQ_NE_P, then only EQ or NE comparisons against zero are
+   emitted.  */
 
 static void
-riscv_emit_int_compare (enum rtx_code *code, rtx *op0, rtx *op1)
+riscv_emit_int_compare (enum rtx_code *code, rtx *op0, rtx *op1,
+			bool need_eq_ne_p = false)
 {
+  if (need_eq_ne_p)
+    {
+      rtx cmp_op0 = *op0;
+      rtx cmp_op1 = *op1;
+      if (*code == EQ || *code == NE)
+	{
+	  *op0 = riscv_zero_if_equal (cmp_op0, cmp_op1);
+	  *op1 = const0_rtx;
+	  return;
+	}
+    }
+
   if (splittable_const_int_operand (*op1, VOIDmode))
     {
       HOST_WIDE_INT rhs = INTVAL (*op1);
@@ -3281,16 +3360,77 @@ riscv_expand_conditional_branch (rtx label, rtx_code code, rtx op0, rtx op1)
   emit_jump_insn (gen_condjump (condition, label));
 }
 
-/* If (CODE OP0 OP1) holds, move CONS to DEST; else move ALT to DEST.  */
+/* Helper to emit two one-sided conditional moves for the movecc.  */
 
-void
-riscv_expand_conditional_move (rtx dest, rtx cons, rtx alt, rtx_code code,
-			       rtx op0, rtx op1)
+static void
+riscv_expand_conditional_move_onesided (rtx dest, rtx cons, rtx alt,
+					rtx_code code, rtx op0, rtx op1)
 {
-  riscv_emit_int_compare (&code, &op0, &op1);
-  rtx cond = gen_rtx_fmt_ee (code, GET_MODE (op0), op0, op1);
-  emit_insn (gen_rtx_SET (dest, gen_rtx_IF_THEN_ELSE (GET_MODE (dest), cond,
-						      cons, alt)));
+  machine_mode mode = GET_MODE (dest);
+
+  gcc_assert (GET_MODE_CLASS (mode) == MODE_INT);
+  gcc_assert (reg_or_0_operand (cons, mode));
+  gcc_assert (reg_or_0_operand (alt, mode));
+
+  riscv_emit_int_compare (&code, &op0, &op1, true);
+  rtx cond = gen_rtx_fmt_ee (code, mode, op0, op1);
+
+  rtx tmp1 = gen_reg_rtx (mode);
+  rtx tmp2 = gen_reg_rtx (mode);
+
+  emit_insn (gen_rtx_SET (tmp1, gen_rtx_IF_THEN_ELSE (mode, cond,
+						      cons, const0_rtx)));
+
+  /* We need to expand a sequence for both blocks and we do that such,
+     that the second conditional move will use the inverted condition.
+     We use temporaries that are or'd to the dest register.  */
+  cond = gen_rtx_fmt_ee ((code == EQ) ? NE : EQ, mode, op0, op1);
+  emit_insn (gen_rtx_SET (tmp2, gen_rtx_IF_THEN_ELSE (mode, cond,
+						      alt, const0_rtx)));
+
+  emit_insn (gen_rtx_SET (dest, gen_rtx_IOR (mode, tmp1, tmp2)));
+ }
+
+/* Emit a cond move: If OP holds, move CONS to DEST; else move ALT to DEST.
+   Return 0 if expansion failed.  */
+
+bool
+riscv_expand_conditional_move (rtx dest, rtx op, rtx cons, rtx alt)
+{
+  machine_mode mode = GET_MODE (dest);
+  rtx_code code = GET_CODE (op);
+  rtx op0 = XEXP (op, 0);
+  rtx op1 = XEXP (op, 1);
+
+  if (TARGET_XTHEADCONDMOV
+      && GET_MODE_CLASS (mode) == MODE_INT
+      && reg_or_0_operand (cons, mode)
+      && reg_or_0_operand (alt, mode)
+      && GET_MODE (op) == mode
+      && GET_MODE (op0) == mode
+      && GET_MODE (op1) == mode
+      && (code == EQ || code == NE))
+    {
+      riscv_expand_conditional_move_onesided (dest, cons, alt, code, op0, op1);
+      return true;
+    }
+  else if (TARGET_SFB_ALU
+	   && mode == word_mode)
+    {
+      riscv_emit_int_compare (&code, &op0, &op1);
+      rtx cond = gen_rtx_fmt_ee (code, GET_MODE (op0), op0, op1);
+
+      /* The expander allows (const_int 0) for CONS for the benefit of
+	 TARGET_XTHEADCONDMOV, but that case isn't supported for
+	 TARGET_SFB_ALU.  So force that operand into a register if
+	 necessary.  */
+      cons = force_reg (GET_MODE (dest), cons);
+      emit_insn (gen_rtx_SET (dest, gen_rtx_IF_THEN_ELSE (GET_MODE (dest),
+							  cond, cons, alt)));
+      return true;
+    }
+
+  return false;
 }
 
 /* Implement TARGET_FUNCTION_ARG_BOUNDARY.  Every parameter gets at
@@ -4229,15 +4369,54 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 
   switch (letter)
     {
+      case 'o': {
+	/* Print 'OP' variant for RVV instructions.
+	   1. If the operand is VECTOR REG, we print 'v'(vnsrl.wv).
+	   2. If the operand is CONST_INT/CONST_VECTOR, we print 'i'(vnsrl.wi).
+	   3. If the operand is SCALAR REG, we print 'x'(vnsrl.wx).  */
+	if (riscv_v_ext_vector_mode_p (mode))
+	  {
+	    if (REG_P (op))
+	      asm_fprintf (file, "v");
+	    else if (CONST_VECTOR_P (op))
+	      asm_fprintf (file, "i");
+	    else
+	      output_operand_lossage ("invalid vector operand");
+	  }
+	else
+	  {
+	    if (CONST_INT_P (op))
+	      asm_fprintf (file, "i");
+	    else
+	      asm_fprintf (file, "x");
+	  }
+	break;
+      }
       case 'v': {
 	rtx elt;
 
+	if (REG_P (op))
+	  asm_fprintf (file, "%s", reg_names[REGNO (op)]);
+	else
+	  {
+	    if (!const_vec_duplicate_p (op, &elt))
+	      output_operand_lossage ("invalid vector constant");
+	    else if (satisfies_constraint_Wc0 (op))
+	      asm_fprintf (file, "0");
+	    else if (satisfies_constraint_vi (op)
+		     || satisfies_constraint_vj (op))
+	      asm_fprintf (file, "%wd", INTVAL (elt));
+	    else
+	      output_operand_lossage ("invalid vector constant");
+	  }
+	break;
+      }
+      case 'V': {
+	rtx elt;
 	if (!const_vec_duplicate_p (op, &elt))
 	  output_operand_lossage ("invalid vector constant");
-	else if (satisfies_constraint_Wc0 (op))
-	  asm_fprintf (file, "0");
-	else if (satisfies_constraint_vi (op))
-	  asm_fprintf (file, "%wd", INTVAL (elt));
+	else if (satisfies_constraint_vj (op))
+	  asm_fprintf (file, "%wd", -INTVAL (elt));
 	else
 	  output_operand_lossage ("invalid vector constant");
 	break;
@@ -4336,6 +4515,10 @@ riscv_print_operand (FILE *file, rtx op, int letter)
     case 'i':
       if (code != REG)
         fputs ("i", file);
+      break;
+
+    case 'B':
+      fputs (GET_RTX_NAME (code), file);
       break;
 
     case 'S':
@@ -4821,6 +5004,35 @@ riscv_set_return_address (rtx address, rtx scratch)
   riscv_emit_move (gen_frame_mem (GET_MODE (address), slot_address), address);
 }
 
+/* Save register REG to MEM.  Make the instruction frame-related.  */
+
+static void
+riscv_save_reg (rtx reg, rtx mem)
+{
+  riscv_emit_move (mem, reg);
+  riscv_set_frame_expr (riscv_frame_set (mem, reg));
+}
+
+/* Restore register REG from MEM.  */
+
+static void
+riscv_restore_reg (rtx reg, rtx mem)
+{
+  rtx insn = riscv_emit_move (reg, mem);
+  rtx dwarf = NULL_RTX;
+  dwarf = alloc_reg_note (REG_CFA_RESTORE, reg, dwarf);
+
+  if (epilogue_cfa_sp_offset && REGNO (reg) == HARD_FRAME_POINTER_REGNUM)
+    {
+      rtx cfa_adjust_rtx = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
+					 GEN_INT (epilogue_cfa_sp_offset));
+      dwarf = alloc_reg_note (REG_CFA_DEF_CFA, cfa_adjust_rtx, dwarf);
+    }
+
+  REG_NOTES (insn) = dwarf;
+  RTX_FRAME_RELATED_P (insn) = 1;
+}
+
 /* A function to save or store a register.  The first argument is the
    register and the second is the stack slot.  */
 typedef void (*riscv_save_restore_fn) (rtx, rtx);
@@ -4915,6 +5127,36 @@ riscv_for_each_saved_reg (poly_int64 sp_offset, riscv_save_restore_fn fn,
 	  && riscv_is_eh_return_data_register (regno))
 	continue;
 
+      if (TARGET_XTHEADMEMPAIR)
+	{
+	  /* Get the next reg/offset pair.  */
+	  HOST_WIDE_INT offset2 = offset;
+	  unsigned int regno2 = riscv_next_saved_reg (regno, limit, &offset2);
+
+	  /* Validate everything before emitting a mempair instruction.  */
+	  if (regno2 != INVALID_REGNUM
+	      && !cfun->machine->reg_is_wrapped_separately[regno2]
+	      && !(epilogue && !maybe_eh_return
+		   && riscv_is_eh_return_data_register (regno2)))
+	    {
+	      bool load_p = (fn == riscv_restore_reg);
+	      rtx operands[4];
+	      th_mempair_prepare_save_restore_operands (operands,
+							load_p, word_mode,
+							regno, offset,
+							regno2, offset2);
+
+	      /* If the operands fit into a mempair insn, then emit one.  */
+	      if (th_mempair_operands_p (operands, load_p, word_mode))
+		{
+		  th_mempair_save_restore_regs (operands, load_p, word_mode);
+		  offset = offset2;
+		  regno = regno2;
+		  continue;
+		}
+	    }
+	}
+
       riscv_save_restore_reg (word_mode, regno, offset, fn);
     }
 
@@ -4931,35 +5173,6 @@ riscv_for_each_saved_reg (poly_int64 sp_offset, riscv_save_restore_fn fn,
 	  riscv_save_restore_reg (mode, regno, offset, fn);
 	offset -= GET_MODE_SIZE (mode).to_constant ();
       }
-}
-
-/* Save register REG to MEM.  Make the instruction frame-related.  */
-
-static void
-riscv_save_reg (rtx reg, rtx mem)
-{
-  riscv_emit_move (mem, reg);
-  riscv_set_frame_expr (riscv_frame_set (mem, reg));
-}
-
-/* Restore register REG from MEM.  */
-
-static void
-riscv_restore_reg (rtx reg, rtx mem)
-{
-  rtx insn = riscv_emit_move (reg, mem);
-  rtx dwarf = NULL_RTX;
-  dwarf = alloc_reg_note (REG_CFA_RESTORE, reg, dwarf);
-
-  if (epilogue_cfa_sp_offset && REGNO (reg) == HARD_FRAME_POINTER_REGNUM)
-    {
-      rtx cfa_adjust_rtx = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
-					 GEN_INT (epilogue_cfa_sp_offset));
-      dwarf = alloc_reg_note (REG_CFA_DEF_CFA, cfa_adjust_rtx, dwarf);
-    }
-
-  REG_NOTES (insn) = dwarf;
-  RTX_FRAME_RELATED_P (insn) = 1;
 }
 
 /* For stack frames that can't be allocated with a single ADDI instruction,
@@ -5044,8 +5257,9 @@ riscv_adjust_libcall_cfi_prologue ()
       }
 
   /* Debug info for adjust sp.  */
-  adjust_sp_rtx = gen_add3_insn (stack_pointer_rtx,
-				 stack_pointer_rtx, GEN_INT (-saved_size));
+  adjust_sp_rtx =
+    gen_rtx_SET (stack_pointer_rtx,
+		 gen_rtx_PLUS (GET_MODE(stack_pointer_rtx), stack_pointer_rtx, GEN_INT (-saved_size)));
   dwarf = alloc_reg_note (REG_CFA_ADJUST_CFA, adjust_sp_rtx,
 			  dwarf);
   return dwarf;
@@ -5166,8 +5380,9 @@ riscv_adjust_libcall_cfi_epilogue ()
   int saved_size = cfun->machine->frame.save_libcall_adjustment;
 
   /* Debug info for adjust sp.  */
-  adjust_sp_rtx = gen_add3_insn (stack_pointer_rtx,
-				 stack_pointer_rtx, GEN_INT (saved_size));
+  adjust_sp_rtx =
+    gen_rtx_SET (stack_pointer_rtx,
+		 gen_rtx_PLUS (GET_MODE(stack_pointer_rtx), stack_pointer_rtx, GEN_INT (saved_size)));
   dwarf = alloc_reg_note (REG_CFA_ADJUST_CFA, adjust_sp_rtx,
 			  dwarf);
 
@@ -5676,7 +5891,8 @@ riscv_secondary_memory_needed (machine_mode mode, reg_class_t class1,
 {
   return (!riscv_v_ext_vector_mode_p (mode)
 	  && GET_MODE_SIZE (mode).to_constant () > UNITS_PER_WORD
-	  && (class1 == FP_REGS) != (class2 == FP_REGS));
+	  && (class1 == FP_REGS) != (class2 == FP_REGS)
+	  && !TARGET_XTHEADFMV);
 }
 
 /* Implement TARGET_REGISTER_MOVE_COST.  */
@@ -5820,12 +6036,6 @@ riscv_class_max_nregs (reg_class_t rclass, machine_mode mode)
 
   if (reg_class_subset_p (rclass, V_REGS))
     return riscv_hard_regno_nregs (V_REG_FIRST, mode);
-
-  if (reg_class_subset_p (rclass, VL_REGS))
-    return 1;
-
-  if (reg_class_subset_p (rclass, VTYPE_REGS))
-    return 1;
 
   return 0;
 }
@@ -6844,8 +7054,8 @@ riscv_dwarf_poly_indeterminate_value (unsigned int i, unsigned int *factor,
 				      int *offset)
 {
   /* Polynomial invariant 1 == (VLENB / riscv_bytes_per_vector_chunk) - 1.
-     1. TARGET_MIN_VLEN == 32, olynomial invariant 1 == (VLENB / 4) - 1.
-     2. TARGET_MIN_VLEN > 32, olynomial invariant 1 == (VLENB / 8) - 1.
+     1. TARGET_MIN_VLEN == 32, polynomial invariant 1 == (VLENB / 4) - 1.
+     2. TARGET_MIN_VLEN > 32, polynomial invariant 1 == (VLENB / 8) - 1.
   */
   gcc_assert (i == 1);
   *factor = riscv_bytes_per_vector_chunk;
@@ -6860,6 +7070,77 @@ bool
 riscv_shamt_matches_mask_p (int shamt, HOST_WIDE_INT mask)
 {
   return shamt == ctz_hwi (mask);
+}
+
+static HARD_REG_SET
+vector_zero_call_used_regs (HARD_REG_SET need_zeroed_hardregs)
+{
+  HARD_REG_SET zeroed_hardregs;
+  CLEAR_HARD_REG_SET (zeroed_hardregs);
+
+  /* Find a register to hold vl.  */
+  unsigned vl_regno = INVALID_REGNUM;
+  /* Skip the first GPR, otherwise the existing vl is kept due to the same
+     between vl and avl.  */
+  for (unsigned regno = GP_REG_FIRST + 1; regno <= GP_REG_LAST; regno++)
+    {
+      if (TEST_HARD_REG_BIT (need_zeroed_hardregs, regno))
+	{
+	  vl_regno = regno;
+	  break;
+	}
+    }
+
+  if (vl_regno > GP_REG_LAST)
+    sorry ("cannot allocate vl register for %qs on this target",
+	   "-fzero-call-used-regs");
+
+  /* Vector configurations need not be saved and restored here.  The
+     -fzero-call-used-regs=* option will zero all vector registers and
+     return.  So there's no vector operations between them.  */
+
+  bool emitted_vlmax_vsetvl = false;
+  rtx vl = gen_rtx_REG (Pmode, vl_regno); /* vl is VLMAX.  */
+  for (unsigned regno = V_REG_FIRST; regno <= V_REG_LAST; ++regno)
+    {
+      if (TEST_HARD_REG_BIT (need_zeroed_hardregs, regno))
+	{
+	  rtx target = regno_reg_rtx[regno];
+	  machine_mode mode = GET_MODE (target);
+	  poly_uint16 nunits = GET_MODE_NUNITS (mode);
+	  machine_mode mask_mode
+	    = riscv_vector::get_vector_mode (BImode, nunits).require ();
+
+	  if (!emitted_vlmax_vsetvl)
+	    {
+	      riscv_vector::emit_hard_vlmax_vsetvl (mode, vl);
+	      emitted_vlmax_vsetvl = true;
+	    }
+
+	  riscv_vector::emit_vlmax_op (code_for_pred_mov (mode), target,
+				       CONST0_RTX (mode), vl, mask_mode);
+
+	  SET_HARD_REG_BIT (zeroed_hardregs, regno);
+	}
+    }
+
+  return zeroed_hardregs;
+}
+
+/* Generate a sequence of instructions that zero registers specified by
+   NEED_ZEROED_HARDREGS.  Return the ZEROED_HARDREGS that are actually
+   zeroed.  */
+HARD_REG_SET
+riscv_zero_call_used_regs (HARD_REG_SET need_zeroed_hardregs)
+{
+  HARD_REG_SET zeroed_hardregs;
+  CLEAR_HARD_REG_SET (zeroed_hardregs);
+
+  if (TARGET_VECTOR)
+    zeroed_hardregs |= vector_zero_call_used_regs (need_zeroed_hardregs);
+
+  return zeroed_hardregs | default_zero_call_used_regs (need_zeroed_hardregs
+							& ~zeroed_hardregs);
 }
 
 /* Initialize the GCC target structure.  */
@@ -7029,6 +7310,9 @@ riscv_shamt_matches_mask_p (int shamt, HOST_WIDE_INT mask)
 #undef TARGET_BUILTIN_DECL
 #define TARGET_BUILTIN_DECL riscv_builtin_decl
 
+#undef TARGET_GIMPLE_FOLD_BUILTIN
+#define TARGET_GIMPLE_FOLD_BUILTIN riscv_gimple_fold_builtin
+
 #undef TARGET_EXPAND_BUILTIN
 #define TARGET_EXPAND_BUILTIN riscv_expand_builtin
 
@@ -7109,6 +7393,9 @@ riscv_shamt_matches_mask_p (int shamt, HOST_WIDE_INT mask)
 
 #undef TARGET_DWARF_POLY_INDETERMINATE_VALUE
 #define TARGET_DWARF_POLY_INDETERMINATE_VALUE riscv_dwarf_poly_indeterminate_value
+
+#undef TARGET_ZERO_CALL_USED_REGS
+#define TARGET_ZERO_CALL_USED_REGS riscv_zero_call_used_regs
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

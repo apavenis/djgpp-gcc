@@ -1,6 +1,6 @@
 /* M2LINK.c provide a bootstrap minimal definitions.
 
-Copyright (C) 2022 Free Software Foundation, Inc.
+Copyright (C) 2022-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -28,6 +28,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include "system.h"
 #include "ansidecl.h"
 #include "math.h"
+#include <stdbool.h>
 
 #include "gm2-libs-host.h"
 
@@ -39,6 +40,6 @@ extern "C" {
      initialization features of M2RTS.  */
 
   char *M2LINK_ForcedModuleInitOrder = NULL;
-  int M2LINK_StaticInitialization = 1;
+  bool M2LINK_StaticInitialization = true;
 
 }

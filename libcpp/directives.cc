@@ -1,5 +1,5 @@
 /* CPP Library. (Directive handling.)
-   Copyright (C) 1986-2022 Free Software Foundation, Inc.
+   Copyright (C) 1986-2023 Free Software Foundation, Inc.
    Contributed by Per Bothner, 1994-95.
    Based on CCCP program by Paul Rubin, June 1986
    Adapted to ANSI C, Richard Stallman, Jan 1987
@@ -1996,7 +1996,12 @@ destringize_and_run (cpp_reader *pfile, const cpp_string *in,
 int
 _cpp_do__Pragma (cpp_reader *pfile, location_t expansion_loc)
 {
+  /* Make sure we don't invalidate the string token, if the closing parenthesis
+   ended up on a different line.  */
+  ++pfile->keep_tokens;
   const cpp_token *string = get__Pragma_string (pfile);
+  --pfile->keep_tokens;
+
   pfile->directive_result.type = CPP_PADDING;
 
   if (string)

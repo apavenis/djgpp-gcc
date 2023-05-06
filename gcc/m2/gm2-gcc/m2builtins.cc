@@ -1,6 +1,6 @@
 /* m2builtins.cc provides an interface to the GCC builtins.
 
-Copyright (C) 2012-2022 Free Software Foundation, Inc.
+Copyright (C) 2012-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -40,7 +40,7 @@ along with GNU Modula-2; see the file COPYING3.  If not see
     if (!(X))                                                                 \
       {                                                                       \
         debug_tree (Y);                                                       \
-        internal_error ("%s:%d:assertion of condition `%s' failed", __FILE__, __LINE__,  \
+        internal_error ("%s:%d:assertion of condition %qs failed", __FILE__, __LINE__,  \
                         #X);                                                  \
       }                                                                       \
   }
@@ -801,7 +801,7 @@ m2builtins_BuiltInIsfinite (location_t location, tree expression)
 /* BuiltinExists - returns TRUE if the builtin function, name, exists
    for this target architecture.  */
 
-int
+bool
 m2builtins_BuiltinExists (char *name)
 {
   struct builtin_function_entry *fe;

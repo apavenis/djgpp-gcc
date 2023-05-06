@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -63,9 +63,8 @@ public:
   virtual void visit (CallExpr &expr) = 0;
   virtual void visit (MethodCallExpr &expr) = 0;
   virtual void visit (FieldAccessExpr &expr) = 0;
-  virtual void visit (ClosureExprInner &expr) = 0;
   virtual void visit (BlockExpr &expr) = 0;
-  virtual void visit (ClosureExprInnerTyped &expr) = 0;
+  virtual void visit (ClosureExpr &expr) = 0;
   virtual void visit (ContinueExpr &expr) = 0;
   virtual void visit (BreakExpr &expr) = 0;
   virtual void visit (RangeFromToExpr &expr) = 0;
@@ -139,7 +138,6 @@ public:
   virtual void visit (TuplePatternItemsMultiple &tuple_items) = 0;
   virtual void visit (TuplePatternItemsRanged &tuple_items) = 0;
   virtual void visit (TuplePattern &pattern) = 0;
-  virtual void visit (GroupedPattern &pattern) = 0;
   virtual void visit (SlicePattern &pattern) = 0;
   virtual void visit (EmptyStmt &stmt) = 0;
   virtual void visit (LetStmt &stmt) = 0;
@@ -206,9 +204,8 @@ public:
   virtual void visit (CallExpr &) override {}
   virtual void visit (MethodCallExpr &) override {}
   virtual void visit (FieldAccessExpr &) override {}
-  virtual void visit (ClosureExprInner &) override {}
+  virtual void visit (ClosureExpr &) override {}
   virtual void visit (BlockExpr &) override {}
-  virtual void visit (ClosureExprInnerTyped &) override {}
   virtual void visit (ContinueExpr &) override {}
   virtual void visit (BreakExpr &) override {}
   virtual void visit (RangeFromToExpr &) override {}
@@ -292,7 +289,6 @@ public:
   virtual void visit (TuplePatternItemsMultiple &) override {}
   virtual void visit (TuplePatternItemsRanged &) override {}
   virtual void visit (TuplePattern &) override {}
-  virtual void visit (GroupedPattern &) override {}
   virtual void visit (SlicePattern &) override {}
 
   virtual void visit (EmptyStmt &) override {}
@@ -419,8 +415,7 @@ public:
 
   virtual void visit (HIR::QualifiedPathInExpression &expr) = 0;
   virtual void visit (HIR::PathInExpression &expr) = 0;
-  virtual void visit (ClosureExprInnerTyped &) = 0;
-  virtual void visit (ClosureExprInner &expr) = 0;
+  virtual void visit (ClosureExpr &) = 0;
   virtual void visit (StructExprStructFields &) = 0;
   virtual void visit (StructExprStruct &) = 0;
   virtual void visit (LiteralExpr &expr) = 0;
@@ -473,7 +468,6 @@ public:
 class HIRPatternVisitor
 {
 public:
-  virtual void visit (GroupedPattern &) = 0;
   virtual void visit (IdentifierPattern &) = 0;
   virtual void visit (LiteralPattern &) = 0;
   virtual void visit (PathInExpression &) = 0;

@@ -1,6 +1,6 @@
 /* Breadth-first and depth-first routines for
    searching multiple-inheritance lattice for GNU C++.
-   Copyright (C) 1987-2022 Free Software Foundation, Inc.
+   Copyright (C) 1987-2023 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -485,6 +485,25 @@ context_for_name_lookup (tree decl)
   return context;
 }
 
+/* Like the above, but always return a type, because it's simpler for member
+   handling to refer to the anonymous aggr rather than a function.  */
+
+tree
+type_context_for_name_lookup (tree decl)
+{
+  tree context = DECL_P (decl) ? DECL_CONTEXT (decl) : decl;
+  gcc_checking_assert (CLASS_TYPE_P (context));
+
+  while (context && TYPE_P (context) && ANON_AGGR_TYPE_P (context))
+    {
+      tree next = TYPE_CONTEXT (context);
+      if (!TYPE_P (next))
+	break;
+      context = next;
+    }
+  return context;
+}
+
 /* Returns true iff DECL is declared in TYPE.  */
 
 static bool
@@ -881,6 +900,10 @@ accessible_p (tree type, tree decl, bool consider_local_p)
   else
     otype = type;
 
+  /* Anonymous unions don't have their own access.  */
+  if (ANON_AGGR_TYPE_P (type))
+    type = type_context_for_name_lookup (type);
+
   /* [class.access.base]
 
      A member m is accessible when named in class N if
@@ -1109,7 +1132,7 @@ build_baselink (tree binfo, tree access_binfo, tree functions, tree optype)
 
 tree
 lookup_member (tree xbasetype, tree name, int protect, bool want_type,
-	       tsubst_flags_t complain, access_failure_info *afi)
+	       tsubst_flags_t complain, access_failure_info *afi /* = NULL */)
 {
   tree rval, rval_binfo = NULL_TREE;
   tree type = NULL_TREE, basetype_path = NULL_TREE;

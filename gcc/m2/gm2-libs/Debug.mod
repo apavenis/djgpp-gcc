@@ -1,6 +1,6 @@
 (* Debug.mod provides some simple debugging routines.
 
-Copyright (C) 2001-2021 Free Software Foundation, Inc.
+Copyright (C) 2001-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -34,20 +34,24 @@ FROM libc IMPORT exit ;
 
 (*
    Halt - writes a message in the format:
-          Module:Line:Message
+          Module:Function:Line:Message
 
           It then terminates by calling HALT.
 *)
 
-PROCEDURE Halt (Message: ARRAY OF CHAR;
-                LineNo: CARDINAL;
-                Module: ARRAY OF CHAR) ;
+PROCEDURE Halt (Message,
+                Module,
+                Function: ARRAY OF CHAR ;
+                LineNo  : CARDINAL) ;
 CONST
    MaxNoOfDigits = 12 ;  (* should be large enough for most source files.. *)
 VAR
    No               : ARRAY [0..MaxNoOfDigits] OF CHAR ;
 BEGIN
    DebugString(Module) ;
+   DebugString(':') ;
+   DebugString(Function) ;
+   DebugString(':') ;
    CardToStr(LineNo, 0, No) ;
    DebugString(':') ;
    DebugString(No) ;

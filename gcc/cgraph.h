@@ -152,6 +152,9 @@ public:
   /* Remove symbol from symbol table.  */
   void remove (void);
 
+  /* Undo any definition or use of the symbol.  */
+  void reset (void);
+
   /* Dump symtab node to F.  */
   void dump (FILE *f);
 
@@ -193,10 +196,11 @@ public:
   /* Clone reference REF to this symtab_node and set its stmt to STMT.  */
   ipa_ref *clone_reference (ipa_ref *ref, gimple *stmt);
 
-  /* Find the structure describing a reference to REFERRED_NODE
-     and associated with statement STMT.  */
+  /* Find the structure describing a reference to REFERRED_NODE of USE_TYPE and
+     associated with statement STMT or LTO_STMT_UID.  */
   ipa_ref *find_reference (symtab_node *referred_node, gimple *stmt,
-			   unsigned int lto_stmt_uid);
+			   unsigned int lto_stmt_uid,
+			   enum ipa_ref_use use_type);
 
   /* Remove all references that are associated with statement STMT.  */
   void remove_stmt_references (gimple *stmt);
@@ -1065,14 +1069,6 @@ struct GTY((tag ("SYMTAB_FUNCTION"))) cgraph_node : public symtab_node
 
   /* Expand function specified by node.  */
   void expand (void);
-
-  /* As an GCC extension we allow redefinition of the function.  The
-     semantics when both copies of bodies differ is not well defined.
-     We replace the old body with new body so in unit at a time mode
-     we always use new body, while in normal mode we may end up with
-     old body inlined into some functions and new body expanded and
-     inlined in others.  */
-  void reset (void);
 
   /* Creates a wrapper from cgraph_node to TARGET node. Thunk is used for this
      kind of wrapper method.  */
@@ -2650,7 +2646,7 @@ symtab_node::real_symbol_p (void)
 /* Return true if DECL should have entry in symbol table if used.
    Those are functions and static & external variables.  */
 
-static inline bool
+inline bool
 decl_in_symtab_p (const_tree decl)
 {
   return (TREE_CODE (decl) == FUNCTION_DECL
@@ -3323,7 +3319,7 @@ cgraph_edge::frequency ()
 
 
 /* Return true if the TM_CLONE bit is set for a given FNDECL.  */
-static inline bool
+inline bool
 decl_is_tm_clone (const_tree fndecl)
 {
   cgraph_node *n = cgraph_node::get (fndecl);
@@ -3539,7 +3535,7 @@ ipa_polymorphic_call_context::useless_p () const
    the name documents the intent.  We require that no GC can occur
    within the fprintf call.  */
 
-static inline const char *
+inline const char *
 xstrdup_for_dump (const char *transient_str)
 {
   return ggc_strdup (transient_str);

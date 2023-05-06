@@ -1,5 +1,5 @@
 /* Common hooks for RISC-V.
-   Copyright (C) 2016-2022 Free Software Foundation, Inc.
+   Copyright (C) 2016-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -221,6 +221,19 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
 
   {"svinval", ISA_SPEC_CLASS_NONE, 1, 0},
   {"svnapot", ISA_SPEC_CLASS_NONE, 1, 0},
+
+  {"xtheadba", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadbb", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadbs", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadcmo", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadcondmov", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadfmemidx", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadfmv", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadint", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadmac", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadmemidx", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadmempair", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"xtheadsync", ISA_SPEC_CLASS_NONE, 1, 0},
 
   /* Terminate the list.  */
   {NULL, ISA_SPEC_CLASS_NONE, 0, 0}
@@ -1140,6 +1153,10 @@ riscv_subset_list::parse (const char *arch, location_t loc)
 
   subset_list->handle_combine_ext ();
 
+  if (subset_list->lookup ("zfinx") && subset_list->lookup ("f"))
+    error_at (loc, "%<-march=%s%>: z*inx conflicts with floating-point "
+		   "extensions", arch);
+
   return subset_list;
 
 fail:
@@ -1177,6 +1194,7 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
   {"f", &gcc_options::x_target_flags, MASK_HARD_FLOAT},
   {"d", &gcc_options::x_target_flags, MASK_DOUBLE_FLOAT},
   {"c", &gcc_options::x_target_flags, MASK_RVC},
+  {"v", &gcc_options::x_target_flags, MASK_FULL_V},
   {"v", &gcc_options::x_target_flags, MASK_VECTOR},
 
   {"zicsr",    &gcc_options::x_riscv_zi_subext, MASK_ZICSR},
@@ -1246,6 +1264,19 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
 
   {"svinval", &gcc_options::x_riscv_sv_subext, MASK_SVINVAL},
   {"svnapot", &gcc_options::x_riscv_sv_subext, MASK_SVNAPOT},
+
+  {"xtheadba",      &gcc_options::x_riscv_xthead_subext, MASK_XTHEADBA},
+  {"xtheadbb",      &gcc_options::x_riscv_xthead_subext, MASK_XTHEADBB},
+  {"xtheadbs",      &gcc_options::x_riscv_xthead_subext, MASK_XTHEADBS},
+  {"xtheadcmo",     &gcc_options::x_riscv_xthead_subext, MASK_XTHEADCMO},
+  {"xtheadcondmov", &gcc_options::x_riscv_xthead_subext, MASK_XTHEADCONDMOV},
+  {"xtheadfmemidx", &gcc_options::x_riscv_xthead_subext, MASK_XTHEADFMEMIDX},
+  {"xtheadfmv",     &gcc_options::x_riscv_xthead_subext, MASK_XTHEADFMV},
+  {"xtheadint",     &gcc_options::x_riscv_xthead_subext, MASK_XTHEADINT},
+  {"xtheadmac",     &gcc_options::x_riscv_xthead_subext, MASK_XTHEADMAC},
+  {"xtheadmemidx",  &gcc_options::x_riscv_xthead_subext, MASK_XTHEADMEMIDX},
+  {"xtheadmempair", &gcc_options::x_riscv_xthead_subext, MASK_XTHEADMEMPAIR},
+  {"xtheadsync",    &gcc_options::x_riscv_xthead_subext, MASK_XTHEADSYNC},
 
   {NULL, NULL, 0}
 };
@@ -1700,7 +1731,10 @@ riscv_compute_multilib (
 
       /* Record highest match score multi-lib setting.  */
       if (match_score > max_match_score)
-	best_match_multi_lib = i;
+	{
+	  best_match_multi_lib = i;
+	  max_match_score = match_score;
+	}
     }
 
   if (best_match_multi_lib == -1)
@@ -1756,6 +1790,10 @@ static const struct default_options riscv_option_optimization_table[] =
   {
     { OPT_LEVELS_1_PLUS, OPT_fsection_anchors, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_free, NULL, 1 },
+#if TARGET_DEFAULT_ASYNC_UNWIND_TABLES == 1
+    { OPT_LEVELS_ALL, OPT_fasynchronous_unwind_tables, NULL, 1 },
+    { OPT_LEVELS_ALL, OPT_funwind_tables, NULL, 1},
+#endif
     { OPT_LEVELS_NONE, 0, NULL, 0 }
   };
 

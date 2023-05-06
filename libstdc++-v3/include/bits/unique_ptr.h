@@ -1,6 +1,6 @@
 // unique_ptr implementation -*- C++ -*-
 
-// Copyright (C) 2008-2022 Free Software Foundation, Inc.
+// Copyright (C) 2008-2023 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -43,12 +43,11 @@
 # endif
 #endif
 
-#if __cplusplus > 202002L && __cpp_constexpr_dynamic_alloc
-# if __cpp_lib_constexpr_memory < 202202L
-// Defined with older value in bits/ptr_traits.h for C++20
-#  undef __cpp_lib_constexpr_memory
-#  define __cpp_lib_constexpr_memory 202202L
-# endif
+/* Duplicate definition with ptr_traits.h.  */
+#if __cplusplus > 202002L && defined(__cpp_constexpr_dynamic_alloc)
+# define __cpp_lib_constexpr_memory 202202L
+#elif __cplusplus > 201703L
+# define __cpp_lib_constexpr_memory 201811L
 #endif
 
 namespace std _GLIBCXX_VISIBILITY(default)

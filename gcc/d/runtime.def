@@ -1,5 +1,5 @@
 /* runtime.def -- Definitions for D runtime functions.
-   Copyright (C) 2014-2022 Free Software Foundation, Inc.
+   Copyright (C) 2014-2023 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -58,9 +58,6 @@ DEF_D_RUNTIME (ARRAYBOUNDS_SLICEP, "_d_arraybounds_slicep", RT(VOID),
 	       ECF_NORETURN)
 DEF_D_RUNTIME (ARRAYBOUNDS_INDEXP, "_d_arraybounds_indexp", RT(VOID),
 	       P4(IMMUTABLE_CHARPTR, UINT, SIZE_T, SIZE_T), ECF_NORETURN)
-
-/* Used when calling new on a class.  */
-DEF_D_RUNTIME (NEWCLASS, "_d_newclass", RT(OBJECT), P1(CONST_CLASSINFO), 0)
 
 /* Used when calling delete on a stack-allocated class or interface.  */
 DEF_D_RUNTIME (CALLFINALIZER, "_d_callfinalizer", RT(VOID), P1(VOIDPTR), 0)

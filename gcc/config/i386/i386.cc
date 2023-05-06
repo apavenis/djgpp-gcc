@@ -1,5 +1,5 @@
 /* Subroutines used for code generation on IA-32.
-   Copyright (C) 1988-2022 Free Software Foundation, Inc.
+   Copyright (C) 1988-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -96,6 +96,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "i386-expand.h"
 #include "i386-features.h"
 #include "function-abi.h"
+#include "rtl-error.h"
 
 /* This file should be included last.  */
 #include "target-def.h"
@@ -6876,7 +6877,9 @@ ix86_compute_frame_layout (void)
 	 stack clash protections are enabled and the allocated frame is
 	 larger than the probe interval, then use pushes to save
 	 callee saved registers.  */
-      || (flag_stack_clash_protection && to_allocate > get_probe_interval ()))
+      || (flag_stack_clash_protection
+	  && !ix86_target_stack_probe ()
+	  && to_allocate > get_probe_interval ()))
     frame->save_regs_using_mov = false;
 
   if (ix86_using_red_zone ()
@@ -8761,8 +8764,11 @@ ix86_expand_prologue (void)
       sse_registers_saved = true;
     }
 
-  /* If stack clash protection is requested, then probe the stack.  */
-  if (allocate >= 0 && flag_stack_clash_protection)
+  /* If stack clash protection is requested, then probe the stack, unless it
+     is already probed on the target.  */
+  if (allocate >= 0
+      && flag_stack_clash_protection
+      && !ix86_target_stack_probe ())
     {
       ix86_adjust_stack_and_probe (allocate, int_registers_saved, false);
       allocate = 0;
@@ -13213,7 +13219,13 @@ ix86_print_operand (FILE *file, rtx x, int code)
 	    }
 
 	  if (GET_MODE_CLASS (GET_MODE (x)) == MODE_FLOAT)
-	    warning (0, "non-integer operand used with operand code %<z%>");
+	    {
+	      if (this_is_asm_operands)
+		warning_for_asm (this_is_asm_operands,
+				 "non-integer operand used with operand code %<z%>");
+	      else
+		warning (0, "non-integer operand used with operand code %<z%>");
+	    }
 	  /* FALLTHRU */
 
 	case 'Z':
@@ -13276,11 +13288,12 @@ ix86_print_operand (FILE *file, rtx x, int code)
 	  else
 	    {
 	      output_operand_lossage ("invalid operand type used with "
-				      "operand code 'Z'");
+				      "operand code '%c'", code);
 	      return;
 	    }
 
-	  output_operand_lossage ("invalid operand size for operand code 'Z'");
+	  output_operand_lossage ("invalid operand size for operand code '%c'",
+				  code);
 	  return;
 
 	case 'd':
@@ -16677,10 +16690,18 @@ assign_386_stack_local (machine_mode mode, enum ix86_stack_slot n)
     if (s->mode == mode && s->n == n)
       return validize_mem (copy_rtx (s->rtl));
 
+  int align = 0;
+  /* For DImode with SLOT_FLOATxFDI_387 use 32-bit
+     alignment with -m32 -mpreferred-stack-boundary=2.  */
+  if (mode == DImode
+      && !TARGET_64BIT
+      && n == SLOT_FLOATxFDI_387
+      && ix86_preferred_stack_boundary < GET_MODE_ALIGNMENT (DImode))
+    align = 32;
   s = ggc_alloc<stack_local_entry> ();
   s->n = n;
   s->mode = mode;
-  s->rtl = assign_stack_local (mode, GET_MODE_SIZE (mode), 0);
+  s->rtl = assign_stack_local (mode, GET_MODE_SIZE (mode), align);
 
   s->next = ix86_stack_locals;
   ix86_stack_locals = s;
@@ -19051,6 +19072,13 @@ ix86_vectorize_builtin_scatter (const_tree vectype,
   if (!TARGET_AVX512F)
     return NULL_TREE;
 
+  if (known_eq (TYPE_VECTOR_SUBPARTS (vectype), 2u)
+      ? !TARGET_USE_SCATTER_2PARTS
+      : (known_eq (TYPE_VECTOR_SUBPARTS (vectype), 4u)
+	 ? !TARGET_USE_SCATTER_4PARTS
+	 : !TARGET_USE_SCATTER))
+    return NULL_TREE;
+
   if ((TREE_CODE (index_type) != INTEGER_TYPE
        && !POINTER_TYPE_P (index_type))
       || (TYPE_MODE (index_type) != SImode
@@ -19827,9 +19855,12 @@ inline_memory_move_cost (machine_mode mode, enum reg_class regclass, int in)
 	  index = 1;
 	  break;
 	/* DImode loads and stores assumed to cost the same as SImode.  */
-	default:
+	case 4:
+	case 8:
 	  index = 2;
 	  break;
+	default:
+	  return 100;
 	}
 
       if (in == 2)
@@ -21473,6 +21504,7 @@ x86_output_mi_thunk (FILE *file, tree thunk_fndecl, HOST_WIDE_INT delta,
   rtx this_reg, tmp, fnaddr;
   unsigned int tmp_regno;
   rtx_insn *insn;
+  int saved_flag_force_indirect_call = flag_force_indirect_call;
 
   if (TARGET_64BIT)
     tmp_regno = R10_REG;
@@ -21485,6 +21517,9 @@ x86_output_mi_thunk (FILE *file, tree thunk_fndecl, HOST_WIDE_INT delta,
 	tmp_regno = DX_REG;
       else
 	tmp_regno = CX_REG;
+
+      if (flag_pic)
+  flag_force_indirect_call = 0;
     }
 
   emit_note (NOTE_INSN_PROLOGUE_END);
@@ -21652,6 +21687,8 @@ x86_output_mi_thunk (FILE *file, tree thunk_fndecl, HOST_WIDE_INT delta,
   final (insn, file, 1);
   final_end_function ();
   assemble_end_function (thunk_fndecl, fnname);
+
+  flag_force_indirect_call = saved_flag_force_indirect_call;
 }
 
 static void
@@ -22754,6 +22791,27 @@ ix86_mangle_type (const_tree type)
       return "e";
     default:
       return NULL;
+    }
+}
+
+/* Create C++ tinfo symbols for only conditionally available fundamental
+   types.  */
+
+static void
+ix86_emit_support_tinfos (emit_support_tinfos_callback callback)
+{
+  extern tree ix86_float16_type_node;
+  extern tree ix86_bf16_type_node;
+
+  if (!TARGET_SSE2)
+    {
+      gcc_checking_assert (!float16_type_node && !bfloat16_type_node);
+      float16_type_node = ix86_float16_type_node;
+      bfloat16_type_node = ix86_bf16_type_node;
+      callback (float16_type_node);
+      callback (bfloat16_type_node);
+      float16_type_node = NULL_TREE;
+      bfloat16_type_node = NULL_TREE;
     }
 }
 
@@ -24158,15 +24216,6 @@ ix86_optab_supported_p (int op, machine_mode mode1, machine_mode,
     }
 }
 
-/* Implement the TARGET_GEN_MEMSET_SCRATCH_RTX hook.  Return a scratch
-   register in MODE for vector load and store.  */
-
-rtx
-ix86_gen_scratch_sse_rtx (machine_mode mode)
-{
-  return gen_reg_rtx (mode);
-}
-
 /* Address space support.
 
    This is not "far pointers" in the 16-bit sense, but an easy way
@@ -24936,6 +24985,9 @@ ix86_libgcc_floating_mode_supported_p
 #undef TARGET_MANGLE_TYPE
 #define TARGET_MANGLE_TYPE ix86_mangle_type
 
+#undef TARGET_EMIT_SUPPORT_TINFOS
+#define TARGET_EMIT_SUPPORT_TINFOS ix86_emit_support_tinfos
+
 #undef TARGET_STACK_PROTECT_GUARD
 #define TARGET_STACK_PROTECT_GUARD ix86_stack_protect_guard
 
@@ -25210,9 +25262,6 @@ static bool ix86_libc_has_fast_function (int fcode ATTRIBUTE_UNUSED)
 
 #undef TARGET_LIBC_HAS_FAST_FUNCTION
 #define TARGET_LIBC_HAS_FAST_FUNCTION ix86_libc_has_fast_function
-
-#undef TARGET_GEN_MEMSET_SCRATCH_RTX
-#define TARGET_GEN_MEMSET_SCRATCH_RTX ix86_gen_scratch_sse_rtx
 
 #if CHECKING_P
 #undef TARGET_RUN_TARGET_SELFTESTS

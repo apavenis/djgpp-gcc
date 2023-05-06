@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -78,9 +78,8 @@ private:
   virtual void visit (CallExpr &) override;
   virtual void visit (MethodCallExpr &) override;
   virtual void visit (FieldAccessExpr &) override;
-  virtual void visit (ClosureExprInner &) override;
+  virtual void visit (ClosureExpr &) override;
   virtual void visit (BlockExpr &) override;
-  virtual void visit (ClosureExprInnerTyped &) override;
   virtual void visit (ContinueExpr &) override;
   virtual void visit (BreakExpr &) override;
   virtual void visit (RangeFromToExpr &) override;
@@ -164,7 +163,6 @@ private:
   virtual void visit (TuplePatternItemsMultiple &) override;
   virtual void visit (TuplePatternItemsRanged &) override;
   virtual void visit (TuplePattern &) override;
-  virtual void visit (GroupedPattern &) override;
   virtual void visit (SlicePattern &) override;
 
   virtual void visit (EmptyStmt &) override;

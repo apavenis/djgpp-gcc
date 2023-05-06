@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.cc for SPARC.
-   Copyright (C) 1987-2022 Free Software Foundation, Inc.
+   Copyright (C) 1987-2023 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com)
    64-bit SPARC-V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
    at Cygnus Support.
@@ -13662,18 +13662,16 @@ sparc_expand_conditional_move (machine_mode mode, rtx *operands)
 void
 sparc_expand_vcond (machine_mode mode, rtx *operands, int ccode, int fcode)
 {
+  enum rtx_code code = signed_condition (GET_CODE (operands[3]));
   rtx mask, cop0, cop1, fcmp, cmask, bshuf, gsr;
-  enum rtx_code code = GET_CODE (operands[3]);
 
   mask = gen_reg_rtx (Pmode);
   cop0 = operands[4];
   cop1 = operands[5];
   if (code == LT || code == GE)
     {
-      rtx t;
-
       code = swap_condition (code);
-      t = cop0; cop0 = cop1; cop1 = t;
+      std::swap (cop0, cop1);
     }
 
   gsr = gen_rtx_REG (DImode, SPARC_GSR_REG);

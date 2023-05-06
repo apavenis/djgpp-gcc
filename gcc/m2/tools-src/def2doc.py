@@ -3,7 +3,7 @@
 # def2doc.py creates texi library documentation for all exported procedures.
 # Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
-# Copyright (C) 2000-2022 Free Software Foundation, Inc.
+# Copyright (C) 2000-2023 Free Software Foundation, Inc.
 # This file is part of GNU Modula-2.
 #
 # GNU Modula-2 is free software; you can redistribute it and/or modify
@@ -29,7 +29,7 @@ import sys
 Base_Libs = ['gm2-libs', 'Base libraries', 'Basic M2F compatible libraries']
 
 PIM_Log_Desc = 'PIM and Logitech 3.0 compatible libraries'
-PIM_Log = ['gm2-libs-pim', 'PIM and Logitech 3.0 Compatible', PIM_Log_Desc]
+PIM_Log = ['gm2-libs-log', 'PIM and Logitech 3.0 Compatible', PIM_Log_Desc]
 PIM_Cor_Desc = 'PIM compatible process support'
 PIM_Cor = ['gm2-libs-coroutines', 'PIM coroutine support', PIM_Cor_Desc]
 ISO_Libs = ['gm2-libs-iso', 'M2 ISO Libraries', 'ISO defined libraries']
@@ -483,7 +483,7 @@ def display_modules(up, dir_, build, source):
 
 
 def display_copyright():
-    output.write('@c Copyright (C) 2000-2022 Free Software Foundation, Inc.\n')
+    output.write('@c Copyright (C) 2000-2023 Free Software Foundation, Inc.\n')
     output.write('@c This file is part of GNU Modula-2.\n')
     output.write("""
 @c Permission is granted to copy, distribute and/or modify this document

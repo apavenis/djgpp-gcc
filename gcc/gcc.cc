@@ -842,7 +842,7 @@ proper position among the other output files.  */
 #define LINK_COMPRESS_DEBUG_SPEC \
 	" %{gz|gz=zlib:"  LD_COMPRESS_DEBUG_OPTION "=zlib}" \
 	" %{gz=none:"	  LD_COMPRESS_DEBUG_OPTION "=none}" \
-	" %{gz*:%e-gz=zstd is not supported in this configuration} " \
+	" %{gz=zstd:%e-gz=zstd is not supported in this configuration} " \
 	" %{gz=zlib-gnu:}" /* Ignore silently zlib-gnu option value.  */
 #elif HAVE_LD_COMPRESS_DEBUG == 2
 /* ELF gABI style and ZSTD.  */
@@ -1423,6 +1423,7 @@ static const struct compiler default_compilers[] =
   {".r", "#Ratfor", 0, 0, 0},
   {".go", "#Go", 0, 1, 0},
   {".d", "#D", 0, 1, 0}, {".dd", "#D", 0, 1, 0}, {".di", "#D", 0, 1, 0},
+  {".mod", "#Modula-2", 0, 0, 0}, {".m2i", "#Modula-2", 0, 0, 0},
   /* Next come the entries for C.  */
   {".c", "@c", 0, 0, 1},
   {"@c",
@@ -4290,9 +4291,13 @@ driver_handle_option (struct gcc_options *opts,
       break;
 
     case OPT_fdiagnostics_format_:
-      diagnostic_output_format_init (dc, opts->x_dump_base_name,
-				     (enum diagnostics_output_format)value);
-      break;
+	{
+	  const char *basename = (opts->x_dump_base_name ? opts->x_dump_base_name
+				  : opts->x_main_input_basename);
+	  diagnostic_output_format_init (dc, basename,
+					 (enum diagnostics_output_format)value);
+	  break;
+	}
 
     case OPT_Wa_:
       {

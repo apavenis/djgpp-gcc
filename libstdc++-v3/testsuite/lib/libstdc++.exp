@@ -1,6 +1,6 @@
 # libstdc++ "tool init file" for DejaGNU
 
-# Copyright (C) 2001-2022 Free Software Foundation, Inc.
+# Copyright (C) 2001-2023 Free Software Foundation, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -1007,6 +1007,7 @@ proc check_v3_target_debug_mode { } {
     global cxxflags
     return [check_v3_target_prop_cached et_debug_mode {
 	set code "
+	#include <bits/c++config.h>
 	#if ! defined _GLIBCXX_DEBUG
 	# error no debug mode
 	#endif
@@ -1415,11 +1416,8 @@ proc check_effective_target_tzdb { } {
 	return 0
     }
     return [check_v3_target_prop_cached et_tzdb {
-	set cond "defined _GLIBCXX_ZONEINFO_DIR"
-	if {[v3_check_preprocessor_condition tzdb $cond]} {
-	    return 1
-	}
-	return [file exists /usr/share/zoneinfo/tzdata.zi]
+	set cond "defined _GLIBCXX_ZONEINFO_DIR || _GLIBCXX_STATIC_TZDATA"
+	return [v3_check_preprocessor_condition tzdb $cond]
     }]
 }
 

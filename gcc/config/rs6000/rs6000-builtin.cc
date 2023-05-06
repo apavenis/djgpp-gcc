@@ -4,7 +4,7 @@
    Note that "normal" builtins (generic math functions, etc.) are handled
    in rs6000.c.
 
-   Copyright (C) 2002-2022 Free Software Foundation, Inc.
+   Copyright (C) 2002-2023 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -2840,17 +2840,17 @@ lxvrse_expand_builtin (rtx target, insn_code icode, rtx *op,
   if (icode == CODE_FOR_vsx_lxvrbx)
     {
       temp1  = simplify_gen_subreg (V16QImode, tiscratch, TImode, 0);
-      emit_insn (gen_vsx_sign_extend_qi_v2di (discratch, temp1));
+      emit_insn (gen_vsx_sign_extend_v16qi_v2di (discratch, temp1));
     }
   else if (icode == CODE_FOR_vsx_lxvrhx)
     {
       temp1  = simplify_gen_subreg (V8HImode, tiscratch, TImode, 0);
-      emit_insn (gen_vsx_sign_extend_hi_v2di (discratch, temp1));
+      emit_insn (gen_vsx_sign_extend_v8hi_v2di (discratch, temp1));
     }
   else if (icode == CODE_FOR_vsx_lxvrwx)
     {
       temp1  = simplify_gen_subreg (V4SImode, tiscratch, TImode, 0);
-      emit_insn (gen_vsx_sign_extend_si_v2di (discratch, temp1));
+      emit_insn (gen_vsx_sign_extend_v4si_v2di (discratch, temp1));
     }
   else if (icode == CODE_FOR_vsx_lxvrdx)
     discratch = simplify_gen_subreg (V2DImode, tiscratch, TImode, 0);
@@ -2933,7 +2933,7 @@ stv_expand_builtin (insn_code icode, rtx *op,
 
       rtx addr;
       if (op[1] == const0_rtx)
-	addr = gen_rtx_MEM (Pmode, op[2]);
+	addr = gen_rtx_MEM (tmode, op[2]);
       else
 	{
 	  op[1] = copy_to_mode_reg (Pmode, op[1]);

@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -571,13 +571,15 @@ public:
 private:
   VisType vis_type;
   HIR::SimplePath path;
+  Location locus;
 
   // should this store location info?
 
 public:
   Visibility (VisType vis_type,
-	      HIR::SimplePath path = HIR::SimplePath::create_empty ())
-    : vis_type (vis_type), path (std::move (path))
+	      HIR::SimplePath path = HIR::SimplePath::create_empty (),
+	      Location locus = Location ())
+    : vis_type (vis_type), path (std::move (path)), locus (locus)
   {}
 
   // Returns whether visibility is in an error state.
@@ -1224,6 +1226,11 @@ public:
 
   SelfParam &get_self_param () { return self; }
 
+  std::string get_impl_item_name () const override final
+  {
+    return get_function_name ();
+  }
+
 protected:
   /* Use covariance to implement clone function as returning this object
    * rather than base */
@@ -1342,6 +1349,11 @@ public:
   {
     return get_mappings ();
   };
+
+  std::string get_impl_item_name () const override final
+  {
+    return get_new_type_name ();
+  }
 
 protected:
   /* Use covariance to implement clone function as returning this object
@@ -2114,7 +2126,7 @@ public:
 
   Expr *get_expr () { return const_expr.get (); }
 
-  std::string get_identifier () { return identifier; }
+  std::string get_identifier () const { return identifier; }
 
   Analysis::NodeMapping get_impl_mappings () const override
   {
@@ -2127,6 +2139,11 @@ public:
   }
 
   ItemKind get_item_kind () const override { return ItemKind::Constant; }
+
+  std::string get_impl_item_name () const override final
+  {
+    return get_identifier ();
+  }
 
 protected:
   /* Use covariance to implement clone function as returning this object
@@ -2394,6 +2411,8 @@ public:
     return outer_attrs;
   }
 
+  Location get_trait_locus () const override { return get_locus (); }
+
 protected:
   // Clone function implementation as (not pure) virtual method
   TraitItemFunc *clone_trait_item_impl () const override
@@ -2479,6 +2498,8 @@ public:
   {
     return outer_attrs;
   }
+
+  Location get_trait_locus () const override { return get_locus (); }
 
 protected:
   // Clone function implementation as (not pure) virtual method
@@ -2566,6 +2587,8 @@ public:
   {
     return outer_attrs;
   }
+
+  Location get_trait_locus () const override { return get_locus (); }
 
 protected:
   // Clone function implementation as (not pure) virtual method

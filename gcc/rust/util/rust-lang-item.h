@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -17,7 +17,7 @@
 // <http://www.gnu.org/licenses/>.
 
 #include "rust-system.h"
-#include "operator.h"
+#include "rust-operators.h"
 
 namespace Rust {
 namespace Analysis {
@@ -73,6 +73,19 @@ public:
     MUT_PTR,
     CONST_SLICE_PTR,
 
+    // https://github.com/rust-lang/rust/blob/master/library/core/src/marker.rs
+    PHANTOM_DATA,
+
+    // functions
+    FN_ONCE,
+    FN_ONCE_OUTPUT,
+
+    // markers
+    COPY,
+    CLONE,
+    SIZED,
+
+    // delimiter
     UNKNOWN,
   };
 
@@ -218,6 +231,30 @@ public:
       {
 	return ItemType::CONST_SLICE_PTR;
       }
+    else if (item.compare ("phantom_data") == 0)
+      {
+	return ItemType::PHANTOM_DATA;
+      }
+    else if (item.compare ("fn_once") == 0)
+      {
+	return ItemType::FN_ONCE;
+      }
+    else if (item.compare ("fn_once_output") == 0)
+      {
+	return ItemType::FN_ONCE_OUTPUT;
+      }
+    else if (item.compare ("copy") == 0)
+      {
+	return ItemType::COPY;
+      }
+    else if (item.compare ("clone") == 0)
+      {
+	return ItemType::CLONE;
+      }
+    else if (item.compare ("sized") == 0)
+      {
+	return ItemType::SIZED;
+      }
 
     return ItemType::UNKNOWN;
   }
@@ -296,6 +333,18 @@ public:
 	return "mut_ptr";
       case CONST_SLICE_PTR:
 	return "const_slice_ptr";
+      case PHANTOM_DATA:
+	return "phantom_data";
+      case FN_ONCE:
+	return "fn_once";
+      case FN_ONCE_OUTPUT:
+	return "fn_once_output";
+      case COPY:
+	return "copy";
+      case CLONE:
+	return "clone";
+      case SIZED:
+	return "sized";
 
       case UNKNOWN:
 	return "<UNKNOWN>";

@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -118,13 +118,15 @@ is_non_decimal_int_literal_separator (char character)
 
 Lexer::Lexer (const std::string &input)
   : input (RAIIFile::create_error ()), current_line (1), current_column (1),
-    line_map (nullptr), raw_input_source (new BufferInputSource (input, 0)),
+    line_map (nullptr), dump_lex_out (Optional<std::ofstream &>::none ()),
+    raw_input_source (new BufferInputSource (input, 0)),
     input_queue{*raw_input_source}, token_queue (TokenSource (this))
 {}
 
-Lexer::Lexer (const char *filename, RAIIFile file_input, Linemap *linemap)
+Lexer::Lexer (const char *filename, RAIIFile file_input, Linemap *linemap,
+	      Optional<std::ofstream &> dump_lex_opt)
   : input (std::move (file_input)), current_line (1), current_column (1),
-    line_map (linemap),
+    line_map (linemap), dump_lex_out (dump_lex_opt),
     raw_input_source (new FileInputSource (input.get_raw ())),
     input_queue{*raw_input_source}, token_queue (TokenSource (this))
 {
@@ -184,6 +186,45 @@ void
 Lexer::skip_input ()
 {
   skip_input (0);
+}
+
+void
+Lexer::skip_token (int n)
+{
+  // dump tokens if dump-lex option is enabled
+  if (dump_lex_out.is_some ())
+    dump_and_skip (n);
+  else
+    token_queue.skip (n);
+}
+
+void
+Lexer::dump_and_skip (int n)
+{
+  std::ofstream &out = dump_lex_out.get ();
+  bool found_eof = false;
+  const_TokenPtr tok;
+  for (int i = 0; i < n + 1; i++)
+    {
+      if (!found_eof)
+	{
+	  tok = peek_token ();
+	  found_eof |= tok->get_id () == Rust::END_OF_FILE;
+
+	  Location loc = tok->get_locus ();
+
+	  out << "<id=";
+	  out << tok->token_id_to_str ();
+	  out << (tok->has_str () ? (std::string (", text=") + tok->get_str ()
+				     + std::string (", typehint=")
+				     + std::string (tok->get_type_hint_str ()))
+				  : "")
+	      << " ";
+	  out << get_line_map ()->to_string (loc) << " ";
+	}
+
+      token_queue.skip (0);
+    }
 }
 
 void
@@ -406,6 +447,7 @@ Lexer::build_token ()
 	      // match arm arrow
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (MATCH_ARROW, loc);
 	    }
@@ -414,6 +456,7 @@ Lexer::build_token ()
 	      // equality operator
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (EQUAL_EQUAL, loc);
 	    }
@@ -432,6 +475,7 @@ Lexer::build_token ()
 	      // return type specifier
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (RETURN_TYPE, loc);
 	    }
@@ -440,6 +484,7 @@ Lexer::build_token ()
 	      // minus-assign
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (MINUS_EQ, loc);
 	    }
@@ -455,6 +500,7 @@ Lexer::build_token ()
 	      // add-assign
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (PLUS_EQ, loc);
 	    }
@@ -476,6 +522,7 @@ Lexer::build_token ()
 	      // multiplication-assign
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (ASTERISK_EQ, loc);
 	    }
@@ -494,6 +541,7 @@ Lexer::build_token ()
 	      // division-assign
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (DIV_EQ, loc);
 	    }
@@ -561,6 +609,8 @@ Lexer::build_token ()
 	      start_line (current_line, max_column_hint);
 
 	      str.shrink_to_fit ();
+
+	      loc += str.size () - 1;
 	      if (is_inner)
 		return Token::make_inner_doc_comment (loc, std::move (str));
 	      else
@@ -715,6 +765,8 @@ Lexer::build_token ()
 		}
 
 	      str.shrink_to_fit ();
+
+	      loc += str.size () - 1;
 	      if (is_inner)
 		return Token::make_inner_doc_comment (loc, std::move (str));
 	      else
@@ -732,6 +784,7 @@ Lexer::build_token ()
 	      // modulo-assign
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (PERCENT_EQ, loc);
 	    }
@@ -747,6 +800,7 @@ Lexer::build_token ()
 	      // xor-assign?
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (CARET_EQ, loc);
 	    }
@@ -764,6 +818,7 @@ Lexer::build_token ()
 		  // left-shift assign
 		  skip_input (1);
 		  current_column += 3;
+		  loc += 2;
 
 		  return Token::make (LEFT_SHIFT_EQ, loc);
 		}
@@ -772,6 +827,7 @@ Lexer::build_token ()
 		  // left-shift
 		  skip_input ();
 		  current_column += 2;
+		  loc += 1;
 
 		  return Token::make (LEFT_SHIFT, loc);
 		}
@@ -781,6 +837,7 @@ Lexer::build_token ()
 	      // smaller than or equal to
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (LESS_OR_EQUAL, loc);
 	    }
@@ -799,6 +856,7 @@ Lexer::build_token ()
 		  // right-shift-assign
 		  skip_input (1);
 		  current_column += 3;
+		  loc += 2;
 
 		  return Token::make (RIGHT_SHIFT_EQ, loc);
 		}
@@ -807,6 +865,7 @@ Lexer::build_token ()
 		  // right-shift
 		  skip_input ();
 		  current_column += 2;
+		  loc += 1;
 
 		  return Token::make (RIGHT_SHIFT, loc);
 		}
@@ -816,6 +875,7 @@ Lexer::build_token ()
 	      // larger than or equal to
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (GREATER_OR_EQUAL, loc);
 	    }
@@ -831,6 +891,7 @@ Lexer::build_token ()
 	      // scope resolution ::
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (SCOPE_RESOLUTION, loc);
 	    }
@@ -847,6 +908,7 @@ Lexer::build_token ()
 	      // not equal boolean operator
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (NOT_EQUAL, loc);
 	    }
@@ -896,6 +958,7 @@ Lexer::build_token ()
 	      // bitwise or-assign?
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (PIPE_EQ, loc);
 	    }
@@ -904,6 +967,7 @@ Lexer::build_token ()
 	      // logical or
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (OR, loc);
 	    }
@@ -920,6 +984,7 @@ Lexer::build_token ()
 	      // bitwise and-assign?
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (AMP_EQ, loc);
 	    }
@@ -928,6 +993,7 @@ Lexer::build_token ()
 	      // logical and
 	      skip_input ();
 	      current_column += 2;
+	      loc += 1;
 
 	      return Token::make (LOGICAL_AND, loc);
 	    }
@@ -946,6 +1012,7 @@ Lexer::build_token ()
 		  // ellipsis
 		  skip_input (1);
 		  current_column += 3;
+		  loc += 2;
 
 		  return Token::make (ELLIPSIS, loc);
 		}
@@ -954,6 +1021,7 @@ Lexer::build_token ()
 		  // ..=
 		  skip_input (1);
 		  current_column += 3;
+		  loc += 2;
 
 		  return Token::make (DOT_DOT_EQ, loc);
 		}
@@ -962,6 +1030,7 @@ Lexer::build_token ()
 		  // ..
 		  skip_input ();
 		  current_column += 2;
+		  loc += 1;
 
 		  return Token::make (DOT_DOT, loc);
 		}
@@ -1323,7 +1392,7 @@ Lexer::parse_escape (char opening_char)
 /* Parses an escape (or string continue) in a string or character. Supports
  * unicode escapes. */
 std::tuple<Codepoint, int, bool>
-Lexer::parse_utf8_escape (char opening_char)
+Lexer::parse_utf8_escape ()
 {
   Codepoint output_char;
   int additional_length_offset = 0;
@@ -1676,6 +1745,8 @@ Lexer::parse_byte_char (Location loc)
 
   current_column += length;
 
+  loc += length - 1;
+
   return Token::make_byte_char (loc, byte_char);
 }
 
@@ -1740,6 +1811,7 @@ Lexer::parse_byte_string (Location loc)
     }
 
   str.shrink_to_fit ();
+  loc += str.size () - 1;
 
   return Token::make_byte_string (loc, std::move (str));
 }
@@ -1820,6 +1892,8 @@ Lexer::parse_raw_byte_string (Location loc)
 
   current_column += length;
 
+  loc += length - 1;
+
   str.shrink_to_fit ();
 
   return Token::make_byte_string (loc, std::move (str));
@@ -1871,6 +1945,7 @@ Lexer::parse_raw_identifier (Location loc)
   else
     {
       str.shrink_to_fit ();
+      loc += length - 1;
 
       return Token::make_identifier (loc, std::move (str));
     }
@@ -1923,7 +1998,7 @@ Lexer::parse_string (Location loc)
       if (current_char32.value == '\\')
 	{
 	  // parse escape
-	  auto utf8_escape_pair = parse_utf8_escape ('\'');
+	  auto utf8_escape_pair = parse_utf8_escape ();
 	  current_char32 = std::get<0> (utf8_escape_pair);
 
 	  if (current_char32 == Codepoint (0) && std::get<2> (utf8_escape_pair))
@@ -1968,6 +2043,8 @@ Lexer::parse_string (Location loc)
     }
 
   str.shrink_to_fit ();
+  loc += length - 1;
+
   return Token::make_string (loc, std::move (str));
 }
 
@@ -2001,6 +2078,8 @@ Lexer::parse_identifier_or_keyword (Location loc)
     return Token::make (UNDERSCORE, loc);
 
   str.shrink_to_fit ();
+
+  loc += length - 1;
 
   TokenId keyword = classify_keyword (str);
   if (keyword == IDENTIFIER)
@@ -2079,6 +2158,8 @@ Lexer::parse_raw_string (Location loc, int initial_hash_count)
 
   current_column += length;
 
+  loc += length - 1;
+
   str.shrink_to_fit ();
 
   return Token::make_string (loc, std::move (str));
@@ -2142,6 +2223,9 @@ Lexer::parse_non_decimal_int_literal (Location loc, IsDigitFunc is_digit_func,
 						 : "<insert unknown base>")));
       return nullptr;
     }
+
+  loc += length - 1;
+
   return Token::make_int (loc, std::move (existent_str), type_hint);
 }
 
@@ -2234,6 +2318,8 @@ Lexer::parse_decimal_int_or_float (Location loc)
 
       current_column += length;
 
+      loc += length - 1;
+
       str.shrink_to_fit ();
       return Token::make_float (loc, std::move (str), type_hint);
     }
@@ -2253,6 +2339,8 @@ Lexer::parse_decimal_int_or_float (Location loc)
       // type hint not allowed
 
       current_column += length;
+
+      loc += length - 1;
 
       str.shrink_to_fit ();
       return Token::make_float (loc, std::move (str), CORETYPE_UNKNOWN);
@@ -2283,6 +2371,8 @@ Lexer::parse_decimal_int_or_float (Location loc)
 
       current_column += length;
 
+      loc += length - 1;
+
       str.shrink_to_fit ();
       return Token::make_float (loc, std::move (str), type_hint);
     }
@@ -2304,6 +2394,8 @@ Lexer::parse_decimal_int_or_float (Location loc)
 
       current_column += length;
 
+      loc += length - 1;
+
       str.shrink_to_fit ();
       return Token::make_int (loc, std::move (str), type_hint);
     }
@@ -2324,7 +2416,7 @@ Lexer::parse_char_or_lifetime (Location loc)
   if (current_char32.value == '\\')
     {
       // parse escape
-      auto utf8_escape_pair = parse_utf8_escape ('\'');
+      auto utf8_escape_pair = parse_utf8_escape ();
       current_char32 = std::get<0> (utf8_escape_pair);
       length += std::get<1> (utf8_escape_pair);
 
@@ -2340,6 +2432,8 @@ Lexer::parse_char_or_lifetime (Location loc)
 	}
 
       current_column += length;
+
+      loc += length - 1;
 
       return Token::make_char (loc, current_char32);
     }
@@ -2357,6 +2451,8 @@ Lexer::parse_char_or_lifetime (Location loc)
 
 	  // TODO fix due to different widths of utf-8 chars?
 	  current_column += 3;
+
+	  loc += 2;
 
 	  return Token::make_char (loc, current_char32);
 	}
@@ -2379,6 +2475,8 @@ Lexer::parse_char_or_lifetime (Location loc)
 	    }
 
 	  current_column += length;
+
+	  loc += length - 1;
 
 	  str.shrink_to_fit ();
 	  return Token::make_lifetime (loc, std::move (str));

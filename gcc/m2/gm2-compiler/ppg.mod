@@ -1,6 +1,6 @@
 (* ppg.mod master source file of the ebnf parser generator.
 
-Copyright (C) 2003-2022 Free Software Foundation, Inc.
+Copyright (C) 2003-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -380,7 +380,8 @@ PROCEDURE GetEpsilon (f: FollowDesc) : TraverseResult ;
 BEGIN
    IF f=NIL
    THEN
-      Halt('why is the follow info NIL?', __LINE__, __FILE__)
+      Halt('why is the follow info NIL?',
+           __FILE__, __FUNCTION__, __LINE__)
    ELSE
       RETURN( f^.epsilon )
    END
@@ -414,7 +415,8 @@ PROCEDURE GetReachEnd (f: FollowDesc) : TraverseResult ;
 BEGIN
    IF f=NIL
    THEN
-      Halt('why is the follow info NIL?', __LINE__, __FILE__)
+      Halt('why is the follow info NIL?',
+           __FILE__, __FUNCTION__, __LINE__)
    ELSE
       RETURN( f^.reachend )
    END
@@ -430,7 +432,8 @@ BEGIN
    WITH f^ DO
       IF calcfollow
       THEN
-         Halt('why are we reassigning this follow set?', __LINE__, __FILE__)
+         Halt('why are we reassigning this follow set?',
+              __FILE__, __FUNCTION__, __LINE__)
       END ;
       follow     := s ;
       calcfollow := TRUE
@@ -446,14 +449,16 @@ PROCEDURE GetFollow (f: FollowDesc) : SetDesc ;
 BEGIN
    IF f=NIL
    THEN
-      Halt('why is the follow info NIL?', __LINE__, __FILE__)
+      Halt ('why is the follow info NIL?',
+            __FILE__, __FUNCTION__, __LINE__)
    ELSE
       WITH f^ DO
          IF calcfollow
          THEN
             RETURN( follow )
          ELSE
-            Halt('not calculated the follow set yet..', __LINE__, __FILE__)
+            Halt('not calculated the follow set yet..',
+                 __FILE__, __FUNCTION__, __LINE__)
          END
       END
    END
@@ -2496,7 +2501,8 @@ BEGIN
    m2while:  IndentString('WHILE ')
 
    ELSE
-      Halt('unrecognised m2condition', __LINE__, __FILE__)
+      Halt('unrecognised m2condition',
+           __FILE__, __FUNCTION__, __LINE__)
    END
 END CodeCondition ;
 
@@ -2521,7 +2527,8 @@ BEGIN
              Output.WriteLn
 
    ELSE
-      Halt('unrecognised m2condition', __LINE__, __FILE__)
+      Halt('unrecognised m2condition',
+           __FILE__, __FUNCTION__, __LINE__)
    END ;
    OnLineStart := TRUE
 END CodeThenDo ;
@@ -2604,7 +2611,8 @@ BEGIN
    m2while:  IndentString('END ;  (* while *)')
 
    ELSE
-      Halt('unrecognised m2condition', __LINE__, __FILE__)
+      Halt('unrecognised m2condition',
+           __FILE__, __FUNCTION__, __LINE__)
    END ;
    OnLineStart := FALSE
 END CodeEnd ;
@@ -2861,7 +2869,8 @@ BEGIN
    m2while:  IndentString('WHILE ')
 
    ELSE
-      Halt('unrecognised m2condition', __LINE__, __FILE__)
+      Halt('unrecognised m2condition',
+           __FILE__, __FUNCTION__, __LINE__)
    END
 END RecoverCondition ;
 
@@ -2880,7 +2889,8 @@ BEGIN
    m2while:  RETURN( 6 )
 
    ELSE
-      Halt('unrecognised m2condition', __LINE__, __FILE__)
+      Halt('unrecognised m2condition',
+           __FILE__, __FUNCTION__, __LINE__)
    END
 END ConditionIndent ;
 
@@ -3938,7 +3948,8 @@ BEGIN
                  WasNoError := FALSE
 
          ELSE
-            Halt('unknown element in enumeration type', __LINE__, __FILE__)
+            Halt('unknown element in enumeration type',
+                 __FILE__, __FUNCTION__, __LINE__)
          END
       END ;
       from := from^.next
@@ -4675,7 +4686,7 @@ END EmptyProduction ;
 
 PROCEDURE EmitFDLNotice ;
 BEGIN
-   Output.WriteString('@c Copyright (C) 2000-2022 Free Software Foundation, Inc.') ; Output.WriteLn ;
+   Output.WriteString('@c Copyright (C) 2000-2023 Free Software Foundation, Inc.') ; Output.WriteLn ;
    Output.WriteLn ;
    Output.WriteString('@c This file is part of GCC.') ; Output.WriteLn ;
    Output.WriteString('@c Permission is granted to copy, distribute and/or modify this document') ; Output.WriteLn ;

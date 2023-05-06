@@ -1,6 +1,6 @@
 // Utilities for representing and manipulating ranges -*- C++ -*-
 
-// Copyright (C) 2019-2022 Free Software Foundation, Inc.
+// Copyright (C) 2019-2023 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -53,9 +53,7 @@ namespace ranges
       concept __has_arrow = input_iterator<_It>
 	&& (is_pointer_v<_It> || requires(_It __it) { __it.operator->(); });
 
-    template<typename _Tp, typename _Up>
-      concept __different_from
-	= !same_as<remove_cvref_t<_Tp>, remove_cvref_t<_Up>>;
+    using std::__detail::__different_from;
   } // namespace __detail
 
   /// The ranges::view_interface class template
@@ -97,14 +95,26 @@ namespace ranges
       constexpr bool
       empty()
       noexcept(noexcept(_S_empty(_M_derived())))
-      requires forward_range<_Derived>
+      requires forward_range<_Derived> && (!sized_range<_Derived>)
       { return _S_empty(_M_derived()); }
+
+      constexpr bool
+      empty()
+      noexcept(noexcept(ranges::size(_M_derived()) == 0))
+      requires sized_range<_Derived>
+      { return ranges::size(_M_derived()) == 0; }
 
       constexpr bool
       empty() const
       noexcept(noexcept(_S_empty(_M_derived())))
-      requires forward_range<const _Derived>
+      requires forward_range<const _Derived> && (!sized_range<const _Derived>)
       { return _S_empty(_M_derived()); }
+
+      constexpr bool
+      empty() const
+      noexcept(noexcept(ranges::size(_M_derived()) == 0))
+      requires sized_range<const _Derived>
+      { return ranges::size(_M_derived()) == 0; }
 
       constexpr explicit
       operator bool() noexcept(noexcept(ranges::empty(_M_derived())))
@@ -180,6 +190,24 @@ namespace ranges
 	constexpr decltype(auto)
 	operator[](range_difference_t<_Range> __n) const
 	{ return ranges::begin(_M_derived())[__n]; }
+
+#if __cplusplus > 202002L
+      constexpr auto
+      cbegin() requires input_range<_Derived>
+      { return ranges::cbegin(_M_derived()); }
+
+      constexpr auto
+      cbegin() const requires input_range<const _Derived>
+      { return ranges::cbegin(_M_derived()); }
+
+      constexpr auto
+      cend() requires input_range<_Derived>
+      { return ranges::cend(_M_derived()); }
+
+      constexpr auto
+      cend() const requires input_range<const _Derived>
+      { return ranges::cend(_M_derived()); }
+#endif
     };
 
   namespace __detail

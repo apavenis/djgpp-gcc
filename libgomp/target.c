@@ -1,4 +1,4 @@
-/* Copyright (C) 2013-2022 Free Software Foundation, Inc.
+/* Copyright (C) 2013-2023 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>.
 
    This file is part of the GNU Offloading and Multi Processing Library
@@ -310,10 +310,8 @@ struct gomp_coalesce_buf
 
    This must not be used for asynchronous copies, because the host data might
    not be computed yet (by an earlier asynchronous compute region, for
-   example).
-   TODO ... but we could allow CBUF usage for EPHEMERAL data?  (Open question:
-   is it more performant to use libgomp CBUF buffering or individual device
-   asyncronous copying?)  */
+   example).  The exception is for EPHEMERAL data, that we know is available
+   already "by construction".  */
 
 static inline void
 gomp_coalesce_buf_add (struct gomp_coalesce_buf *cbuf, size_t start, size_t len)
@@ -377,30 +375,6 @@ gomp_copy_host2dev (struct gomp_device_descr *devicep,
 		    void *d, const void *h, size_t sz,
 		    bool ephemeral, struct gomp_coalesce_buf *cbuf)
 {
-  if (__builtin_expect (aq != NULL, 0))
-    {
-      /* See 'gomp_coalesce_buf_add'.  */
-      assert (!cbuf);
-
-      void *h_buf = (void *) h;
-      if (ephemeral)
-	{
-	  /* We're queueing up an asynchronous copy from data that may
-	     disappear before the transfer takes place (i.e. because it is a
-	     stack local in a function that is no longer executing).  Make a
-	     copy of the data into a temporary buffer in those cases.  */
-	  h_buf = gomp_malloc (sz);
-	  memcpy (h_buf, h, sz);
-	}
-      goacc_device_copy_async (devicep, devicep->openacc.async.host2dev_func,
-			       "dev", d, "host", h_buf, h, sz, aq);
-      if (ephemeral)
-	/* Free temporary buffer once the transfer has completed.  */
-	devicep->openacc.async.queue_callback_func (aq, free, h_buf);
-
-      return;
-    }
-
   if (cbuf)
     {
       uintptr_t doff = (uintptr_t) d - cbuf->tgt->tgt_start;
@@ -420,6 +394,12 @@ gomp_copy_host2dev (struct gomp_device_descr *devicep,
 		      gomp_mutex_unlock (&devicep->lock);
 		      gomp_fatal ("internal libgomp cbuf error");
 		    }
+
+		  /* In an asynchronous context, verify that CBUF isn't used
+		     with non-EPHEMERAL data; see 'gomp_coalesce_buf_add'.  */
+		  if (__builtin_expect (aq != NULL, 0))
+		    assert (ephemeral);
+
 		  memcpy ((char *) cbuf->buf + (doff - cbuf->chunks[0].start),
 			  h, sz);
 		  return;
@@ -430,7 +410,28 @@ gomp_copy_host2dev (struct gomp_device_descr *devicep,
 	}
     }
 
-  gomp_device_copy (devicep, devicep->host2dev_func, "dev", d, "host", h, sz);
+  if (__builtin_expect (aq != NULL, 0))
+    {
+      void *h_buf = (void *) h;
+      if (ephemeral)
+	{
+	  /* We're queueing up an asynchronous copy from data that may
+	     disappear before the transfer takes place (i.e. because it is a
+	     stack local in a function that is no longer executing).  As we've
+	     not been able to use CBUF, make a copy of the data into a
+	     temporary buffer.  */
+	  h_buf = gomp_malloc (sz);
+	  memcpy (h_buf, h, sz);
+	}
+      goacc_device_copy_async (devicep, devicep->openacc.async.host2dev_func,
+			       "dev", d, "host", h_buf, h, sz, aq);
+      if (ephemeral)
+	/* Free once the transfer has completed.  */
+	devicep->openacc.async.queue_callback_func (aq, free, h_buf);
+    }
+  else
+    gomp_device_copy (devicep, devicep->host2dev_func,
+		      "dev", d, "host", h, sz);
 }
 
 attribute_hidden void
@@ -982,13 +983,13 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
   cbuf.chunk_cnt = -1;
   cbuf.use_cnt = 0;
   cbuf.buf = NULL;
-  if (mapnum > 1 || pragma_kind == GOMP_MAP_VARS_TARGET)
+  if (mapnum > 1 || (pragma_kind & GOMP_MAP_VARS_TARGET))
     {
       size_t chunks_size = (mapnum + 1) * sizeof (struct gomp_coalesce_chunk);
       cbuf.chunks = (struct gomp_coalesce_chunk *) gomp_alloca (chunks_size);
       cbuf.chunk_cnt = 0;
     }
-  if (pragma_kind == GOMP_MAP_VARS_TARGET)
+  if (pragma_kind & GOMP_MAP_VARS_TARGET)
     {
       size_t align = 4 * sizeof (void *);
       tgt_align = align;
@@ -1207,7 +1208,7 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
 	    {
 	      /* Not present, hence, skip entry - including its MAP_POINTER,
 		 when existing.  */
-	      tgt->list[i].offset = OFFSET_POINTER;
+	      tgt->list[i].offset = OFFSET_INLINED;
 	      if (i + 1 < mapnum
 		  && ((typemask & get_kind (short_mapkind, kinds, i + 1))
 		      == GOMP_MAP_POINTER))
@@ -1261,7 +1262,7 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
       tgt->tgt_start = (uintptr_t) tgt->to_free;
       tgt->tgt_end = tgt->tgt_start + sizes[0];
     }
-  else if (not_found_cnt || pragma_kind == GOMP_MAP_VARS_TARGET)
+  else if (not_found_cnt || (pragma_kind & GOMP_MAP_VARS_TARGET))
     {
       /* Allocate tgt_align aligned tgt_size block of memory.  */
       /* FIXME: Perhaps change interface to allocate properly aligned
@@ -1299,7 +1300,7 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
     }
 
   tgt_size = 0;
-  if (pragma_kind == GOMP_MAP_VARS_TARGET)
+  if (pragma_kind & GOMP_MAP_VARS_TARGET)
     tgt_size = mapnum * sizeof (void *);
 
   tgt->array = NULL;
@@ -1395,6 +1396,11 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
 		  {
 		    uintptr_t target = (uintptr_t) hostaddrs[i];
 		    void *devptr = *(void**) hostaddrs[i+1] + sizes[i+1];
+		    /* Per
+		       <https://inbox.sourceware.org/gcc-patches/87o7pe12ke.fsf@euler.schwinge.homeip.net>
+		       "OpenMP: Handle descriptors in target's firstprivate [PR104949]"
+		       this probably needs revision for 'aq' usage.  */
+		    assert (!aq);
 		    gomp_copy_host2dev (devicep, aq, devptr, &target,
 					sizeof (void *), false, cbufp);
 		    ++i;
@@ -1480,8 +1486,9 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
 		    gomp_mutex_unlock (&devicep->lock);
 		    gomp_fatal ("always pointer not mapped");
 		  }
-		if ((get_kind (short_mapkind, kinds, i - 1) & typemask)
-		    != GOMP_MAP_ALWAYS_POINTER)
+		if (i > 0
+		    && ((get_kind (short_mapkind, kinds, i - 1) & typemask)
+			!= GOMP_MAP_ALWAYS_POINTER))
 		  cur_node.tgt_offset = gomp_map_val (tgt, hostaddrs, i - 1);
 		if (cur_node.tgt_offset)
 		  cur_node.tgt_offset -= sizes[i];
@@ -1736,7 +1743,7 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
 	  }
     }
 
-  if (pragma_kind == GOMP_MAP_VARS_TARGET)
+  if (pragma_kind & GOMP_MAP_VARS_TARGET)
     {
       for (i = 0; i < mapnum; i++)
 	{
@@ -1750,9 +1757,6 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
 
   if (cbufp)
     {
-      /* See 'gomp_coalesce_buf_add'.  */
-      assert (!aq);
-
       long c = 0;
       for (c = 0; c < cbuf.chunk_cnt; ++c)
 	gomp_copy_host2dev (devicep, aq,
@@ -1760,8 +1764,12 @@ gomp_map_vars_internal (struct gomp_device_descr *devicep,
 			    (char *) cbuf.buf + (cbuf.chunks[c].start
 						 - cbuf.chunks[0].start),
 			    cbuf.chunks[c].end - cbuf.chunks[c].start,
-			    true, NULL);
-      free (cbuf.buf);
+			    false, NULL);
+      if (aq)
+	/* Free once the transfer has completed.  */
+	devicep->openacc.async.queue_callback_func (aq, free, cbuf.buf);
+      else
+	free (cbuf.buf);
       cbuf.buf = NULL;
       cbufp = NULL;
     }
@@ -3324,7 +3332,7 @@ gomp_target_rev (uint64_t fn_ptr, uint64_t mapnum, uint64_t devaddrs_ptr,
     gomp_fatal ("Cannot find reverse-offload function");
   void (*host_fn)() = (void (*)()) n->k->host_start;
 
-  if (devicep->capabilities & GOMP_OFFLOAD_CAP_SHARED_MEM)
+  if ((devicep->capabilities & GOMP_OFFLOAD_CAP_SHARED_MEM) || mapnum == 0)
     {
       devaddrs = (uint64_t *) (uintptr_t) devaddrs_ptr;
       sizes = (uint64_t *) (uintptr_t) sizes_ptr;
@@ -3402,7 +3410,7 @@ gomp_target_rev (uint64_t fn_ptr, uint64_t mapnum, uint64_t devaddrs_ptr,
 	  }
     }
 
-  if (!(devicep->capabilities & GOMP_OFFLOAD_CAP_SHARED_MEM))
+  if (!(devicep->capabilities & GOMP_OFFLOAD_CAP_SHARED_MEM) && mapnum > 0)
     {
       size_t j, struct_cpy = 0;
       splay_tree_key n2;
@@ -3579,8 +3587,14 @@ gomp_target_rev (uint64_t fn_ptr, uint64_t mapnum, uint64_t devaddrs_ptr,
 		      }
 		    int k;
 		    n2 = NULL;
-		    cdata[i].present = true;
+		    /* Dereference devaddrs[j] to get the device addr.  */
+		    assert (devaddrs[j] - sizes[j] == cdata[i].devaddr);
+		    devaddrs[j] = *(uint64_t *) (uintptr_t) (devaddrs[i]
+							     + sizes[j]);
+		    cdata[j].present = true;
 		    cdata[j].devaddr = devaddrs[j];
+		    if (devaddrs[j] == 0)
+		      continue;
 		    k = gomp_map_cdata_lookup (cdata, devaddrs, kinds, sizes, j,
 					       devaddrs[j],
 					       devaddrs[j] + sizeof (void*),
@@ -3638,7 +3652,7 @@ gomp_target_rev (uint64_t fn_ptr, uint64_t mapnum, uint64_t devaddrs_ptr,
 
   host_fn (devaddrs);
 
-  if (!(devicep->capabilities & GOMP_OFFLOAD_CAP_SHARED_MEM))
+  if (!(devicep->capabilities & GOMP_OFFLOAD_CAP_SHARED_MEM) && mapnum > 0)
     {
       uint64_t struct_cpy = 0;
       bool clean_struct = false;
@@ -3680,7 +3694,7 @@ gomp_target_rev (uint64_t fn_ptr, uint64_t mapnum, uint64_t devaddrs_ptr,
 	      clean_struct = true;
 	      struct_cpy = sizes[i];
 	    }
-	  else if (cdata[i].aligned)
+	  else if (!cdata[i].present && cdata[i].aligned)
 	    gomp_aligned_free ((void *) (uintptr_t) devaddrs[i]);
 	  else if (!cdata[i].present)
 	    free ((void *) (uintptr_t) devaddrs[i]);
@@ -4085,7 +4099,10 @@ GOMP_target_enter_exit_data (int device, size_t mapnum, void **hostaddrs,
 			 GOMP_MAP_VARS_ENTER_DATA);
 	  i += j - i - 1;
 	}
-      else if (i + 1 < mapnum && (kinds[i + 1] & 0xff) == GOMP_MAP_ATTACH)
+      else if (i + 1 < mapnum
+	       && ((kinds[i + 1] & 0xff) == GOMP_MAP_ATTACH
+		   || ((kinds[i + 1] & 0xff) == GOMP_MAP_ALWAYS_POINTER
+		       && (kinds[i] & 0xff) != GOMP_MAP_ALWAYS_POINTER)))
 	{
 	  /* An attach operation must be processed together with the mapped
 	     base-pointer list item.  */

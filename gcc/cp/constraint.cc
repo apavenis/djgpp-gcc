@@ -1,5 +1,5 @@
 /* Processing rules for constraints.
-   Copyright (C) 2013-2022 Free Software Foundation, Inc.
+   Copyright (C) 2013-2023 Free Software Foundation, Inc.
    Contributed by Andrew Sutton (andrew.n.sutton@gmail.com)
 
 This file is part of GCC.
@@ -2705,7 +2705,7 @@ satisfaction_cache::get ()
   if (entry->evaluating)
     {
       /* If we get here, it means satisfaction is self-recursive.  */
-      gcc_checking_assert (!entry->result);
+      gcc_checking_assert (!entry->result || seen_error ());
       if (info.noisy ())
 	error_at (EXPR_LOCATION (ATOMIC_CONSTR_EXPR (entry->atom)),
 		  "satisfaction of atomic constraint %qE depends on itself",
@@ -3068,8 +3068,7 @@ satisfy_atom (tree t, tree args, sat_info info)
     }
   else
     {
-      result = maybe_constant_value (result, NULL_TREE,
-				     /*manifestly_const_eval=*/true);
+      result = maybe_constant_value (result, NULL_TREE, mce_true);
       if (!TREE_CONSTANT (result))
 	result = error_mark_node;
     }
@@ -3797,6 +3796,9 @@ diagnose_trait_expr (tree expr, tree args)
     case CPTK_REF_CONVERTS_FROM_TEMPORARY:
       inform (loc, "  %qT is not a reference that binds to a temporary "
 	      "object of type %qT (copy-initialization)", t1, t2);
+      break;
+    case CPTK_IS_DEDUCIBLE:
+      inform (loc, "  %qD is not deducible from %qT", t1, t2);
       break;
 #define DEFTRAIT_TYPE(CODE, NAME, ARITY) \
     case CPTK_##CODE:

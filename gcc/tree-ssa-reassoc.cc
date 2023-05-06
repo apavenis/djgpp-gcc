@@ -1564,6 +1564,15 @@ build_and_add_sum (tree type, tree op1, tree op2, enum tree_code opcode)
       && (!op2def || gimple_nop_p (op2def)))
     {
       gsi = gsi_after_labels (single_succ (ENTRY_BLOCK_PTR_FOR_FN (cfun)));
+      if (!gsi_end_p (gsi)
+	  && is_gimple_call (gsi_stmt (gsi))
+	  && (gimple_call_flags (gsi_stmt (gsi)) & ECF_RETURNS_TWICE))
+	{
+	  /* Don't add statements before a returns_twice call at the start
+	     of a function.  */
+	  split_edge (single_succ_edge (ENTRY_BLOCK_PTR_FOR_FN (cfun)));
+	  gsi = gsi_after_labels (single_succ (ENTRY_BLOCK_PTR_FOR_FN (cfun)));
+	}
       if (gsi_end_p (gsi))
 	{
 	  gimple_stmt_iterator gsi2
@@ -2271,6 +2280,15 @@ eliminate_redundant_comparison (enum tree_code opcode,
 	  STRIP_USELESS_TYPE_CONVERSION (newop1);
 	  STRIP_USELESS_TYPE_CONVERSION (newop2);
 	  if (!is_gimple_val (newop1) || !is_gimple_val (newop2))
+	    continue;
+	  if (lcode == TREE_CODE (t)
+	      && operand_equal_p (op1, newop1, 0)
+	      && operand_equal_p (op2, newop2, 0))
+	    t = curr->op;
+	  else if ((TREE_CODE (newop1) == SSA_NAME
+		    && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (newop1))
+		   || (TREE_CODE (newop2) == SSA_NAME
+		       && SSA_NAME_OCCURS_IN_ABNORMAL_PHI (newop2)))
 	    continue;
 	}
 
@@ -4678,6 +4696,9 @@ update_ops (tree var, enum tree_code code, const vec<operand_entry *> &ops,
       gimple_set_uid (g, gimple_uid (stmt));
       gimple_set_visited (g, true);
       gsi_insert_before (&gsi, g, GSI_SAME_STMT);
+      gimple_stmt_iterator gsi2 = gsi_for_stmt (g);
+      if (fold_stmt_inplace (&gsi2))
+	update_stmt (g);
     }
   return var;
 }

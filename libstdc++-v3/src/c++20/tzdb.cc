@@ -1,6 +1,6 @@
 // chrono::tzdb -*- C++ -*-
 
-// Copyright The GNU Toolchain Authors
+// Copyright The GNU Toolchain Authors.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -25,6 +25,9 @@
 // The -Wabi warnings in this file are all for non-exported symbols.
 #pragma GCC diagnostic ignored "-Wabi"
 
+// In the usual dual-abi build, std::chrono::tzdb is only defined for cxx11.
+#define _GLIBCXX_USE_CXX11_ABI 1
+
 #include <chrono>
 #include <fstream>    // ifstream
 #include <sstream>    // istringstream
@@ -33,6 +36,10 @@
 #include <memory>     // atomic<shared_ptr<T>>
 #include <mutex>      // mutex
 #include <filesystem> // filesystem::read_symlink
+
+#ifndef _AIX
+# include <cstdlib>   // getenv
+#endif
 
 #ifndef __GTHREADS
 # define USE_ATOMIC_SHARED_PTR 0
@@ -55,13 +62,9 @@
 #if ! __cpp_constinit
 # if __has_cpp_attribute(clang::require_constant_initialization)
 #  define constinit [[clang::require_constant_initialization]]
-#else // YOLO
-# define constinit
+# else // YOLO
+#  define constinit
 # endif
-#endif
-
-#ifndef _GLIBCXX_ZONEINFO_DIR
-# define _GLIBCXX_ZONEINFO_DIR "/usr/share/zoneinfo"
 #endif
 
 namespace __gnu_cxx
@@ -75,10 +78,24 @@ namespace __gnu_cxx
 #if defined(__APPLE__) || defined(__hpux__)
   // Need a weak definition for Mach-O.
   [[gnu::weak]] const char* zoneinfo_dir_override()
-  { return _GLIBCXX_ZONEINFO_DIR; }
+  {
+#ifdef _GLIBCXX_ZONEINFO_DIR
+    return _GLIBCXX_ZONEINFO_DIR;
+#else
+    return nullptr;
+#endif
+  }
 #endif
 #endif
 }
+
+#if ! defined _GLIBCXX_ZONEINFO_DIR && ! defined _GLIBCXX_STATIC_TZDATA
+# define TZDB_DISABLED
+  [[noreturn]] void __throw_disabled()
+  {
+    std::__throw_runtime_error("tzdb: support for loading tzdata is disabled");
+  }
+#endif
 
 namespace std::chrono
 {
@@ -103,7 +120,9 @@ namespace std::chrono
   {
     shared_ptr<_Node> next;
     tzdb db;
+#ifndef TZDB_DISABLED
     vector<Rule> rules;
+#endif
 
     // The following static members are here because making them members
     // of this type gives them access to the private members of time_zone
@@ -173,6 +192,7 @@ namespace std::chrono
   // assume that setting failbit will throw an exception, so individual
   // input operations are not always checked for success.
 
+#ifndef TZDB_DISABLED
   namespace
   {
     // Used for reading a possibly-quoted string from a stream.
@@ -580,6 +600,7 @@ namespace std::chrono
 #endif
     };
   } // namespace
+#endif // TZDB_DISABLED
 
   // Private constructor used by reload_tzdb() to create time_zone objects.
   time_zone::time_zone(unique_ptr<_Impl> __p) : _M_impl(std::move(__p)) { }
@@ -589,6 +610,7 @@ namespace std::chrono
   // The opaque pimpl class stored in a time_zone object.
   struct time_zone::_Impl
   {
+#ifndef TZDB_DISABLED
     explicit
     _Impl(weak_ptr<tzdb_list::_Node> node) : node(std::move(node)) { }
 
@@ -675,11 +697,19 @@ namespace std::chrono
 	  }
 	}
       };
-#endif
+#endif // __GTHREADS && __cpp_lib_atomic_wait
 
     RulesCounter<atomic_signed_lock_free> rules_counter;
+#else // TZDB_DISABLED
+    _Impl(weak_ptr<tzdb_list::_Node>) { }
+    struct {
+      sys_info info;
+      void push_back(sys_info i) { info = std::move(i); }
+    } infos;
+#endif // TZDB_DISABLED
   };
 
+#ifndef TZDB_DISABLED
   namespace
   {
     bool
@@ -729,11 +759,13 @@ namespace std::chrono
 	select_std_or_dst_abbrev(info.abbrev, info.save);
     }
   }
+#endif // TZDB_DISABLED
 
   // Implementation of std::chrono::time_zone::get_info(const sys_time<D>&)
   sys_info
   time_zone::_M_get_sys_info(sys_seconds tp) const
   {
+#ifndef TZDB_DISABLED
     // This gives us access to the node->rules vector, but also ensures
     // that the tzdb node won't get erased while we're still using it.
     const auto node = _M_impl->node.lock();
@@ -932,17 +964,20 @@ namespace std::chrono
 	// Decrement count of rule-based infos (might also release lock).
 	_M_impl->rules_counter.decrement();
       }
-
     return info;
+#else
+    return _M_impl->infos.info;
+#endif // TZDB_DISABLED
   }
 
   // Implementation of std::chrono::time_zone::get_info(const local_time<D>&)
   local_info
   time_zone::_M_get_local_info(local_seconds tp) const
   {
+    local_info info{};
+#ifndef TZDB_DISABLED
     const auto node = _M_impl->node.lock();
 
-    local_info info{};
     // Get sys_info assuming no offset between local time and UTC:
     info.first = _M_get_sys_info(sys_seconds(tp.time_since_epoch()));
 
@@ -1005,36 +1040,100 @@ namespace std::chrono
 	  }
 	// else tp is a unique local time, info.first is the correct sys_info.
       }
+#else
+    info.first = _M_impl->infos.info;
+#endif // TZDB_DISABLED
     return info;
   }
 
- namespace
- {
+#ifndef TZDB_DISABLED
+  namespace
+  {
+    // If a zoneinfo directory is defined (either when the library was built,
+    // or via the zoneinfo_dir_override function) then append filename to it.
+    // The filename should have a leading '/' as one is not added explicitly.
     string
-    zoneinfo_dir()
+    zoneinfo_file(string_view filename)
     {
+      string path;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Waddress"
-      static const string dir = __gnu_cxx::zoneinfo_dir_override
-				  ? __gnu_cxx::zoneinfo_dir_override()
-				  : _GLIBCXX_ZONEINFO_DIR;
+      if (__gnu_cxx::zoneinfo_dir_override)
+      {
+	if (auto override_dir = __gnu_cxx::zoneinfo_dir_override())
+	  path = override_dir;
 #pragma GCC diagnostic pop
-      return dir;
+      }
+#ifdef _GLIBCXX_ZONEINFO_DIR
+      else
+	path = _GLIBCXX_ZONEINFO_DIR;
+#endif
+      if (!path.empty())
+	path.append(filename);
+      return path;
     }
 
+    // N.B. Leading slash as required by zoneinfo_file function.
     const string tzdata_file = "/tzdata.zi";
     const string leaps_file = "/leapseconds";
+
+#ifdef _GLIBCXX_STATIC_TZDATA
+// Static copy of tzdata.zi embedded in the library as tzdata_chars[]
+#include "tzdata.zi.h"
+#endif
+
+    // An istream type that can read from a file or from a string.
+    struct tzdata_stream : istream
+    {
+      // std::spanbuf not available until C++23
+      struct ispanbuf : streambuf
+      {
+	ispanbuf() : streambuf()
+	{
+#ifdef _GLIBCXX_STATIC_TZDATA
+	  char* p = const_cast<char*>(tzdata_chars);
+	  this->setg(p, p, p + std::size(tzdata_chars) - 1);
+#endif
+	}
+
+	// N.B. seekoff and seekpos not overridden, not currently needed.
+      };
+
+      union {
+	filebuf fb;
+	ispanbuf sb;
+      };
+
+      tzdata_stream() : istream(nullptr)
+      {
+	if (string path = zoneinfo_file(tzdata_file); !path.empty())
+	{
+	  filebuf fbuf;
+	  if (fbuf.open(path, std::ios::in))
+	    {
+	      std::construct_at(&fb, std::move(fbuf));
+	      this->init(&fb);
+	      return;
+	    }
+	}
+	std::construct_at(&sb);
+	this->init(&sb);
+      }
+
+      ~tzdata_stream() { std::destroy_at(this->rdbuf()); } // use virtual dtor
+
+      bool using_static_data() const { return this->rdbuf() == &sb; }
+    };
   }
+#endif // TZDB_DISABLED
 
   // Return leap_second values, and a bool indicating whether the values are
   // current (true), or potentially out of date (false).
   pair<vector<leap_second>, bool>
   tzdb_list::_Node::_S_read_leap_seconds()
   {
-    const string filename = zoneinfo_dir() + leaps_file;
-
-    // This list is valid until at least 2023-06-28 00:00:00 UTC.
-    auto expires = sys_days{2023y/6/28};
+    // This list is valid until at least 2023-12-28 00:00:00 UTC.
+    auto expires = sys_days{2023y/12/28};
     vector<leap_second> leaps
     {
       (leap_second)  78796800, // 1 Jul 1972
@@ -1074,10 +1173,10 @@ namespace std::chrono
       return {std::move(leaps), true};
 #endif
 
-    auto exp_year = year_month_day(expires).year();
-
-    if (ifstream ls{filename})
+#ifndef TZDB_DISABLED
+    if (ifstream ls{zoneinfo_file(leaps_file)})
       {
+	auto exp_year = year_month_day(expires).year();
 	std::string s, w;
 	s.reserve(80); // Avoid later reallocations.
 	while (std::getline(ls, s))
@@ -1120,47 +1219,48 @@ namespace std::chrono
 	  }
 	return {std::move(leaps), true};
       }
-    else
-      return {std::move(leaps), false};
+#endif
+    return {std::move(leaps), false};
   }
 
+#ifndef TZDB_DISABLED
   namespace
   {
     // Read the version number from a tzdata.zi file.
-    // Note that some systems do not have this file available by default
-    // but we can configure the library to point to an alternate installation.
     string
-    remote_version(istream* zif)
+    remote_version(istream& zif)
     {
-      ifstream f;
-      if (!zif)
-	{
-	  f.open(zoneinfo_dir() + tzdata_file);
-	  zif = &f;
-	}
       char hash;
       string label;
       string version;
-      if (*zif >> hash >> label >> version)
+      if (zif >> hash >> label >> version)
 	if (hash == '#' && label == "version")
 	  return version;
+#if 0 // Ignore these files, because we're not using them anyway.
 #if defined __NetBSD__
-      if (string ver; ifstream(zoneinfo_dir() + "/TZDATA_VERSION") >> ver)
+      if (string ver; ifstream(zoneinfo_file("/TZDATA_VERSION")) >> ver)
 	return ver;
 #elif defined __APPLE__
       // The standard install on macOS has no tzdata.zi, but we can find the
       // version from +VERSION.
-      if (string ver; ifstream(zoneinfo_dir() + "/+VERSION") >> ver)
+      if (string ver; ifstream(zoneinfo_file("/+VERSION")) >> ver)
 	return ver;
+#endif
 #endif
       __throw_runtime_error("tzdb: no version found in tzdata.zi");
     }
   }
+#endif
 
   // Definition of std::chrono::remote_version()
   string remote_version()
   {
-    return remote_version(nullptr);
+#ifndef TZDB_DISABLED
+    tzdata_stream zif;
+    return remote_version(zif);
+#else
+    __throw_disabled();
+#endif
   }
 
   // Used by chrono::reload_tzdb() to add a new node to the front of the list.
@@ -1197,11 +1297,13 @@ namespace std::chrono
   const tzdb&
   tzdb_list::_Node::_S_init_tzdb()
   {
+#ifndef TZDB_DISABLED
     __try
       {
 	return reload_tzdb();
       }
     __catch (const std::exception&)
+#endif
       {
 	auto [leaps, ok] = _S_read_leap_seconds();
 
@@ -1291,10 +1393,11 @@ namespace std::chrono
   const tzdb&
   reload_tzdb()
   {
+#ifndef TZDB_DISABLED
     using Node = tzdb_list::_Node;
 
-    ifstream zif(zoneinfo_dir() + tzdata_file);
-    const string version = remote_version(&zif);
+    tzdata_stream zif;
+    const string version = remote_version(zif);
 
 #if USE_ATOMIC_SHARED_PTR
     auto head = Node::_S_head_owner.load(memory_order::acquire);
@@ -1311,7 +1414,7 @@ namespace std::chrono
 #endif
 
     auto [leaps, leaps_ok] = Node::_S_read_leap_seconds();
-    if (!leaps_ok)
+    if (!leaps_ok && !zif.using_static_data())
       __throw_runtime_error("tzdb: cannot parse leapseconds file");
 
     auto node = std::make_shared<Node>();
@@ -1400,6 +1503,9 @@ namespace std::chrono
     shared_ptr<Node> head;
 #endif
     return Node::_S_replace_head(std::move(head), std::move(node));
+#else
+    __throw_disabled();
+#endif // TZDB_DISABLED
   }
 
   // Any call to tzdb_list::front() or tzdb_list::begin() must follow
@@ -1526,6 +1632,7 @@ namespace std::chrono
   {
     // TODO cache this function's result?
 
+#ifndef _AIX
     error_code ec;
     // This should be a symlink to e.g. /usr/share/zoneinfo/Europe/London
     auto path = filesystem::read_symlink("/etc/localtime", ec);
@@ -1557,10 +1664,43 @@ namespace std::chrono
 	    return tz;
       }
 
-    // TODO AIX stores current zone in $TZ in /etc/environment but the value
+    if (ifstream tzf{"/etc/sysconfig/clock"})
+      {
+	string line;
+	// Old versions of Suse use TIMEZONE. Old versions of RHEL use ZONE.
+	const string_view keys[] = { "TIMEZONE=" , "ZONE=" };
+	while (std::getline(tzf, line))
+	  for (string_view key : keys)
+	    if (line.starts_with(key))
+	      {
+		string_view name = line;
+		name.remove_prefix(key.size());
+		if (name.size() != 0 && name.front() == '"')
+		  {
+		    name.remove_prefix(1);
+		    if (auto pos = name.find('"'); pos != name.npos)
+		      name = name.substr(0, pos);
+		  }
+		if (auto tz = do_locate_zone(this->zones, this->links, name))
+		  return tz;
+	      }
+      }
+#else
+    // AIX stores current zone in $TZ in /etc/environment but the value
     // is typically a POSIX time zone name, not IANA zone.
     // https://developer.ibm.com/articles/au-aix-posix/
     // https://www.ibm.com/support/pages/managing-time-zone-variable-posix
+    if (const char* env = std::getenv("TZ"))
+      {
+	// This will fail unless TZ contains an IANA time zone name.
+	if (auto tz = do_locate_zone(this->zones, this->links, env))
+	  return tz;
+      }
+#endif
+
+    // Default to UTC.
+    if (auto tz = do_locate_zone(this->zones, this->links, "UTC"))
+      return tz;
 
     __throw_runtime_error("tzdb: cannot determine current zone");
   }
@@ -1583,6 +1723,7 @@ namespace std::chrono
     return get_tzdb_list().begin()->current_zone();
   }
 
+#ifndef TZDB_DISABLED
   namespace
   {
     istream& operator>>(istream& in, abbrev_month& am)
@@ -1823,6 +1964,22 @@ namespace std::chrono
       return in;
     }
 
+    // Test whether the RULES field of a Zone line is a valid Rule name.
+    inline bool
+    is_rule_name(string_view rules) noexcept
+    {
+      // The NAME field of a Rule line must start with a character that is
+      // neither an ASCII digit nor '-' nor '+'.
+      if (('0' <= rules[0] && rules[0] <= '9') || rules[0] == '-')
+	return false;
+      // However, some older tzdata.zi files (e.g. in tzdata-2018e-3.el6 RPM)
+      // used "+" as a Rule name, so we need to handle that special case.
+      if (rules[0] == '+')
+	return rules.size() == 1; // "+" is a rule name, "+1" is not.
+      // Everything else is the name of a Rule.
+      return true;
+    }
+
     istream& operator>>(istream& in, ZoneInfo& inf)
     {
       // STDOFF  RULES  FORMAT  [UNTIL]
@@ -1832,25 +1989,28 @@ namespace std::chrono
 
       in >> off >> quoted{rules} >> fmt;
       inf.m_offset = off.time;
-      if (rules == "-")
+      if (is_rule_name(rules))
 	{
-	  // Standard time always applies, no DST.
-	  inf.set_abbrev(fmt);
-	}
-      else if (string_view("0123456789-+").find(rules[0]) != string_view::npos)
-	{
-	  // rules specifies the difference from standard time.
-	  at_time rules_time;
-	  istringstream in2(std::move(rules));
-	  in2 >> rules_time;
-	  inf.m_save = duration_cast<minutes>(rules_time.time);
-	  select_std_or_dst_abbrev(fmt, inf.m_save);
-	  inf.set_abbrev(fmt);
+	  // `rules` refers to a named Rule which describes transitions.
+	  inf.set_rules_and_format(rules, fmt);
 	}
       else
 	{
-	  // rules refers to a named Rule which describes transitions.
-	  inf.set_rules_and_format(rules, fmt);
+	  if (rules == "-")
+	    {
+	      // Standard time always applies, no DST.
+	    }
+	  else
+	    {
+	      // `rules` specifies the difference from standard time,
+	      // e.g., "-2:30"
+	      at_time rules_time;
+	      istringstream in2(std::move(rules));
+	      in2 >> rules_time;
+	      inf.m_save = duration_cast<minutes>(rules_time.time);
+	      select_std_or_dst_abbrev(fmt, inf.m_save);
+	    }
+	  inf.set_abbrev(fmt);
 	}
 
       // YEAR [MONTH [DAY [TIME]]]
@@ -1875,5 +2035,5 @@ namespace std::chrono
       return in;
     }
   } // namespace
-
+#endif // TZDB_DISABLED
 } // namespace std::chrono

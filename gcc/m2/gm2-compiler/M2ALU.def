@@ -1,6 +1,6 @@
 (* M2ALU.def gcc implementation of the M2ALU module.
 
-Copyright (C) 2001-2022 Free Software Foundation, Inc.
+Copyright (C) 2001-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -51,6 +51,7 @@ EXPORT QUALIFIED PtrToValue,
                  PushRealTree, PopRealTree,
                  PushComplexTree, PopComplexTree,
                  PopConstructorTree,
+                 PopChar,
                  PushCard,
                  PushInt,
                  PushChar,
@@ -261,10 +262,17 @@ PROCEDURE PushChar (c: CHAR) ;
 
 
 (*
+   PopChar - returns the value from the stack in a character.
+*)
+
+PROCEDURE PopChar (tokenno: CARDINAL) : CHAR ;
+
+
+(*
    PushString - pushes the numerical value of the string onto the stack.
 *)
 
-PROCEDURE PushString (tokenno: CARDINAL; s: Name) ;
+PROCEDURE PushString (tokenno: CARDINAL; s: Name; issueError: BOOLEAN) ;
 
 
 (*

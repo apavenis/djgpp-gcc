@@ -74,8 +74,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "asan.h"
 #include "ubsan.h"
 
-
-
 /* Names of tree components.
    Used for printing out the tree and error messages.  */
 #define DEFTREECODE(SYM, NAME, TYPE, LEN) NAME,
@@ -2669,6 +2667,35 @@ build_zero_cst (tree type)
     }
 }
 
+/* If floating-point type TYPE has an IEEE-style sign bit, return an
+   unsigned constant in which only the sign bit is set.  Return null
+   otherwise.  */
+
+tree
+sign_mask_for (tree type)
+{
+  /* Avoid having to choose between a real-only sign and a pair of signs.
+     This could be relaxed if the choice becomes obvious later.  */
+  if (TREE_CODE (type) == COMPLEX_TYPE)
+    return NULL_TREE;
+
+  auto eltmode = as_a<scalar_float_mode> (element_mode (type));
+  auto bits = REAL_MODE_FORMAT (eltmode)->ieee_bits;
+  if (!bits || !pow2p_hwi (bits))
+    return NULL_TREE;
+
+  tree inttype = unsigned_type_for (type);
+  if (!inttype)
+    return NULL_TREE;
+
+  auto mask = wi::set_bit_in_zero (bits - 1, bits);
+  if (TREE_CODE (inttype) == VECTOR_TYPE)
+    {
+      tree elt = wide_int_to_tree (TREE_TYPE (inttype), mask);
+      return build_vector_from_val (inttype, elt);
+    }
+  return wide_int_to_tree (inttype, mask);
+}
 
 /* Build a BINFO with LEN language slots.  */
 
@@ -9703,6 +9730,7 @@ build_common_builtin_nodes (void)
 
   if (!builtin_decl_explicit_p (BUILT_IN_UNREACHABLE)
       || !builtin_decl_explicit_p (BUILT_IN_TRAP)
+      || !builtin_decl_explicit_p (BUILT_IN_UNREACHABLE_TRAP)
       || !builtin_decl_explicit_p (BUILT_IN_ABORT))
     {
       ftype = build_function_type (void_type_node, void_list_node);
@@ -9710,6 +9738,12 @@ build_common_builtin_nodes (void)
 	local_define_builtin ("__builtin_unreachable", ftype,
 			      BUILT_IN_UNREACHABLE,
 			      "__builtin_unreachable",
+			      ECF_NOTHROW | ECF_LEAF | ECF_NORETURN
+			      | ECF_CONST | ECF_COLD);
+      if (!builtin_decl_explicit_p (BUILT_IN_UNREACHABLE_TRAP))
+	local_define_builtin ("__builtin_unreachable trap", ftype,
+			      BUILT_IN_UNREACHABLE_TRAP,
+			      "__builtin_unreachable trap",
 			      ECF_NOTHROW | ECF_LEAF | ECF_NORETURN
 			      | ECF_CONST | ECF_COLD);
       if (!builtin_decl_explicit_p (BUILT_IN_ABORT))
@@ -10853,7 +10887,7 @@ builtin_decl_unreachable ()
   if (sanitize_flags_p (SANITIZE_UNREACHABLE)
       ? (flag_sanitize_trap & SANITIZE_UNREACHABLE)
       : flag_unreachable_traps)
-    fncode = BUILT_IN_TRAP;
+    fncode = BUILT_IN_UNREACHABLE_TRAP;
   /* For non-trapping sanitize, we will rewrite __builtin_unreachable () later,
      in the sanopt pass.  */
 
@@ -10961,6 +10995,10 @@ signed_or_unsigned_type_for (int unsignedp, tree type)
 	return NULL_TREE;
       if (inner == inner2)
 	return type;
+      machine_mode new_mode;
+      if (VECTOR_MODE_P (TYPE_MODE (type))
+	  && related_int_vector_mode (TYPE_MODE (type)).exists (&new_mode))
+	return build_vector_type_for_mode (inner2, new_mode);
       return build_vector_type (inner2, TYPE_VECTOR_SUBPARTS (type));
     }
 
@@ -12994,14 +13032,27 @@ component_ref_sam_type (tree ref)
 	return sam_type;
 
       bool trailing = false;
-      (void)array_ref_flexible_size_p (ref, &trailing);
-      bool zero_length = integer_zerop (memsize);
-      if (!trailing && !zero_length)
-	/* MEMBER is an interior array with
-	  more than one element.  */
+      (void) array_ref_flexible_size_p (ref, &trailing);
+      bool zero_elts = integer_zerop (memsize);
+      if (zero_elts && integer_zerop (TYPE_SIZE_UNIT (TREE_TYPE (memtype))))
+	{
+	  /* If array element has zero size, verify if it is a flexible
+	     array member or zero length array.  Clear zero_elts if
+	     it has one or more members or is a VLA member.  */
+	  if (tree dom = TYPE_DOMAIN (memtype))
+	    if (tree min = TYPE_MIN_VALUE (dom))
+	      if (tree max = TYPE_MAX_VALUE (dom))
+		if (TREE_CODE (min) != INTEGER_CST
+		    || TREE_CODE (max) != INTEGER_CST
+		    || !((integer_zerop (min) && integer_all_onesp (max))
+			 || tree_int_cst_lt (max, min)))
+		  zero_elts = false;
+	}
+      if (!trailing && !zero_elts)
+	/* MEMBER is an interior array with more than one element.  */
 	return special_array_member::int_n;
 
-      if (zero_length)
+      if (zero_elts)
 	{
 	  if (trailing)
 	    return special_array_member::trail_0;
@@ -13009,7 +13060,7 @@ component_ref_sam_type (tree ref)
 	    return special_array_member::int_0;
 	}
 
-      if (!zero_length)
+      if (!zero_elts)
 	if (tree dom = TYPE_DOMAIN (memtype))
 	  if (tree min = TYPE_MIN_VALUE (dom))
 	    if (tree max = TYPE_MAX_VALUE (dom))
@@ -13076,14 +13127,14 @@ component_ref_size (tree ref, special_array_member *sam /* = NULL */)
 
       tree afield_decl = TREE_OPERAND (ref, 1);
       gcc_assert (TREE_CODE (afield_decl) == FIELD_DECL);
-      /* if the trailing array is a not a flexible array member, treat it as
+      /* If the trailing array is a not a flexible array member, treat it as
 	 a normal array.  */
       if (DECL_NOT_FLEXARRAY (afield_decl)
 	  && *sam != special_array_member::int_0)
 	return memsize;
 
       if (*sam == special_array_member::int_0)
-	  memsize = NULL_TREE;
+	memsize = NULL_TREE;
 
       /* For a reference to a flexible array member of a union
 	 use the size of the union instead of the size of the member.  */
@@ -13091,7 +13142,7 @@ component_ref_size (tree ref, special_array_member *sam /* = NULL */)
 	memsize = TYPE_SIZE_UNIT (argtype);
     }
 
-  /* MEMBER is either a bona fide flexible array member, or a zero-length
+  /* MEMBER is either a bona fide flexible array member, or a zero-elements
      array member, or an array of length one treated as such.  */
 
   /* If the reference is to a declared object and the member a true

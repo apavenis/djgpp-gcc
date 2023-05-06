@@ -1,6 +1,6 @@
 /* SysExceptions.c connect signal handlers to exceptions.
 
-Copyright (C) 2010-2022 Free Software Foundation, Inc.
+Copyright (C) 2010-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -230,7 +230,7 @@ SysExceptions_InitExceptionHandlers (void *indexf, void *range, void *casef,
 /* GNU Modula-2 linking fodder.  */
 
 void
-_M2_SysExceptions_init (void)
+_M2_SysExceptions_init (int argc, char *argv[], char *envp[])
 {
 }
 

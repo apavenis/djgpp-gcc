@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Free Software Foundation, Inc.
+// Copyright (C) 2020-2023 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -25,6 +25,7 @@
 #include "rust-ast.h"
 #include "rust-macro.h"
 #include "rust-hir-map.h"
+#include "rust-early-name-resolver.h"
 #include "rust-name-resolver.h"
 #include "rust-macro-invoc-lexer.h"
 
@@ -229,8 +230,8 @@ struct MacroExpander
   MacroExpander (AST::Crate &crate, ExpansionCfg cfg, Session &session)
     : cfg (cfg), crate (crate), session (session),
       sub_stack (SubstitutionScope ()),
-      expanded_fragment (AST::ASTFragment::create_error ()),
-      resolver (Resolver::Resolver::get ()),
+      expanded_fragment (AST::Fragment::create_error ()),
+      has_changed_flag (false), resolver (Resolver::Resolver::get ()),
       mappings (Analysis::Mappings::get ())
   {}
 
@@ -239,16 +240,21 @@ struct MacroExpander
   // Expands all macros in the crate passed in.
   void expand_crate ();
 
+  /**
+   * Expand the eager invocations contained within a builtin macro invocation.
+   * Called by `expand_invoc` when expanding builtin invocations.
+   */
+  void expand_eager_invocations (AST::MacroInvocation &invoc);
+
   /* Expands a macro invocation - possibly make both
    * have similar duck-typed interface and use templates?*/
   // should this be public or private?
   void expand_invoc (AST::MacroInvocation &invoc, bool has_semicolon);
 
   // Expands a single declarative macro.
-  AST::ASTFragment expand_decl_macro (Location locus,
-				      AST::MacroInvocData &invoc,
-				      AST::MacroRulesDefinition &rules_def,
-				      bool semicolon);
+  AST::Fragment expand_decl_macro (Location locus, AST::MacroInvocData &invoc,
+				   AST::MacroRulesDefinition &rules_def,
+				   bool semicolon);
 
   void expand_cfg_attrs (AST::AttrVec &attrs);
   bool fails_cfg (const AST::AttrVec &attr) const;
@@ -259,7 +265,7 @@ struct MacroExpander
   bool try_match_rule (AST::MacroRule &match_rule,
 		       AST::DelimTokenTree &invoc_token_tree);
 
-  AST::ASTFragment transcribe_rule (
+  AST::Fragment transcribe_rule (
     AST::MacroRule &match_rule, AST::DelimTokenTree &invoc_token_tree,
     std::map<std::string, MatchedFragmentContainer> &matched_fragments,
     bool semicolon, ContextType ctx);
@@ -273,7 +279,7 @@ struct MacroExpander
 			 AST::MacroMatchRepetition &rep);
 
   bool match_matcher (Parser<MacroInvocLexer> &parser,
-		      AST::MacroMatcher &matcher);
+		      AST::MacroMatcher &matcher, bool in_repetition = false);
 
   /**
    * Match any amount of matches
@@ -313,48 +319,46 @@ struct MacroExpander
 
   ContextType peek_context () { return context.back (); }
 
-  void set_expanded_fragment (AST::ASTFragment &&fragment)
+  void set_expanded_fragment (AST::Fragment &&fragment)
   {
+    if (!fragment.is_error ())
+      has_changed_flag = true;
+
     expanded_fragment = std::move (fragment);
   }
 
-  AST::ASTFragment take_expanded_fragment (AST::ASTVisitor &vis)
+  AST::Fragment take_expanded_fragment ()
   {
-    AST::ASTFragment old_fragment = std::move (expanded_fragment);
-    auto accumulator = std::vector<AST::SingleASTNode> ();
-    expanded_fragment = AST::ASTFragment::create_error ();
+    auto fragment = std::move (expanded_fragment);
+    expanded_fragment = AST::Fragment::create_error ();
 
-    for (auto &node : old_fragment.get_nodes ())
-      {
-	expansion_depth++;
-	node.accept_vis (vis);
-	// we'll decide the next move according to the outcome of the macro
-	// expansion
-	if (expanded_fragment.is_error ())
-	  accumulator.push_back (node); // if expansion fails, there might be a
-					// non-macro expression we need to keep
-	else
-	  {
-	    // if expansion succeeded, then we need to merge the fragment with
-	    // the contents in the accumulator, so that our final expansion
-	    // result will contain non-macro nodes as it should
-	    auto new_nodes = expanded_fragment.get_nodes ();
-	    std::move (new_nodes.begin (), new_nodes.end (),
-		       std::back_inserter (accumulator));
-	    expanded_fragment = AST::ASTFragment (accumulator);
-	  }
-	expansion_depth--;
-      }
-
-    return old_fragment;
+    return fragment;
   }
+
+  /**
+   * Has the MacroExpander expanded a macro since its state was last reset?
+   */
+  bool has_changed () const { return has_changed_flag; }
+
+  /**
+   * Reset the expander's "changed" state. This function should be executed at
+   * each iteration in a fixed point loop
+   */
+  void reset_changed_state () { has_changed_flag = false; }
+
+  AST::MacroRulesDefinition *get_last_definition () { return last_def; }
+  AST::MacroInvocation *get_last_invocation () { return last_invoc; }
 
 private:
   AST::Crate &crate;
   Session &session;
   SubstitutionScope sub_stack;
   std::vector<ContextType> context;
-  AST::ASTFragment expanded_fragment;
+  AST::Fragment expanded_fragment;
+  bool has_changed_flag;
+
+  AST::MacroRulesDefinition *last_def;
+  AST::MacroInvocation *last_invoc;
 
 public:
   Resolver::Resolver *resolver;

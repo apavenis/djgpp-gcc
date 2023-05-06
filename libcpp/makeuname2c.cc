@@ -1,5 +1,5 @@
 /* Make uname2c.h from various sources.
-   Copyright (C) 2005-2022 Free Software Foundation, Inc.
+   Copyright (C) 2005-2023 Free Software Foundation, Inc.
    Contributed by Jakub Jelinek <jakub@redhat.com>
 
 This program is free software; you can redistribute it and/or modify it
@@ -652,7 +652,7 @@ write_copyright (void)
 {
   static const char copyright[] = "\
 /* Unicode name to codepoint.\n\
-   Copyright (C) 2005-2022 Free Software Foundation, Inc.\n\
+   Copyright (C) 2005-2023 Free Software Foundation, Inc.\n\
 \n\
    This program is free software; you can redistribute it and/or modify it\n\
    under the terms of the GNU General Public License as published by the\n\
@@ -669,7 +669,7 @@ write_copyright (void)
    <http://www.gnu.org/licenses/>.\n\
 \n\
 \n\
-   Copyright (C) 1991-2021 Unicode, Inc.  All rights reserved.\n\
+   Copyright (C) 1991-2022 Unicode, Inc.  All rights reserved.\n\
    Distributed under the Terms of Use in\n\
    http://www.unicode.org/copyright.html.\n\
 \n\

@@ -1,6 +1,6 @@
 /* m2top.h header file for m2top.cc.
 
-Copyright (C) 2012-2022 Free Software Foundation, Inc.
+Copyright (C) 2012-2023 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius@glam.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -38,7 +38,7 @@ along with GNU Modula-2; see the file COPYING3.  If not see
 
 EXTERN void m2top_StartGlobalContext (void);
 EXTERN void m2top_EndGlobalContext (void);
-EXTERN void m2top_SetFlagUnitAtATime (int b);
+EXTERN void m2top_SetFlagUnitAtATime (bool b);
 
 #undef EXTERN
 #endif /* m2top_h.  */

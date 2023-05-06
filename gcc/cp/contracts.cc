@@ -1,5 +1,5 @@
 /* Definitions for C++ contract levels
-   Copyright (C) 2020-2022 Free Software Foundation, Inc.
+   Copyright (C) 2020-2023 Free Software Foundation, Inc.
    Contributed by Jeff Chapman II (jchapman@lock3software.com)
 
 This file is part of GCC.
@@ -161,6 +161,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-iterator.h"
 #include "print-tree.h"
 #include "stor-layout.h"
+#include "intl.h"
 
 const int max_custom_roles = 32;
 static contract_role contract_build_roles[max_custom_roles] = {
@@ -636,17 +637,15 @@ bool
 check_postcondition_result (tree decl, tree type, location_t loc)
 {
   if (VOID_TYPE_P (type))
-  {
-    const char* what;
-    if (DECL_CONSTRUCTOR_P (decl))
-      what = "constructor";
-    else if (DECL_DESTRUCTOR_P (decl))
-      what  = "destructor";
-    else
-      what = "function";
-    error_at (loc, "%s does not return a value to test", what);
-    return false;
-  }
+    {
+      error_at (loc,
+		DECL_CONSTRUCTOR_P (decl)
+		? G_("constructor does not return a value to test")
+		: DECL_DESTRUCTOR_P (decl)
+		? G_("destructor does not return a value to test")
+		: G_("function does not return a value to test"));
+      return false;
+    }
 
   return true;
 }

@@ -339,6 +339,20 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
  (if (REAL_VALUE_NEGATIVE (TREE_REAL_CST (@0)))
   (COPYSIGN_ALL (negate @0) @1)))
 
+/* Transform c ? x * copysign (1, y) : z to c ? x ^ signs(y) : z.
+   tree-ssa-math-opts.cc does the corresponding optimization for
+   unconditional multiplications (via xorsign).  */
+(simplify
+ (IFN_COND_MUL:c @0 @1 (IFN_COPYSIGN real_onep @2) @3)
+ (with { tree signs = sign_mask_for (type); }
+  (if (signs)
+   (with { tree inttype = TREE_TYPE (signs); }
+    (view_convert:type
+     (IFN_COND_XOR:inttype @0
+      (view_convert:inttype @1)
+      (bit_and (view_convert:inttype @2) { signs; })
+      (view_convert:inttype @3)))))))
+
 /* (x >= 0 ? x : 0) + (x <= 0 ? -x : 0) -> abs x.  */
 (simplify
   (plus:c (max @0 integer_zerop) (max (negate @0) integer_zerop))
@@ -1718,6 +1732,17 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
  (if (!FIXED_POINT_TYPE_P (type))
  (plus @0 (negate @1))))
 
+/* 1 - a is a ^ 1 if a had a bool range. */
+/* This is only enabled for gimple as sometimes
+   cfun is not set for the function which contains
+   the SSA_NAME (e.g. while IPA passes are happening,
+   fold might be called).  */
+(simplify
+ (minus integer_onep@0 SSA_NAME@1)
+  (if (INTEGRAL_TYPE_P (type)
+       && ssa_name_has_boolean_range (@1))
+   (bit_xor @1 @0)))
+
 /* Other simplifications of negation (c.f. fold_negate_expr_1).  */
 (simplify
  (negate (mult:c@0 @1 negate_expr_p@2))
@@ -2908,7 +2933,7 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
        /* If the constant operation overflows we cannot do the transform
 	  directly as we would introduce undefined overflow, for example
 	  with (a - 1) + INT_MIN.  */
-       (if (types_match (type, @0))
+       (if (types_match (type, @0) && !TYPE_OVERFLOW_SANITIZED (type))
 	(with { tree cst = const_binop (outer_op == inner_op
 					? PLUS_EXPR : MINUS_EXPR,
 					type, @1, @2); }
@@ -2939,7 +2964,7 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
      (if (!ANY_INTEGRAL_TYPE_P (TREE_TYPE (@0))
 	  || TYPE_OVERFLOW_WRAPS (TREE_TYPE (@0)))
       (view_convert (minus (outer_op @1 (view_convert @2)) @0))
-      (if (types_match (type, @0))
+      (if (types_match (type, @0) && !TYPE_OVERFLOW_SANITIZED (type))
        (with { tree cst = const_binop (outer_op, type, @1, @2); }
 	(if (cst && !TREE_OVERFLOW (cst))
 	 (minus { cst; } @0))))))))
@@ -2958,7 +2983,7 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
     (if (!ANY_INTEGRAL_TYPE_P (TREE_TYPE (@0))
 	 || TYPE_OVERFLOW_WRAPS (TREE_TYPE (@0)))
      (view_convert (plus @0 (minus (view_convert @1) @2)))
-     (if (types_match (type, @0))
+     (if (types_match (type, @0) && !TYPE_OVERFLOW_SANITIZED (type))
       (with { tree cst = const_binop (MINUS_EXPR, type, @1, @2); }
        (if (cst && !TREE_OVERFLOW (cst))
 	(plus { cst; } @0)))))))
@@ -7460,12 +7485,17 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
       isize = tree_to_uhwi (TYPE_SIZE (TREE_TYPE (@1)));
   }
   (switch
-   (if (wi::leu_p (wi::to_wide (@ipos), wi::to_wide (@rpos))
+   (if ((!INTEGRAL_TYPE_P (TREE_TYPE (@1))
+	 || type_has_mode_precision_p (TREE_TYPE (@1)))
+	&& wi::leu_p (wi::to_wide (@ipos), wi::to_wide (@rpos))
 	&& wi::leu_p (wi::to_wide (@rpos) + wi::to_wide (@rsize),
 		      wi::to_wide (@ipos) + isize))
     (BIT_FIELD_REF @1 @rsize { wide_int_to_tree (bitsizetype,
-                                                 wi::to_wide (@rpos)
+						 wi::to_wide (@rpos)
 						 - wi::to_wide (@ipos)); }))
+   (if (wi::eq_p (wi::to_wide (@ipos), wi::to_wide (@rpos))
+        && compare_tree_int (@rsize, isize) == 0)
+    (convert @1))
    (if (wi::geu_p (wi::to_wide (@ipos),
 		   wi::to_wide (@rpos) + wi::to_wide (@rsize))
 	|| wi::geu_p (wi::to_wide (@rpos),
@@ -8066,6 +8096,7 @@ and,
        scalar_mode inner_mode = GET_MODE_INNER (vec_mode);
      }
      (if (sel.series_p (0, 2, 0, 2)
+	  && sel.series_p (1, 2, nelts + 1, 2)
 	  && GET_MODE_2XWIDER_MODE (inner_mode).exists (&wide_elt_mode)
 	  && multiple_p (GET_MODE_NUNITS (vec_mode), 2, &wide_nunits)
 	  && related_vector_mode (vec_mode, wide_elt_mode,

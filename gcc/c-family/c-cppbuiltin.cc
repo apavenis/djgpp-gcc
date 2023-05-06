@@ -1,5 +1,5 @@
 /* Define builtin-in macros for the C family front ends.
-   Copyright (C) 2002-2022 Free Software Foundation, Inc.
+   Copyright (C) 2002-2023 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1903,6 +1903,8 @@ type_suffix (tree type)
 	      systems use it anyway.  */
 	   || type == char_type_node)
     is_long = 0;
+  else if (type == wchar_type_node)
+    return type_suffix (underlying_wchar_type_node);
   else
     gcc_unreachable ();
 

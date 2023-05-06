@@ -1,5 +1,5 @@
 /* Builtins definitions for RISC-V 'V' Extension for GNU compiler.
-   Copyright (C) 2022-2022 Free Software Foundation, Inc.
+   Copyright (C) 2022-2023 Free Software Foundation, Inc.
    Contributed by Ju-Zhe Zhong (juzhe.zhong@rivai.ai), RiVAI Technologies Ltd.
 
    This file is part of GCC.
@@ -103,9 +103,11 @@ static const unsigned int CP_WRITE_CSR = 1U << 5;
 
 /* Bit values used to identify required extensions for RVV intrinsics.  */
 #define RVV_REQUIRE_RV64BIT (1 << 0)	/* Require RV64.  */
-#define RVV_REQUIRE_ZVE64 (1 << 1)	/* Require TARGET_MIN_VLEN > 32.  */
+#define RVV_REQUIRE_ELEN_64 (1 << 1)	/* Require TARGET_VECTOR_ELEN_64.  */
 #define RVV_REQUIRE_ELEN_FP_32 (1 << 2) /* Require FP ELEN >= 32.  */
 #define RVV_REQUIRE_ELEN_FP_64 (1 << 3) /* Require FP ELEN >= 64.  */
+#define RVV_REQUIRE_FULL_V (1 << 4) /* Require Full 'V' extension.  */
+#define RVV_REQUIRE_MIN_VLEN_64 (1 << 5)	/* Require TARGET_MIN_VLEN >= 64.  */
 
 /* Enumerates the RVV operand types.  */
 enum operand_type_index
@@ -122,7 +124,8 @@ enum vector_type_index
 {
 #define DEF_RVV_TYPE(NAME, ABI_NAME, NCHARS, ARGS...) VECTOR_TYPE_##NAME,
 #include "riscv-vector-builtins.def"
-  NUM_VECTOR_TYPES
+  NUM_VECTOR_TYPES,
+  VECTOR_TYPE_INVALID = NUM_VECTOR_TYPES
 };
 
 /* Enumerates the RVV governing predication types.  */
@@ -137,16 +140,8 @@ enum predication_type_index
 /* Enumerates the RVV base types.  */
 enum rvv_base_type
 {
-  RVV_BASE_vector,
-  RVV_BASE_scalar,
-  RVV_BASE_vector_ptr,
-  RVV_BASE_scalar_ptr,
-  RVV_BASE_scalar_const_ptr,
-  RVV_BASE_void,
-  RVV_BASE_size,
-  RVV_BASE_ptrdiff,
-  RVV_BASE_unsigned_long,
-  RVV_BASE_long,
+#define DEF_RVV_BASE_TYPE(NAME, ARGS...) RVV_BASE_##NAME,
+#include "riscv-vector-builtins.def"
   NUM_BASE_TYPES
 };
 
@@ -168,6 +163,13 @@ struct rvv_builtin_suffixes
   const char *vsetvl;
 };
 
+/* Builtin base type used to specify the type of builtin function
+   argument or return result.  */
+struct function_type_info
+{
+  enum vector_type_index type_indexes[NUM_BASE_TYPES];
+};
+
 /* RVV Builtin argument information.  */
 struct rvv_arg_type_info
 {
@@ -176,6 +178,11 @@ struct rvv_arg_type_info
   {}
   enum rvv_base_type base_type;
 
+  tree get_scalar_ptr_type (vector_type_index) const;
+  tree get_scalar_const_ptr_type (vector_type_index) const;
+  vector_type_index get_function_type_index (vector_type_index) const;
+  tree get_scalar_type (vector_type_index) const;
+  tree get_vector_type (vector_type_index) const;
   tree get_tree_type (vector_type_index) const;
 };
 
@@ -309,6 +316,25 @@ function_call_info::function_returns_void_p ()
   return TREE_TYPE (TREE_TYPE (fndecl)) == void_type_node;
 }
 
+/* A class for folding a gimple function call.  */
+class gimple_folder : public function_call_info
+{
+public:
+  gimple_folder (const function_instance &, tree, gimple_stmt_iterator *,
+		 gcall *);
+
+  gimple *fold ();
+
+  /* Where to insert extra statements that feed the final replacement.  */
+  gimple_stmt_iterator *gsi;
+
+  /* The call we're folding.  */
+  gcall *call;
+
+  /* The result of the call, or null if none.  */
+  tree lhs;
+};
+
 /* A class for expanding a function call into RTL.  */
 class function_expander : public function_call_info
 {
@@ -317,17 +343,28 @@ public:
   rtx expand ();
 
   void add_input_operand (machine_mode, rtx);
-  void add_input_operand (unsigned argno);
+  void add_input_operand (unsigned);
   void add_output_operand (machine_mode, rtx);
-  void add_all_one_mask_operand (machine_mode mode);
-  void add_vundef_operand (machine_mode mode);
+  void add_all_one_mask_operand (machine_mode);
+  void add_scalar_move_mask_operand (machine_mode);
+  void add_vundef_operand (machine_mode);
   void add_fixed_operand (rtx);
-  rtx add_mem_operand (machine_mode, rtx);
+  void add_integer_operand (rtx);
+  void add_mem_operand (machine_mode, unsigned);
 
   machine_mode vector_mode (void) const;
+  machine_mode index_mode (void) const;
+  machine_mode arg_mode (int) const;
+  machine_mode mask_mode (void) const;
+  machine_mode ret_mode (void) const;
 
+  rtx use_exact_insn (insn_code);
   rtx use_contiguous_load_insn (insn_code);
   rtx use_contiguous_store_insn (insn_code);
+  rtx use_compare_insn (rtx_code, insn_code);
+  rtx use_ternop_insn (bool, insn_code);
+  rtx use_widen_ternop_insn (insn_code);
+  rtx use_scalar_move_insn (insn_code);
   rtx generate_insn (insn_code);
 
   /* The function call expression.  */
@@ -358,12 +395,59 @@ public:
   /* Return true if intrinsics should apply vl operand.  */
   virtual bool apply_vl_p () const;
 
+  /* Return true if intrinsics should apply tail policy operand.  */
+  virtual bool apply_tail_policy_p () const;
+
+  /* Return true if intrinsics should apply mask policy operand.  */
+  virtual bool apply_mask_policy_p () const;
+
   /* Return true if intrinsic can be overloaded.  */
   virtual bool can_be_overloaded_p (enum predication_type_index) const;
+
+  /* Return true if intrinsics use mask predication.  */
+  virtual bool use_mask_predication_p () const;
+
+  /* Return true if intrinsics has merge operand.  */
+  virtual bool has_merge_operand_p () const;
+
+  /* Try to fold the given gimple call.  Return the new gimple statement
+     on success, otherwise return null.  */
+  virtual gimple *fold (gimple_folder &) const { return NULL; }
 
   /* Expand the given call into rtl.  Return the result of the function,
      or an arbitrary value if the function doesn't return a result.  */
   virtual rtx expand (function_expander &) const = 0;
+};
+
+/* A class for checking that the semantic constraints on a function call are
+   satisfied, such as arguments being integer constant expressions with
+   a particular range.  The parent class's FNDECL is the decl that was
+   called in the original source, before overload resolution.  */
+class function_checker : public function_call_info
+{
+public:
+  function_checker (location_t, const function_instance &, tree, tree,
+		    unsigned int, tree *);
+
+  machine_mode arg_mode (unsigned int) const;
+  machine_mode ret_mode (void) const;
+  bool check (void);
+
+  bool require_immediate (unsigned int, HOST_WIDE_INT, HOST_WIDE_INT) const;
+
+private:
+  bool require_immediate_range (unsigned int, HOST_WIDE_INT,
+				HOST_WIDE_INT) const;
+  void report_non_ice (unsigned int) const;
+  void report_out_of_range (unsigned int, HOST_WIDE_INT, HOST_WIDE_INT,
+			    HOST_WIDE_INT) const;
+
+  /* The type of the resolved function.  */
+  tree m_fntype;
+
+  /* The arguments to the function.  */
+  unsigned int m_nargs;
+  tree *m_args;
 };
 
 /* Classifies functions into "shapes" base on:
@@ -386,12 +470,34 @@ public:
   /* Define all functions associated with the given group.  */
   virtual void build (function_builder &, const function_group_info &) const
     = 0;
+
+  /* Check whether the given call is semantically valid.  Return true
+   if it is, otherwise report an error and return false.  */
+  virtual bool check (function_checker &) const { return true; }
 };
 
 extern const char *const operand_suffixes[NUM_OP_TYPES];
 extern const rvv_builtin_suffixes type_suffixes[NUM_VECTOR_TYPES + 1];
 extern const char *const predication_suffixes[NUM_PRED_TYPES];
 extern rvv_builtin_types_t builtin_types[NUM_VECTOR_TYPES + 1];
+extern function_instance get_read_vl_instance (void);
+extern tree get_read_vl_decl (void);
+
+inline tree
+rvv_arg_type_info::get_scalar_type (vector_type_index type_idx) const
+{
+  return get_function_type_index (type_idx) == VECTOR_TYPE_INVALID
+	   ? NULL_TREE
+	   : builtin_types[get_function_type_index (type_idx)].scalar;
+}
+
+inline tree
+rvv_arg_type_info::get_vector_type (vector_type_index type_idx) const
+{
+  return get_function_type_index (type_idx) == VECTOR_TYPE_INVALID
+	   ? NULL_TREE
+	   : builtin_types[get_function_type_index (type_idx)].vector;
+}
 
 inline bool
 function_instance::operator!= (const function_instance &other) const
@@ -429,6 +535,13 @@ function_expander::add_all_one_mask_operand (machine_mode mode)
   add_input_operand (mode, CONSTM1_RTX (mode));
 }
 
+/* Add mask operand for scalar move instruction.  */
+inline void
+function_expander::add_scalar_move_mask_operand (machine_mode mode)
+{
+  add_input_operand (mode, gen_scalar_move_mask (mode));
+}
+
 /* Add an operand that must be X.  The only way of legitimizing an
    invalid X is to reload the address of a MEM.  */
 inline void
@@ -437,11 +550,51 @@ function_expander::add_fixed_operand (rtx x)
   create_fixed_operand (&m_ops[opno++], x);
 }
 
+/* Add an integer operand X.  */
+inline void
+function_expander::add_integer_operand (rtx x)
+{
+  create_integer_operand (&m_ops[opno++], INTVAL (x));
+}
+
 /* Return the machine_mode of the corresponding vector type.  */
 inline machine_mode
 function_expander::vector_mode (void) const
 {
   return TYPE_MODE (builtin_types[type.index].vector);
+}
+
+/* Return the machine_mode of the corresponding index type.  */
+inline machine_mode
+function_expander::index_mode (void) const
+{
+  return TYPE_MODE (op_info->args[1].get_tree_type (type.index));
+}
+
+/* Return the machine_mode of the corresponding arg type.  */
+inline machine_mode
+function_expander::arg_mode (int idx) const
+{
+  return TYPE_MODE (op_info->args[idx].get_tree_type (type.index));
+}
+
+/* Return the machine_mode of the corresponding return type.  */
+inline machine_mode
+function_expander::ret_mode (void) const
+{
+  return TYPE_MODE (op_info->ret.get_tree_type (type.index));
+}
+
+inline machine_mode
+function_checker::arg_mode (unsigned int argno) const
+{
+  return TYPE_MODE (TREE_TYPE (m_args[argno]));
+}
+
+inline machine_mode
+function_checker::ret_mode () const
+{
+  return TYPE_MODE (TREE_TYPE (TREE_TYPE (fndecl)));
 }
 
 /* Default implementation of function_base::call_properties, with conservatively
@@ -459,6 +612,38 @@ function_base::call_properties (const function_instance &instance) const
    has vl operand.  */
 inline bool
 function_base::apply_vl_p () const
+{
+  return true;
+}
+
+/* We choose to apply tail policy operand by default since most of the
+   intrinsics has tail policy operand.  */
+inline bool
+function_base::apply_tail_policy_p () const
+{
+  return true;
+}
+
+/* We choose to apply mask policy operand by default since most of the
+   intrinsics has mask policy operand.  */
+inline bool
+function_base::apply_mask_policy_p () const
+{
+  return true;
+}
+
+/* We choose to return true by default since most of the intrinsics use
+   mask predication.  */
+inline bool
+function_base::use_mask_predication_p () const
+{
+  return true;
+}
+
+/* We choose to return true by default since most of the intrinsics use
+   has merge operand.  */
+inline bool
+function_base::has_merge_operand_p () const
 {
   return true;
 }
