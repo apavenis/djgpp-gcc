@@ -61,10 +61,18 @@ Source6: ftp://ftp.gnu.org/gnu/automake/automake-%{automake_version}.tar.gz
 
 Buildroot: %{_tmppath}/%{name}-%{version}-root
 BuildArch: i686 x86_64
-Requires: djcrx djcross-binutils >= 2.30
-BuildRequires: gcc-c++ >= 4.4 gcc-gnat >= 4.4 djcrx >= 2.05 djcross-binutils >= 2.30
-BuildRequires: zlib-devel glibc-devel texinfo-tex
-BuildRequires:  flex
+Requires: djcrx
+Requires: djcross-binutils >= 2.30
+BuildRequires: gcc-c++ >= 4.4
+%if %include_ada
+BuildRequires: gcc-gnat >= 4.4
+%endif
+BuildRequires: djcrx >= 2.05
+BuildRequires: djcross-binutils >= 2.30
+BuildRequires: zlib-devel
+BuildRequires: glibc-devel
+BuildRequires: /usr/bin/makeinfo
+BuildRequires: flex
 
 %define shortver %(echo %{rpm_version} | sed -e 's:\\.::2g' -e 's:_:-:g')
 %define shortver2 %(echo %{rpm_version} | sed -e 's:\\.::g' -e 's:_:-:g')
