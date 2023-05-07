@@ -111,12 +111,6 @@ Group: Development/Tools
 Summary: Tools for Linux to DJGPP cross-compiler
 Group: Development/Tools
 
-%if %{create_djgpp_source_zip}
-%package djdocs
-Summary: DJGPP documentation archives for GCC
-Group: Development/Tools
-%endif
-
 %description
 Support of the following programing languages is included:
     C
@@ -154,15 +148,6 @@ Tools for Linux to DJGPP cross-compiler.
 
 At this time there is only fixinc.
 You don not need to install it unless You know why You need it...
-
-%if %{create_djgpp_source_zip}
-%description djdocs
-DJGPP documentation archives for GCC
-
-This RPM is built only to generate and pack PDF, PS and HTML
-documentation archives for DJGPP. It is not intended to
-be used in Linux system
-%endif
 
 #############################################################################
 %if %do_native_bootstrap
@@ -214,6 +199,7 @@ for fn in gnu/gcc-%{shortver}/COPYING* gnu/gcc-%{shortver}/NEWS gnu/gcc-%{shortv
 do \
       test -x $fn && cp -fv $fn ./; \
 done
+true
 
 %build
 # Build requires this directory to be present or to be creatable to work
@@ -320,14 +306,6 @@ PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
 make %{_smp_mflags} PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" || exit 1
 
 cd ..
-
-# Build DJGPP documentation packages for GCC
-%if %{create_djgpp_source_zip}
-( cd gnu/install.gcc && perl mkdocs.pl )
-for file in gnu/gcc-%{shortver}/COPYING* gnu/gcc-%{shortver}/NEWS gnu/gcc-%{shortver}/README gnu/gcc-%{shortver}/readme.DJGPP; do \
-   test -f $file && cp -fv $file ./
-done
-%endif
 
 %install
 rm -fr %{buildroot}
@@ -468,14 +446,6 @@ rm -fr %{buildroot}
 %defattr(-,root,root)
 %{_libdir}/gcc/%{target}/%{gcc_version}/install-tools
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/install-tools
-
-%if %{create_djgpp_source_zip}
-%files djdocs
-%defattr(-,root,root)
-%doc gnu/install.gcc/gcc*d.zip
-%doc gnu/install.gcc/gfor*d.zip
-%doc gnu/install.gcc/ada*d.zip
-%endif
 
 %changelog
 * Fri Jan 13 2023 Andris Pavenis <andris.pavenis@iki.fi>
