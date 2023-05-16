@@ -2,8 +2,8 @@
 
 gcc_src_ext=xz
 gmp_version=6.2.1
-mpfr_version=4.1.0
-mpc_version=1.2.1
+mpfr_version=4.2.0
+mpc_version=1.3.1
 autoconf_version=2.69
 automake_version=1.15.1
 
