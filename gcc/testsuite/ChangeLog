@@ -1,3 +1,124 @@
+2023-04-26  Release Manager
+
+	* GCC 13.1.0 released.
+
+2023-04-25  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2023-04-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/109566
+	* gcc.target/powerpc/pr109566.c: New test.
+
+2023-04-22  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2023-04-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/109583
+	* gcc.dg/pr109583.c: New test.
+
+2023-04-21  Andrew MacLeod  <amacleod@redhat.com>
+
+	Backported from master:
+	2023-04-20  Andrew MacLeod  <amacleod@redhat.com>
+
+	PR tree-optimization/109564
+	* gcc.dg/torture/pr109564-1.c: New testcase.
+	* gcc.dg/torture/pr109564-2.c: Likewise.
+	* gcc.dg/tree-ssa/evrp-ignore.c: XFAIL.
+	* gcc.dg/tree-ssa/vrp06.c: Likewise.
+
+2023-04-19  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2023-04-19  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/109556
+	* g++.dg/cpp2a/concepts-placeholder13.C: New test.
+
+2023-04-19  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2023-04-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/109524
+	* g++.dg/pr109524.C (nn::nn): Change argument type from nn & to
+	const nn &.
+
+2023-04-19  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	Backported from master:
+	2023-04-17  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	* gcc.target/riscv/xtheadfmv-fmv.c: Force the ilp32d ABI.
+
+2023-04-19  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	Backported from master:
+	2023-04-17  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	* gcc.target/riscv/rvv/rvv.exp (gcc_mabi): New variable.
+
+2023-04-19  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	Backported from master:
+	2023-04-17  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	PR target/106602
+	* gcc.target/riscv/pr106602.c: Moved to...
+	* gcc.target/riscv/pr106602-rv64i.c: ...here.
+	* gcc.target/riscv/pr106602-rv32i.c: New test.
+	* gcc.target/riscv/pr106602-rv64i_zba.c: New test.
+
+2023-04-17  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2023-04-17  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/109531
+	* g++.dg/template/canon-type-20.C: New test.
+	* g++.dg/template/ttp36.C: New test.
+
+2023-04-17  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/107769
+	PR ipa/109318
+	* gcc.dg/ipa/pr109318.c: New test.
+	* gcc.dg/lto/pr107769_0.c: Likewise.
+
+2023-04-17  Philipp Tomsich  <philipp.tomsich@vrull.eu>
+	    Di Zhao  <di.zhao@amperecomputing.com>
+
+	* gcc.target/aarch64/ampere1-no_ldp_combine.c: New test.
+
+2023-04-17  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.dg/vect/vect-simd-clone-16f.c: Add -mno-avx512f for non-lp64 x86.
+	* gcc.dg/vect/vect-simd-clone-17f.c: Likewise.
+	* gcc.dg/vect/vect-simd-clone-18f.c: Likewise.
+
+2023-04-17  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/109524
+	* g++.dg/pr109524.C: New testcase.
+
+2023-04-17  Jiufu Guo  <guojiufu@linux.ibm.com>
+
+	PR testsuite/108809
+	* gcc.target/powerpc/builtins-5-p9-runnable.c: Update for BE.
+
+2023-04-17  Kito Cheng  <kito.cheng@sifive.com>
+
+	* gcc.target/riscv/rvv/base/scalar_move-2.c: Adjust include way
+	for riscv_vector.h
+	* gcc.target/riscv/rvv/base/spill-sp-adjust.c: Add missing
+	-mabi.
+
+2023-04-17  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/mask_insn_shortcut.c: New test.
+
 2023-04-16  Jeff Law  <jlaw@ventanamicro>
 
 	PR target/109508
