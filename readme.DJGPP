@@ -10,11 +10,6 @@ Requirements to use this binary release:
     -  DJGPP-@DJVER@.
     -  binutils-2.30 or above (Earlier versions will NOT work)
 
-Changes since release of DJGPP port of gcc-6.3.0:
-    - support for std::experimental::filesystem added (note that library
-      is renamed from libstdc++fs.a to libstdcfs.a to avoid filename conflict
-      when LFN support is not available)
-
 Source archives
 ===============
 
@@ -32,10 +27,14 @@ also all required libraries.
 
 Most users don't need source archives at all.
 
+Also for GCC GIT repository (upstream https://github.com/gcc-mirror/gcc)
+with DJGPP related changes can be found at https://github.com/apavenis/djgpp-gcc.
+
+
 Binary archives
 ================
 
-Binary archives are split into 4 parts:
+Binary archives are split into 4 parts (Ada compiler is not built for now):
 
   gcc@GCCVER3@b.zip  : The gcc.exe driver program and the C compiler.
                  It also contains the documentation.
@@ -48,8 +47,6 @@ Binary archives are split into 4 parts:
 		 libobjc.a and the needed header files.
 
   gfor@GCCVER3@b.zip  : GNU Fortran compiler
-
-  ada@GCCVER3@b.zip : The GNU Ada compiler and development files
 
 The archive gcc@GCCVER3@b.zip is required by all other binary packages
 
@@ -88,8 +85,6 @@ Rrquired packages for different programming languages
 	Fortran	95              : gcc@GCCVER3@b.zip, gfor@GCCVER3@b.zip
 
 	Objective C		: gcc@GCCVER3@b.zip, objc@GCCVER3@b.zip
-
-        Ada                     : gcc@GCCVER3@b.zip, ada@GCCVER3@b.zip
 
 Of course for ALL languages You also need at least binutils (bnu230b.zip
 or newer) and @DJDEV@.zip (or newer when it will be released)
@@ -130,7 +125,8 @@ Notes for using under Windows
 -----------------------------
 
 1. Windows 10 32 bit cannot be used after 2018.03 cummulative update (KB4088776)
-from Microsoft is applied. Microsoft could possibly fix this sometime in future (maybe).
+from Microsoft is applied. Microsoft could possibly fix this sometime in future (maybe),
+but they did not
 
 2. DJGPP will NOT work under Windows when creating short file names is disabled from
 Windows registry. See
