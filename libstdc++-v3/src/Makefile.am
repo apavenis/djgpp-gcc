@@ -134,11 +134,11 @@ cxx11_sources = \
 
 if DJGPP
 if GLIBCXX_HOSTED
-libstdc___la_SOURCES = $(cxx98_sources) $(cxx11_sources)
+libstdcxx_la_SOURCES = $(cxx98_sources) $(cxx11_sources)
 else
 # When freestanding, there's currently no compatibility to preserve.  Should
 # that change, any compatibility sources can be added here.
-libstdc___la_SOURCES =
+libstdcxx_la_SOURCES =
 endif
 else
 if GLIBCXX_HOSTED
