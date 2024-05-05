@@ -1,6 +1,6 @@
 // random number generation -*- C++ -*-
 
-// Copyright (C) 2009-2023 Free Software Foundation, Inc.
+// Copyright (C) 2009-2024 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -64,6 +64,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   // Implementation-space details.
   namespace __detail
   {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc++17-extensions"
+
     template<typename _UIntType, size_t __w,
 	     bool = __w < static_cast<size_t>
 			  (std::numeric_limits<_UIntType>::digits)>
@@ -102,6 +105,108 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     template<int __s>
       struct _Select_uint_least_t<__s, 1>
       { __extension__ using type = unsigned __int128; };
+#elif __has_builtin(__builtin_add_overflow) \
+    && __has_builtin(__builtin_sub_overflow) \
+    && defined __UINT64_TYPE__
+    template<int __s>
+      struct _Select_uint_least_t<__s, 1>
+      {
+	// This is NOT a general-purpose 128-bit integer type.
+	// It only supports (type(a) * x + c) % m as needed by __mod.
+	struct type
+	{
+	  explicit
+	  type(uint64_t __a) noexcept : _M_lo(__a), _M_hi(0) { }
+
+	  // pre: __l._M_hi == 0
+	  friend type
+	  operator*(type __l, uint64_t __x) noexcept
+	  {
+	    // Split 64-bit values __l._M_lo and __x into high and low 32-bit
+	    // limbs and multiply those individually.
+	    // l * x = (l0 + l1) * (x0 + x1) = l0x0 + l0x1 + l1x0 + l1x1
+
+	    constexpr uint64_t __mask = 0xffffffff;
+	    uint64_t __ll[2] = { __l._M_lo >> 32, __l._M_lo & __mask };
+	    uint64_t __xx[2] = { __x >> 32, __x & __mask };
+	    uint64_t __l0x0 = __ll[0] * __xx[0];
+	    uint64_t __l0x1 = __ll[0] * __xx[1];
+	    uint64_t __l1x0 = __ll[1] * __xx[0];
+	    uint64_t __l1x1 = __ll[1] * __xx[1];
+	    // These bits are the low half of __l._M_hi
+	    // and the high half of __l._M_lo.
+	    uint64_t __mid
+	      = (__l0x1 & __mask) + (__l1x0 & __mask) + (__l1x1 >> 32);
+	    __l._M_hi = __l0x0 + (__l0x1 >> 32) + (__l1x0 >> 32) + (__mid >> 32);
+	    __l._M_lo = (__mid << 32) + (__l1x1 & __mask);
+	    return __l;
+	  }
+
+	  friend type
+	  operator+(type __l, uint64_t __c) noexcept
+	  {
+	    __l._M_hi += __builtin_add_overflow(__l._M_lo, __c, &__l._M_lo);
+	    return __l;
+	  }
+
+	  friend type
+	  operator%(type __l, uint64_t __m) noexcept
+	  {
+	    if (__builtin_expect(__l._M_hi == 0, 0))
+	      {
+		__l._M_lo %= __m;
+		return __l;
+	      }
+
+	    int __shift = __builtin_clzll(__m) + 64
+			    - __builtin_clzll(__l._M_hi);
+	    type __x(0);
+	    if (__shift >= 64)
+	      {
+		__x._M_hi = __m << (__shift - 64);
+		__x._M_lo = 0;
+	      }
+	    else
+	      {
+		__x._M_hi = __m >> (64 - __shift);
+		__x._M_lo = __m << __shift;
+	      }
+
+	    while (__l._M_hi != 0 || __l._M_lo >= __m)
+	      {
+		if (__x <= __l)
+		  {
+		    __l._M_hi -= __x._M_hi;
+		    __l._M_hi -= __builtin_sub_overflow(__l._M_lo, __x._M_lo,
+							&__l._M_lo);
+		  }
+		__x._M_lo = (__x._M_lo >> 1) | (__x._M_hi << 63);
+		__x._M_hi >>= 1;
+	      }
+	    return __l;
+	  }
+
+	  // pre: __l._M_hi == 0
+	  explicit operator uint64_t() const noexcept
+	  { return _M_lo; }
+
+	  friend bool operator<(const type& __l, const type& __r) noexcept
+	  {
+	    if (__l._M_hi < __r._M_hi)
+	      return true;
+	    else if (__l._M_hi == __r._M_hi)
+	      return __l._M_lo < __r._M_lo;
+	    else
+	      return false;
+	  }
+
+	  friend bool operator<=(const type& __l, const type& __r) noexcept
+	  { return !(__r < __l); }
+
+	  uint64_t _M_lo;
+	  uint64_t _M_hi;
+	};
+      };
 #endif
 
     // Assume a != 0, a < m, c < m, x < m.
@@ -149,14 +254,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       inline _Tp
       __mod(_Tp __x)
       {
-	if _GLIBCXX17_CONSTEXPR (__a == 0)
+	if constexpr (__a == 0)
 	  return __c;
-	else
-	  {
-	    // _Mod must not be instantiated with a == 0
-	    constexpr _Tp __a1 = __a ? __a : 1;
-	    return _Mod<_Tp, __m, __a1, __c>::__calc(__x);
-	  }
+	else // N.B. _Mod must not be instantiated with a == 0
+	  return _Mod<_Tp, __m, __a, __c>::__calc(__x);
       }
 
     /*
@@ -216,6 +317,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	__not_<is_convertible<_Sseq, _Res>>
       >;
 
+#pragma GCC diagnostic pop
   } // namespace __detail
   /// @endcond
 
@@ -256,6 +358,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * parameters @p __a and @p __c must be less than @p __m.
    *
    * The size of the state is @f$1@f$.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _UIntType, _UIntType __a, _UIntType __c, _UIntType __m>
     class linear_congruential_engine
@@ -471,6 +576,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * @tparam __c  The second left-shift tempering matrix mask.
    * @tparam __l  The second right-shift tempering matrix parameter.
    * @tparam __f  Initialization multiplier.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _UIntType, size_t __w,
 	   size_t __n, size_t __m, size_t __r,
@@ -697,6 +805,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *
    * The size of the state is @f$r@f$
    * and the maximum period of the generator is @f$(m^r - m^s - 1)@f$.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _UIntType, size_t __w, size_t __s, size_t __r>
     class subtract_with_carry_engine
@@ -890,7 +1001,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * Produces random numbers from some base engine by discarding blocks of
    * data.
    *
-   * 0 <= @p __r <= @p __p
+   * @pre @f$ 0 \leq r \leq p @f$
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RandomNumberEngine, size_t __p, size_t __r>
     class discard_block_engine
@@ -1114,6 +1228,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   /**
    * Produces random numbers by combining random numbers from some base
    * engine to produce random numbers with a specified number of bits @p __w.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RandomNumberEngine, size_t __w, typename _UIntType>
     class independent_bits_engine
@@ -1338,6 +1455,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *
    * The values from the base engine are stored in a sequence of size @p __k
    * and shuffled by an algorithm that depends on those values.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RandomNumberEngine, size_t __k>
     class shuffle_order_engine
@@ -1625,6 +1745,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   /**
    * A standard interface to a platform-specific non-deterministic
    * random number generator (if any are available).
+   *
+   * @headerfile random
+   * @since C++11
    */
   class random_device
   {
@@ -1750,6 +1873,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * A continuous random distribution on the range [min, max) with equal
    * probability throughout the range.  The URNG should be real-valued and
    * deliver number in the range [0, 1).
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class uniform_real_distribution
@@ -1984,6 +2110,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *     p(x|\mu,\sigma) = \frac{1}{\sigma \sqrt{2 \pi}}
    *            e^{- \frac{{x - \mu}^ {2}}{2 \sigma ^ {2}} } 
    * @f]
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class normal_distribution
@@ -2208,6 +2337,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *     p(x|m,s) = \frac{1}{sx\sqrt{2\pi}}
    *                \exp{-\frac{(\ln{x} - m)^2}{2s^2}} 
    * @f]
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class lognormal_distribution
@@ -2414,6 +2546,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     { return !(__d1 == __d2); }
 #endif
 
+  /// @} group random_distributions_normal
+
+  /**
+   * @addtogroup random_distributions_poisson Poisson Distributions
+   * @ingroup random_distributions
+   * @{
+   */
+
   /**
    * @brief A gamma continuous distribution for random numbers.
    *
@@ -2422,6 +2562,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *     p(x|\alpha,\beta) = \frac{1}{\beta\Gamma(\alpha)}
    *                         (x/\beta)^{\alpha - 1} e^{-x/\beta} 
    * @f]
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class gamma_distribution
@@ -2645,14 +2788,25 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
      inline bool
      operator!=(const std::gamma_distribution<_RealType>& __d1,
 		const std::gamma_distribution<_RealType>& __d2)
-    { return !(__d1 == __d2); }
+     { return !(__d1 == __d2); }
 #endif
+
+  /// @} group random_distributions_poisson
+
+  /**
+   * @addtogroup random_distributions_normal Normal Distributions
+   * @ingroup random_distributions
+   * @{
+   */
 
   /**
    * @brief A chi_squared_distribution random number distribution.
    *
    * The formula for the normal probability mass function is
    * @f$p(x|n) = \frac{x^{(n/2) - 1}e^{-x/2}}{\Gamma(n/2) 2^{n/2}}@f$
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class chi_squared_distribution
@@ -2880,6 +3034,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *
    * The formula for the normal probability mass function is
    * @f$p(x|a,b) = (\pi b (1 + (\frac{x-a}{b})^2))^{-1}@f$
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class cauchy_distribution
@@ -3092,6 +3249,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *                (\frac{m}{n})^{m/2} x^{(m/2)-1}
    *                (1 + \frac{mx}{n})^{-(m+n)/2} 
    * @f]
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class fisher_f_distribution
@@ -3328,6 +3488,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *     p(x|n) = \frac{1}{\sqrt(n\pi)} \frac{\Gamma((n+1)/2)}{\Gamma(n/2)}
    *              (1 + \frac{x^2}{n}) ^{-(n+1)/2} 
    * @f]
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class student_t_distribution
@@ -3559,6 +3722,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *
    * Generates a sequence of true and false values with likelihood @f$p@f$
    * that true will come up and @f$(1 - p)@f$ that false will appear.
+   *
+   * @headerfile random
+   * @since C++11
    */
   class bernoulli_distribution
   {
@@ -3779,6 +3945,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * The formula for the binomial probability density function is
    * @f$p(i|t,p) = \binom{t}{i} p^i (1 - p)^{t - i}@f$ where @f$t@f$
    * and @f$p@f$ are the parameters of the distribution.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _IntType = int>
     class binomial_distribution
@@ -3834,7 +4003,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	double _M_p;
 
 	double _M_q;
-#if _GLIBCXX_USE_C99_MATH_TR1
+#if _GLIBCXX_USE_C99_MATH_FUNCS
 	double _M_d1, _M_d2, _M_s1, _M_s2, _M_c,
 	       _M_a1, _M_a123, _M_s, _M_lf, _M_lp1p;
 #endif
@@ -3948,7 +4117,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	friend bool
         operator==(const binomial_distribution& __d1,
 		   const binomial_distribution& __d2)
-#ifdef _GLIBCXX_USE_C99_MATH_TR1
+#ifdef _GLIBCXX_USE_C99_MATH_FUNCS
 	{ return __d1._M_param == __d2._M_param && __d1._M_nd == __d2._M_nd; }
 #else
         { return __d1._M_param == __d2._M_param; }
@@ -4001,7 +4170,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       param_type _M_param;
 
-      // NB: Unused when _GLIBCXX_USE_C99_MATH_TR1 is undefined.
+      // NB: Unused when _GLIBCXX_USE_C99_MATH_FUNCS is undefined.
       std::normal_distribution<double> _M_nd;
     };
 
@@ -4022,6 +4191,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * The formula for the geometric probability density function is
    * @f$p(i|p) = p(1 - p)^{i}@f$ where @f$p@f$ is the parameter of the
    * distribution.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _IntType = int>
     class geometric_distribution
@@ -4236,6 +4408,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * The formula for the negative binomial probability mass function is
    * @f$p(i) = \binom{n}{i} p^i (1 - p)^{t - i}@f$ where @f$t@f$
    * and @f$p@f$ are the parameters of the distribution.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _IntType = int>
     class negative_binomial_distribution
@@ -4470,6 +4645,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * The formula for the Poisson probability density function is
    * @f$p(i|\mu) = \frac{\mu^i}{i!} e^{-\mu}@f$ where @f$\mu@f$ is the
    * parameter of the distribution.
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _IntType = int>
     class poisson_distribution
@@ -4519,7 +4697,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	double _M_mean;
 
 	double _M_lm_thr;
-#if _GLIBCXX_USE_C99_MATH_TR1
+#if _GLIBCXX_USE_C99_MATH_FUNCS
 	double _M_lfm, _M_sm, _M_d, _M_scx, _M_1cx, _M_c2b, _M_cb;
 #endif
       };
@@ -4624,7 +4802,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       friend bool
       operator==(const poisson_distribution& __d1,
 		 const poisson_distribution& __d2)
-#ifdef _GLIBCXX_USE_C99_MATH_TR1
+#ifdef _GLIBCXX_USE_C99_MATH_FUNCS
       { return __d1._M_param == __d2._M_param && __d1._M_nd == __d2._M_nd; }
 #else
       { return __d1._M_param == __d2._M_param; }
@@ -4670,7 +4848,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
       param_type _M_param;
 
-      // NB: Unused when _GLIBCXX_USE_C99_MATH_TR1 is undefined.
+      // NB: Unused when _GLIBCXX_USE_C99_MATH_FUNCS is undefined.
       std::normal_distribution<double> _M_nd;
     };
 
@@ -4699,6 +4877,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    * <tr><td>Range</td><td>@f$[0, \infty]@f$</td></tr>
    * <tr><td>Standard Deviation</td><td>@f$\frac{1}{\lambda}@f$</td></tr>
    * </table>
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class exponential_distribution
@@ -4918,6 +5099,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *     p(x|\alpha,\beta) = \frac{\alpha}{\beta} (\frac{x}{\beta})^{\alpha-1}
    *                         \exp{(-(\frac{x}{\beta})^\alpha)} 
    * @f]
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class weibull_distribution
@@ -5132,6 +5316,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *     p(x|a,b) = \frac{1}{b}
    *                \exp( \frac{a-x}{b} - \exp(\frac{a-x}{b})) 
    * @f]
+   *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class extreme_value_distribution
@@ -5337,12 +5524,23 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     operator>>(std::basic_istream<_CharT, _Traits>& __is,
 	       std::extreme_value_distribution<_RealType>& __x);
 
+  /// @} group random_distributions_poisson
+
+  /**
+   * @addtogroup random_distributions_sampling Sampling Distributions
+   * @ingroup random_distributions
+   * @{
+   */
 
   /**
    * @brief A discrete_distribution random number distribution.
    *
-   * The formula for the discrete probability mass function is
+   * This distribution produces random numbers @f$ i, 0 \leq i < n @f$,
+   * distributed according to the probability mass function
+   * @f$ p(i | p_0, ..., p_{n-1}) = p_i @f$.
    *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _IntType = int>
     class discrete_distribution
@@ -5579,8 +5777,18 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   /**
    * @brief A piecewise_constant_distribution random number distribution.
    *
-   * The formula for the piecewise constant probability mass function is
+   * This distribution produces random numbers @f$ x, b_0 \leq x < b_n @f$,
+   * uniformly distributed over each subinterval @f$ [b_i, b_{i+1}) @f$
+   * according to the probability mass function
+   * @f[
+   *   p(x | b_0, ..., b_n, \rho_0, ..., \rho_{n-1})
+   *     = \rho_i \cdot \frac{b_{i+1} - x}{b_{i+1} - b_i}
+   *       + \rho_{i+1} \cdot \frac{ x - b_i}{b_{i+1} - b_i}
+   * @f]
+   * for @f$ b_i \leq x < b_{i+1} @f$.
    *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class piecewise_constant_distribution
@@ -5853,8 +6061,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   /**
    * @brief A piecewise_linear_distribution random number distribution.
    *
-   * The formula for the piecewise linear probability mass function is
+   * This distribution produces random numbers @f$ x, b_0 \leq x < b_n @f$,
+   * distributed over each subinterval @f$ [b_i, b_{i+1}) @f$
+   * according to the probability mass function
+   * @f$ p(x | b_0, ..., b_n, \rho_0, ..., \rho_n) = \rho_i @f$,
+   * for @f$ b_i \leq x < b_{i+1} @f$.
    *
+   * @headerfile random
+   * @since C++11
    */
   template<typename _RealType = double>
     class piecewise_linear_distribution
@@ -6126,7 +6340,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     { return !(__d1 == __d2); }
 #endif
 
-  /// @} group random_distributions_poisson
+  /// @} group random_distributions_sampling
 
   /// @} *group random_distributions
 
@@ -6139,6 +6353,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   /**
    * @brief The seed_seq class generates sequences of seeds for random
    *        number generators.
+   *
+   * @headerfile random
+   * @since C++11
    */
   class seed_seq
   {

@@ -1,4 +1,4 @@
-/* Copyright (C) 2002-2023 Free Software Foundation, Inc.
+/* Copyright (C) 2002-2024 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -288,7 +288,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define LDBL_SNAN	(__builtin_nansl (""))
 #endif
 
-#endif /* C2X */
+#endif /* C23 */
 
 #if (defined __STDC_WANT_IEC_60559_BFP_EXT__ \
      || defined __STDC_WANT_IEC_60559_EXT__)
@@ -328,7 +328,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 #undef FLT16_SNAN
 #define FLT16_SNAN	(__builtin_nansf16 (""))
-#endif /* C2X */
+#endif /* C23 */
 #endif /* __FLT16_MANT_DIG__.  */
 
 #ifdef __FLT32_MANT_DIG__
@@ -357,7 +357,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 #undef FLT32_SNAN
 #define FLT32_SNAN	(__builtin_nansf32 (""))
-#endif /* C2X */
+#endif /* C23 */
 #endif /* __FLT32_MANT_DIG__.  */
 
 #ifdef __FLT64_MANT_DIG__
@@ -386,7 +386,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 #undef FLT64_SNAN
 #define FLT64_SNAN	(__builtin_nansf64 (""))
-#endif /* C2X */
+#endif /* C23 */
 #endif /* __FLT64_MANT_DIG__.  */
 
 #ifdef __FLT128_MANT_DIG__
@@ -415,7 +415,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 #undef FLT128_SNAN
 #define FLT128_SNAN	(__builtin_nansf128 (""))
-#endif /* C2X */
+#endif /* C23 */
 #endif /* __FLT128_MANT_DIG__.  */
 
 #ifdef __FLT32X_MANT_DIG__
@@ -444,7 +444,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 #undef FLT32X_SNAN
 #define FLT32X_SNAN	(__builtin_nansf32x (""))
-#endif /* C2X */
+#endif /* C23 */
 #endif /* __FLT32X_MANT_DIG__.  */
 
 #ifdef __FLT64X_MANT_DIG__
@@ -473,7 +473,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 #undef FLT64X_SNAN
 #define FLT64X_SNAN	(__builtin_nansf64x (""))
-#endif /* C2X */
+#endif /* C23 */
 #endif /* __FLT64X_MANT_DIG__.  */
 
 #ifdef __FLT128X_MANT_DIG__
@@ -502,7 +502,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 #undef FLT128X_SNAN
 #define FLT128X_SNAN	(__builtin_nansf128x (""))
-#endif /* C2X */
+#endif /* C23 */
 #endif /* __FLT128X_MANT_DIG__.  */
 
 #endif /* __STDC_WANT_IEC_60559_TYPES_EXT__.  */
@@ -511,7 +511,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #if (defined __STDC_WANT_DEC_FP__ \
      || defined __STDC_WANT_IEC_60559_DFP_EXT__ \
      || (defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L))
-/* C2X; formerly Technical Report 24732, extension for decimal
+/* C23; formerly Technical Report 24732, extension for decimal
    floating-point arithmetic: Characteristic of decimal floating types
    <float.h>, and TS 18661-2.  */
 
@@ -579,7 +579,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef DEC_EVAL_METHOD
 #define DEC_EVAL_METHOD	__DEC_EVAL_METHOD__
 
-#endif /* __STDC_WANT_DEC_FP__ || __STDC_WANT_IEC_60559_DFP_EXT__ || C2X.  */
+#endif /* __STDC_WANT_DEC_FP__ || __STDC_WANT_IEC_60559_DFP_EXT__ || C23.  */
 
 #ifdef __STDC_WANT_DEC_FP__
 
@@ -604,7 +604,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define DEC64_TRUE_MIN       __DEC64_SUBNORMAL_MIN__
 #define DEC128_TRUE_MIN      __DEC128_SUBNORMAL_MIN__
 
-#endif /* __STDC_WANT_IEC_60559_DFP_EXT__ || C2X.  */
+#endif /* __STDC_WANT_IEC_60559_DFP_EXT__ || C23.  */
 
 #if defined __STDC_VERSION__ && __STDC_VERSION__ > 201710L
 
@@ -624,7 +624,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef DEC128_SNAN
 #define DEC128_SNAN	(__builtin_nansd128 (""))
 
-#endif /* C2X */
+#endif /* C23 */
 
 #endif /* __DEC32_MANT_DIG__ */
 
