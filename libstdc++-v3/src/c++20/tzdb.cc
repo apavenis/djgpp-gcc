@@ -41,22 +41,17 @@
 # include <cstdlib>   // getenv
 #endif
 
-#ifndef __GTHREADS
-# define USE_ATOMIC_SHARED_PTR 0
-#elif _WIN32
-// std::mutex cannot be constinit, so Windows must use atomic<shared_ptr<>>.
-# define USE_ATOMIC_SHARED_PTR 1
-#elif ATOMIC_POINTER_LOCK_FREE < 2
-# define USE_ATOMIC_SHARED_PTR 0
-#else
-// TODO benchmark atomic<shared_ptr<>> vs mutex.
-# define USE_ATOMIC_SHARED_PTR 1
-#endif
-
 #if defined __GTHREADS && ATOMIC_POINTER_LOCK_FREE == 2
 # define USE_ATOMIC_LIST_HEAD 1
+// TODO benchmark atomic<shared_ptr<>> vs mutex.
+# define USE_ATOMIC_SHARED_PTR 1
 #else
 # define USE_ATOMIC_LIST_HEAD 0
+# define USE_ATOMIC_SHARED_PTR 0
+#endif
+
+#if USE_ATOMIC_SHARED_PTR && ! USE_ATOMIC_LIST_HEAD
+# error Unsupported combination
 #endif
 
 #if ! __cpp_constinit
@@ -75,8 +70,9 @@ namespace __gnu_cxx
 #else
   [[gnu::weak]] const char* zoneinfo_dir_override();
 
-#if defined(__APPLE__) || defined(__hpux__)
-  // Need a weak definition for Mach-O.
+#if defined(__APPLE__) || defined(__hpux__) \
+  || (defined(__VXWORKS__) && !defined(__RTP__))
+  // Need a weak definition for Mach-O et al.
   [[gnu::weak]] const char* zoneinfo_dir_override()
   {
 #ifdef _GLIBCXX_ZONEINFO_DIR
@@ -106,9 +102,18 @@ namespace std::chrono
     // Dummy no-op mutex type for single-threaded targets.
     struct mutex { void lock() { } void unlock() { } };
 #endif
-    /// XXX std::mutex::mutex() not constexpr on Windows, so can't be constinit
-    constinit mutex list_mutex;
+    inline mutex& list_mutex()
+    {
+#ifdef __GTHREAD_MUTEX_INIT
+      constinit static mutex m;
+#else
+      // Cannot use a constinit mutex, so use a local static.
+      alignas(mutex) constinit static char buf[sizeof(mutex)];
+      static mutex& m = *::new(buf) mutex();
 #endif
+      return m;
+    }
+#endif // ! USE_ATOMIC_SHARED_PTR
 
     struct Rule;
   }
@@ -154,7 +159,7 @@ namespace std::chrono
     static _Node*
     _S_list_head(memory_order)
     {
-      lock_guard<mutex> l(list_mutex);
+      lock_guard<mutex> l(list_mutex());
       return _S_head_owner.get();
     }
 
@@ -647,7 +652,7 @@ namespace std::chrono
     template<typename _Tp> requires _Tp::is_always_lock_free
       struct RulesCounter<_Tp>
       {
-	atomic_signed_lock_free counter{0};
+	_Tp counter{0};
 
 	void
 	increment()
@@ -699,7 +704,12 @@ namespace std::chrono
       };
 #endif // __GTHREADS && __cpp_lib_atomic_wait
 
+#if __cpp_lib_atomic_lock_free_type_aliases
     RulesCounter<atomic_signed_lock_free> rules_counter;
+#else
+    RulesCounter<void> rules_counter;
+#endif
+
 #else // TZDB_DISABLED
     _Impl(weak_ptr<tzdb_list::_Node>) { }
     struct {
@@ -1074,8 +1084,8 @@ namespace std::chrono
     }
 
     // N.B. Leading slash as required by zoneinfo_file function.
-    const string tzdata_file = "/tzdata.zi";
-    const string leaps_file = "/leapseconds";
+    const string_view tzdata_file = "/tzdata.zi";
+    const string_view leaps_file = "/leapseconds";
 
 #ifdef _GLIBCXX_STATIC_TZDATA
 // Static copy of tzdata.zi embedded in the library as tzdata_chars[]
@@ -1132,8 +1142,8 @@ namespace std::chrono
   pair<vector<leap_second>, bool>
   tzdb_list::_Node::_S_read_leap_seconds()
   {
-    // This list is valid until at least 2023-12-28 00:00:00 UTC.
-    auto expires = sys_days{2023y/12/28};
+    // This list is valid until at least 2024-12-28 00:00:00 UTC.
+    auto expires = sys_days{2024y/12/28};
     vector<leap_second> leaps
     {
       (leap_second)  78796800, // 1 Jul 1972
@@ -1279,7 +1289,7 @@ namespace std::chrono
       }
     // XXX small window here where _S_head_cache still points to previous tzdb.
 #else
-    lock_guard<mutex> l(list_mutex);
+    lock_guard<mutex> l(list_mutex());
     if (const _Node* h = _S_head_owner.get())
       {
 	if (h->db.version == new_head_ptr->db.version)
@@ -1406,11 +1416,12 @@ namespace std::chrono
 #else
     if (Node::_S_list_head(memory_order::relaxed) != nullptr) [[likely]]
     {
-      lock_guard<mutex> l(list_mutex);
+      lock_guard<mutex> l(list_mutex());
       const tzdb& current = Node::_S_head_owner->db;
       if (current.version == version)
 	return current;
     }
+    shared_ptr<Node> head; // Passed as unused arg to _S_replace_head.
 #endif
 
     auto [leaps, leaps_ok] = Node::_S_read_leap_seconds();
@@ -1499,9 +1510,6 @@ namespace std::chrono
     ranges::sort(node->db.links, {}, &time_zone_link::name);
     ranges::stable_sort(node->rules, {}, &Rule::name);
 
-#if ! USE_ATOMIC_SHARED_PTR
-    shared_ptr<Node> head;
-#endif
     return Node::_S_replace_head(std::move(head), std::move(node));
 #else
     __throw_disabled();
@@ -1526,7 +1534,7 @@ namespace std::chrono
 #if USE_ATOMIC_SHARED_PTR
     return const_iterator{_Node::_S_head_owner.load()};
 #else
-    lock_guard<mutex> l(list_mutex);
+    lock_guard<mutex> l(list_mutex());
     return const_iterator{_Node::_S_head_owner};
 #endif
   }
@@ -1539,7 +1547,7 @@ namespace std::chrono
     if (p._M_node) [[likely]]
     {
 #if ! USE_ATOMIC_SHARED_PTR
-      lock_guard<mutex> l(list_mutex);
+      lock_guard<mutex> l(list_mutex());
 #endif
       if (auto next = p._M_node->next) [[likely]]
 	return const_iterator{p._M_node->next = std::move(next->next)};
@@ -1591,7 +1599,7 @@ namespace std::chrono
     const time_zone*
     do_locate_zone(const vector<time_zone>& zones,
 		   const vector<time_zone_link>& links,
-		   string_view tz_name) noexcept
+		   string_view tz_name)
     {
       // Lambda mangling changed between -fabi-version=2 and -fabi-version=18
       auto search = []<class Vec>(const Vec& v, string_view name) {
@@ -1602,13 +1610,62 @@ namespace std::chrono
 	return ptr;
       };
 
+      // Search zones first.
       if (auto tz = search(zones, tz_name))
 	return tz;
 
+      // Search links second.
       if (auto tz_l = search(links, tz_name))
-	return search(zones, tz_l->target());
+	{
+	  // Handle the common case of a link that has a zone as the target.
+	  if (auto tz = search(zones, tz_l->target())) [[likely]]
+	    return tz;
 
-      return nullptr;
+	  // Either tz_l->target() doesn't exist, or we have a chain of links.
+	  // Use Floyd's cycle-finding algorithm to avoid infinite loops,
+	  // at the cost of extra lookups. In the common case we expect a
+	  // chain of links to be short so the loop won't run many times.
+	  // In particular, the duplicate lookups to move the tortoise
+	  // never happen unless the chain has four or more links.
+	  // When a chain contains a cycle we do multiple duplicate lookups,
+	  // but that case should never happen with correct tzdata.zi,
+	  // so there's no need to optimize cycle detection.
+
+	  const time_zone_link* tortoise = tz_l;
+	  const time_zone_link* hare = search(links, tz_l->target());
+	  while (hare)
+	    {
+	      // Chains should be short, so first check if it ends here:
+	      if (auto tz = search(zones, hare->target())) [[likely]]
+		return tz;
+
+	      // Otherwise follow the chain:
+	      hare = search(links, hare->target());
+	      if (!hare)
+		break;
+
+	      // Again, first check if the chain ends at a zone here:
+	      if (auto tz = search(zones, hare->target())) [[likely]]
+		return tz;
+
+	      // Follow the chain again:
+	      hare = search(links, hare->target());
+
+	      if (hare == tortoise)
+		{
+		  string_view err = "std::chrono::tzdb: link cycle: ";
+		  string str;
+		  str.reserve(err.size() + tz_name.size());
+		  str += err;
+		  str += tz_name;
+		  __throw_runtime_error(str.c_str());
+		}
+	      // Plod along the chain one step:
+	      tortoise = search(links, tortoise->target());
+	    }
+	}
+
+      return nullptr; // not found
     }
   } // namespace
 
@@ -1618,7 +1675,7 @@ namespace std::chrono
   {
     if (auto tz = do_locate_zone(zones, links, tz_name))
       return tz;
-    string_view err = "tzdb: cannot locate zone: ";
+    string_view err = "std::chrono::tzdb: cannot locate zone: ";
     string str;
     str.reserve(err.size() + tz_name.size());
     str += err;
@@ -1633,6 +1690,9 @@ namespace std::chrono
     // TODO cache this function's result?
 
 #ifndef _AIX
+    // Repeat the preprocessor condition used by filesystem::read_symlink,
+    // to avoid a dependency on src/c++17/fs_ops.o if it won't work anyway.
+#if defined(_GLIBCXX_HAVE_READLINK) && defined(_GLIBCXX_HAVE_SYS_STAT_H)
     error_code ec;
     // This should be a symlink to e.g. /usr/share/zoneinfo/Europe/London
     auto path = filesystem::read_symlink("/etc/localtime", ec);
@@ -1651,6 +1711,7 @@ namespace std::chrono
 	      return tz;
 	  }
       }
+#endif
     // Otherwise, look for a file naming the time zone.
     string_view files[] {
       "/etc/timezone",    // Debian derivates
