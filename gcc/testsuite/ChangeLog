@@ -1,3 +1,77 @@
+2024-05-03  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	Backported from master:
+	2024-05-03  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/114929
+	* gm2/pim/run/pass/testforloopzero.mod: New test.
+	* gm2/pim/run/pass/testforloopzero2.mod: New test.
+	* gm2/pim/run/pass/testforloopzero3.mod: New test.
+	* gm2/pim/run/pass/testforloopzero4.mod: New test.
+
+2024-05-03  Jason Merrill  <jason@redhat.com>
+
+	Backported from master:
+	2024-05-03  Jason Merrill  <jason@redhat.com>
+
+	PR c++/114935
+	* g++.dg/cpp0x/initlist-eh1.C: New test.
+
+2024-05-03  Patrick O'Neill  <patrick@rivosinc.com>
+
+	Backported from master:
+	2024-05-02  Patrick O'Neill  <patrick@rivosinc.com>
+
+	PR middle-end/114734
+	* gcc.target/riscv/rvv/autovec/pr114734.c: New test.
+
+2024-04-30  Paul Thomas  <pault@gcc.gnu.org>
+
+	Backported from master:
+	2024-04-29  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/114959
+	* gfortran.dg/pr114959.f90: New test.
+
+2024-04-30  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from master:
+	2024-04-30  Jakub Jelinek  <jakub@redhat.com>
+		    Hongtao Liu  <hongtao.liu@intel.com>
+
+	PR tree-optimization/114883
+	* gfortran.dg/pr114883.f90: New test.
+
+2024-04-30  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2024-04-30  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/114888
+	* g++.dg/template/sizeof19.C: New test.
+
+2024-04-27  Xi Ruoyao  <xry111@xry111.site>
+
+	Backported from master:
+	2024-04-27  Xi Ruoyao  <xry111@xry111.site>
+
+	PR target/114861
+	* gcc.target/loongarch/pr114861.c: New test.
+
+2024-04-26  Patrick Palka  <ppalka@redhat.com>
+
+	Backported from master:
+	2024-04-26  Patrick Palka  <ppalka@redhat.com>
+
+	* g++.dg/concepts/diagnostic2.C: Expect source line printed
+	for the "required from here" message.
+	* g++.dg/template/error60a.C: New test.
+
+2024-04-26  Haochen Jiang  <haochen.jiang@intel.com>
+
+	PR target/110621
+	* gcc.target/i386/pr105354-2.c: As mentioned.
+
 2024-04-25  David Faust  <david.faust@oracle.com>
 
 	* gcc.target/bpf/bpf-debug-options-1.c: New test.
