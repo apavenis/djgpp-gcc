@@ -15,20 +15,22 @@ basever=$(cat ../gcc/BASE-VER)
 datestamp=$(cat ../gcc/DATESTAMP)
 devphase=$(cat ../gcc/DEV-PHASE)
 
+gcc_major=$(echo $basever | sed -e 's:\..*$::')
+
 case $basever in
-    1[1-9].[1-9].0)
+    [1-9][0-9].[1-9].[0-9])
         upstream=tags/releases/gcc-$basever
         dj_branch=tags/djgpp/gcc-$basever
         djn_branch=tags/djgpp/native/gcc-$basever
         ;;
 
-    12.[1-9].[1-9])
-        upstream=releases/gcc-12
-        dj_branch=djgpp/gcc-12
-        djn_branch=djgpp/native/gcc-12
+    [1-9][0-9].0.[1-9])
+        upstream=releases/gcc-${gcc_major}
+        dj_branch=djgpp/gcc-${gcc_major}
+        djn_branch=djgpp/native/gcc-${gcc_major}
         ;;
 
-    1[1-9].0.*)
+    [1-9][0-9].0.0)
         upstream=master
         dj_branch=djgpp/master
         djn_branch=djgpp/native/master
