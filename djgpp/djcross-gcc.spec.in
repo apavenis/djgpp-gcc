@@ -285,6 +285,7 @@ PATH="$RPM_BUILD_DIR/%{name}-%{version}/tmpinst/bin:$PATH" \
 			         --includedir=%{_includedir} \
 			         --libdir=%{_libdir} \
 			         --libexecdir=%{_libexecdir} \
+			         --enable-linker-build-id \
 			         --localstatedir=%{_localstatedir} \
 			         --sharedstatedir=%{_sharedstatedir} \
 			         --mandir=%{_mandir} \
@@ -373,6 +374,7 @@ rm -fr %{buildroot}
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdalign.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdnoreturn.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/stdint-gcc.h
+%{_libdir}/gcc/%{target}/%{gcc_version}/include/stdckdint.h
 %{_libdir}/gcc/%{target}/%{gcc_version}/include/quadmath*.h
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/cc1
 %{_libexecdir}/gcc/%{target}/%{gcc_version}/collect2
