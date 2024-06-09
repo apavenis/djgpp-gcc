@@ -136,6 +136,17 @@ cxx11_sources = \
 	${ldbl_alt128_compat_sources}
 
 if DJGPP
+
+if GLIBCXX_HOSTED
+libstdcxx_la_SOURCES = $(cxx98_sources) $(cxx11_sources)
+else
+# When freestanding, there's currently no compatibility to preserve.  Should
+# that change, any compatibility sources can be added here.
+libstdcxx_la_SOURCES =
+endif
+
+else
+
 if GLIBCXX_HOSTED
 libstdc___la_SOURCES = $(cxx98_sources) $(cxx11_sources)
 else
@@ -143,14 +154,7 @@ else
 # that change, any compatibility sources can be added here.
 libstdc___la_SOURCES =
 endif
-else
-if GLIBCXX_HOSTED
-libstdc___la_SOURCES = $(cxx98_sources) $(cxx11_sources)
-else
-# When freestanding, there's currently no compatibility to preserve.  Should
-# that change, any compatibility sources can be added here.
-libstdc___la_SOURCES =
-endif
+
 endif
 
 if DJGPP
