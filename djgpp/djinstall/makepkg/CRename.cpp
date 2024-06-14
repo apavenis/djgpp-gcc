@@ -16,5 +16,10 @@ const std::map<std::filesystem::path, std::filesystem::path> PkgBuilder::c_inc_r
     {"avx512vp2intersectvlintrin.h", "avx512vp2intersectvlintrin.h3"},
     {"avx512vpopcntdqintrin.h", "avx512vpopcntdqintrin.h4"},
     {"avx512vpopcntdqvlintrin.h", "avx512vpopcntdqvlintrin.h5"},
+    {"avx512bitalgintrin.h", "avx512bitalgintrin.h2"},
+    {"avx512bitalgvlintrin.h", "avx512bitalgvlintrin.h3"},
+    {"avxvnniint16intrin.h", "avxvnniint16intrin.h2"},
+    {"avxvnniint8intrin.h", "avxvnniint8intrin.h3"},
+    {"avxvnniintrin.h", "avxvnniintrin.h4"},
     {"quadmath_weak.h", "quadmath.h2"}
 };

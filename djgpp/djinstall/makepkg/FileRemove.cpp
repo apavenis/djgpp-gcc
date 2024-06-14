@@ -7,5 +7,7 @@ const std::vector<std::regex> PkgBuilder::remove_instr = {
     std::regex("info/dir"),
     std::regex("libphobos/"),
     std::regex("gcc/d/"),
-    std::regex("gcc/config/arm/")
+    std::regex("gcc/config/arm/"),
+    std::regex("gcc/m2"),
+    std::regex("/g\\+\\+-mapper-server\\.exe")
 };
